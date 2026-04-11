@@ -63,20 +63,25 @@ class RedisOtpStore:
 
 memory_otp_store = MemoryOtpStore()
 _redis_store: RedisOtpStore | None = None
+_redis_otp_unavailable: bool = False
 
 
 def get_otp_store(settings: Settings) -> OtpStore:
-    """Return Redis-backed store when REDIS_URL is set, else memory."""
-    global _redis_store
-    if not settings.redis_url:
+    """Return Redis-backed store when REDIS_URL is set and reachable; else memory."""
+    global _redis_store, _redis_otp_unavailable
+    if not settings.redis_url or _redis_otp_unavailable:
         return memory_otp_store
     if _redis_store is None:
         try:
-            _redis_store = RedisOtpStore(settings.redis_url)
-            logger.info("OTP store: Redis")
+            import redis as sync_redis
+
+            sync_redis.from_url(settings.redis_url, decode_responses=True).ping()
         except Exception as e:  # noqa: BLE001
-            logger.warning("OTP store: Redis unavailable (%s), using memory", e)
+            logger.warning("OTP store: Redis unreachable (%s), using in-memory OTP store", e)
+            _redis_otp_unavailable = True
             return memory_otp_store
+        _redis_store = RedisOtpStore(settings.redis_url)
+        logger.info("OTP store: Redis")
     return _redis_store
 
 

@@ -17,7 +17,19 @@ class SettingsPage extends ConsumerWidget {
     final notif = ref.watch(localNotificationsOptInProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(
+        title: const Text('Settings'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/home');
+            }
+          },
+        ),
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         children: [
@@ -60,6 +72,14 @@ class SettingsPage extends ConsumerWidget {
           Card(
             child: Column(
               children: [
+                ListTile(
+                  leading: Icon(Icons.inventory_2_outlined, color: cs.primary),
+                  title: const Text('Item catalog'),
+                  subtitle: const Text('Categories and items for faster entry lines.'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => context.push('/catalog'),
+                ),
+                const Divider(height: 1),
                 ListTile(
                   leading: Icon(Icons.straighten_rounded, color: cs.primary),
                   title: const Text('Units'),

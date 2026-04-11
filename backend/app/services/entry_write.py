@@ -17,6 +17,7 @@ from app.services.entry_logic import line_profit
 def _line_to_out(line: EntryLineItem) -> EntryLineOut:
     return EntryLineOut(
         id=line.id,
+        catalog_item_id=line.catalog_item_id,
         item_name=line.item_name,
         category=line.category,
         qty=float(line.qty),
@@ -78,6 +79,7 @@ async def persist_confirmed_entry(
         db.add(
             EntryLineItem(
                 entry_id=entry.id,
+                catalog_item_id=li.catalog_item_id,
                 item_name=li.item_name,
                 category=li.category,
                 qty=qty,

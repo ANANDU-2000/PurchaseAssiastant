@@ -5,11 +5,39 @@ import 'package:intl/intl.dart';
 
 import '../../../core/providers/entries_list_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
+import '../../../shared/widgets/app_settings_action.dart';
 import '../../../shared/widgets/hexa_empty_state.dart';
 import 'entry_create_sheet.dart';
 
-class EntriesPage extends ConsumerWidget {
+class EntriesPage extends ConsumerStatefulWidget {
   const EntriesPage({super.key});
+
+  @override
+  ConsumerState<EntriesPage> createState() => _EntriesPageState();
+}
+
+class _EntriesPageState extends ConsumerState<EntriesPage> {
+  late final TextEditingController _searchCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchCtrl = TextEditingController(text: ref.read(entrySearchQueryProvider));
+    _searchCtrl.addListener(_onSearchChanged);
+  }
+
+  void _onSearchChanged() {
+    ref.read(entrySearchQueryProvider.notifier).state = _searchCtrl.text;
+    ref.invalidate(entriesListProvider);
+    setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.removeListener(_onSearchChanged);
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   static String _titleLine(Map<String, dynamic> e) {
     final lines = e['lines'];
@@ -194,7 +222,7 @@ class EntriesPage extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final async = ref.watch(entriesListProvider);
     final searchQ = ref.watch(entrySearchQueryProvider);
     final fFrom = ref.watch(entryListFromProvider);
@@ -206,6 +234,12 @@ class EntriesPage extends ConsumerWidget {
       appBar: AppBar(
         title: searchQ.trim().isEmpty ? const Text('Entries') : Text('Entries · "$searchQ"'),
         actions: [
+          IconButton(
+            tooltip: 'Dashboard',
+            onPressed: () => context.go('/home'),
+            icon: const Icon(Icons.space_dashboard_rounded),
+          ),
+          const AppSettingsAction(),
           IconButton(
             tooltip: 'Filters',
             onPressed: () => _showFiltersSheet(context, ref),
@@ -221,79 +255,107 @@ class EntriesPage extends ConsumerWidget {
             icon: const Icon(Icons.refresh_rounded),
           ),
           IconButton(
-            tooltip: 'Search',
+            tooltip: 'Advanced search',
             onPressed: () => _showSearchDialog(context, ref),
-            icon: const Icon(Icons.search_rounded),
+            icon: const Icon(Icons.tune_rounded),
           ),
         ],
       ),
-      body: async.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text('Could not load entries', style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 8),
-                Text(e.toString(), textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: () => ref.invalidate(entriesListProvider),
-                  child: const Text('Retry'),
-                ),
-              ],
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: ListenableBuilder(
+              listenable: _searchCtrl,
+              builder: (context, _) {
+                return SearchBar(
+                  controller: _searchCtrl,
+                  hintText: 'Search items, notes…',
+                  leading: const Icon(Icons.search_rounded),
+                  trailing: [
+                    if (_searchCtrl.text.isNotEmpty)
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () {
+                          _searchCtrl.clear();
+                          ref.read(entrySearchQueryProvider.notifier).state = '';
+                          ref.invalidate(entriesListProvider);
+                          setState(() {});
+                        },
+                      ),
+                  ],
+                  onChanged: (_) => _onSearchChanged(),
+                );
+              },
             ),
           ),
-        ),
-        data: (items) {
-          if (items.isEmpty) {
-            return HexaEmptyState(
-              icon: Icons.receipt_long_rounded,
-              title: 'No entries yet',
-              subtitle: 'Add a purchase to see it here. Data loads from your API when signed in.',
-              action: FilledButton.icon(
-                onPressed: () => showEntryCreateSheet(context),
-                icon: const Icon(Icons.add_rounded),
-                label: const Text('Add entry'),
+          Expanded(
+            child: async.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text('Could not load entries', style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 8),
+                      Text(e.toString(), textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                      const SizedBox(height: 16),
+                      FilledButton(
+                        onPressed: () => ref.invalidate(entriesListProvider),
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            );
-          }
-          return RefreshIndicator(
-            onRefresh: () async {
-              ref.invalidate(entriesListProvider);
-              await ref.read(entriesListProvider.future);
-            },
-            child: ListView.separated(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 88),
-              itemCount: items.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (context, i) {
-                final e = items[i];
-                final id = e['id']?.toString();
-                return Card(
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                    leading: CircleAvatar(
-                      backgroundColor: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.6),
-                      child: Icon(Icons.receipt_long_rounded, color: Theme.of(context).colorScheme.primary, size: 22),
+              data: (items) {
+                if (items.isEmpty) {
+                  return HexaEmptyState(
+                    icon: Icons.receipt_long_rounded,
+                    title: 'No entries yet',
+                    subtitle: 'Add a purchase to see it here. Data loads from your API when signed in.',
+                    action: FilledButton.icon(
+                      onPressed: () => showEntryCreateSheet(context),
+                      icon: const Icon(Icons.add_rounded),
+                      label: const Text('Add entry'),
                     ),
-                    title: Text(_titleLine(e), style: const TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: Text(_subtitle(e)),
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: id == null ? null : () => context.push('/entry/$id'),
+                  );
+                }
+                return RefreshIndicator(
+                  onRefresh: () async {
+                    ref.invalidate(entriesListProvider);
+                    await ref.read(entriesListProvider.future);
+                  },
+                  child: ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
+                    itemCount: items.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, i) {
+                      final e = items[i];
+                      final id = e['id']?.toString();
+                      return Card(
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                          leading: CircleAvatar(
+                            backgroundColor: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.6),
+                            child: Icon(Icons.receipt_long_rounded, color: Theme.of(context).colorScheme.primary, size: 22),
+                          ),
+                          title: Text(_titleLine(e), style: const TextStyle(fontWeight: FontWeight.w700)),
+                          subtitle: Text(_subtitle(e)),
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                          onTap: id == null ? null : () => context.push('/entry/$id'),
+                        ),
+                      );
+                    },
                   ),
                 );
               },
             ),
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => showEntryCreateSheet(context),
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('New'),
+          ),
+        ],
       ),
     );
   }

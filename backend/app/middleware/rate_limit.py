@@ -27,4 +27,3 @@ class SlidingWindowLimiter:
             return True
 
 
-otp_ip_limiter = SlidingWindowLimiter(max_requests=10, window_seconds=60.0)

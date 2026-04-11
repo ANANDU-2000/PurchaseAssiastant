@@ -36,6 +36,9 @@ class EntryLineItem(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     entry_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("entries.id"), index=True)
+    catalog_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("catalog_items.id"), nullable=True, index=True
+    )
     item_name: Mapped[str] = mapped_column(String(512))
     category: Mapped[str | None] = mapped_column(String(255), nullable=True)
     qty: Mapped[float] = mapped_column(Numeric(18, 4))

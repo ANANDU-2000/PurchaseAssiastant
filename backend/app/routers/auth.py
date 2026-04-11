@@ -9,20 +9,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings, get_settings
 from app.database import get_db
 from app.models import Business, Membership, User
-from app.schemas.auth import GoogleAuthRequest, LoginRequest, RefreshRequest, RegisterRequest, TokenPair
+from app.schemas.auth import (
+    GoogleAuthRequest,
+    LoginRequest,
+    RefreshRequest,
+    RegisterRequest,
+    TokenPair,
+)
 from app.services.google_oauth import verify_google_id_token_async
 from app.services.jwt_tokens import create_access_token, create_refresh_token, decode_refresh_token
 from app.services.passwords import hash_password, verify_password
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
-
-
-def _email_or_username_filter(term: str):
-    t = term.strip()
-    tl = t.lower()
-    if "@" in t:
-        return User.email == tl
-    return User.username == tl
 
 
 def _username_from_google(email: str, sub: str) -> str:
@@ -95,14 +93,14 @@ async def login(
     db: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
 ):
-    q = await db.execute(select(User).where(_email_or_username_filter(body.email_or_username)))
+    q = await db.execute(select(User).where(User.email == body.email))
     user = q.scalar_one_or_none()
     if (
         not user
         or user.password_hash is None
         or not verify_password(body.password, user.password_hash)
     ):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Invalid email/username or password")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
 
     access = create_access_token(user.id, settings)
     refresh = create_refresh_token(user.id, settings)

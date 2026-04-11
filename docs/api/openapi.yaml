@@ -56,7 +56,7 @@ paths:
   /v1/auth/login:
     post:
       tags: [auth]
-      summary: Sign in with email or username + password
+      summary: Sign in with registered email + password
       requestBody:
         required: true
         content:
@@ -171,12 +171,35 @@ paths:
             schema:
               $ref: '#/components/schemas/EntryCreateRequest'
       responses:
+        '200':
+          description: Preview — validation and computed lines; entry not persisted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EntryPreviewResponse'
         '201':
           description: Created
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Entry'
+        '409':
+          description: Duplicate lines for same date (omit force_duplicate or set false)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                      matching_entry_ids:
+                        type: array
+                        items:
+                          type: string
+                          format: uuid
 
   /v1/businesses/{businessId}/entries/{entryId}:
     get:
@@ -716,11 +739,11 @@ components:
 
     LoginRequest:
       type: object
-      required: [email_or_username, password]
+      required: [email, password]
       properties:
-        email_or_username:
+        email:
           type: string
-          description: Full email or username (no @ required for username)
+          format: email
         password:
           type: string
 
@@ -764,11 +787,39 @@ components:
           minimum: 0
         confirm:
           type: boolean
-          description: If false, run validation only (preview)
+          description: If false, run validation only (preview). If true, preview_token from last preview is required.
+        preview_token:
+          type: string
+          format: uuid
+          description: Returned in preview response; must be sent unchanged when confirm=true.
+        force_duplicate:
+          type: boolean
+          default: false
+          description: Set true after user confirms a duplicate warning to allow save when matching_entry_ids would otherwise return 409.
         lines:
           type: array
           items:
             $ref: '#/components/schemas/EntryLineInput'
+
+    EntryPreviewResponse:
+      type: object
+      properties:
+        preview:
+          type: boolean
+        preview_token:
+          type: string
+        entry_date:
+          type: string
+          format: date
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntryLine'
+        warnings:
+          type: array
+          items:
+            type: string
+          description: Price anomaly hints vs historical average landing per item
 
     EntryLineInput:
       type: object

@@ -12,6 +12,8 @@ class BusinessBrief {
       role: j['role'] as String,
     );
   }
+
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'role': role};
 }
 
 class Session {

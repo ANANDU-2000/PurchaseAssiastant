@@ -4,9 +4,62 @@ import '../config/app_config.dart';
 import '../models/session.dart';
 
 class HexaApi {
-  HexaApi({String? baseUrl}) : _dio = Dio(BaseOptions(baseUrl: baseUrl ?? AppConfig.apiBaseUrl, connectTimeout: const Duration(seconds: 20), receiveTimeout: const Duration(seconds: 30)));
+  HexaApi({String? baseUrl, Future<bool> Function()? onUnauthorizedRefresh})
+      : _onUnauthorizedRefresh = onUnauthorizedRefresh,
+        _dio = Dio(
+          BaseOptions(
+            baseUrl: baseUrl ?? AppConfig.apiBaseUrl,
+            connectTimeout: const Duration(seconds: 20),
+            receiveTimeout: const Duration(seconds: 30),
+          ),
+        ),
+        _plain = Dio(
+          BaseOptions(
+            baseUrl: baseUrl ?? AppConfig.apiBaseUrl,
+            connectTimeout: const Duration(seconds: 20),
+            receiveTimeout: const Duration(seconds: 30),
+          ),
+        ) {
+    _dio.interceptors.add(
+      InterceptorsWrapper(
+        onError: (DioException err, ErrorInterceptorHandler handler) async {
+          if (err.response?.statusCode != 401) {
+            return handler.next(err);
+          }
+          final req = err.requestOptions;
+          if (req.extra['authRetried'] == true) {
+            return handler.next(err);
+          }
+          final path = req.uri.path;
+          if (path.contains('/auth/login') ||
+              path.contains('/auth/register') ||
+              path.contains('/auth/google') ||
+              path.contains('/auth/refresh')) {
+            return handler.next(err);
+          }
+          final ok = await _onUnauthorizedRefresh?.call() ?? false;
+          if (!ok) {
+            return handler.next(err);
+          }
+          final auth = _dio.options.headers['Authorization'];
+          if (auth != null) {
+            req.headers['Authorization'] = auth;
+          }
+          req.extra['authRetried'] = true;
+          try {
+            final res = await _dio.fetch(req);
+            return handler.resolve(res);
+          } on DioException catch (e) {
+            return handler.next(e);
+          }
+        },
+      ),
+    );
+  }
 
   final Dio _dio;
+  final Dio _plain;
+  final Future<bool> Function()? _onUnauthorizedRefresh;
 
   Dio get raw => _dio;
 
@@ -23,10 +76,10 @@ class HexaApi {
     return (access: d['access_token'] as String, refresh: d['refresh_token'] as String);
   }
 
-  Future<({String access, String refresh})> login({required String emailOrUsername, required String password}) async {
+  Future<({String access, String refresh})> login({required String email, required String password}) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/auth/login',
-      data: {'email_or_username': emailOrUsername, 'password': password},
+      data: {'email': email, 'password': password},
     );
     return _tokenPairFromResponse(res);
   }
@@ -47,6 +100,15 @@ class HexaApi {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/auth/google',
       data: {'id_token': idToken},
+    );
+    return _tokenPairFromResponse(res);
+  }
+
+  /// No Bearer header — uses body only. Kept on [_plain] so it never inherits [setAuthToken].
+  Future<({String access, String refresh})> refreshTokens({required String refreshToken}) async {
+    final res = await _plain.post<Map<String, dynamic>>(
+      '/v1/auth/refresh',
+      data: {'refresh_token': refreshToken},
     );
     return _tokenPairFromResponse(res);
   }
@@ -72,6 +134,7 @@ class HexaApi {
     String? to,
     String? item,
     String? supplierId,
+    String? brokerId,
   }) async {
     final res = await _dio.get<Map<String, dynamic>>(
       '/v1/businesses/$businessId/entries',
@@ -80,6 +143,7 @@ class HexaApi {
         if (to != null) 'to': to,
         if (item != null && item.isNotEmpty) 'item': item,
         if (supplierId != null && supplierId.isNotEmpty) 'supplier_id': supplierId,
+        if (brokerId != null && brokerId.isNotEmpty) 'broker_id': brokerId,
       },
     );
     final items = res.data?['items'];
@@ -225,6 +289,91 @@ class HexaApi {
     await _dio.delete<void>('/v1/businesses/$businessId/brokers/$brokerId');
   }
 
+  Future<List<Map<String, dynamic>>> listItemCategories({required String businessId}) async {
+    final res = await _dio.get<dynamic>('/v1/businesses/$businessId/item-categories');
+    final data = res.data;
+    if (data is! List) return [];
+    return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  Future<Map<String, dynamic>> createItemCategory({required String businessId, required String name}) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/item-categories',
+      data: {'name': name},
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> updateItemCategory({
+    required String businessId,
+    required String categoryId,
+    required String name,
+  }) async {
+    final res = await _dio.patch<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/item-categories/$categoryId',
+      data: {'name': name},
+    );
+    return res.data ?? {};
+  }
+
+  Future<void> deleteItemCategory({required String businessId, required String categoryId}) async {
+    await _dio.delete<void>('/v1/businesses/$businessId/item-categories/$categoryId');
+  }
+
+  Future<List<Map<String, dynamic>>> listCatalogItems({
+    required String businessId,
+    String? categoryId,
+  }) async {
+    final res = await _dio.get<dynamic>(
+      '/v1/businesses/$businessId/catalog-items',
+      queryParameters: {
+        if (categoryId != null && categoryId.isNotEmpty) 'category_id': categoryId,
+      },
+    );
+    final data = res.data;
+    if (data is! List) return [];
+    return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  Future<Map<String, dynamic>> createCatalogItem({
+    required String businessId,
+    required String categoryId,
+    required String name,
+    String? defaultUnit,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/catalog-items',
+      data: {
+        'category_id': categoryId,
+        'name': name,
+        if (defaultUnit != null && defaultUnit.isNotEmpty) 'default_unit': defaultUnit,
+      },
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> updateCatalogItem({
+    required String businessId,
+    required String itemId,
+    String? categoryId,
+    String? name,
+    String? defaultUnit,
+  }) async {
+    final res = await _dio.patch<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/catalog-items/$itemId',
+      data: {
+        if (categoryId != null) 'category_id': categoryId,
+        if (name != null) 'name': name,
+        if (defaultUnit != null) 'default_unit': defaultUnit,
+      },
+    );
+    return res.data ?? {};
+  }
+
+  Future<void> deleteCatalogItem({required String businessId, required String itemId}) async {
+    await _dio.delete<void>('/v1/businesses/$businessId/catalog-items/$itemId');
+  }
+
   Future<Map<String, dynamic>> contactsSearch({required String businessId, required String query}) async {
     final res = await _dio.get<Map<String, dynamic>>(
       '/v1/businesses/$businessId/contacts/search',
@@ -327,6 +476,7 @@ class HexaApi {
     required String item,
     double? currentPrice,
     int windowDays = 90,
+    String priceField = 'landing',
   }) async {
     final res = await _dio.get<Map<String, dynamic>>(
       '/v1/businesses/$businessId/price-intelligence',
@@ -334,6 +484,7 @@ class HexaApi {
         'item': item,
         if (currentPrice != null) 'current_price': currentPrice,
         'window_days': windowDays,
+        'price_field': priceField,
       },
     );
     return res.data ?? {};
@@ -353,6 +504,18 @@ class HexaApi {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/businesses/$businessId/media/voice',
       data: {'audio_base64': audioBase64},
+    );
+    return res.data ?? {};
+  }
+
+  /// Stub AI assistant — returns deterministic preview text; wire to LLM later.
+  Future<Map<String, dynamic>> aiChat({
+    required String businessId,
+    required List<Map<String, dynamic>> messages,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/ai/chat',
+      data: {'messages': messages},
     );
     return res.data ?? {};
   }

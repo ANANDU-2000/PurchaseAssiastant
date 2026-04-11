@@ -68,12 +68,15 @@ class EntryDetailPage extends ConsumerWidget {
                 ...lines.map((line) {
                   if (line is! Map) return const SizedBox.shrink();
                   final m = Map<String, dynamic>.from(line);
+                  final linked = m['catalog_item_id'] != null;
                   return Card(
                     child: ListTile(
+                      leading: linked ? Icon(Icons.bookmark_outline, color: Theme.of(context).colorScheme.primary) : null,
                       title: Text(m['item_name']?.toString() ?? '—', style: const TextStyle(fontWeight: FontWeight.w700)),
                       subtitle: Text(
                         '${m['qty']} ${m['unit']} · landing ${_inr((m['landing_cost'] as num?)?.toDouble())} · '
-                        'P/L ${_inr((m['profit'] as num?)?.toDouble())}',
+                        'P/L ${_inr((m['profit'] as num?)?.toDouble())}'
+                        '${linked ? ' · catalog' : ''}',
                       ),
                     ),
                   );

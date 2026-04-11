@@ -6,6 +6,10 @@ from pydantic import BaseModel, Field
 
 
 class EntryLineInput(BaseModel):
+    catalog_item_id: uuid.UUID | None = Field(
+        default=None,
+        description="Optional master catalog row; when set, server fills item_name/category/unit from catalog.",
+    )
     item_name: str
     category: str | None = None
     qty: float = Field(gt=0)
@@ -23,11 +27,20 @@ class EntryCreateRequest(BaseModel):
     transport_cost: float | None = None
     commission_amount: float | None = Field(default=None, ge=0)
     confirm: bool = False
+    preview_token: str | None = Field(
+        default=None,
+        description="Issued by preview (confirm=false); required when confirm=true.",
+    )
+    force_duplicate: bool = Field(
+        default=False,
+        description="Set true after duplicate warning to allow save when server reports duplicates.",
+    )
     lines: list[EntryLineInput] = Field(min_length=1)
 
 
 class EntryLineOut(BaseModel):
     id: uuid.UUID | None = None
+    catalog_item_id: uuid.UUID | None = None
     item_name: str
     category: str | None
     qty: float

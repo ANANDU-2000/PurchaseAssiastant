@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.deps import get_current_user, require_ai_enabled, require_membership
 from app.models import Entry, EntryLineItem, Membership, User
+from app.services.entry_preview_token import consume_preview_token, issue_preview_token, verify_preview_token
 from app.services.entry_write import persist_confirmed_entry
 from app.schemas.entries import (
     DuplicateCheckRequest,
@@ -22,7 +23,8 @@ from app.schemas.entries import (
     EntryOut,
     ParseDraftResponse,
 )
-from app.services.entry_logic import find_duplicates, line_profit
+from app.services.catalog_resolution import resolve_catalog_items_on_entry
+from app.services.entry_logic import apply_computed_landings, entry_price_warnings, find_duplicates, line_profit
 
 router = APIRouter(prefix="/v1/businesses/{business_id}/entries", tags=["entries"])
 
@@ -34,6 +36,7 @@ class ParseBody(BaseModel):
 def _line_to_out(line: EntryLineItem) -> EntryLineOut:
     return EntryLineOut(
         id=line.id,
+        catalog_item_id=line.catalog_item_id,
         item_name=line.item_name,
         category=line.category,
         qty=float(line.qty),
@@ -86,6 +89,7 @@ async def list_entries(
     to_date: date | None = Query(None, alias="to"),
     item: str | None = None,
     supplier_id: uuid.UUID | None = None,
+    broker_id: uuid.UUID | None = None,
 ):
     del user, _m
     q = select(Entry).where(Entry.business_id == business_id)
@@ -95,6 +99,8 @@ async def list_entries(
         q = q.where(Entry.entry_date <= to_date)
     if supplier_id:
         q = q.where(Entry.supplier_id == supplier_id)
+    if broker_id:
+        q = q.where(Entry.broker_id == broker_id)
     q = q.options(selectinload(Entry.lines)).order_by(
         Entry.entry_date.desc(), Entry.created_at.desc()
     )
@@ -107,7 +113,7 @@ async def list_entries(
             if any(needle in (li.item_name or "").lower() for li in e.lines):
                 filtered.append(e)
         entries = filtered
-    return {"items": [_entry_to_out(e).model_dump() for e in entries], "next_cursor": None}
+    return {"items": [_entry_to_out(e).model_dump(mode="json") for e in entries], "next_cursor": None}
 
 
 @router.get("/{entry_id}")
@@ -126,7 +132,7 @@ async def get_entry(
     entry = result.scalar_one_or_none()
     if entry is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entry not found")
-    return _entry_to_out(entry).model_dump()
+    return _entry_to_out(entry).model_dump(mode="json")
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -138,6 +144,12 @@ async def create_entry(
     _m: Annotated[Membership, Depends(require_membership)],
 ):
     del _m
+    try:
+        body = await resolve_catalog_items_on_entry(db, business_id, body)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    body = apply_computed_landings(body)
+
     preview_lines: list[EntryLineOut] = []
     for li in body.lines:
         qty = Decimal(str(li.qty))
@@ -147,6 +159,7 @@ async def create_entry(
         preview_lines.append(
             EntryLineOut(
                 id=None,
+                catalog_item_id=li.catalog_item_id,
                 item_name=li.item_name,
                 category=li.category,
                 qty=float(li.qty),
@@ -159,23 +172,42 @@ async def create_entry(
         )
 
     if not body.confirm:
+        token = issue_preview_token(body, user_id=user.id, business_id=business_id)
+        warnings = await entry_price_warnings(db, business_id, body)
         return JSONResponse(
             status_code=status.HTTP_200_OK,
             content={
                 "preview": True,
+                "preview_token": token,
                 "entry_date": body.entry_date.isoformat(),
-                "lines": [p.model_dump() for p in preview_lines],
+                "lines": [p.model_dump(mode="json") for p in preview_lines],
+                "warnings": warnings,
             },
         )
 
-    dups: list[uuid.UUID] = []
+    ok, err = verify_preview_token(
+        body.preview_token,
+        body,
+        user_id=user.id,
+        business_id=business_id,
+    )
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=err)
+
+    dup_ids: list[uuid.UUID] = []
     for li in body.lines:
-        dups.extend(
+        dup_ids.extend(
             await find_duplicates(db, business_id, li.item_name, li.qty, body.entry_date)
         )
-    if dups:
-        # still allow save — client should confirm; we could require header X-Confirm-Duplicate
-        pass
+    matching_entry_ids = list(dict.fromkeys(dup_ids))
+    if matching_entry_ids and not body.force_duplicate:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "Possible duplicate entries for this date.",
+                "matching_entry_ids": [str(x) for x in matching_entry_ids],
+            },
+        )
 
     out = await persist_confirmed_entry(
         db,
@@ -184,9 +216,10 @@ async def create_entry(
         body=body,
         source="app",
     )
+    consume_preview_token(body.preview_token)
     return JSONResponse(
         status_code=status.HTTP_201_CREATED,
-        content=out.model_dump(),
+        content=out.model_dump(mode="json"),
     )
 
 

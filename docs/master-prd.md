@@ -104,7 +104,7 @@ Build a **high-speed, intelligent purchase decision system** for business owners
 
 ### 7.9 Security
 
-- OTP + phone identity; JWT; rate limits; encryption at rest for secrets
+- Sign-up: username + email + password. Sign-in: **email + password**; optional Google where configured. JWT; encryption at rest for secrets
 
 ### 7.10 Duplicate Control
 

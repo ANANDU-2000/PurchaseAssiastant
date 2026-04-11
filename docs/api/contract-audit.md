@@ -7,7 +7,7 @@ Generated during HEXA Page Flow Completion. Compares **Flutter** (`flutter_app/l
 
 | Area              | Notes                                                                                                                                    |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Auth              | `POST /v1/auth/register`, `POST /v1/auth/login`, `POST /v1/auth/google`, `POST /v1/auth/refresh`; Flutter stores JWTs in secure storage. |
+| Auth              | `POST /v1/auth/register`, `POST /v1/auth/login` (email + password), `POST /v1/auth/google`, `POST /v1/auth/refresh`; Flutter stores JWTs in secure storage. |
 | Me                | `GET /v1/me/businesses`                                                                                                                  |
 | Analytics summary | `GET /v1/businesses/{id}/analytics/summary?from=&to=`                                                                                    |
 | Entries list      | `GET /v1/businesses/{id}/entries` with `from`, `to`, `item`                                                                              |

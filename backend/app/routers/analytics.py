@@ -1,3 +1,4 @@
+import calendar
 import uuid
 from datetime import date
 from typing import Annotated
@@ -73,6 +74,33 @@ def _date_filter(business_id: uuid.UUID, from_date: date, to_date: date):
     )
 
 
+def _prior_month_mtd_window(from_date: date, to_date: date) -> tuple[date, date] | None:
+    """When the client sends month-start → today, map to the same MTD span last month."""
+    if from_date.day != 1 or to_date < from_date:
+        return None
+    if from_date.year != to_date.year or from_date.month != to_date.month:
+        return None
+    if from_date.month == 1:
+        py, pm = from_date.year - 1, 12
+    else:
+        py, pm = from_date.year, from_date.month - 1
+    p_start = date(py, pm, 1)
+    max_d = calendar.monthrange(py, pm)[1]
+    p_end = date(py, pm, min(to_date.day, max_d))
+    return p_start, p_end
+
+
+async def _sum_profit(db: AsyncSession, business_id: uuid.UUID, from_date: date, to_date: date) -> float:
+    bf = _date_filter(business_id, from_date, to_date)
+    r = await db.execute(
+        select(func.coalesce(func.sum(EntryLineItem.profit), 0))
+        .select_from(EntryLineItem)
+        .join(Entry, Entry.id == EntryLineItem.entry_id)
+        .where(*bf)
+    )
+    return float(r.scalar() or 0)
+
+
 class HomeInsightAlert(BaseModel):
     code: str
     message: str
@@ -82,6 +110,13 @@ class HomeInsightAlert(BaseModel):
 class HomeInsights(BaseModel):
     top_item: str | None = None
     top_item_profit: float | None = None
+    worst_item: str | None = None
+    worst_item_profit: float | None = None
+    best_supplier_name: str | None = None
+    best_supplier_profit: float | None = None
+    """Month-to-date profit vs the same calendar range in the previous month (percent)."""
+    profit_change_pct_prior_mtd: float | None = None
+    negative_line_count: int = 0
     alerts: list[HomeInsightAlert]
 
 
@@ -113,14 +148,68 @@ async def home_insights(
     top_name = row[0] if row else None
     top_profit = float(row[1]) if row else None
 
+    q_worst = (
+        select(
+            EntryLineItem.item_name,
+            func.coalesce(func.sum(EntryLineItem.profit), 0).label("tp"),
+        )
+        .select_from(EntryLineItem)
+        .join(Entry, Entry.id == EntryLineItem.entry_id)
+        .where(*bf)
+        .group_by(EntryLineItem.item_name)
+        .order_by(func.coalesce(func.sum(EntryLineItem.profit), 0).asc())
+        .limit(1)
+    )
+    worst = await db.execute(q_worst)
+    wrow = worst.first()
+    worst_name = wrow[0] if wrow else None
+    worst_profit = float(wrow[1]) if wrow else None
+
+    q_best_sup = (
+        select(
+            Supplier.name,
+            func.coalesce(func.sum(EntryLineItem.profit), 0).label("tp"),
+        )
+        .select_from(Entry)
+        .join(EntryLineItem, EntryLineItem.entry_id == Entry.id)
+        .join(Supplier, Supplier.id == Entry.supplier_id)
+        .where(*bf, Entry.supplier_id.isnot(None))
+        .group_by(Supplier.id, Supplier.name)
+        .order_by(func.coalesce(func.sum(EntryLineItem.profit), 0).desc())
+        .limit(1)
+    )
+    bs = await db.execute(q_best_sup)
+    bs_row = bs.first()
+    best_supplier_name = bs_row[0] if bs_row else None
+    best_supplier_profit = float(bs_row[1]) if bs_row else None
+
+    cur_profit = await _sum_profit(db, business_id, from_date, to_date)
+    mom_pct: float | None = None
+    pw = _prior_month_mtd_window(from_date, to_date)
+    if pw is not None:
+        prev_profit = await _sum_profit(db, business_id, pw[0], pw[1])
+        base = abs(prev_profit) if abs(prev_profit) > 1e-9 else 1.0
+        mom_pct = ((cur_profit - prev_profit) / base) * 100.0
+
     alerts: list[HomeInsightAlert] = []
+    entry_cnt = await db.execute(select(func.count(Entry.id.distinct())).where(*bf))
+    n_entries = int(entry_cnt.scalar() or 0)
+    if n_entries == 0:
+        alerts.append(
+            HomeInsightAlert(
+                code="no_entries",
+                message="No purchase entries in this period yet — add one from the dashboard.",
+                severity="info",
+            )
+        )
     neg = await db.execute(
         select(func.count(EntryLineItem.id))
         .select_from(EntryLineItem)
         .join(Entry, Entry.id == EntryLineItem.entry_id)
         .where(*bf, EntryLineItem.profit < 0)
     )
-    if int(neg.scalar() or 0) > 0:
+    n_neg = int(neg.scalar() or 0)
+    if n_neg > 0:
         alerts.append(
             HomeInsightAlert(
                 code="negative_profit_lines",
@@ -128,7 +217,17 @@ async def home_insights(
                 severity="warning",
             )
         )
-    return HomeInsights(top_item=top_name, top_item_profit=top_profit, alerts=alerts)
+    return HomeInsights(
+        top_item=top_name,
+        top_item_profit=top_profit,
+        worst_item=worst_name,
+        worst_item_profit=worst_profit,
+        best_supplier_name=best_supplier_name,
+        best_supplier_profit=best_supplier_profit,
+        profit_change_pct_prior_mtd=mom_pct,
+        negative_line_count=n_neg,
+        alerts=alerts,
+    )
 
 
 class ItemAnalyticsRow(BaseModel):

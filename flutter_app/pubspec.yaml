@@ -1,7 +1,7 @@
 name: hexa_purchase_assistant
 description: HEXA Purchase Assistant — owner/staff client
 publish_to: "none"
-version: 0.1.0+1
+version: 0.1.1+2
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -20,6 +20,7 @@ dependencies:
   google_sign_in: ^6.2.2
   url_launcher: ^6.3.1
   fl_chart: ^0.69.0
+  share_plus: ^10.1.4
 
 dev_dependencies:
   flutter_test:

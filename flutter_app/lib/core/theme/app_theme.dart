@@ -1,24 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'hexa_colors.dart';
+
 /// HEXA — premium fintech-style theme (teal + slate, high clarity).
 ThemeData buildHexaTheme(Brightness brightness) {
   final isDark = brightness == Brightness.dark;
 
   final baseScheme = isDark ? _darkScheme() : _lightScheme();
 
-  final textTheme = GoogleFonts.plusJakartaSansTextTheme(
+  final baseText = GoogleFonts.dmSansTextTheme(
     isDark ? ThemeData.dark().textTheme : ThemeData.light().textTheme,
   ).apply(
     bodyColor: baseScheme.onSurface,
     displayColor: baseScheme.onSurface,
+  );
+  final serif = GoogleFonts.dmSerifDisplayTextTheme(baseText);
+  final textTheme = baseText.copyWith(
+    displaySmall: serif.displaySmall,
+    headlineLarge: serif.headlineLarge,
+    headlineMedium: serif.headlineMedium,
   );
 
   return ThemeData(
     useMaterial3: true,
     brightness: brightness,
     colorScheme: baseScheme,
-    scaffoldBackgroundColor: baseScheme.surface,
+    scaffoldBackgroundColor: isDark ? baseScheme.surface : HexaColors.canvas,
     textTheme: textTheme.copyWith(
       titleLarge: textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.2),
       titleMedium: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
@@ -28,37 +36,87 @@ ThemeData buildHexaTheme(Brightness brightness) {
     ),
     appBarTheme: AppBarTheme(
       elevation: 0,
-      scrolledUnderElevation: 0,
+      scrolledUnderElevation: 0.5,
+      surfaceTintColor: HexaColors.primaryMid.withValues(alpha: 0.08),
       centerTitle: false,
-      backgroundColor: Colors.transparent,
+      backgroundColor: isDark ? null : HexaColors.surfaceCard,
       foregroundColor: baseScheme.onSurface,
       titleTextStyle: textTheme.titleLarge?.copyWith(
-        fontWeight: FontWeight.w700,
+        fontWeight: FontWeight.w800,
+        letterSpacing: -0.3,
         color: baseScheme.onSurface,
       ),
     ),
+    tabBarTheme: TabBarThemeData(
+      indicatorSize: TabBarIndicatorSize.label,
+      dividerColor: Colors.transparent,
+      labelColor: HexaColors.primaryMid,
+      unselectedLabelColor: HexaColors.textSecondary,
+      indicator: UnderlineTabIndicator(
+        borderSide: const BorderSide(width: 3, color: HexaColors.accentLine),
+        borderRadius: BorderRadius.circular(2),
+      ),
+      labelStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800, letterSpacing: 0.2),
+      unselectedLabelStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+    ),
     cardTheme: CardThemeData(
-      color: baseScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.35 : 1),
-      elevation: 0,
+      color: isDark ? baseScheme.surfaceContainerHighest.withValues(alpha: 0.35) : HexaColors.surfaceCard,
+      elevation: isDark ? 0 : 1.5,
+      shadowColor: isDark ? Colors.transparent : HexaColors.primaryDeep.withValues(alpha: 0.07),
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: baseScheme.outlineVariant.withValues(alpha: isDark ? 0.35 : 0.65)),
+        side: BorderSide(color: baseScheme.outlineVariant.withValues(alpha: isDark ? 0.35 : 0.55)),
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
-      style: FilledButton.styleFrom(
-        elevation: 0,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        textStyle: textTheme.labelLarge,
+      style: ButtonStyle(
+        elevation: WidgetStateProperty.resolveWith((s) {
+          if (s.contains(WidgetState.pressed)) return 0.0;
+          return 1.0;
+        }),
+        padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 22, vertical: 14)),
+        shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+        textStyle: WidgetStatePropertyAll(textTheme.labelLarge),
+        backgroundColor: WidgetStateProperty.resolveWith((s) {
+          if (s.contains(WidgetState.disabled)) return baseScheme.primary.withValues(alpha: 0.38);
+          if (s.contains(WidgetState.pressed)) return HexaColors.brandHover;
+          if (s.contains(WidgetState.hovered)) return HexaColors.brandHover;
+          return baseScheme.primary;
+        }),
+        foregroundColor: const WidgetStatePropertyAll(Colors.white),
+        overlayColor: WidgetStateProperty.resolveWith((s) {
+          if (s.contains(WidgetState.pressed)) return Colors.white.withValues(alpha: 0.12);
+          return Colors.white.withValues(alpha: 0.08);
+        }),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
-      style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        side: BorderSide(color: baseScheme.outline.withValues(alpha: 0.8)),
+      style: ButtonStyle(
+        padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 18, vertical: 14)),
+        shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+        side: WidgetStateProperty.resolveWith((s) {
+          final c = baseScheme.outline.withValues(alpha: s.contains(WidgetState.hovered) ? 1.0 : 0.85);
+          return BorderSide(color: c);
+        }),
+        backgroundColor: WidgetStateProperty.resolveWith((s) {
+          final base = isDark ? baseScheme.surfaceContainerHigh : Colors.white;
+          if (s.contains(WidgetState.pressed)) {
+            return Color.alphaBlend(HexaColors.primaryMid.withValues(alpha: 0.14), base);
+          }
+          if (s.contains(WidgetState.hovered)) {
+            return Color.alphaBlend(HexaColors.primaryMid.withValues(alpha: 0.10), base);
+          }
+          return base;
+        }),
+        foregroundColor: WidgetStateProperty.resolveWith((s) {
+          if (s.contains(WidgetState.disabled)) return baseScheme.onSurface.withValues(alpha: 0.38);
+          return HexaColors.primaryDeep;
+        }),
+        overlayColor: WidgetStateProperty.resolveWith((s) {
+          if (s.contains(WidgetState.pressed)) return HexaColors.primaryMid.withValues(alpha: 0.16);
+          return HexaColors.primaryMid.withValues(alpha: 0.08);
+        }),
       ),
     ),
     navigationBarTheme: NavigationBarThemeData(
@@ -83,7 +141,7 @@ ThemeData buildHexaTheme(Brightness brightness) {
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: isDark ? baseScheme.surfaceContainerHigh : const Color(0xFFF8FAFC),
+      fillColor: isDark ? baseScheme.surfaceContainerHigh : HexaColors.canvas,
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
@@ -114,26 +172,26 @@ ThemeData buildHexaTheme(Brightness brightness) {
 ColorScheme _lightScheme() {
   return const ColorScheme(
     brightness: Brightness.light,
-    primary: Color(0xFF0F766E),
+    primary: HexaColors.primaryMid,
     onPrimary: Colors.white,
-    primaryContainer: Color(0xFFCCFBF1),
-    onPrimaryContainer: Color(0xFF042F2E),
-    secondary: Color(0xFF334155),
+    primaryContainer: HexaColors.primaryLight,
+    onPrimaryContainer: HexaColors.primaryDeep,
+    secondary: HexaColors.primaryDeep,
     onSecondary: Colors.white,
     secondaryContainer: Color(0xFFE2E8F0),
-    onSecondaryContainer: Color(0xFF0F172A),
-    tertiary: Color(0xFF6366F1),
+    onSecondaryContainer: HexaColors.textPrimary,
+    tertiary: HexaColors.accentAmber,
     onTertiary: Colors.white,
-    error: Color(0xFFDC2626),
+    error: HexaColors.loss,
     onError: Colors.white,
-    surface: Color(0xFFFFFFFF),
-    onSurface: Color(0xFF0F172A),
+    surface: Colors.white,
+    onSurface: HexaColors.textPrimary,
     surfaceContainerHighest: Color(0xFFF1F5F9),
     surfaceContainerHigh: Color(0xFFE8EEF4),
-    surfaceContainer: Color(0xFFF8FAFC),
-    onSurfaceVariant: Color(0xFF64748B),
+    surfaceContainer: HexaColors.canvas,
+    onSurfaceVariant: HexaColors.textSecondary,
     outline: Color(0xFFCBD5E1),
-    outlineVariant: Color(0xFFE2E8F0),
+    outlineVariant: HexaColors.border,
   );
 }
 

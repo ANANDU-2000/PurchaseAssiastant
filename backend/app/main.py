@@ -7,9 +7,8 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.config import get_settings
 from app.database import engine
-from app.middleware.rate_limit import otp_ip_limiter
 from app.models import Base
-from app.routers import admin, analytics, auth, contacts, entries, health, me, media, price_intelligence, realtime, whatsapp
+from app.routers import admin, ai_chat, analytics, auth, catalog, contacts, entries, health, me, media, price_intelligence, realtime, whatsapp
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +18,6 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     settings.validate_production_safety()
     logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
-
-    otp_ip_limiter.max_requests = settings.otp_requests_per_minute_per_ip
 
     if settings.sentry_dsn:
         try:
@@ -58,8 +55,10 @@ app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(me.router)
 app.include_router(entries.router)
+app.include_router(ai_chat.router)
 app.include_router(analytics.router)
 app.include_router(price_intelligence.router)
+app.include_router(catalog.router)
 app.include_router(contacts.router)
 app.include_router(media.router)
 app.include_router(realtime.router)

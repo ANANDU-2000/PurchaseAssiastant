@@ -4,7 +4,7 @@
 
 **Scope**
 
-- OTP auth + JWT; business + membership.
+- **Register:** username + email + password. **Sign in:** email + password (optional Google). JWT; business + membership.
 - Flutter shell: bottom nav, theme, routing.
 - Entry: full form + **manual landing cost** + selling price; profit preview; confirm save.
 - Entries list + search + date filter.
@@ -19,8 +19,10 @@
 
 **Testing**
 
-- API: pytest for auth + entry validation + duplicate rule.
+- API: pytest for auth + entry validation + duplicate rule + **entry preview_token before confirm**.
 - Flutter: widget tests for form validation.
+
+**Phase 1 execution order** (see [phase1-ordered-tasks.md](phase1-ordered-tasks.md)): preview enforcement → server landing/duplicate rules → master categories/items → dashboard → final gate.
 
 **Rollout**
 

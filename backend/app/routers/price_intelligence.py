@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -36,23 +36,37 @@ async def price_intelligence(
     item: str = Query(..., min_length=1),
     current_price: float | None = None,
     window_days: int = Query(90, ge=1, le=365),
+    price_field: str = Query("landing", pattern="^(landing|selling)$"),
 ):
     del _m
     needle = item.strip().lower()
     start = date.today() - timedelta(days=window_days)
 
+    price_col = EntryLineItem.landing_cost if price_field == "landing" else EntryLineItem.selling_price
+
+    line_filters = [
+        Entry.business_id == business_id,
+        Entry.entry_date >= start,
+        func.lower(EntryLineItem.item_name).contains(needle),
+    ]
+    if price_field == "selling":
+        line_filters.append(EntryLineItem.selling_price.isnot(None))
+
     hist = await db.execute(
-        select(EntryLineItem.landing_cost)
+        select(price_col)
+        .select_from(EntryLineItem)
         .join(Entry, Entry.id == EntryLineItem.entry_id)
-        .where(
-            Entry.business_id == business_id,
-            Entry.entry_date >= start,
-            func.lower(EntryLineItem.item_name).contains(needle),
-        )
+        .where(and_(*line_filters))
     )
-    landings = [float(x[0]) for x in hist.all()]
+    landings = [float(x[0]) for x in hist.all() if x[0] is not None]
     if not landings:
-        return PriceIntelligence(item=item, confidence=0.0, decision_hints=["No history for this item in the selected window."])
+        return PriceIntelligence(
+            item=item,
+            confidence=0.0,
+            decision_hints=[
+                f"No {'selling' if price_field == 'selling' else 'landing'} history for this item in the selected window."
+            ],
+        )
 
     avg = sum(landings) / len(landings)
     high = max(landings)
@@ -60,13 +74,10 @@ async def price_intelligence(
     frequency = len(landings)
 
     dated_rows = await db.execute(
-        select(Entry.entry_date, EntryLineItem.landing_cost)
+        select(Entry.entry_date, price_col)
+        .select_from(Entry)
         .join(EntryLineItem, EntryLineItem.entry_id == Entry.id)
-        .where(
-            Entry.business_id == business_id,
-            Entry.entry_date >= start,
-            func.lower(EntryLineItem.item_name).contains(needle),
-        )
+        .where(and_(*line_filters))
         .order_by(Entry.entry_date.asc())
     )
     ordered = [(r[0], float(r[1])) for r in dated_rows.all()]
@@ -96,16 +107,12 @@ async def price_intelligence(
         select(
             Supplier.id,
             Supplier.name,
-            func.avg(EntryLineItem.landing_cost).label("avg_l"),
+            func.avg(price_col).label("avg_l"),
         )
         .select_from(EntryLineItem)
         .join(Entry, Entry.id == EntryLineItem.entry_id)
         .join(Supplier, Supplier.id == Entry.supplier_id)
-        .where(
-            Entry.business_id == business_id,
-            Entry.entry_date >= start,
-            func.lower(EntryLineItem.item_name).contains(needle),
-        )
+        .where(and_(*line_filters))
         .group_by(Supplier.id, Supplier.name)
     )
     sr = await db.execute(sq)
@@ -115,11 +122,12 @@ async def price_intelligence(
     supplier_compare.sort(key=lambda x: x["avg_landing"])
 
     hints: list[str] = []
+    label = "landing" if price_field == "landing" else "selling"
     if current_price is not None:
         if current_price > avg * 1.05:
-            hints.append("Current price is above your recent average landing.")
+            hints.append(f"Current {label} is above your recent average.")
         elif current_price < avg * 0.95:
-            hints.append("Current price is below your recent average landing.")
+            hints.append(f"Current {label} is below your recent average.")
     if trend == "up":
         hints.append("Trend is increasing in this window.")
     elif trend == "down":

@@ -1,14 +1,80 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/theme/hexa_colors.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/brokers_list_provider.dart';
+import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/contacts_hub_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
+import '../../../shared/widgets/app_settings_action.dart';
+
+Color _avatarColor(String seed) {
+  const palette = <Color>[
+    Color(0xFF1A6B8A),
+    Color(0xFF0D3D56),
+    Color(0xFF5C6BC0),
+    Color(0xFF00897B),
+    Color(0xFF6D4C41),
+    Color(0xFFAD1457),
+  ];
+  var h = 0;
+  for (final c in seed.codeUnits) {
+    h = (h * 31 + c) & 0x7fffffff;
+  }
+  return palette[h % palette.length];
+}
+
+String _initials(String name) {
+  final parts = name.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
+  if (parts.isEmpty) return '?';
+  if (parts.length == 1) {
+    final p = parts.first;
+    return p.length >= 2 ? p.substring(0, 2).toUpperCase() : p[0].toUpperCase();
+  }
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+class _StatPill extends StatelessWidget {
+  const _StatPill({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withValues(alpha: 0.65),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: cs.onSurfaceVariant),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class ContactsPage extends ConsumerStatefulWidget {
   const ContactsPage({super.key});
@@ -146,6 +212,202 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
     }
+  }
+
+  Future<void> _addCategorySheet() async {
+    final nameCtrl = TextEditingController();
+    final emojiCtrl = TextEditingController();
+    final saved = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 24,
+            right: 24,
+            top: 8,
+            bottom: 24 + MediaQuery.viewInsetsOf(ctx).bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('New category', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 16),
+              TextField(
+                controller: emojiCtrl,
+                textAlign: TextAlign.center,
+                maxLength: 4,
+                decoration: const InputDecoration(
+                  labelText: 'Icon (emoji, optional)',
+                  hintText: '🌾',
+                  counterText: '',
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: nameCtrl,
+                autofocus: true,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(labelText: 'Name *'),
+                onSubmitted: (_) {
+                  final n = nameCtrl.text.trim();
+                  if (n.isEmpty) return;
+                  final e = emojiCtrl.text.trim();
+                  Navigator.pop(ctx, e.isEmpty ? n : '$e $n');
+                },
+              ),
+              const SizedBox(height: 20),
+              FilledButton(
+                onPressed: () {
+                  final n = nameCtrl.text.trim();
+                  if (n.isEmpty) return;
+                  final e = emojiCtrl.text.trim();
+                  Navigator.pop(ctx, e.isEmpty ? n : '$e $n');
+                },
+                child: const Text('Save category'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    nameCtrl.dispose();
+    emojiCtrl.dispose();
+    if (saved == null || saved.trim().isEmpty) return;
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    try {
+      await ref.read(hexaApiProvider).createItemCategory(
+            businessId: session.primaryBusiness.id,
+            name: saved.trim(),
+          );
+      ref.invalidate(itemCategoriesListProvider);
+      ref.invalidate(catalogItemsListProvider);
+      ref.invalidate(contactsCategoriesProvider);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Category created')));
+    } on DioException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.response?.data?.toString() ?? '$e')));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
+  Future<void> _addItemSheet() async {
+    List<Map<String, dynamic>> cats = [];
+    try {
+      cats = await ref.read(itemCategoriesListProvider.future);
+    } catch (_) {}
+    if (!mounted) return;
+    if (cats.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Create a category first (Categories tab).')),
+      );
+      return;
+    }
+    var selectedCat = cats.first['id']?.toString();
+    final nameCtrl = TextEditingController();
+    String? unit;
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSt) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 24,
+                right: 24,
+                top: 8,
+                bottom: 24 + MediaQuery.viewInsetsOf(ctx).bottom,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('New item', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    key: ValueKey(selectedCat),
+                    initialValue: selectedCat,
+                    decoration: const InputDecoration(labelText: 'Category *'),
+                    items: cats
+                        .map(
+                          (c) => DropdownMenuItem<String>(
+                            value: c['id']?.toString(),
+                            child: Text(c['name']?.toString() ?? ''),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) => setSt(() => selectedCat = v),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: nameCtrl,
+                    autofocus: true,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(labelText: 'Name *'),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String?>(
+                    key: ValueKey(unit),
+                    initialValue: unit,
+                    decoration: const InputDecoration(labelText: 'Default unit (optional)'),
+                    items: const [
+                      DropdownMenuItem(value: null, child: Text('—')),
+                      DropdownMenuItem(value: 'kg', child: Text('kg')),
+                      DropdownMenuItem(value: 'box', child: Text('box')),
+                      DropdownMenuItem(value: 'piece', child: Text('pc')),
+                      DropdownMenuItem(value: 'L', child: Text('L')),
+                    ],
+                    onChanged: (v) => setSt(() => unit = v),
+                  ),
+                  const SizedBox(height: 20),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('Save item'),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+    final categoryId = selectedCat;
+    if (saved != true || nameCtrl.text.trim().isEmpty || categoryId == null) {
+      nameCtrl.dispose();
+      return;
+    }
+    final session = ref.read(sessionProvider);
+    if (session == null) {
+      nameCtrl.dispose();
+      return;
+    }
+    try {
+      await ref.read(hexaApiProvider).createCatalogItem(
+            businessId: session.primaryBusiness.id,
+            categoryId: categoryId,
+            name: nameCtrl.text.trim(),
+            defaultUnit: unit,
+          );
+      ref.invalidate(catalogItemsListProvider);
+      ref.invalidate(itemCategoriesListProvider);
+      ref.invalidate(contactsItemsProvider);
+      ref.invalidate(contactsCategoriesProvider);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Item created')));
+    } on DioException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.response?.data?.toString() ?? '$e')));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+    nameCtrl.dispose();
   }
 
   Future<void> _editSupplier(Map<String, dynamic> s) async {
@@ -375,20 +637,76 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
     );
   }
 
+  void _addForCurrentTab() {
+    switch (_tabController.index) {
+      case 0:
+        _addSupplier();
+        break;
+      case 1:
+        _addBroker();
+        break;
+      case 2:
+        _addCategorySheet();
+        break;
+      default:
+        _addItemSheet();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Contacts'),
-        bottom: TabBar(
-          controller: _tabController,
-          isScrollable: true,
-          tabs: const [
-            Tab(text: 'Suppliers'),
-            Tab(text: 'Brokers'),
-            Tab(text: 'Categories'),
-            Tab(text: 'Items'),
-          ],
+        actions: [
+          const AppSettingsAction(),
+          if (!_isSearching)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: AnimatedBuilder(
+                animation: _tabController,
+                builder: (context, _) {
+                  final i = _tabController.index;
+                  final tip = switch (i) {
+                    0 => 'Add supplier',
+                    1 => 'Add broker',
+                    2 => 'Add category',
+                    _ => 'Add item',
+                  };
+                  return IconButton.filled(
+                    style: IconButton.styleFrom(
+                      backgroundColor: HexaColors.primaryMid,
+                      foregroundColor: Colors.white,
+                    ),
+                    tooltip: tip,
+                    onPressed: _addForCurrentTab,
+                    icon: const Icon(Icons.add_rounded),
+                  );
+                },
+              ),
+            ),
+        ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          child: Material(
+            color: cs.surface,
+            child: DecoratedBox(
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: HexaColors.borderSubtle)),
+              ),
+              child: TabBar(
+                controller: _tabController,
+                isScrollable: true,
+                tabs: const [
+                  Tab(text: 'Suppliers'),
+                  Tab(text: 'Brokers'),
+                  Tab(text: 'Categories'),
+                  Tab(text: 'Items'),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
       body: Column(
@@ -400,7 +718,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
               controller: _searchCtrl,
               onChanged: _scheduleSearch,
               decoration: InputDecoration(
-                hintText: 'Search names, items, categories…',
+                hintText: 'Search suppliers, brokers, items, categories…',
                 prefixIcon: const Icon(Icons.search_rounded),
                 suffixIcon: _searchCtrl.text.isNotEmpty
                     ? IconButton(
@@ -441,43 +759,6 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
             ),
         ],
       ),
-      floatingActionButton: _isSearching
-          ? null
-          : AnimatedBuilder(
-              animation: _tabController,
-              builder: (context, _) {
-                final i = _tabController.index;
-                if (i == 0) {
-                  return FloatingActionButton.extended(
-                    onPressed: _addSupplier,
-                    icon: const Icon(Icons.person_add_alt_1_rounded),
-                    label: const Text('Supplier'),
-                  );
-                }
-                if (i == 1) {
-                  return FloatingActionButton.extended(
-                    onPressed: _addBroker,
-                    icon: const Icon(Icons.person_add_alt_1_rounded),
-                    label: const Text('Broker'),
-                  );
-                }
-                return FloatingActionButton.extended(
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          i == 2
-                              ? 'Categories are derived from purchase line items. Tag a category when creating entries.'
-                              : 'Items appear from purchase history. Open Entries to record purchases.',
-                        ),
-                      ),
-                    );
-                  },
-                  icon: Icon(i == 2 ? Icons.category_rounded : Icons.inventory_2_rounded),
-                  label: Text(i == 2 ? 'About categories' : 'About items'),
-                );
-              },
-            ),
     );
   }
 }
@@ -499,10 +780,25 @@ class _SuppliersTab extends ConsumerWidget {
       error: (e, _) => Center(child: Text('Error: $e')),
       data: (list) {
         if (list.isEmpty) {
-          return const Center(child: Text('No suppliers yet'));
+          return RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(contactsSuppliersEnrichedProvider);
+              await ref.read(contactsSuppliersEnrichedProvider.future);
+            },
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: const [SizedBox(height: 120, child: Center(child: Text('No suppliers yet')))],
+            ),
+          );
         }
-        return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
+        return RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(contactsSuppliersEnrichedProvider);
+            await ref.read(contactsSuppliersEnrichedProvider.future);
+          },
+          child: ListView.separated(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           itemCount: list.length,
           separatorBuilder: (_, __) => const SizedBox(height: 8),
           itemBuilder: (context, i) {
@@ -512,6 +808,13 @@ class _SuppliersTab extends ConsumerWidget {
             final deals = (m?['deals'] as num?)?.toInt();
             final avg = (m?['avg_landing'] as num?)?.toDouble();
             final profit = (m?['total_profit'] as num?)?.toDouble();
+            final tq = (m?['total_qty'] as num?)?.toDouble() ?? 0;
+            final nm = s['name']?.toString() ?? '';
+            String marginStr = '—';
+            if (m != null && tq > 0 && avg != null && avg > 0) {
+              final cost = avg * tq;
+              if (cost > 0) marginStr = '${((profit ?? 0) / cost * 100).toStringAsFixed(0)}%';
+            }
             final phone = s['phone']?.toString();
             return Card(
               child: InkWell(
@@ -526,8 +829,11 @@ class _SuppliersTab extends ConsumerWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           CircleAvatar(
-                            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                            child: const Icon(Icons.storefront_outlined),
+                            backgroundColor: _avatarColor(nm.isEmpty ? 'x' : nm),
+                            child: Text(
+                              _initials(nm.isEmpty ? '?' : nm),
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
+                            ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -540,10 +846,18 @@ class _SuppliersTab extends ConsumerWidget {
                                   Text(s['location'].toString(), style: Theme.of(context).textTheme.bodySmall),
                                 if (m != null)
                                   Padding(
-                                    padding: const EdgeInsets.only(top: 6),
-                                    child: Text(
-                                      'Deals: ${deals ?? 0} · Avg: ${avg?.toStringAsFixed(1) ?? '—'} · Profit: ${profit?.toStringAsFixed(0) ?? '—'}',
-                                      style: Theme.of(context).textTheme.labelMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                    padding: const EdgeInsets.only(top: 8),
+                                    child: Row(
+                                      children: [
+                                        _StatPill(icon: Icons.receipt_long_outlined, text: '${deals ?? 0} deals'),
+                                        const SizedBox(width: 8),
+                                        _StatPill(
+                                          icon: Icons.currency_rupee_rounded,
+                                          text: avg != null ? '₹${avg.toStringAsFixed(0)} avg' : '—',
+                                        ),
+                                        const SizedBox(width: 8),
+                                        _StatPill(icon: Icons.percent_rounded, text: marginStr),
+                                      ],
                                     ),
                                   ),
                               ],
@@ -572,6 +886,7 @@ class _SuppliersTab extends ConsumerWidget {
               ),
             );
           },
+        ),
         );
       },
     );
@@ -595,7 +910,7 @@ class _BrokersTab extends ConsumerWidget {
       data: (list) {
         if (list.isEmpty) return const Center(child: Text('No brokers yet'));
         return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           itemCount: list.length,
           separatorBuilder: (_, __) => const SizedBox(height: 8),
           itemBuilder: (context, i) {
@@ -605,23 +920,40 @@ class _BrokersTab extends ConsumerWidget {
             final deals = (m?['deals'] as num?)?.toInt();
             final comm = (m?['total_commission'] as num?)?.toDouble();
             final profit = (m?['total_profit'] as num?)?.toDouble();
-            final ct = b['commission_type']?.toString() ?? '';
+            final ct = b['commission_type']?.toString().toLowerCase() ?? '';
             final cv = b['commission_value'];
+            final isPct = ct == 'percent';
             return Card(
               child: ListTile(
                 leading: CircleAvatar(
                   backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
-                  child: const Icon(Icons.handshake_outlined),
+                  child: Icon(isPct ? Icons.percent_rounded : Icons.currency_rupee_rounded),
                 ),
                 title: Text(b['name']?.toString() ?? '—', style: const TextStyle(fontWeight: FontWeight.w700)),
                 subtitle: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('$ct ${cv ?? ''}'.trim()),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Chip(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          label: Text(isPct ? '% per unit' : '₹ fixed', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                          side: BorderSide(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.35)),
+                        ),
+                        if (cv != null) Text('$cv', style: Theme.of(context).textTheme.labelLarge),
+                      ],
+                    ),
                     if (m != null)
-                      Text(
-                        'Deals: ${deals ?? 0} · Commission: ${comm?.toStringAsFixed(0) ?? '—'} · Profit: ${profit?.toStringAsFixed(0) ?? '—'}',
-                        style: Theme.of(context).textTheme.labelSmall,
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          'Deals: ${deals ?? 0} · Commission: ${comm?.toStringAsFixed(0) ?? '—'} · Profit: ${profit?.toStringAsFixed(0) ?? '—'}',
+                          style: Theme.of(context).textTheme.labelSmall,
+                        ),
                       ),
                   ],
                 ),
@@ -657,7 +989,7 @@ class _CategoriesTab extends ConsumerWidget {
           return const Center(child: Text('No categories in the last $contactsLookbackDays days'));
         }
         return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           itemCount: rows.length,
           separatorBuilder: (_, __) => const SizedBox(height: 8),
           itemBuilder: (context, i) {
@@ -693,7 +1025,7 @@ class _ItemsTab extends ConsumerWidget {
           return const Center(child: Text('No items in the last $contactsLookbackDays days'));
         }
         return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           itemCount: rows.length,
           separatorBuilder: (_, __) => const SizedBox(height: 8),
           itemBuilder: (context, i) {

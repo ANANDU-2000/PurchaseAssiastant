@@ -23,10 +23,15 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    """Log in with email or username plus password."""
+    """Log in with registered email and password."""
 
-    email_or_username: str = Field(..., min_length=1, max_length=320)
+    email: str = Field(..., min_length=3, max_length=320)
     password: str = Field(..., min_length=1, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def email_lower(cls, v: str) -> str:
+        return v.strip().lower()
 
 
 class TokenPair(BaseModel):

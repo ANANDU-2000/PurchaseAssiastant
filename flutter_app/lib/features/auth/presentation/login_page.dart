@@ -16,7 +16,7 @@ class LoginPage extends ConsumerStatefulWidget {
 class _LoginPageState extends ConsumerState<LoginPage> with SingleTickerProviderStateMixin {
   late final TabController _tab;
 
-  final _loginId = TextEditingController();
+  final _loginEmail = TextEditingController();
   final _loginPass = TextEditingController();
 
   final _regUser = TextEditingController();
@@ -31,12 +31,30 @@ class _LoginPageState extends ConsumerState<LoginPage> with SingleTickerProvider
   void initState() {
     super.initState();
     _tab = TabController(length: 2, vsync: this);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _tryResumeSession());
+  }
+
+  /// If the user landed here with saved tokens (e.g. deep link) but no in-memory session, restore once.
+  Future<void> _tryResumeSession() async {
+    final t = await ref.read(tokenStoreProvider).read();
+    if (t.access == null || t.refresh == null) return;
+    if (ref.read(sessionProvider) != null) {
+      if (mounted) context.go('/home');
+      return;
+    }
+    setState(() => _loading = true);
+    await ref.read(sessionProvider.notifier).restore();
+    if (!mounted) return;
+    setState(() => _loading = false);
+    if (ref.read(sessionProvider) != null) {
+      context.go('/home');
+    }
   }
 
   @override
   void dispose() {
     _tab.dispose();
-    _loginId.dispose();
+    _loginEmail.dispose();
     _loginPass.dispose();
     _regUser.dispose();
     _regEmail.dispose();
@@ -52,7 +70,7 @@ class _LoginPageState extends ConsumerState<LoginPage> with SingleTickerProvider
     });
     try {
       await ref.read(sessionProvider.notifier).login(
-            emailOrUsername: _loginId.text.trim(),
+            email: _loginEmail.text.trim(),
             password: _loginPass.text,
           );
       if (mounted) context.go('/home');
@@ -139,7 +157,7 @@ class _LoginPageState extends ConsumerState<LoginPage> with SingleTickerProvider
                   Text('HEXA', style: tt.headlineMedium?.copyWith(fontWeight: FontWeight.w800)),
                   const SizedBox(height: 6),
                   Text(
-                    'Sign in or create an account. First signup creates your workspace.',
+                    'Create an account with username, email, and password. Sign in with email and password (or Google if configured).',
                     style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
                     textAlign: TextAlign.center,
                   ),
@@ -169,7 +187,7 @@ class _LoginPageState extends ConsumerState<LoginPage> with SingleTickerProvider
                   _SignInForm(
                     cs: cs,
                     tt: tt,
-                    idCtrl: _loginId,
+                    emailCtrl: _loginEmail,
                     passCtrl: _loginPass,
                     loading: _loading,
                     error: _error,
@@ -208,7 +226,7 @@ class _SignInForm extends StatelessWidget {
   const _SignInForm({
     required this.cs,
     required this.tt,
-    required this.idCtrl,
+    required this.emailCtrl,
     required this.passCtrl,
     required this.loading,
     required this.error,
@@ -217,7 +235,7 @@ class _SignInForm extends StatelessWidget {
 
   final ColorScheme cs;
   final TextTheme tt;
-  final TextEditingController idCtrl;
+  final TextEditingController emailCtrl;
   final TextEditingController passCtrl;
   final bool loading;
   final String? error;
@@ -229,13 +247,13 @@ class _SignInForm extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
       children: [
         TextField(
-          controller: idCtrl,
+          controller: emailCtrl,
           keyboardType: TextInputType.emailAddress,
           textInputAction: TextInputAction.next,
           autocorrect: false,
           decoration: const InputDecoration(
-            labelText: 'Email or username',
-            prefixIcon: Icon(Icons.person_outline_rounded),
+            labelText: 'Email',
+            prefixIcon: Icon(Icons.mail_outline_rounded),
           ),
         ),
         const SizedBox(height: 12),

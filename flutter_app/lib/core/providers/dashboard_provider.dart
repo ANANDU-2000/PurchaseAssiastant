@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../auth/session_notifier.dart';
+import 'dashboard_period_provider.dart';
 
 class DashboardData {
   const DashboardData({
@@ -22,14 +23,14 @@ final dashboardProvider = FutureProvider.autoDispose<DashboardData>((ref) async 
   if (session == null) {
     throw StateError('No session');
   }
+  final period = ref.watch(dashboardPeriodProvider);
   final api = ref.read(hexaApiProvider);
-  final now = DateTime.now();
-  final from = DateTime(now.year, now.month, 1);
+  final range = dashboardDateRange(period);
   final fmt = DateFormat('yyyy-MM-dd');
   final m = await api.analyticsSummary(
     businessId: session.primaryBusiness.id,
-    from: fmt.format(from),
-    to: fmt.format(now),
+    from: fmt.format(range.$1),
+    to: fmt.format(range.$2),
   );
   return DashboardData(
     totalPurchase: (m['total_purchase'] as num?)?.toDouble() ?? 0,

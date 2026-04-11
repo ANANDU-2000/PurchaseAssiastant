@@ -24,7 +24,7 @@
 ## Dev auth
 
 - `POST /v1/auth/register` with `{"email":"you@example.com","username":"you","password":"your-secure-password"}` → JWT (`TokenPair`).
-- `POST /v1/auth/login` with `{"email_or_username":"you@example.com","password":"..."}` (or use username instead of email) → JWT.
+- `POST /v1/auth/login` with `{"email":"you@example.com","password":"..."}` → JWT.
 - `POST /v1/auth/refresh` with `{"refresh_token":"..."}` → new tokens.
 - `GET /v1/me/businesses` — use `Authorization: Bearer <access>`.
 

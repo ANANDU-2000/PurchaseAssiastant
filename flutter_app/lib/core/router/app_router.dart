@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../auth/session_notifier.dart';
 import '../../features/analytics/presentation/analytics_page.dart';
 import '../../features/analytics/presentation/item_analytics_detail_page.dart';
+import '../../features/catalog/presentation/catalog_page.dart';
 import '../../features/auth/presentation/login_page.dart';
 import '../../features/contacts/presentation/contacts_page.dart';
 import '../../features/contacts/presentation/broker_detail_page.dart';
@@ -16,6 +17,7 @@ import '../../features/home/presentation/home_page.dart';
 import '../../features/settings/presentation/settings_page.dart';
 import '../../features/shell/shell_screen.dart';
 import '../../features/splash/presentation/splash_page.dart';
+import '../../features/voice/presentation/voice_page.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 
@@ -39,6 +41,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(path: '/splash', builder: (context, state) => const SplashPage()),
       GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
+      GoRoute(path: '/catalog', builder: (context, state) => const CatalogPage()),
+      GoRoute(path: '/settings', name: 'settings', builder: (context, state) => const SettingsPage()),
       GoRoute(
         path: '/entry/:entryId',
         builder: (context, state) {
@@ -101,7 +105,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           StatefulShellBranch(
             routes: [
-              GoRoute(path: '/settings', name: 'settings', builder: (context, state) => const SettingsPage()),
+              GoRoute(path: '/voice', name: 'voice', builder: (context, state) => const VoicePage()),
             ],
           ),
         ],
