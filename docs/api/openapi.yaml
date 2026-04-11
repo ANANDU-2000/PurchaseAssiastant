@@ -1,0 +1,951 @@
+openapi: 3.1.0
+info:
+  title: HEXA Purchase Assistant API
+  version: 0.1.0
+  description: |
+    FastAPI backend for Flutter app, WhatsApp webhook, and Super Admin.
+    AI is used for parsing only; business logic stays server-side.
+
+servers:
+  - url: https://api.example.com
+    description: Production
+  - url: http://localhost:8000
+    description: Local
+
+tags:
+  - name: auth
+  - name: entries
+  - name: analytics
+  - name: price-intelligence
+  - name: contacts
+  - name: whatsapp
+  - name: media
+  - name: admin
+  - name: health
+  - name: realtime
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Liveness
+      responses:
+        '200':
+          description: OK
+
+  /v1/auth/register:
+    post:
+      tags: [auth]
+      summary: Create account (username, email, password)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          description: JWT access + refresh tokens
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '409':
+          description: Email or username already registered
+
+  /v1/auth/login:
+    post:
+      tags: [auth]
+      summary: Sign in with email or username + password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: JWT access + refresh tokens
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '401':
+          description: Invalid credentials
+
+  /v1/auth/google:
+    post:
+      tags: [auth]
+      summary: Sign in with Google (verify ID token, create or link user)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleAuthRequest'
+      responses:
+        '200':
+          description: JWT access + refresh tokens
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '401':
+          description: Invalid Google ID token
+        '503':
+          description: Google auth not configured on server
+
+  /v1/auth/refresh:
+    post:
+      tags: [auth]
+      summary: Refresh access token
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+
+  /v1/businesses/{businessId}/entries:
+    get:
+      tags: [entries]
+      summary: List entries
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: businessId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: item
+          in: query
+          schema:
+            type: string
+        - name: supplier_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+            description: Filter entries by supplier
+      responses:
+        '200':
+          description: Paginated entries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EntryListResponse'
+    post:
+      tags: [entries]
+      summary: Create entry (preview or confirm based on body)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: businessId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EntryCreateRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Entry'
+
+  /v1/businesses/{businessId}/entries/{entryId}:
+    get:
+      tags: [entries]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: businessId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: entryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Entry'
+    patch:
+      tags: [entries]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: businessId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: entryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EntryPatch'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Entry'
+
+  /v1/businesses/{businessId}/entries/parse:
+    post:
+      tags: [entries]
+      summary: AI parse draft only — returns structured fields for user confirmation
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: businessId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ParseDraftResponse'
+
+  /v1/businesses/{businessId}/entries/check-duplicate:
+    post:
+      tags: [entries]
+      summary: Check duplicate item+qty+date
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: businessId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DuplicateCheckRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DuplicateCheckResponse'
+
+  /v1/businesses/{businessId}/analytics/summary:
+    get:
+      tags: [analytics]
+      summary: Overview KPIs for date range
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: businessId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsSummary'
+
+  /v1/businesses/{businessId}/analytics/insights:
+    get:
+      tags: [analytics]
+      summary: Home insights (top item, alerts)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: businessId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Insights payload
+
+  /v1/businesses/{businessId}/analytics/categories:
+    get:
+      tags: [analytics]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: businessId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Category rows
+
+  /v1/businesses/{businessId}/analytics/suppliers:
+    get:
+      tags: [analytics]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: businessId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Supplier rows
+
+  /v1/businesses/{businessId}/analytics/brokers:
+    get:
+      tags: [analytics]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: businessId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Broker rows
+
+  /v1/businesses/{businessId}/analytics/items:
+    get:
+      tags: [analytics]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: businessId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Item breakdown rows
+
+  /v1/businesses/{businessId}/price-intelligence:
+    get:
+      tags: [price-intelligence]
+      summary: PIP for item + optional current price
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: businessId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: item
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: current_price
+          in: query
+          schema:
+            type: number
+        - name: window_days
+          in: query
+          schema:
+            type: integer
+            default: 90
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PriceIntelligence'
+
+  /v1/businesses/{businessId}/suppliers:
+    get:
+      tags: [contacts]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: businessId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List suppliers
+    post:
+      tags: [contacts]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: businessId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SupplierCreate'
+      responses:
+        '201':
+          description: Created
+
+  /v1/businesses/{businessId}/brokers:
+    get:
+      tags: [contacts]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: businessId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List brokers
+    post:
+      tags: [contacts]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: businessId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '201':
+          description: Created broker
+
+  /v1/businesses/{businessId}/brokers/{brokerId}:
+    get:
+      tags: [contacts]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: businessId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: brokerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Broker
+
+  /v1/businesses/{businessId}/suppliers/{supplierId}:
+    get:
+      tags: [contacts]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: businessId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: supplierId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Supplier
+
+  /v1/businesses/{businessId}/realtime/events:
+    get:
+      tags: [realtime]
+      summary: SSE heartbeat / future live updates
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: businessId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: text/event-stream
+
+  /v1/webhooks/whatsapp/360dialog:
+    post:
+      tags: [whatsapp]
+      summary: Inbound webhook (verify signature)
+      responses:
+        '200':
+          description: Ack
+
+  /v1/businesses/{businessId}/media/voice:
+    post:
+      tags: [media]
+      summary: Voice/STT preview — no auto-save
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: businessId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Transcript preview
+
+  /v1/businesses/{businessId}/media/ocr:
+    post:
+      tags: [media]
+      summary: OCR preview — no auto-save
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: businessId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OCR text preview
+
+  /v1/admin/metrics:
+    get:
+      tags: [admin]
+      summary: Super admin dashboard metrics
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Aggregates
+
+  /v1/admin/businesses:
+    get:
+      tags: [admin]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Tenant list
+
+  /v1/admin/api-usage:
+    get:
+      tags: [admin]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Usage by provider
+
+  /v1/admin/feature-flags:
+    get:
+      tags: [admin]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Global feature flags
+
+  /v1/admin/integrations:
+    get:
+      tags: [admin]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Integration configuration status
+
+  /v1/admin/audit-logs:
+    get:
+      tags: [admin]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Audit log placeholder
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [email, username, password]
+      properties:
+        email:
+          type: string
+          format: email
+        username:
+          type: string
+          minLength: 3
+          maxLength: 64
+          description: Lowercase letters, digits, underscore
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+
+    LoginRequest:
+      type: object
+      required: [email_or_username, password]
+      properties:
+        email_or_username:
+          type: string
+          description: Full email or username (no @ required for username)
+        password:
+          type: string
+
+    GoogleAuthRequest:
+      type: object
+      required: [id_token]
+      properties:
+        id_token:
+          type: string
+          description: Google Sign-In ID token (JWT)
+
+    TokenPair:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+
+    EntryCreateRequest:
+      type: object
+      required: [entry_date, lines]
+      properties:
+        entry_date:
+          type: string
+          format: date
+        supplier_id:
+          type: string
+          format: uuid
+        broker_id:
+          type: string
+          format: uuid
+        invoice_no:
+          type: string
+        transport_cost:
+          type: number
+        commission_amount:
+          type: number
+          minimum: 0
+        confirm:
+          type: boolean
+          description: If false, run validation only (preview)
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntryLineInput'
+
+    EntryLineInput:
+      type: object
+      required: [item_name, qty, unit, buy_price, landing_cost]
+      properties:
+        item_name:
+          type: string
+        category:
+          type: string
+        qty:
+          type: number
+        unit:
+          type: string
+          enum: [kg, box, piece]
+        buy_price:
+          type: number
+        landing_cost:
+          type: number
+          description: Manual landing cost (per PRD)
+        selling_price:
+          type: number
+
+    Entry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        business_id:
+          type: string
+          format: uuid
+        entry_date:
+          type: string
+          format: date
+        supplier_id:
+          type: string
+          format: uuid
+          nullable: true
+        broker_id:
+          type: string
+          format: uuid
+          nullable: true
+        invoice_no:
+          type: string
+          nullable: true
+        transport_cost:
+          type: number
+          nullable: true
+        commission_amount:
+          type: number
+          nullable: true
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntryLine'
+
+    EntryLine:
+      allOf:
+        - $ref: '#/components/schemas/EntryLineInput'
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            profit:
+              type: number
+
+    EntryListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Entry'
+        next_cursor:
+          type: string
+
+    EntryPatch:
+      type: object
+      properties:
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntryLineInput'
+
+    ParseDraftResponse:
+      type: object
+      properties:
+        draft:
+          $ref: '#/components/schemas/EntryCreateRequest'
+        missing_fields:
+          type: array
+          items:
+            type: string
+        confidence:
+          type: number
+
+    DuplicateCheckRequest:
+      type: object
+      required: [item_name, qty, entry_date]
+      properties:
+        item_name:
+          type: string
+        qty:
+          type: number
+        entry_date:
+          type: string
+          format: date
+
+    DuplicateCheckResponse:
+      type: object
+      properties:
+        duplicate:
+          type: boolean
+        matching_entry_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    AnalyticsSummary:
+      type: object
+      properties:
+        total_purchase:
+          type: number
+        total_qty_base:
+          type: number
+        total_profit:
+          type: number
+        purchase_count:
+          type: integer
+        base_unit_label:
+          type: string
+          example: kg
+
+    PriceIntelligence:
+      type: object
+      properties:
+        item:
+          type: string
+        avg:
+          type: number
+        high:
+          type: number
+        low:
+          type: number
+        trend:
+          type: string
+          enum: [up, down, flat]
+        position_pct:
+          type: number
+        last_price:
+          type: number
+        frequency:
+          type: integer
+        confidence:
+          type: number
+        supplier_compare:
+          type: array
+          items:
+            type: object
+            properties:
+              supplier_name:
+                type: string
+              avg_price:
+                type: number
+
+    SupplierCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        location:
+          type: string
+        broker_id:
+          type: string
+          format: uuid

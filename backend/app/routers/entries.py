@@ -1,0 +1,202 @@
+import uuid
+from datetime import date
+from decimal import Decimal
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.database import get_db
+from app.deps import get_current_user, require_ai_enabled, require_membership
+from app.models import Entry, EntryLineItem, Membership, User
+from app.services.entry_write import persist_confirmed_entry
+from app.schemas.entries import (
+    DuplicateCheckRequest,
+    DuplicateCheckResponse,
+    EntryCreateRequest,
+    EntryLineOut,
+    EntryOut,
+    ParseDraftResponse,
+)
+from app.services.entry_logic import find_duplicates, line_profit
+
+router = APIRouter(prefix="/v1/businesses/{business_id}/entries", tags=["entries"])
+
+
+class ParseBody(BaseModel):
+    text: str
+
+
+def _line_to_out(line: EntryLineItem) -> EntryLineOut:
+    return EntryLineOut(
+        id=line.id,
+        item_name=line.item_name,
+        category=line.category,
+        qty=float(line.qty),
+        unit=line.unit,
+        buy_price=float(line.buy_price),
+        landing_cost=float(line.landing_cost),
+        selling_price=float(line.selling_price) if line.selling_price is not None else None,
+        profit=float(line.profit) if line.profit is not None else None,
+    )
+
+
+@router.post("/parse", response_model=ParseDraftResponse)
+async def parse_draft(
+    business_id: uuid.UUID,
+    body: ParseBody,
+    _m: Annotated[Membership, Depends(require_membership)],
+    _ai: Annotated[None, Depends(require_ai_enabled)],
+):
+    del business_id, _m, body, _ai
+    return ParseDraftResponse(
+        draft=None,
+        missing_fields=["item_name", "qty", "unit", "buy_price", "landing_cost"],
+        confidence=0.0,
+    )
+
+
+def _entry_to_out(entry: Entry) -> EntryOut:
+    tc = float(entry.transport_cost) if entry.transport_cost is not None else None
+    ca = float(entry.commission_amount) if entry.commission_amount is not None else None
+    return EntryOut(
+        id=entry.id,
+        business_id=entry.business_id,
+        entry_date=entry.entry_date,
+        supplier_id=entry.supplier_id,
+        broker_id=entry.broker_id,
+        invoice_no=entry.invoice_no,
+        transport_cost=tc,
+        commission_amount=ca,
+        lines=[_line_to_out(li) for li in entry.lines],
+    )
+
+
+@router.get("")
+async def list_entries(
+    business_id: uuid.UUID,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+    from_date: date | None = Query(None, alias="from"),
+    to_date: date | None = Query(None, alias="to"),
+    item: str | None = None,
+    supplier_id: uuid.UUID | None = None,
+):
+    del user, _m
+    q = select(Entry).where(Entry.business_id == business_id)
+    if from_date:
+        q = q.where(Entry.entry_date >= from_date)
+    if to_date:
+        q = q.where(Entry.entry_date <= to_date)
+    if supplier_id:
+        q = q.where(Entry.supplier_id == supplier_id)
+    q = q.options(selectinload(Entry.lines)).order_by(
+        Entry.entry_date.desc(), Entry.created_at.desc()
+    )
+    result = await db.execute(q)
+    entries = result.scalars().unique().all()
+    if item:
+        needle = item.lower().strip()
+        filtered = []
+        for e in entries:
+            if any(needle in (li.item_name or "").lower() for li in e.lines):
+                filtered.append(e)
+        entries = filtered
+    return {"items": [_entry_to_out(e).model_dump() for e in entries], "next_cursor": None}
+
+
+@router.get("/{entry_id}")
+async def get_entry(
+    business_id: uuid.UUID,
+    entry_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+):
+    del _m
+    result = await db.execute(
+        select(Entry)
+        .where(Entry.id == entry_id, Entry.business_id == business_id)
+        .options(selectinload(Entry.lines))
+    )
+    entry = result.scalar_one_or_none()
+    if entry is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entry not found")
+    return _entry_to_out(entry).model_dump()
+
+
+@router.post("", status_code=status.HTTP_201_CREATED)
+async def create_entry(
+    business_id: uuid.UUID,
+    body: EntryCreateRequest,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+):
+    del _m
+    preview_lines: list[EntryLineOut] = []
+    for li in body.lines:
+        qty = Decimal(str(li.qty))
+        landing = Decimal(str(li.landing_cost))
+        selling = Decimal(str(li.selling_price)) if li.selling_price is not None else None
+        prof = line_profit(qty, landing, selling)
+        preview_lines.append(
+            EntryLineOut(
+                id=None,
+                item_name=li.item_name,
+                category=li.category,
+                qty=float(li.qty),
+                unit=li.unit,
+                buy_price=float(li.buy_price),
+                landing_cost=float(li.landing_cost),
+                selling_price=float(li.selling_price) if li.selling_price is not None else None,
+                profit=float(prof) if prof is not None else None,
+            )
+        )
+
+    if not body.confirm:
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "preview": True,
+                "entry_date": body.entry_date.isoformat(),
+                "lines": [p.model_dump() for p in preview_lines],
+            },
+        )
+
+    dups: list[uuid.UUID] = []
+    for li in body.lines:
+        dups.extend(
+            await find_duplicates(db, business_id, li.item_name, li.qty, body.entry_date)
+        )
+    if dups:
+        # still allow save — client should confirm; we could require header X-Confirm-Duplicate
+        pass
+
+    out = await persist_confirmed_entry(
+        db,
+        business_id=business_id,
+        user_id=user.id,
+        body=body,
+        source="app",
+    )
+    return JSONResponse(
+        status_code=status.HTTP_201_CREATED,
+        content=out.model_dump(),
+    )
+
+
+@router.post("/check-duplicate", response_model=DuplicateCheckResponse)
+async def check_duplicate(
+    business_id: uuid.UUID,
+    body: DuplicateCheckRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+):
+    del _m
+    ids = await find_duplicates(db, business_id, body.item_name, body.qty, body.entry_date)
+    return DuplicateCheckResponse(duplicate=len(ids) > 0, matching_entry_ids=ids)

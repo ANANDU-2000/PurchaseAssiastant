@@ -1,0 +1,44 @@
+.admin-root {
+  display: flex;
+  min-height: 100vh;
+  font-family: system-ui, sans-serif;
+}
+
+.admin-nav {
+  width: 220px;
+  border-right: 1px solid #e5e7eb;
+  padding: 1rem;
+  background: #fafafa;
+}
+
+.admin-nav .brand {
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+
+.admin-nav nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.admin-nav a {
+  color: #111;
+  text-decoration: none;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+}
+
+.admin-nav a.active {
+  background: #e0f2f1;
+  color: #0f766e;
+}
+
+.admin-main {
+  flex: 1;
+  padding: 1.5rem;
+}
+
+.admin-main h1 {
+  margin-top: 0;
+}

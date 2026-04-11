@@ -1,0 +1,1 @@
+"""HEXA Purchase Assistant API."""
