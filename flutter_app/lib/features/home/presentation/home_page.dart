@@ -68,21 +68,6 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
     return '$a – $b, ${r.$2.year}';
   }
 
-  static Future<void> _mediaVoiceSnack(BuildContext context, WidgetRef ref) async {
-    final session = ref.read(sessionProvider);
-    if (session == null) return;
-    try {
-      final r = await ref.read(hexaApiProvider).mediaVoicePreview(businessId: session.primaryBusiness.id);
-      if (!context.mounted) return;
-      final note = r['note']?.toString() ?? 'Voice preview';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(note)));
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Voice preview: $e')));
-      }
-    }
-  }
-
   static Future<void> _mediaOcrSnack(BuildContext context, WidgetRef ref) async {
     final session = ref.read(sessionProvider);
     if (session == null) return;
@@ -109,7 +94,7 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dashboard'),
+        title: const Text('Overview'),
         leading: ModalRoute.of(context)?.canPop == true
             ? IconButton(
                 icon: const Icon(Icons.arrow_back_rounded),
@@ -121,6 +106,11 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
             tooltip: 'Refresh',
             onPressed: _refresh,
             icon: const Icon(Icons.refresh_rounded),
+          ),
+          IconButton(
+            tooltip: 'Contacts',
+            onPressed: () => context.push('/contacts'),
+            icon: const Icon(Icons.people_alt_outlined),
           ),
           const AppSettingsAction(),
         ],
@@ -172,7 +162,7 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
               ),
             ),
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
               sliver: SliverToBoxAdapter(
                 child: dash.when(
                   loading: () => const Padding(
@@ -357,14 +347,16 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
                           ],
                         ],
                         const SizedBox(height: 24),
-                        Text('Quick actions', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                        Text(
+                          'Quick actions',
+                          style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                        ),
                         const SizedBox(height: 12),
                         _QuickActions(
-                          onAddEntry: () => showEntryCreateSheet(context),
                           onViewEntries: () => context.go('/entries'),
                           onCatalog: () => context.push('/catalog'),
                           onReports: () => context.go('/analytics'),
-                          onVoice: () => unawaited(_mediaVoiceSnack(context, ref)),
+                          onVoice: () => context.go('/ai'),
                           onScan: () => unawaited(_mediaOcrSnack(context, ref)),
                         ),
                       ],
@@ -513,10 +505,10 @@ class _DashboardEmptyCta extends StatelessWidget {
           children: [
             Icon(Icons.receipt_long_rounded, size: 48, color: cs.primary),
             const SizedBox(height: 12),
-            Text('No purchases in this range', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+            Text('No purchases in this period', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
             const SizedBox(height: 6),
             Text(
-              'Add your first purchase or pick another date chip above.',
+              'Add your first purchase to see totals here, or pick another date range above.',
               textAlign: TextAlign.center,
               style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary),
             ),
@@ -772,7 +764,6 @@ class _AlertMessageCard extends StatelessWidget {
 
 class _QuickActions extends StatelessWidget {
   const _QuickActions({
-    required this.onAddEntry,
     required this.onViewEntries,
     required this.onCatalog,
     required this.onReports,
@@ -780,7 +771,6 @@ class _QuickActions extends StatelessWidget {
     required this.onScan,
   });
 
-  final VoidCallback onAddEntry;
   final VoidCallback onViewEntries;
   final VoidCallback onCatalog;
   final VoidCallback onReports;
@@ -789,69 +779,9 @@ class _QuickActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-
-    Widget chip({required IconData icon, required String label, required VoidCallback onTap, bool primary = false}) {
-      final child = primary
-          ? DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                gradient: const LinearGradient(
-                  colors: [HexaColors.primaryDeep, HexaColors.primaryMid],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: HexaColors.primaryMid.withValues(alpha: 0.35),
-                    blurRadius: 12,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(16),
-                  onTap: onTap,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(icon, color: Colors.white, size: 22),
-                        const SizedBox(width: 10),
-                        Text(
-                          label,
-                          style: tt.labelLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.w800),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            )
-          : OutlinedButton.icon(
-              onPressed: onTap,
-              icon: Icon(icon, size: 20),
-              label: Text(label),
-            );
-
-      return primary
-          ? child
-          : SizedBox(width: double.infinity, child: child);
-    }
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _PressScale(
-          child: chip(
-            icon: Icons.add_rounded,
-            label: 'Add entry',
-            onTap: onAddEntry,
-            primary: true,
-          ),
-        ),
-        const SizedBox(height: 10),
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -924,35 +854,6 @@ class _ActionChipButtonState extends State<_ActionChipButton> {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _PressScale extends StatefulWidget {
-  const _PressScale({required this.child});
-
-  final Widget child;
-
-  @override
-  State<_PressScale> createState() => _PressScaleState();
-}
-
-class _PressScaleState extends State<_PressScale> {
-  bool _down = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerDown: (_) => setState(() => _down = true),
-      onPointerUp: (_) => setState(() => _down = false),
-      onPointerCancel: (_) => setState(() => _down = false),
-      child: AnimatedScale(
-        scale: _down ? 0.98 : 1.0,
-        duration: const Duration(milliseconds: 90),
-        curve: Curves.easeOut,
-        child: widget.child,
       ),
     );
   }

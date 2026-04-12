@@ -656,36 +656,57 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Contacts'),
-        actions: [
-          const AppSettingsAction(),
-          if (!_isSearching)
-            Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: AnimatedBuilder(
-                animation: _tabController,
-                builder: (context, _) {
-                  final i = _tabController.index;
-                  final tip = switch (i) {
-                    0 => 'Add supplier',
-                    1 => 'Add broker',
-                    2 => 'Add category',
-                    _ => 'Add item',
-                  };
-                  return IconButton.filled(
-                    style: IconButton.styleFrom(
-                      backgroundColor: HexaColors.primaryMid,
-                      foregroundColor: Colors.white,
-                    ),
-                    tooltip: tip,
-                    onPressed: _addForCurrentTab,
-                    icon: const Icon(Icons.add_rounded),
-                  );
-                },
+        toolbarHeight: 72,
+        titleSpacing: 16,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Contacts', style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 2),
+            Text(
+              'Category → items · suppliers & brokers used on purchase lines',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: tt.labelSmall?.copyWith(
+                color: cs.onSurfaceVariant,
+                fontWeight: FontWeight.w500,
+                height: 1.2,
               ),
             ),
+          ],
+        ),
+        actions: [
+          const AppSettingsAction(),
+          // Always show add — searching must not hide create (was causing “missing +” reports).
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: AnimatedBuilder(
+              animation: _tabController,
+              builder: (context, _) {
+                final i = _tabController.index;
+                final tip = switch (i) {
+                  0 => 'Add supplier',
+                  1 => 'Add broker',
+                  2 => 'Add category',
+                  _ => 'Add item',
+                };
+                return IconButton.filled(
+                  style: IconButton.styleFrom(
+                    backgroundColor: HexaColors.primaryMid,
+                    foregroundColor: Colors.white,
+                  ),
+                  tooltip: tip,
+                  onPressed: _addForCurrentTab,
+                  icon: const Icon(Icons.add_rounded),
+                );
+              },
+            ),
+          ),
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),

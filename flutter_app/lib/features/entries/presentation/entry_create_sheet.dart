@@ -21,7 +21,7 @@ import 'smart_price_panel.dart';
 
 enum _CommissionMode { totalRupees, percentOfPurchase, perUnitRupees }
 
-/// Opens the full entry form (preview → duplicate check → save).
+/// Opens the full entry form (Preview → Confirm & save in dialog, or Save on sheet after preview token).
 Future<void> showEntryCreateSheet(BuildContext context) async {
   await showModalBottomSheet<void>(
     context: context,
@@ -44,23 +44,28 @@ class _LineControllers {
       : item = TextEditingController(),
         category = TextEditingController(),
         qty = TextEditingController(text: '1'),
+        kgPerBag = TextEditingController(text: '50'),
         purchase = TextEditingController(),
         selling = TextEditingController();
 
   final TextEditingController item;
   final TextEditingController category;
   final TextEditingController qty;
+  /// Kg per bag when [unit] == bag.
+  final TextEditingController kgPerBag;
   /// Invoice / purchase price per unit (excludes allocated entry commission — see landed cost).
   final TextEditingController purchase;
   final TextEditingController selling;
   String unit = 'kg';
   /// Set when user picks a row from the master catalog (sent as catalog_item_id).
   String? catalogItemId;
+  String? catalogVariantId;
 
   void dispose() {
     item.dispose();
     category.dispose();
     qty.dispose();
+    kgPerBag.dispose();
     purchase.dispose();
     selling.dispose();
   }
@@ -76,7 +81,10 @@ class EntryCreateSheet extends ConsumerStatefulWidget {
 class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
   final _invoice = TextEditingController();
   final _commission = TextEditingController();
+  final _transport = TextEditingController();
   final _quickEntry = TextEditingController();
+  /// When false: one landed-cost field per line + selling; invoice/commission/transport hidden.
+  bool _advancedEntryOptions = false;
   DateTime _entryDate = DateTime.now();
   String? _supplierId;
   String? _brokerId;
@@ -120,6 +128,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     _quickEntry.removeListener(_onFormFieldChanged);
     _invoice.dispose();
     _commission.dispose();
+    _transport.dispose();
     _quickEntry.dispose();
     for (final l in _lines) {
       l.dispose();
@@ -206,6 +215,15 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       if (l.catalogItemId != null && l.catalogItemId!.isNotEmpty) {
         m['catalog_item_id'] = l.catalogItemId;
       }
+      if (l.catalogVariantId != null && l.catalogVariantId!.isNotEmpty) {
+        m['catalog_variant_id'] = l.catalogVariantId;
+      }
+      if (l.unit == 'bag') {
+        final kg = _parseDouble(l.kgPerBag.text);
+        if (kg != null) m['kg_per_bag'] = kg;
+        final bags = _parseDouble(l.qty.text);
+        if (bags != null) m['bags'] = bags;
+      }
       final cat = l.category.text.trim();
       if (cat.isNotEmpty) m['category'] = cat;
       if (sell != null) m['selling_price'] = sell;
@@ -219,6 +237,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       if ((_parseDouble(l.qty.text) ?? 0) <= 0) return false;
       if ((_parseDouble(l.purchase.text) ?? -1) < 0) return false;
       if (_effectiveLanding(l) < 0) return false;
+      if (l.unit == 'bag' && (_parseDouble(l.kgPerBag.text) ?? 0) <= 0) return false;
     }
     return true;
   }
@@ -284,9 +303,9 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               FilledButton(
                 onPressed: () {
                   Navigator.pop(ctx);
-                  _confirmSave();
+                  unawaited(_finalizeSaveAfterPreview());
                 },
-                child: const Text('Save'),
+                child: const Text('Confirm & save'),
               ),
             ],
           ),
@@ -314,6 +333,12 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       }
       final cid = mm['catalog_item_id']?.toString();
       _lines[i].catalogItemId = (cid != null && cid.isNotEmpty) ? cid : null;
+      final vid = mm['catalog_variant_id']?.toString();
+      _lines[i].catalogVariantId = (vid != null && vid.isNotEmpty) ? vid : null;
+      final kgpb = mm['kg_per_bag'];
+      if (kgpb != null) {
+        _lines[i].kgPerBag.text = kgpb is num ? kgpb.toString() : kgpb.toString();
+      }
       final iname = mm['item_name']?.toString();
       if (iname != null && iname.isNotEmpty) {
         _lines[i].item.text = iname;
@@ -366,7 +391,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                       l.catalogItemId = it['id']?.toString();
                       l.item.text = name;
                       l.category.text = catName[cid] ?? '';
-                      if (du != null && (du == 'kg' || du == 'box' || du == 'piece')) {
+                      if (du != null && (du == 'kg' || du == 'box' || du == 'piece' || du == 'bag')) {
                         l.unit = du;
                       }
                     });
@@ -384,12 +409,14 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
   Map<String, dynamic> _body({required bool confirm, bool forceDuplicate = false}) {
     final fmt = DateFormat('yyyy-MM-dd');
     final commTotal = _effectiveCommissionTotalRupees();
+    final tr = _parseDouble(_transport.text);
     return {
       'entry_date': fmt.format(_entryDate),
       if (_supplierId != null) 'supplier_id': _supplierId,
       if (_brokerId != null) 'broker_id': _brokerId,
       if (_invoice.text.trim().isNotEmpty) 'invoice_no': _invoice.text.trim(),
       if (commTotal != null && commTotal > 0) 'commission_amount': commTotal,
+      if (_advancedEntryOptions && tr != null && tr > 0) 'transport_cost': tr,
       'confirm': confirm,
       if (confirm && _previewToken != null && _previewToken!.isNotEmpty) 'preview_token': _previewToken,
       if (confirm && forceDuplicate) 'force_duplicate': true,
@@ -397,66 +424,17 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     };
   }
 
-  Future<void> _confirmSave() async {
+  /// One confirmation path: Preview dialog already showed lines — persist without a second sheet.
+  Future<void> _finalizeSaveAfterPreview() async {
     if (!_validate()) return;
     if (_previewToken == null || _previewToken!.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Tap Preview first, then Save. If you changed the form, Preview again.')),
+          const SnackBar(content: Text('Tap Preview first, then Confirm & save. If you changed the form, Preview again.')),
         );
       }
       return;
     }
-    final nf = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
-    final go = await showModalBottomSheet<bool>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (ctx) {
-        return Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text('Confirm save', style: Theme.of(ctx).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 12),
-                  Text(DateFormat.yMMMd().format(_entryDate), style: Theme.of(ctx).textTheme.bodyMedium),
-                  const SizedBox(height: 12),
-                  ..._lines.map((l) {
-                    final land = _effectiveLanding(l);
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Text(
-                        '${l.item.text.trim()} · ${l.qty.text} ${l.unit} · Landed ${nf.format(land)}',
-                        style: Theme.of(ctx).textTheme.bodyMedium,
-                      ),
-                    );
-                  }),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Edit')),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Confirm & save')),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-    if (go != true) return;
-
     setState(() => _busy = true);
     try {
       await _runSaveAttempt(forceDuplicate: false);
@@ -510,6 +488,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
         itemName: first.item.text.trim(),
         qty: _parseDouble(first.qty.text) ?? 0,
         entryDateIso: dateStr,
+        supplierId: _supplierId,
+        catalogVariantId: first.catalogVariantId,
       );
       final isDup = dup['duplicate'] == true;
       if (isDup && mounted) {
@@ -674,7 +654,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
             l.category.text = catNameById[cid]!;
           }
           final du = b['default_unit']?.toString();
-          if (du != null && (du == 'kg' || du == 'box' || du == 'piece')) {
+          if (du != null && (du == 'kg' || du == 'box' || du == 'piece' || du == 'bag')) {
             l.unit = du;
           }
         });
@@ -958,10 +938,178 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     nameCtrl.dispose();
   }
 
+  Future<void> _addVariantFromEntry() async {
+    List<Map<String, dynamic>> items = [];
+    try {
+      items = await ref.read(catalogItemsListProvider.future);
+    } catch (_) {}
+    if (!mounted) return;
+    if (items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Create a catalog item first, then add a variant (e.g. Basmati).')),
+      );
+      return;
+    }
+    var itemId = items.first['id']?.toString();
+    final nameCtrl = TextEditingController();
+    final kgCtrl = TextEditingController(text: '50');
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSt) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 24,
+                right: 24,
+                top: 8,
+                bottom: 24 + MediaQuery.viewInsetsOf(ctx).bottom,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('New variant', style: Theme.of(ctx).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: itemId,
+                    decoration: const InputDecoration(labelText: 'Catalog item *'),
+                    items: items
+                        .map(
+                          (it) => DropdownMenuItem<String>(
+                            value: it['id']?.toString(),
+                            child: Text(it['name']?.toString() ?? ''),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) => setSt(() => itemId = v),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: nameCtrl,
+                    autofocus: true,
+                    decoration: const InputDecoration(labelText: 'Variant name *', hintText: 'Basmati'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: kgCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Default kg/bag (optional)', hintText: '50'),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('Save variant'),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+    if (ok != true || itemId == null || nameCtrl.text.trim().isEmpty) {
+      nameCtrl.dispose();
+      kgCtrl.dispose();
+      return;
+    }
+    final session = ref.read(sessionProvider);
+    if (session == null) {
+      nameCtrl.dispose();
+      kgCtrl.dispose();
+      return;
+    }
+    try {
+      final kg = double.tryParse(kgCtrl.text.trim());
+      await ref.read(hexaApiProvider).createCatalogVariant(
+            businessId: session.primaryBusiness.id,
+            itemId: itemId!,
+            name: nameCtrl.text.trim(),
+            defaultKgPerBag: kg,
+          );
+      ref.invalidate(catalogItemsListProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Variant created — pick it from the catalog line')));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+    nameCtrl.dispose();
+    kgCtrl.dispose();
+  }
+
+  Future<void> _pickVariantForLine(int lineIndex) async {
+    final l = _lines[lineIndex];
+    final cid = l.catalogItemId;
+    if (cid == null || cid.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pick a catalog item first (catalog icon), then choose variant.')),
+      );
+      return;
+    }
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    try {
+      final vars = await ref.read(hexaApiProvider).listCatalogVariants(
+            businessId: session.primaryBusiness.id,
+            itemId: cid,
+          );
+      if (!mounted) return;
+      if (vars.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No variants yet — use Quick create → Variant')),
+        );
+        return;
+      }
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (ctx) {
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            children: [
+              ListTile(
+                title: const Text('Clear variant'),
+                leading: const Icon(Icons.clear_rounded),
+                onTap: () {
+                  setState(() => l.catalogVariantId = null);
+                  Navigator.pop(ctx);
+                },
+              ),
+              const Divider(),
+              ...vars.map((v) {
+                final id = v['id']?.toString() ?? '';
+                final n = v['name']?.toString() ?? '';
+                final kg = v['default_kg_per_bag'];
+                return ListTile(
+                  title: Text(n),
+                  subtitle: kg != null ? Text('Default $kg kg/bag') : null,
+                  onTap: () {
+                    setState(() {
+                      l.catalogVariantId = id;
+                      if (kg != null) {
+                        l.kgPerBag.text = kg is num ? kg.toString() : kg.toString();
+                      }
+                    });
+                    Navigator.pop(ctx);
+                  },
+                );
+              }),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
   void _goToContactsForMaps() {
     final router = GoRouter.of(context);
     Navigator.of(context).pop();
-    Future.microtask(() => router.go('/contacts'));
+    Future.microtask(() => router.push('/contacts'));
   }
 
   @override
@@ -977,72 +1125,26 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       minChildSize: 0.5,
       maxChildSize: 0.98,
       builder: (context, scrollController) {
-        return ListView(
-          controller: scrollController,
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+        return Stack(
+          clipBehavior: Clip.none,
           children: [
+            ListView(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 100),
+              children: [
             Row(
               children: [
                 Icon(Icons.edit_note_rounded, color: HexaColors.primaryMid, size: 28),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text('Smart purchase entry', style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                  child: Text('Add purchase', style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            Material(
-              color: HexaColors.primaryLight.withValues(alpha: 0.85),
-              borderRadius: BorderRadius.circular(14),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Suppliers, brokers, categories & items',
-                      style: tt.labelLarge?.copyWith(fontWeight: FontWeight.w800, color: HexaColors.primaryDeep),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Create masters here or under Contacts → FAB. Open Contacts to see supplier ↔ broker links, item history, and categories.',
-                      style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary, height: 1.35),
-                    ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        ActionChip(
-                          avatar: Icon(Icons.storefront_outlined, size: 18, color: HexaColors.primaryMid),
-                          label: const Text('Supplier'),
-                          onPressed: _busy ? null : _addSupplierDialog,
-                        ),
-                        ActionChip(
-                          avatar: Icon(Icons.handshake_outlined, size: 18, color: HexaColors.primaryMid),
-                          label: const Text('Broker'),
-                          onPressed: _busy ? null : _addBrokerDialog,
-                        ),
-                        ActionChip(
-                          avatar: Icon(Icons.folder_outlined, size: 18, color: HexaColors.primaryMid),
-                          label: const Text('Category'),
-                          onPressed: _busy ? null : _addCategoryFromEntry,
-                        ),
-                        ActionChip(
-                          avatar: Icon(Icons.inventory_2_outlined, size: 18, color: HexaColors.primaryMid),
-                          label: const Text('Item'),
-                          onPressed: _busy ? null : _addItemFromEntry,
-                        ),
-                        ActionChip(
-                          avatar: Icon(Icons.people_outline, size: 18, color: HexaColors.primaryMid),
-                          label: const Text('Contacts hub'),
-                          onPressed: _busy ? null : _goToContactsForMaps,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+            const SizedBox(height: 6),
+            Text(
+              'Nothing is saved until you Preview and tap Confirm & save.',
+              style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
             ),
             if (_landingPriceSpike) ...[
               const SizedBox(height: 8),
@@ -1067,24 +1169,6 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               ),
             ],
             const SizedBox(height: 8),
-            TextField(
-              controller: _quickEntry,
-              enabled: !_busy,
-              decoration: InputDecoration(
-                labelText: 'Quick line',
-                hintText: 'rice vaani 43 aju · rice vaani 43 aju 46 · Basmati 50kg 1200',
-                prefixIcon: const Icon(Icons.bolt_rounded),
-                suffixIcon: IconButton(
-                  tooltip: 'Parse into line 1',
-                  onPressed: _busy ? null : _parseQuickEntry,
-                  icon: const Icon(Icons.arrow_downward_rounded),
-                ),
-              ),
-              onSubmitted: (_) => _parseQuickEntry(),
-              onChanged: (_) => setState(() {}),
-            ),
-            _quickLineParseChips(),
-            const SizedBox(height: 12),
             ListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('Entry date'),
@@ -1092,101 +1176,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               trailing: const Icon(Icons.calendar_today_rounded),
               onTap: _busy ? null : _pickDate,
             ),
-            suppliersAsync.when(
-              loading: () => const LinearProgressIndicator(),
-              error: (_, __) => const Text('Could not load suppliers'),
-              data: (list) {
-                final suppliers = list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-                return DropdownButtonFormField<String?>(
-                  // ignore: deprecated_member_use
-                  value: _supplierId,
-                  decoration: const InputDecoration(labelText: 'Supplier (optional)'),
-                  items: [
-                    const DropdownMenuItem<String?>(value: null, child: Text('None')),
-                    ...suppliers.map(
-                      (s) => DropdownMenuItem<String?>(
-                        value: s['id']?.toString(),
-                        child: Text(s['name']?.toString() ?? ''),
-                      ),
-                    ),
-                  ],
-                  onChanged: _busy ? null : (v) => _onSupplierChanged(v, suppliers),
-                );
-              },
-            ),
-            brokersAsync.when(
-              loading: () => const SizedBox.shrink(),
-              error: (_, __) => const SizedBox.shrink(),
-              data: (list) {
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: DropdownButtonFormField<String?>(
-                        // ignore: deprecated_member_use
-                        value: _brokerId,
-                        decoration: const InputDecoration(
-                          labelText: 'Broker (from supplier or pick)',
-                          helperText: 'Updates when you choose a supplier',
-                        ),
-                        items: [
-                          const DropdownMenuItem<String?>(value: null, child: Text('None')),
-                          ...list.map(
-                            (b) => DropdownMenuItem<String?>(
-                              value: b['id']?.toString(),
-                              child: Text(b['name']?.toString() ?? ''),
-                            ),
-                          ),
-                        ],
-                        onChanged: _busy ? null : (v) => setState(() => _brokerId = v),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: IconButton(
-                        tooltip: 'Add broker',
-                        onPressed: _busy ? null : _addBrokerDialog,
-                        icon: const Icon(Icons.person_add_alt_1_outlined),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-            TextField(
-              controller: _invoice,
-              decoration: const InputDecoration(labelText: 'Invoice no.', prefixIcon: Icon(Icons.receipt_long_outlined)),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _commission,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
-                labelText: _commMode == _CommissionMode.percentOfPurchase
-                    ? 'Commission (% of purchase value)'
-                    : _commMode == _CommissionMode.perUnitRupees
-                        ? 'Commission (₹ / unit)'
-                        : 'Commission (₹ total)',
-                prefixIcon: const Icon(Icons.percent_outlined),
-                helperText: _commMode == _CommissionMode.percentOfPurchase
-                    ? 'Applied to Σ(qty × purchase price); adds to landed cost / unit.'
-                    : 'Total ₹ for this entry; split across line qty for landed cost / unit.',
-              ),
-            ),
-            const SizedBox(height: 8),
-            SegmentedButton<_CommissionMode>(
-              segments: const [
-                ButtonSegment(value: _CommissionMode.totalRupees, label: Text('₹ Total'), icon: Icon(Icons.summarize_outlined)),
-                ButtonSegment(value: _CommissionMode.percentOfPurchase, label: Text('%'), icon: Icon(Icons.percent_rounded)),
-                ButtonSegment(value: _CommissionMode.perUnitRupees, label: Text('₹/u'), icon: Icon(Icons.straighten_rounded)),
-              ],
-              selected: {_commMode},
-              onSelectionChanged: _busy
-                  ? null
-                  : (s) => setState(() => _commMode = s.first),
-            ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 4),
             Text('Line items', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
             const SizedBox(height: 8),
             ...List.generate(_lines.length, (i) => _lineCard(context, lineIndex: i)),
@@ -1224,7 +1214,11 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                       disabledBackgroundColor: HexaColors.primaryMid.withValues(alpha: 0.45),
                       disabledForegroundColor: Colors.white70,
                     ),
-                    onPressed: _busy ? null : (_previewToken != null && _previewToken!.isNotEmpty ? _confirmSave : null),
+                    onPressed: _busy
+                        ? null
+                        : (_previewToken != null && _previewToken!.isNotEmpty
+                            ? () => unawaited(_finalizeSaveAfterPreview())
+                            : null),
                     child: const Text('Save'),
                   ),
                 ),
@@ -1238,9 +1232,300 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                   style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                 ),
               ),
+            const SizedBox(height: 8),
+            ExpansionTile(
+              initiallyExpanded: false,
+              tilePadding: EdgeInsets.zero,
+              title: Text('Supplier, catalog & extra costs', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+              subtitle: Text(
+                'Optional — people, masters, quick line, invoice & transport',
+                style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+              ),
+              children: [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text('Advanced costs', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                  subtitle: Text(
+                    _advancedEntryOptions
+                        ? 'Invoice, commission splits, transport — for traders who need the full ledger.'
+                        : 'Simple: landed cost + selling only. Fastest path — add detail when you need it.',
+                    style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                  ),
+                  value: _advancedEntryOptions,
+                  onChanged: _busy
+                      ? null
+                      : (v) {
+                          setState(() {
+                            _advancedEntryOptions = v;
+                            if (!v) {
+                              _commission.clear();
+                              _invoice.clear();
+                              _transport.clear();
+                            }
+                          });
+                        },
+                ),
+                const SizedBox(height: 8),
+                Material(
+                  color: HexaColors.primaryLight.withValues(alpha: 0.85),
+                  borderRadius: BorderRadius.circular(14),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Create masters here or under Entries → people icon → Contacts.',
+                          style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary, height: 1.35),
+                        ),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            ActionChip(
+                              avatar: Icon(Icons.storefront_outlined, size: 18, color: HexaColors.primaryMid),
+                              label: const Text('Supplier'),
+                              onPressed: _busy ? null : _addSupplierDialog,
+                            ),
+                            ActionChip(
+                              avatar: Icon(Icons.handshake_outlined, size: 18, color: HexaColors.primaryMid),
+                              label: const Text('Broker'),
+                              onPressed: _busy ? null : _addBrokerDialog,
+                            ),
+                            ActionChip(
+                              avatar: Icon(Icons.folder_outlined, size: 18, color: HexaColors.primaryMid),
+                              label: const Text('Category'),
+                              onPressed: _busy ? null : _addCategoryFromEntry,
+                            ),
+                            ActionChip(
+                              avatar: Icon(Icons.inventory_2_outlined, size: 18, color: HexaColors.primaryMid),
+                              label: const Text('Item'),
+                              onPressed: _busy ? null : _addItemFromEntry,
+                            ),
+                            ActionChip(
+                              avatar: Icon(Icons.subdirectory_arrow_right_rounded, size: 18, color: HexaColors.primaryMid),
+                              label: const Text('Variant'),
+                              onPressed: _busy ? null : _addVariantFromEntry,
+                            ),
+                            ActionChip(
+                              avatar: Icon(Icons.people_outline, size: 18, color: HexaColors.primaryMid),
+                              label: const Text('Contacts hub'),
+                              onPressed: _busy ? null : _goToContactsForMaps,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _quickEntry,
+                  enabled: !_busy,
+                  decoration: InputDecoration(
+                    labelText: 'Quick line',
+                    hintText: 'rice vaani 43 aju · rice vaani 43 aju 46 · Basmati 50kg 1200',
+                    prefixIcon: const Icon(Icons.bolt_rounded),
+                    suffixIcon: IconButton(
+                      tooltip: 'Parse into line 1',
+                      onPressed: _busy ? null : _parseQuickEntry,
+                      icon: const Icon(Icons.arrow_downward_rounded),
+                    ),
+                  ),
+                  onSubmitted: (_) => _parseQuickEntry(),
+                  onChanged: (_) => setState(() {}),
+                ),
+                _quickLineParseChips(),
+                const SizedBox(height: 12),
+                suppliersAsync.when(
+                  loading: () => const LinearProgressIndicator(),
+                  error: (_, __) => const Text('Could not load suppliers'),
+                  data: (list) {
+                    final suppliers = list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+                    return DropdownButtonFormField<String?>(
+                      // ignore: deprecated_member_use
+                      value: _supplierId,
+                      decoration: const InputDecoration(labelText: 'Supplier (optional)'),
+                      items: [
+                        const DropdownMenuItem<String?>(value: null, child: Text('None')),
+                        ...suppliers.map(
+                          (s) => DropdownMenuItem<String?>(
+                            value: s['id']?.toString(),
+                            child: Text(s['name']?.toString() ?? ''),
+                          ),
+                        ),
+                      ],
+                      onChanged: _busy ? null : (v) => _onSupplierChanged(v, suppliers),
+                    );
+                  },
+                ),
+                brokersAsync.when(
+                  loading: () => const SizedBox.shrink(),
+                  error: (_, __) => const SizedBox.shrink(),
+                  data: (list) {
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<String?>(
+                            // ignore: deprecated_member_use
+                            value: _brokerId,
+                            decoration: const InputDecoration(
+                              labelText: 'Broker (from supplier or pick)',
+                              helperText: 'Updates when you choose a supplier',
+                            ),
+                            items: [
+                              const DropdownMenuItem<String?>(value: null, child: Text('None')),
+                              ...list.map(
+                                (b) => DropdownMenuItem<String?>(
+                                  value: b['id']?.toString(),
+                                  child: Text(b['name']?.toString() ?? ''),
+                                ),
+                              ),
+                            ],
+                            onChanged: _busy ? null : (v) => setState(() => _brokerId = v),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: IconButton(
+                            tooltip: 'Add broker',
+                            onPressed: _busy ? null : _addBrokerDialog,
+                            icon: const Icon(Icons.person_add_alt_1_outlined),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+                if (_advancedEntryOptions) ...[
+                  TextField(
+                    controller: _invoice,
+                    decoration: const InputDecoration(labelText: 'Invoice no.', prefixIcon: Icon(Icons.receipt_long_outlined)),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _commission,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      labelText: _commMode == _CommissionMode.percentOfPurchase
+                          ? 'Commission (% of purchase value)'
+                          : _commMode == _CommissionMode.perUnitRupees
+                              ? 'Commission (₹ / unit)'
+                              : 'Commission (₹ total)',
+                      prefixIcon: const Icon(Icons.percent_outlined),
+                      helperText: _commMode == _CommissionMode.percentOfPurchase
+                          ? 'Applied to Σ(qty × purchase price); adds to landed cost / unit.'
+                          : 'Total ₹ for this entry; split across line qty for landed cost / unit.',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SegmentedButton<_CommissionMode>(
+                    segments: const [
+                      ButtonSegment(value: _CommissionMode.totalRupees, label: Text('₹ Total'), icon: Icon(Icons.summarize_outlined)),
+                      ButtonSegment(value: _CommissionMode.percentOfPurchase, label: Text('%'), icon: Icon(Icons.percent_rounded)),
+                      ButtonSegment(value: _CommissionMode.perUnitRupees, label: Text('₹/u'), icon: Icon(Icons.straighten_rounded)),
+                    ],
+                    selected: {_commMode},
+                    onSelectionChanged: _busy
+                        ? null
+                        : (s) => setState(() => _commMode = s.first),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _transport,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    onChanged: (_) => setState(() {}),
+                    decoration: const InputDecoration(
+                      labelText: 'Transport (₹ total, optional)',
+                      prefixIcon: Icon(Icons.local_shipping_outlined),
+                      helperText: 'Allocated across lines by value when saving (server).',
+                    ),
+                  ),
+                ],
+              ],
+            ),
+              ],
+            ),
+            Positioned(
+              left: 10,
+              right: 10,
+              bottom: 10,
+              child: Material(
+                elevation: 8,
+                borderRadius: BorderRadius.circular(16),
+                color: cs.surfaceContainerHighest,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: _liveTotalsSummary(),
+                ),
+              ),
+            ),
           ],
         );
       },
+    );
+  }
+
+  ({double cost, double kg, double revenue, double profit}) _rollupTotals() {
+    var cost = 0.0;
+    var kg = 0.0;
+    var revenue = 0.0;
+    for (final l in _lines) {
+      final land = _effectiveLanding(l);
+      final sell = _parseDouble(l.selling.text);
+      if (l.unit == 'bag') {
+        final bags = _parseDouble(l.qty.text) ?? 0;
+        final kgPb = _parseDouble(l.kgPerBag.text) ?? 0;
+        final qk = bags * kgPb;
+        cost += bags * land;
+        kg += qk;
+        if (sell != null) revenue += sell * qk;
+      } else {
+        final q = _parseDouble(l.qty.text) ?? 0;
+        cost += q * land;
+        if (l.unit == 'kg') kg += q;
+        if (sell != null) revenue += sell * q;
+      }
+    }
+    return (cost: cost, kg: kg, revenue: revenue, profit: revenue - cost);
+  }
+
+  Widget _liveTotalsSummary() {
+    final t = _rollupTotals();
+    final nf = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            'Total cost\n${nf.format(t.cost)}',
+            textAlign: TextAlign.center,
+            style: tt.labelSmall?.copyWith(color: HexaColors.costMuted, fontWeight: FontWeight.w600),
+          ),
+        ),
+        Expanded(child: Text('Total kg\n${t.kg.toStringAsFixed(1)}', textAlign: TextAlign.center, style: tt.labelSmall)),
+        Expanded(
+          child: Text(
+            'Revenue\n${nf.format(t.revenue)}',
+            textAlign: TextAlign.center,
+            style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            'Profit\n${nf.format(t.profit)}',
+            textAlign: TextAlign.center,
+            style: tt.labelSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: t.profit >= 0 ? HexaColors.profit : HexaColors.loss,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1347,6 +1632,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
 
   Widget _lineCard(BuildContext context, {required int lineIndex}) {
     final l = _lines[lineIndex];
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
@@ -1374,14 +1661,27 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
             ),
             TextField(
               controller: l.item,
-              onChanged: (_) => setState(() => l.catalogItemId = null),
+              onChanged: (_) => setState(() {
+                l.catalogItemId = null;
+                l.catalogVariantId = null;
+              }),
               decoration: InputDecoration(
                 labelText: 'Item *',
                 prefixIcon: const Icon(Icons.inventory_2_outlined),
-                suffixIcon: IconButton(
-                  tooltip: 'Catalog',
-                  icon: const Icon(Icons.apps_rounded),
-                  onPressed: _busy ? null : () => _pickCatalogForLine(lineIndex),
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'Variant',
+                      icon: const Icon(Icons.subdirectory_arrow_right_rounded),
+                      onPressed: _busy ? null : () => _pickVariantForLine(lineIndex),
+                    ),
+                    IconButton(
+                      tooltip: 'Catalog',
+                      icon: const Icon(Icons.apps_rounded),
+                      onPressed: _busy ? null : () => _pickCatalogForLine(lineIndex),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1390,60 +1690,109 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               decoration: const InputDecoration(labelText: 'Category', prefixIcon: Icon(Icons.category_outlined)),
             ),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
+                  flex: 2,
                   child: TextField(
                     controller: l.qty,
                     keyboardType: TextInputType.number,
                     onChanged: (_) => setState(() {}),
-                    decoration: const InputDecoration(labelText: 'Qty *', prefixIcon: Icon(Icons.numbers_rounded)),
+                    decoration: InputDecoration(
+                      labelText: l.unit == 'bag' ? 'Bags *' : 'Qty *',
+                      prefixIcon: const Icon(Icons.numbers_rounded),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: SegmentedButton<String>(
-                      segments: const [
-                        ButtonSegment(value: 'kg', label: Text('kg')),
-                        ButtonSegment(value: 'box', label: Text('box')),
-                        ButtonSegment(value: 'piece', label: Text('pc')),
-                      ],
-                      selected: {l.unit},
-                      onSelectionChanged: _busy
-                          ? null
-                          : (s) => setState(() => l.unit = s.first),
-                    ),
+                  flex: 3,
+                  child: DropdownButtonFormField<String>(
+                    // ignore: deprecated_member_use
+                    value: l.unit,
+                    decoration: const InputDecoration(labelText: 'Unit'),
+                    items: const [
+                      DropdownMenuItem(value: 'kg', child: Text('kg')),
+                      DropdownMenuItem(value: 'bag', child: Text('Bag')),
+                      DropdownMenuItem(value: 'box', child: Text('box')),
+                      DropdownMenuItem(value: 'piece', child: Text('pc')),
+                    ],
+                    onChanged: _busy
+                        ? null
+                        : (v) {
+                            if (v == null) return;
+                            setState(() => l.unit = v);
+                          },
                   ),
                 ),
               ],
             ),
+            if (l.unit == 'bag') ...[
+              const SizedBox(height: 8),
+              TextField(
+                controller: l.kgPerBag,
+                keyboardType: TextInputType.number,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(
+                  labelText: 'Kg per bag *',
+                  prefixIcon: Icon(Icons.scale_rounded),
+                  helperText: '25 / 50 / custom — landed cost below is per bag',
+                ),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                children: [
+                  ActionChip(label: const Text('25 kg'), onPressed: () => setState(() => l.kgPerBag.text = '25')),
+                  ActionChip(label: const Text('50 kg'), onPressed: () => setState(() => l.kgPerBag.text = '50')),
+                ],
+              ),
+            ],
             TextField(
               controller: l.purchase,
               keyboardType: TextInputType.number,
               onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(
-                labelText: 'Purchase price / unit *',
-                prefixIcon: Icon(Icons.currency_rupee_rounded),
-                helperText: 'Supplier invoice price per unit; commission is added below',
+              decoration: InputDecoration(
+                labelText: _advancedEntryOptions
+                    ? (l.unit == 'bag' ? 'Purchase / bag (invoice) *' : 'Purchase price / unit *')
+                    : (l.unit == 'bag' ? 'Landed cost / bag (₹) *' : 'Landed cost / unit (₹) *'),
+                prefixIcon: const Icon(Icons.currency_rupee_rounded),
+                helperText: _advancedEntryOptions
+                    ? (l.unit == 'bag'
+                        ? 'Invoice ₹ per bag; commission field below adds to landed.'
+                        : 'Invoice ₹ per unit; commission adds to landed.')
+                    : (l.unit == 'bag'
+                        ? 'All-in landed ₹ per bag for this line.'
+                        : 'All-in landed ₹ per kg/pc — use Advanced for invoice + commission split.'),
               ),
             ),
-            _landedCostReadout(l),
-            SmartPricePanel(
-              item: l.item,
-              qty: l.qty,
-              priceController: l.purchase,
-              metric: 'landing',
-              currentPriceResolver: () => _effectiveLanding(l),
-              onInsight: lineIndex == 0 ? _onLandingInsight : null,
-            ),
+            if (_advancedEntryOptions)
+              _landedCostReadout(l)
+            else
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Landed / unit: ₹${_effectiveLanding(l).toStringAsFixed(2)} · matches the field above',
+                  style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontWeight: FontWeight.w600),
+                ),
+              ),
+            if (_advancedEntryOptions)
+              SmartPricePanel(
+                item: l.item,
+                qty: l.qty,
+                priceController: l.purchase,
+                metric: 'landing',
+                currentPriceResolver: () => _effectiveLanding(l),
+                onInsight: lineIndex == 0 ? _onLandingInsight : null,
+              ),
             TextField(
               controller: l.selling,
               keyboardType: TextInputType.number,
               onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(
-                labelText: 'Selling price / unit',
-                prefixIcon: Icon(Icons.sell_outlined),
+              decoration: InputDecoration(
+                labelText: l.unit == 'bag' ? 'Selling price / kg' : 'Selling price / unit',
+                prefixIcon: const Icon(Icons.sell_outlined),
+                helperText: l.unit == 'bag' ? 'Revenue = kg × this price' : null,
               ),
             ),
             SmartPricePanel(
@@ -1468,13 +1817,31 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       return Padding(
         padding: const EdgeInsets.only(top: 8),
         child: Text(
-          'Margin: enter selling price to see profit (landed cost is automatic)',
+          'Profit: enter selling price to see estimate (landed cost is automatic)',
           style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
         ),
       );
     }
-    final profit = sell - land;
-    final marginPct = sell > 0 ? (profit / sell) * 100.0 : 0.0;
+    final qty = _parseDouble(l.qty.text) ?? 0;
+    double profit;
+    double marginPct;
+    if (l.unit == 'bag') {
+      final kgPb = _parseDouble(l.kgPerBag.text) ?? 0;
+      if (kgPb <= 0) {
+        return Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text('Set kg per bag to see profit', style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+        );
+      }
+      final qtyKg = qty * kgPb;
+      final totalCost = qty * land;
+      final revenue = sell * qtyKg;
+      profit = revenue - totalCost;
+      marginPct = revenue > 0 ? (profit / revenue) * 100.0 : 0.0;
+    } else {
+      profit = (sell - land) * qty;
+      marginPct = sell > 0 ? ((sell - land) / sell) * 100.0 : 0.0;
+    }
     final good = marginPct >= 8;
     return Padding(
       padding: const EdgeInsets.only(top: 8),
@@ -1490,7 +1857,9 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Profit ₹${profit.toStringAsFixed(2)} · Margin ${marginPct.toStringAsFixed(1)}%',
+                l.unit == 'bag'
+                    ? 'Line profit ₹${profit.toStringAsFixed(0)} · Margin ${marginPct.toStringAsFixed(1)}% of revenue'
+                    : 'Profit ₹${profit.toStringAsFixed(2)} · Unit margin ${marginPct.toStringAsFixed(1)}%',
                 style: tt.labelLarge?.copyWith(
                   fontWeight: FontWeight.w800,
                   color: good ? cs.onPrimaryContainer : cs.onErrorContainer,

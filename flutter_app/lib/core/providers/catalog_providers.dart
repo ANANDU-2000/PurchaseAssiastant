@@ -2,6 +2,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/session_notifier.dart';
 
+/// Default insights window: last 90 days (aligns with price intelligence default).
+({String from, String to}) catalogInsightsDefaultRange() {
+  final to = DateTime.now();
+  final from = to.subtract(const Duration(days: 90));
+  String iso(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  return (from: iso(from), to: iso(to));
+}
+
 final itemCategoriesListProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
@@ -12,4 +21,74 @@ final catalogItemsListProvider = FutureProvider.autoDispose<List<Map<String, dyn
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   return ref.read(hexaApiProvider).listCatalogItems(businessId: session.primaryBusiness.id);
+});
+
+/// Params: `itemId|from|to` for stable family identity.
+final catalogItemInsightsProvider =
+    FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, key) async {
+  final parts = key.split('|');
+  if (parts.length != 3) return {};
+  final itemId = parts[0];
+  final from = parts[1];
+  final to = parts[2];
+  final session = ref.watch(sessionProvider);
+  if (session == null) return {};
+  return ref.read(hexaApiProvider).catalogItemInsights(
+        businessId: session.primaryBusiness.id,
+        itemId: itemId,
+        from: from,
+        to: to,
+      );
+});
+
+final categoryInsightsProvider = FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, key) async {
+  final parts = key.split('|');
+  if (parts.length != 3) return {};
+  final categoryId = parts[0];
+  final from = parts[1];
+  final to = parts[2];
+  final session = ref.watch(sessionProvider);
+  if (session == null) return {};
+  return ref.read(hexaApiProvider).categoryInsights(
+        businessId: session.primaryBusiness.id,
+        categoryId: categoryId,
+        from: from,
+        to: to,
+      );
+});
+
+final catalogItemLinesProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, key) async {
+  final parts = key.split('|');
+  if (parts.length != 3) return [];
+  final itemId = parts[0];
+  final from = parts[1];
+  final to = parts[2];
+  final session = ref.watch(sessionProvider);
+  if (session == null) return [];
+  return ref.read(hexaApiProvider).catalogItemLines(
+        businessId: session.primaryBusiness.id,
+        itemId: itemId,
+        from: from,
+        to: to,
+      );
+});
+
+final catalogVariantsProvider =
+    FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, itemId) async {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return [];
+  return ref.read(hexaApiProvider).listCatalogVariants(
+        businessId: session.primaryBusiness.id,
+        itemId: itemId,
+      );
+});
+
+final catalogItemDetailProvider =
+    FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, itemId) async {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return {};
+  return ref.read(hexaApiProvider).getCatalogItem(
+        businessId: session.primaryBusiness.id,
+        itemId: itemId,
+      );
 });

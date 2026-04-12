@@ -2,7 +2,7 @@
 
 ## Goals
 
-- **&lt;16ms** frame budget on core screens; lazy lists for history.
+- **<16ms** frame budget on core screens; lazy lists for history.
 - **Offline-friendly:** queue writes when offline; sync with conflict rules (server wins + notify user).
 - **Minimal taps:** quick entry as default path; preview before save everywhere.
 
@@ -34,13 +34,15 @@ lib/
 
 Use **bottom navigation** with 5 branches:
 
-| Index | Route | Feature |
-|-------|-------|---------|
-| 0 | `/home` | Dashboard |
-| 1 | `/entries` | List + FAB |
-| 2 | `/analytics` | Tabbed analytics |
-| 3 | `/contacts` | Suppliers / brokers |
-| 4 | `/settings` | Profile, units, flags |
+
+| Index | Route        | Feature               |
+| ----- | ------------ | --------------------- |
+| 0     | `/home`      | Dashboard             |
+| 1     | `/entries`   | List + FAB            |
+| 2     | `/analytics` | Tabbed analytics      |
+| 3     | `/contacts`  | Suppliers / brokers   |
+| 4     | `/settings`  | Profile, units, flags |
+
 
 Deep links: `hexa://entries/:id`, `hexa://analytics/items/:itemKey`.
 
@@ -91,3 +93,4 @@ Deep links: `hexa://entries/:id`, `hexa://analytics/items/:itemKey`.
 ## Env per Flavor
 
 - `dart-define` or `--dart-define-from-file=env/dev.json` for `API_BASE_URL` (no secrets in client except public keys if any).
+

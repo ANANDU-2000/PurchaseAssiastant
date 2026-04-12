@@ -106,7 +106,7 @@ class AnalyticsPage extends ConsumerWidget {
       length: 5,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Reports'),
+          title: const Text('Analytics'),
           actions: const [AppSettingsAction()],
           bottom: const TabBar(
             isScrollable: true,

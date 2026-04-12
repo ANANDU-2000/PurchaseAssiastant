@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, String, Uuid
+from sqlalchemy import Boolean, DateTime, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -24,6 +24,9 @@ class User(Base):
 
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_super_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Monthly AI usage cap (tokens); 0 = disabled fallback to manual-only flows.
+    ai_monthly_token_budget: Mapped[int | None] = mapped_column(Integer, nullable=True, default=100_000)
+    ai_tokens_used_month: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

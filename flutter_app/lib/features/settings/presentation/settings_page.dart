@@ -20,6 +20,7 @@ class SettingsPage extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Settings'),
         leading: IconButton(
+          tooltip: 'Back',
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () {
             if (context.canPop()) {
@@ -67,11 +68,43 @@ class SettingsPage extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 20),
+          Text('Voice & AI', style: tt.titleSmall?.copyWith(color: cs.onSurfaceVariant, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  leading: Icon(Icons.mic_none_rounded, color: cs.primary),
+                  title: const Text('Push-to-talk only'),
+                  subtitle: const Text(
+                    'HEXA does not use an always-on microphone. Tap the mic for a short session — better battery, lower cost, clearer intent. Wake word (e.g. “Hey Hexa”) needs a future OS-level build.',
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: Icon(Icons.verified_user_outlined, color: cs.primary),
+                  title: const Text('Confirm before save'),
+                  subtitle: const Text(
+                    'Purchase lines are never auto-saved from AI. Use Preview → Save in Entries.',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
           Text('Data', style: tt.titleSmall?.copyWith(color: cs.onSurfaceVariant, fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
           Card(
             child: Column(
               children: [
+                ListTile(
+                  leading: Icon(Icons.groups_outlined, color: cs.primary),
+                  title: const Text('Suppliers & brokers'),
+                  subtitle: const Text('Contacts hub — categories, items, people.'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => context.push('/contacts'),
+                ),
+                const Divider(height: 1),
                 ListTile(
                   leading: Icon(Icons.inventory_2_outlined, color: cs.primary),
                   title: const Text('Item catalog'),
@@ -83,7 +116,7 @@ class SettingsPage extends ConsumerWidget {
                 ListTile(
                   leading: Icon(Icons.straighten_rounded, color: cs.primary),
                   title: const Text('Units'),
-                  subtitle: const Text('kg, box, piece — enforced on entry lines.'),
+                  subtitle: const Text('Bag, kg, piece — enforced on entry lines.'),
                 ),
               ],
             ),

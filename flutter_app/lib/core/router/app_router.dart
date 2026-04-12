@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../auth/session_notifier.dart';
 import '../../features/analytics/presentation/analytics_page.dart';
 import '../../features/analytics/presentation/item_analytics_detail_page.dart';
+import '../../features/catalog/presentation/catalog_category_detail_page.dart';
+import '../../features/catalog/presentation/catalog_item_detail_page.dart';
 import '../../features/catalog/presentation/catalog_page.dart';
 import '../../features/auth/presentation/login_page.dart';
 import '../../features/contacts/presentation/contacts_page.dart';
@@ -42,7 +44,25 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/splash', builder: (context, state) => const SplashPage()),
       GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
       GoRoute(path: '/catalog', builder: (context, state) => const CatalogPage()),
-      GoRoute(path: '/settings', name: 'settings', builder: (context, state) => const SettingsPage()),
+      GoRoute(
+        path: '/catalog/item/:itemId',
+        builder: (context, state) {
+          final id = state.pathParameters['itemId']!;
+          return CatalogItemDetailPage(itemId: id);
+        },
+      ),
+      GoRoute(
+        path: '/catalog/category/:categoryId',
+        builder: (context, state) {
+          final id = state.pathParameters['categoryId']!;
+          return CatalogCategoryDetailPage(categoryId: id);
+        },
+      ),
+      GoRoute(
+        path: '/contacts',
+        name: 'contacts',
+        builder: (context, state) => const ContactsPage(),
+      ),
       GoRoute(
         path: '/entry/:entryId',
         builder: (context, state) {
@@ -79,6 +99,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           return ItemAnalyticsDetailPage(itemName: name);
         },
       ),
+      // Full-screen settings (opened from AppBar actions, not shell strip) — 4 shell tabs: Home | Entries | AI | Reports
+      GoRoute(
+        path: '/settings',
+        name: 'settings',
+        builder: (context, state) => const SettingsPage(),
+      ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
             ShellScreen(navigationShell: navigationShell),
@@ -95,17 +121,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           StatefulShellBranch(
             routes: [
+              GoRoute(path: '/ai', name: 'ai', builder: (context, state) => const VoicePage()),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
               GoRoute(path: '/analytics', name: 'analytics', builder: (context, state) => const AnalyticsPage()),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(path: '/contacts', name: 'contacts', builder: (context, state) => const ContactsPage()),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(path: '/voice', name: 'voice', builder: (context, state) => const VoicePage()),
             ],
           ),
         ],

@@ -37,10 +37,23 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="HEXA Purchase Assistant", lifespan=lifespan)
 
 settings = get_settings()
-origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+# Browsers reject Access-Control-Allow-Origin: * together with credentialed requests.
+# Flutter web (localhost / 127.0.0.1) needs explicit origins when using Authorization headers.
+_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+if not _origins:
+    _origins = [
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://localhost:8082",
+        "http://127.0.0.1:8082",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins or ["*"],
+    allow_origins=_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

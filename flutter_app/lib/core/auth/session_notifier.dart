@@ -26,6 +26,9 @@ final hexaApiProvider = Provider<HexaApi>((ref) {
         await ref.read(sessionProvider.notifier).applyRefreshedTokens(pair.access, pair.refresh);
         return true;
       } catch (_) {
+        // Refresh token invalid (wrong server DB, rotated JWT secret, revoked). Clear storage
+        // or the app keeps sending dead tokens and spams 401 in the console.
+        await ref.read(sessionProvider.notifier).logout();
         return false;
       }
     },
@@ -58,7 +61,14 @@ class SessionNotifier extends Notifier<Session?> {
     final store = ref.read(tokenStoreProvider);
     final api = ref.read(hexaApiProvider);
     final cache = SessionCache(ref.read(sharedPreferencesProvider));
-    final t = await store.read();
+    ({String? access, String? refresh}) t;
+    try {
+      t = await store.read();
+    } catch (_) {
+      state = null;
+      authRefresh.value++;
+      return;
+    }
     if (t.access == null || t.refresh == null) {
       state = null;
       authRefresh.value++;
@@ -87,8 +97,16 @@ class SessionNotifier extends Notifier<Session?> {
     } on DioException catch (e) {
       final sc = e.response?.statusCode;
       if (sc == 401) {
+        // Interceptor may have already cleared tokens via logout() after a failed refresh.
+        final still = await store.read();
+        if (still.access == null || still.refresh == null) {
+          api.setAuthToken(null);
+          state = null;
+          authRefresh.value++;
+          return;
+        }
         try {
-          final pair = await api.refreshTokens(refreshToken: t.refresh!);
+          final pair = await api.refreshTokens(refreshToken: still.refresh!);
           await store.write(access: pair.access, refresh: pair.refresh);
           api.setAuthToken(pair.access);
           final businesses = await api.meBusinesses();

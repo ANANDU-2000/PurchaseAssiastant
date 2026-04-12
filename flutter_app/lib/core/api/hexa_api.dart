@@ -171,10 +171,18 @@ class HexaApi {
     required String itemName,
     required double qty,
     required String entryDateIso,
+    String? supplierId,
+    String? catalogVariantId,
   }) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/businesses/$businessId/entries/check-duplicate',
-      data: {'item_name': itemName, 'qty': qty, 'entry_date': entryDateIso},
+      data: {
+        'item_name': itemName,
+        'qty': qty,
+        'entry_date': entryDateIso,
+        if (supplierId != null && supplierId.isNotEmpty) 'supplier_id': supplierId,
+        if (catalogVariantId != null && catalogVariantId.isNotEmpty) 'catalog_variant_id': catalogVariantId,
+      },
     );
     return res.data ?? {};
   }
@@ -352,6 +360,11 @@ class HexaApi {
     return res.data ?? {};
   }
 
+  Future<Map<String, dynamic>> getCatalogItem({required String businessId, required String itemId}) async {
+    final res = await _dio.get<Map<String, dynamic>>('/v1/businesses/$businessId/catalog-items/$itemId');
+    return res.data ?? {};
+  }
+
   Future<Map<String, dynamic>> updateCatalogItem({
     required String businessId,
     required String itemId,
@@ -372,6 +385,109 @@ class HexaApi {
 
   Future<void> deleteCatalogItem({required String businessId, required String itemId}) async {
     await _dio.delete<void>('/v1/businesses/$businessId/catalog-items/$itemId');
+  }
+
+  Future<Map<String, dynamic>> catalogItemInsights({
+    required String businessId,
+    required String itemId,
+    required String from,
+    required String to,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/catalog-items/$itemId/insights',
+      queryParameters: {'from': from, 'to': to},
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> categoryInsights({
+    required String businessId,
+    required String categoryId,
+    required String from,
+    required String to,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/item-categories/$categoryId/insights',
+      queryParameters: {'from': from, 'to': to},
+    );
+    return res.data ?? {};
+  }
+
+  Future<List<Map<String, dynamic>>> catalogItemLines({
+    required String businessId,
+    required String itemId,
+    required String from,
+    required String to,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    final res = await _dio.get<dynamic>(
+      '/v1/businesses/$businessId/catalog-items/$itemId/lines',
+      queryParameters: {
+        'from': from,
+        'to': to,
+        'limit': limit,
+        'offset': offset,
+      },
+    );
+    final data = res.data;
+    if (data is! List) return [];
+    return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> listCatalogVariants({
+    required String businessId,
+    required String itemId,
+  }) async {
+    try {
+      final res = await _dio.get<dynamic>(
+        '/v1/businesses/$businessId/catalog-items/$itemId/variants',
+      );
+      final data = res.data;
+      if (data is! List) return [];
+      return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } on DioException catch (e) {
+      // Current server returns 200 (maybe empty). A 404 here usually means the
+      // running API is older than this client (route not registered) — treat as no variants.
+      if (e.response?.statusCode == 404) return [];
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> createCatalogVariant({
+    required String businessId,
+    required String itemId,
+    required String name,
+    double? defaultKgPerBag,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/catalog-items/$itemId/variants',
+      data: {
+        'name': name,
+        if (defaultKgPerBag != null) 'default_kg_per_bag': defaultKgPerBag,
+      },
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> updateCatalogVariant({
+    required String businessId,
+    required String variantId,
+    String? name,
+    double? defaultKgPerBag,
+  }) async {
+    final res = await _dio.patch<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/catalog-variants/$variantId',
+      data: {
+        if (name != null) 'name': name,
+        if (defaultKgPerBag != null) 'default_kg_per_bag': defaultKgPerBag,
+      },
+    );
+    return res.data ?? {};
+  }
+
+  Future<void> deleteCatalogVariant({required String businessId, required String variantId}) async {
+    await _dio.delete<void>('/v1/businesses/$businessId/catalog-variants/$variantId');
   }
 
   Future<Map<String, dynamic>> contactsSearch({required String businessId, required String query}) async {
@@ -516,6 +632,18 @@ class HexaApi {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/businesses/$businessId/ai/chat',
       data: {'messages': messages},
+    );
+    return res.data ?? {};
+  }
+
+  /// Structured intent JSON (server-side; increments usage counter when AI enabled).
+  Future<Map<String, dynamic>> aiIntent({
+    required String businessId,
+    required String text,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/ai/intent',
+      data: {'text': text},
     );
     return res.data ?? {};
   }

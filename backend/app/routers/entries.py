@@ -1,6 +1,5 @@
 import uuid
 from datetime import date
-from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -24,7 +23,7 @@ from app.schemas.entries import (
     ParseDraftResponse,
 )
 from app.services.catalog_resolution import resolve_catalog_items_on_entry
-from app.services.entry_logic import apply_computed_landings, entry_price_warnings, find_duplicates, line_profit
+from app.services.entry_logic import apply_computed_landings, enrich_line_quantities, entry_line_profit, entry_price_warnings, find_duplicates
 
 router = APIRouter(prefix="/v1/businesses/{business_id}/entries", tags=["entries"])
 
@@ -37,10 +36,14 @@ def _line_to_out(line: EntryLineItem) -> EntryLineOut:
     return EntryLineOut(
         id=line.id,
         catalog_item_id=line.catalog_item_id,
+        catalog_variant_id=line.catalog_variant_id,
         item_name=line.item_name,
         category=line.category,
         qty=float(line.qty),
         unit=line.unit,
+        bags=float(line.bags) if line.bags is not None else None,
+        kg_per_bag=float(line.kg_per_bag) if line.kg_per_bag is not None else None,
+        qty_kg=float(line.qty_kg) if line.qty_kg is not None else None,
         buy_price=float(line.buy_price),
         landing_cost=float(line.landing_cost),
         selling_price=float(line.selling_price) if line.selling_price is not None else None,
@@ -149,21 +152,24 @@ async def create_entry(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     body = apply_computed_landings(body)
+    enriched = [enrich_line_quantities(li) for li in body.lines]
+    body = body.model_copy(update={"lines": enriched})
 
     preview_lines: list[EntryLineOut] = []
     for li in body.lines:
-        qty = Decimal(str(li.qty))
-        landing = Decimal(str(li.landing_cost))
-        selling = Decimal(str(li.selling_price)) if li.selling_price is not None else None
-        prof = line_profit(qty, landing, selling)
+        prof = entry_line_profit(li)
         preview_lines.append(
             EntryLineOut(
                 id=None,
                 catalog_item_id=li.catalog_item_id,
+                catalog_variant_id=li.catalog_variant_id,
                 item_name=li.item_name,
                 category=li.category,
                 qty=float(li.qty),
                 unit=li.unit,
+                bags=li.bags,
+                kg_per_bag=li.kg_per_bag,
+                qty_kg=li.qty_kg,
                 buy_price=float(li.buy_price),
                 landing_cost=float(li.landing_cost),
                 selling_price=float(li.selling_price) if li.selling_price is not None else None,
@@ -197,7 +203,15 @@ async def create_entry(
     dup_ids: list[uuid.UUID] = []
     for li in body.lines:
         dup_ids.extend(
-            await find_duplicates(db, business_id, li.item_name, li.qty, body.entry_date)
+            await find_duplicates(
+                db,
+                business_id,
+                li.item_name,
+                li.qty,
+                body.entry_date,
+                supplier_id=body.supplier_id,
+                catalog_variant_id=li.catalog_variant_id,
+            )
         )
     matching_entry_ids = list(dict.fromkeys(dup_ids))
     if matching_entry_ids and not body.force_duplicate:
@@ -231,5 +245,13 @@ async def check_duplicate(
     _m: Annotated[Membership, Depends(require_membership)],
 ):
     del _m
-    ids = await find_duplicates(db, business_id, body.item_name, body.qty, body.entry_date)
+    ids = await find_duplicates(
+        db,
+        business_id,
+        body.item_name,
+        body.qty,
+        body.entry_date,
+        supplier_id=body.supplier_id,
+        catalog_variant_id=body.catalog_variant_id,
+    )
     return DuplicateCheckResponse(duplicate=len(ids) > 0, matching_entry_ids=ids)

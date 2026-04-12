@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,7 +22,8 @@ class _ChatMsg {
   final DateTime time;
 }
 
-/// WhatsApp-style AI assistant: voice preview + typed lines (full STT on server when enabled).
+/// AI tab: **push-to-talk only** — no always-on mic (battery, cost, privacy).
+/// Flow: Tap mic → short session → STT (when server enabled) → intent → preview → confirm in Entries (never auto-save).
 class VoicePage extends ConsumerStatefulWidget {
   const VoicePage({super.key});
 
@@ -29,25 +31,32 @@ class VoicePage extends ConsumerStatefulWidget {
   ConsumerState<VoicePage> createState() => _VoicePageState();
 }
 
-class _VoicePageState extends ConsumerState<VoicePage> {
+enum _AiPhase { idle, listening, processing, preview, error }
+
+class _VoicePageState extends ConsumerState<VoicePage> with SingleTickerProviderStateMixin {
   final _msgs = <_ChatMsg>[];
   final _textCtrl = TextEditingController();
   final _scroll = ScrollController();
   bool _recording = false;
+  _AiPhase _phase = _AiPhase.idle;
+  Timer? _maxListenTimer;
+  late final AnimationController _pulse;
+
+  static const _maxListenDuration = Duration(seconds: 18);
 
   @override
   void initState() {
     super.initState();
+    _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
     _msgs.add(
       _ChatMsg(
         text:
-            '👋 Hi! I\'m your HEXA purchase assistant.\nYou can talk to me in Malayalam or English.\n\n'
-            'Try saying:\n'
-            '• "Rice 50kg ₹42 Ravi"\n'
-            '• "Overview this month"\n'
-            '• "Is ₹1200 good for oil?"\n'
-            '• "Best supplier for rice"\n\n'
-            'After the AI agent is wired, confirmations (Save / Edit / Cancel) will show on parsed entries.',
+            '👋 HEXA AI\n\n'
+            '**How it works**\n'
+            '• **Tap the mic** — we listen only during a short session (not always-on).\n'
+            '• **Type** below — same intent pipeline, often lowest cost.\n'
+            '• **Malayalam or English** — preview shows structured fields; **nothing saves** until you confirm in **Entries**.\n\n'
+            '**Wake word “Hey Hexa”** can come later (needs OS/device integration). For now: **tap to speak**.',
         isUser: false,
         time: DateTime.now(),
       ),
@@ -56,33 +65,78 @@ class _VoicePageState extends ConsumerState<VoicePage> {
 
   @override
   void dispose() {
+    _maxListenTimer?.cancel();
+    _pulse.dispose();
     _textCtrl.dispose();
     _scroll.dispose();
     super.dispose();
   }
 
+  void _stopListeningAnimation() {
+    _pulse.stop();
+    _pulse.reset();
+  }
+
+  void _startListeningAnimation() {
+    _pulse.repeat(reverse: true);
+  }
+
+  /// One-shot voice session: starts on tap, ends when STT returns or max duration (safety).
   Future<void> _sendVoicePreview() async {
     final session = ref.read(sessionProvider);
     if (session == null) return;
+    if (_recording || _phase == _AiPhase.processing) return;
+
+    _maxListenTimer?.cancel();
     setState(() {
       _recording = true;
-      _msgs.add(_ChatMsg(text: '🎤 Listening…', isUser: true, isVoice: true, time: DateTime.now()));
+      _phase = _AiPhase.listening;
+      _msgs.add(_ChatMsg(text: '🎤 Listening… (tap mic only — short session)', isUser: true, isVoice: true, time: DateTime.now()));
     });
+    _startListeningAnimation();
     _scrollToEnd();
+
+    _maxListenTimer = Timer(_maxListenDuration, () {
+      if (!mounted) return;
+      if (_recording) {
+        setState(() {
+          _recording = false;
+          _phase = _AiPhase.error;
+          _stopListeningAnimation();
+          if (_msgs.isNotEmpty && _msgs.last.isVoice) _msgs.removeLast();
+          _msgs.add(
+            _ChatMsg(
+              text: '⏱️ Session timed out — tap the mic again. (We never keep the mic open in the background.)',
+              isUser: false,
+              time: DateTime.now(),
+            ),
+          );
+        });
+        _scrollToEnd();
+      }
+    });
+
     try {
+      setState(() => _phase = _AiPhase.processing);
       final r = await ref.read(hexaApiProvider).mediaVoicePreview(businessId: session.primaryBusiness.id);
       if (!mounted) return;
+      _maxListenTimer?.cancel();
       final note = r['note']?.toString() ?? 'Voice preview OK';
       setState(() {
         _recording = false;
+        _stopListeningAnimation();
+        _phase = _AiPhase.preview;
         _msgs.removeLast();
-        _msgs.add(_ChatMsg(text: '🎤 Voice note sent', isUser: true, isVoice: true, time: DateTime.now()));
+        _msgs.add(_ChatMsg(text: '🎤 Voice session ended', isUser: true, isVoice: true, time: DateTime.now()));
         _msgs.add(
           _ChatMsg(
             text:
-                '✅ Got it!\n$note\n\n'
-                '⚠️ Full STT → parse → save runs when the server pipeline is enabled.\n'
-                '💡 Tip: type a line in the box for instant testing.',
+                '✅ **Preview (draft)**\n'
+                '• Transcript: (when STT is enabled on server)\n'
+                '• $note\n\n'
+                '**EN:** Review numbers, then **Entries → Add → Preview → Save**.\n'
+                '**ML:** സംഖ്യകൾ പരിശോധിച്ച് എൻട്രികളിൽ സേവ് ചെയ്യുക — യാന്ത്രിക സേവ് ഇല്ല.\n\n'
+                '❌ No auto-save. ✅ Confirm first.',
             isUser: false,
             time: DateTime.now(),
           ),
@@ -90,16 +144,20 @@ class _VoicePageState extends ConsumerState<VoicePage> {
       });
     } catch (e) {
       if (mounted) {
+        _maxListenTimer?.cancel();
         setState(() {
           _recording = false;
+          _stopListeningAnimation();
+          _phase = _AiPhase.error;
           if (_msgs.isNotEmpty && _msgs.last.isVoice) _msgs.removeLast();
-          _msgs.add(_ChatMsg(text: 'Could not reach voice preview: $e', isUser: false, time: DateTime.now()));
+          _msgs.add(_ChatMsg(text: 'Voice error: $e', isUser: false, time: DateTime.now()));
         });
       }
     }
     _scrollToEnd();
   }
 
+  /// Single intent call (lower cost than chat + intent).
   Future<void> _sendText() async {
     final t = _textCtrl.text.trim();
     if (t.isEmpty) return;
@@ -107,26 +165,37 @@ class _VoicePageState extends ConsumerState<VoicePage> {
     setState(() {
       _msgs.add(_ChatMsg(text: t, isUser: true, time: now));
       _textCtrl.clear();
+      _phase = _AiPhase.processing;
     });
     _scrollToEnd();
     final session = ref.read(sessionProvider);
     if (session == null) return;
     try {
-      final r = await ref.read(hexaApiProvider).aiChat(
-            businessId: session.primaryBusiness.id,
-            messages: [
-              {'role': 'user', 'content': t},
-            ],
-          );
+      final intent = await ref.read(hexaApiProvider).aiIntent(businessId: session.primaryBusiness.id, text: t);
       if (!mounted) return;
-      final reply = r['reply']?.toString() ?? '—';
+      final reply = intent['reply_text']?.toString() ?? '—';
+      final data = intent['data'];
+      final missing = (intent['missing_fields'] as List<dynamic>?) ?? [];
+      final used = intent['tokens_used_month'];
+      var block = '🧠 **Intent preview** (draft)\n\n$reply\n';
+      if (data is Map) {
+        block +=
+            '\n```json\n${const JsonEncoder.withIndent('  ').convert(Map<String, dynamic>.from(Map<dynamic, dynamic>.from(data)))}\n```';
+      }
+      if (missing.isNotEmpty) {
+        block += '\n\n⚠️ Missing: ${missing.join(', ')} — add in text or Entries.';
+      }
+      if (used != null) block += '\n\n📊 AI usage (month): $used';
+      block += '\n\n**Did we get ₹ / qty wrong?** Edit and send again, or fix in Entries.';
       setState(() {
-        _msgs.add(_ChatMsg(text: reply, isUser: false, time: DateTime.now()));
+        _phase = _AiPhase.preview;
+        _msgs.add(_ChatMsg(text: block, isUser: false, time: DateTime.now()));
       });
     } catch (e) {
       if (mounted) {
         setState(() {
-          _msgs.add(_ChatMsg(text: 'Could not reach HEXA AI: $e', isUser: false, time: DateTime.now()));
+          _phase = _AiPhase.error;
+          _msgs.add(_ChatMsg(text: 'Request failed: $e', isUser: false, time: DateTime.now()));
         });
       }
     }
@@ -145,11 +214,34 @@ class _VoicePageState extends ConsumerState<VoicePage> {
     });
   }
 
+  void _clearPreview() {
+    setState(() => _phase = _AiPhase.idle);
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
     final timeFmt = DateFormat.jm();
+
+    String phaseLabel;
+    switch (_phase) {
+      case _AiPhase.idle:
+        phaseLabel = 'Tap mic or type — not always listening';
+        break;
+      case _AiPhase.listening:
+        phaseLabel = 'Short listen session…';
+        break;
+      case _AiPhase.processing:
+        phaseLabel = 'Processing…';
+        break;
+      case _AiPhase.preview:
+        phaseLabel = 'Preview — confirm in Entries';
+        break;
+      case _AiPhase.error:
+        phaseLabel = 'Try again';
+        break;
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -165,9 +257,9 @@ class _VoicePageState extends ConsumerState<VoicePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('HEXA Assistant', style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                  Text('HEXA AI', style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
                   Text(
-                    'Online · Replies instantly',
+                    phaseLabel,
                     style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
                   ),
                 ],
@@ -179,14 +271,107 @@ class _VoicePageState extends ConsumerState<VoicePage> {
           IconButton(
             tooltip: 'Settings',
             icon: const Icon(Icons.settings_outlined),
-            onPressed: () => context.push('/settings'),
+            onPressed: () => context.go('/settings'),
           ),
         ],
       ),
       body: Column(
         children: [
-          if (_recording)
-            const LinearProgressIndicator(minHeight: 2),
+          if (_phase == _AiPhase.processing) const LinearProgressIndicator(minHeight: 2),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+            child: Card(
+              elevation: 0,
+              color: cs.surfaceContainerHighest,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.shield_outlined, color: cs.primary, size: 22),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Controlled voice — listen only when you tap',
+                            style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'No always-on mic · lower API cost · less noise · you confirm before save.',
+                      style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton.tonalIcon(
+                      icon: Icon(_recording ? Icons.graphic_eq_rounded : Icons.mic_rounded, size: 26),
+                      label: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        child: Text(
+                          _recording ? 'Listening…' : 'Tap to speak (short session)',
+                          style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                      onPressed: _recording || _phase == _AiPhase.processing ? null : () => unawaited(_sendVoicePreview()),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ActionChip(
+                  avatar: const Icon(Icons.add_circle_outline, size: 18),
+                  label: const Text('Add entry'),
+                  onPressed: () => context.go('/entries'),
+                ),
+                ActionChip(
+                  avatar: const Icon(Icons.insights_outlined, size: 18),
+                  label: const Text('Reports'),
+                  onPressed: () => context.go('/analytics'),
+                ),
+                ActionChip(
+                  avatar: const Icon(Icons.home_outlined, size: 18),
+                  label: const Text('Home'),
+                  onPressed: () => context.go('/home'),
+                ),
+              ],
+            ),
+          ),
+          if (_phase == _AiPhase.preview)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _clearPreview,
+                      child: const Text('Dismiss'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () {
+                        context.go('/entries');
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Entries → + → Preview → Save. No auto-save from AI.')),
+                        );
+                      },
+                      child: const Text('Open Entries'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Expanded(
             child: Container(
               color: cs.surfaceContainerHighest.withValues(alpha: 0.2),
@@ -298,10 +483,17 @@ class _VoicePageState extends ConsumerState<VoicePage> {
                 padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
                 child: Row(
                   children: [
-                    IconButton.filledTonal(
-                      tooltip: 'Voice note (preview)',
-                      icon: Icon(_recording ? Icons.graphic_eq_rounded : Icons.mic_rounded),
-                      onPressed: _recording ? null : () => unawaited(_sendVoicePreview()),
+                    ScaleTransition(
+                      scale: Tween<double>(begin: 0.94, end: 1.0).animate(
+                        CurvedAnimation(parent: _pulse, curve: Curves.easeInOut),
+                      ),
+                      child: IconButton.filledTonal(
+                        tooltip: 'Push-to-talk (short session)',
+                        icon: Icon(_recording ? Icons.graphic_eq_rounded : Icons.mic_rounded),
+                        onPressed: _recording || _phase == _AiPhase.processing
+                            ? null
+                            : () => unawaited(_sendVoicePreview()),
+                      ),
                     ),
                     const SizedBox(width: 4),
                     Expanded(
@@ -312,7 +504,9 @@ class _VoicePageState extends ConsumerState<VoicePage> {
                         textInputAction: TextInputAction.send,
                         onSubmitted: (_) => unawaited(_sendText()),
                         decoration: InputDecoration(
-                          hintText: 'Ask anything…',
+                          hintText: _phase == _AiPhase.processing
+                              ? 'Working…'
+                              : 'Type Malayalam or English…',
                           filled: true,
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
                           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -320,7 +514,7 @@ class _VoicePageState extends ConsumerState<VoicePage> {
                       ),
                     ),
                     IconButton.filled(
-                      onPressed: () => unawaited(_sendText()),
+                      onPressed: _phase == _AiPhase.processing ? null : () => unawaited(_sendText()),
                       icon: const Icon(Icons.send_rounded),
                     ),
                   ],

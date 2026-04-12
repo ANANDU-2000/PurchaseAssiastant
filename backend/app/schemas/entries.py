@@ -1,8 +1,13 @@
+from __future__ import annotations
+
 import uuid
 from datetime import date
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+# Units: legacy box maps to piece in UI; bag = wholesale bags × kg_per_bag
+UNIT_PATTERN = r"^(kg|box|piece|bag)$"
 
 
 class EntryLineInput(BaseModel):
@@ -10,13 +15,27 @@ class EntryLineInput(BaseModel):
         default=None,
         description="Optional master catalog row; when set, server fills item_name/category/unit from catalog.",
     )
+    catalog_variant_id: uuid.UUID | None = Field(
+        default=None,
+        description="Optional variant (e.g. Basmati under Rice).",
+    )
     item_name: str
     category: str | None = None
     qty: float = Field(gt=0)
-    unit: str = Field(pattern="^(kg|box|piece)$")
+    unit: str = Field(pattern=UNIT_PATTERN)
     buy_price: float = Field(ge=0)
-    landing_cost: float = Field(ge=0, description="Manual landing cost per purchase unit")
-    selling_price: float | None = Field(default=None, ge=0)
+    landing_cost: float = Field(ge=0, description="Per purchase unit: per kg, per piece, or per bag when unit=bag")
+    selling_price: float | None = Field(default=None, ge=0, description="Per kg when unit=bag; same unit as qty otherwise")
+    bags: float | None = Field(default=None, gt=0, description="Redundant with qty when unit=bag")
+    kg_per_bag: float | None = Field(default=None, gt=0)
+    qty_kg: float | None = Field(default=None, gt=0, description="Total kg; computed for bag lines when possible")
+
+    @model_validator(mode="after")
+    def validate_bag_fields(self) -> EntryLineInput:
+        if self.unit == "bag":
+            if self.kg_per_bag is None or self.kg_per_bag <= 0:
+                raise ValueError("kg_per_bag is required and must be > 0 when unit is bag")
+        return self
 
 
 class EntryCreateRequest(BaseModel):
@@ -41,10 +60,14 @@ class EntryCreateRequest(BaseModel):
 class EntryLineOut(BaseModel):
     id: uuid.UUID | None = None
     catalog_item_id: uuid.UUID | None = None
+    catalog_variant_id: uuid.UUID | None = None
     item_name: str
     category: str | None
     qty: float
     unit: str
+    bags: float | None = None
+    kg_per_bag: float | None = None
+    qty_kg: float | None = None
     buy_price: float
     landing_cost: float
     selling_price: float | None
@@ -76,6 +99,8 @@ class DuplicateCheckRequest(BaseModel):
     item_name: str
     qty: float
     entry_date: date
+    supplier_id: uuid.UUID | None = None
+    catalog_variant_id: uuid.UUID | None = None
 
 
 class DuplicateCheckResponse(BaseModel):

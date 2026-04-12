@@ -21,42 +21,49 @@ class SecureTokenStore {
     ),
   );
 
+  /// Web: do **not** use [FlutterSecureStorage]. Its web implementation relies on
+  /// Web Crypto / IndexedDB paths that can throw [OperationError] in some browser
+  /// contexts. Tokens on web are stored only in [SharedPreferences] (localStorage).
   Future<void> write({required String access, required String refresh}) async {
+    if (kIsWeb) {
+      final p = _prefs;
+      if (p == null) return;
+      await p.setString(_accessBk, access);
+      await p.setString(_refreshBk, refresh);
+      return;
+    }
     await Future.wait([
       _s.write(key: _access, value: access),
       _s.write(key: _refresh, value: refresh),
     ]);
-    if (kIsWeb) {
-      final p = _prefs;
-      if (p != null) {
-        await p.setString(_accessBk, access);
-        await p.setString(_refreshBk, refresh);
-      }
-    }
   }
 
   Future<({String? access, String? refresh})> read() async {
-    var access = await _s.read(key: _access);
-    var refresh = await _s.read(key: _refresh);
     if (kIsWeb) {
       final p = _prefs;
-      if (p != null) {
-        access ??= p.getString(_accessBk);
-        refresh ??= p.getString(_refreshBk);
-      }
+      if (p == null) return (access: null, refresh: null);
+      return (
+        access: p.getString(_accessBk),
+        refresh: p.getString(_refreshBk),
+      );
     }
+    final access = await _s.read(key: _access);
+    final refresh = await _s.read(key: _refresh);
     return (access: access, refresh: refresh);
   }
 
   Future<void> clear() async {
+    if (kIsWeb) {
+      final p = _prefs;
+      if (p != null) {
+        await p.remove(_accessBk);
+        await p.remove(_refreshBk);
+      }
+      return;
+    }
     await Future.wait([
       _s.delete(key: _access),
       _s.delete(key: _refresh),
     ]);
-    final p = _prefs;
-    if (p != null) {
-      await p.remove(_accessBk);
-      await p.remove(_refreshBk);
-    }
   }
 }

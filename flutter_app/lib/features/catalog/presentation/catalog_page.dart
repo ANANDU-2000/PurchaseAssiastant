@@ -2,9 +2,11 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/catalog_providers.dart';
+import '../../../core/theme/hexa_colors.dart';
 
 /// Master categories + catalog items (per business).
 class CatalogPage extends ConsumerStatefulWidget {
@@ -16,6 +18,7 @@ class CatalogPage extends ConsumerStatefulWidget {
 
 class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProviderStateMixin {
   late final TabController _tabs;
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -28,6 +31,32 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
   void dispose() {
     _tabs.dispose();
     super.dispose();
+  }
+
+  bool _matches(String? name) {
+    final q = _searchQuery.trim().toLowerCase();
+    if (q.isEmpty) return true;
+    return (name ?? '').toLowerCase().contains(q);
+  }
+
+  String _inr(num? n) {
+    if (n == null) return '—';
+    return NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(n);
+  }
+
+  num? _num(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v;
+    return num.tryParse(v.toString());
+  }
+
+  String? _existingItemIdFrom409(DioException e) {
+    if (e.response?.statusCode != 409) return null;
+    final d = e.response?.data;
+    if (d is Map && d['detail'] is Map) {
+      return (d['detail'] as Map)['existing_item_id']?.toString();
+    }
+    return null;
   }
 
   @override
@@ -47,11 +76,30 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabs,
+      body: Column(
         children: [
-          _categoriesBody(context),
-          _itemsBody(context),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: TextField(
+              decoration: InputDecoration(
+                hintText: 'Search by name',
+                prefixIcon: const Icon(Icons.search_rounded),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                isDense: true,
+              ),
+              onChanged: (v) => setState(() => _searchQuery = v),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: TabBarView(
+              controller: _tabs,
+              children: [
+                _categoriesBody(context),
+                _itemsBody(context),
+              ],
+            ),
+          ),
         ],
       ),
       floatingActionButton: _tabs.index == 0
@@ -70,56 +118,124 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
 
   Widget _categoriesBody(BuildContext context) {
     final async = ref.watch(itemCategoriesListProvider);
+    final itemsAsync = ref.watch(catalogItemsListProvider);
+    final range = catalogInsightsDefaultRange();
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('Error: $e')),
-      data: (list) => RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(itemCategoriesListProvider);
-          await ref.read(itemCategoriesListProvider.future);
-        },
-        child: list.isEmpty
-            ? ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: const [
-                  SizedBox(height: 120),
-                  Center(child: Text('No categories yet. Tap Category to add one.')),
-                ],
-              )
-            : ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
-                itemCount: list.length,
-                itemBuilder: (context, i) {
-                  final c = list[i];
-                  final id = c['id']?.toString() ?? '';
-                  final name = c['name']?.toString() ?? '';
-                  return Card(
-                    child: ListTile(
-                      title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit_outlined),
-                            onPressed: () => _editCategory(context, id, name),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline),
-                            onPressed: () => _deleteCategory(context, id, name),
-                          ),
-                        ],
-                      ),
+      data: (list) {
+        final items = itemsAsync.maybeWhen(data: (x) => x, orElse: () => <Map<String, dynamic>>[]);
+        final filtered = list.where((c) => _matches(c['name']?.toString())).toList();
+        return RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(itemCategoriesListProvider);
+            ref.invalidate(catalogItemsListProvider);
+            await ref.read(itemCategoriesListProvider.future);
+            await ref.read(catalogItemsListProvider.future);
+          },
+          child: filtered.isEmpty
+              ? ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(24, 48, 24, 88),
+                  children: [
+                    Icon(Icons.folder_outlined, size: 48, color: Theme.of(context).colorScheme.primary),
+                    const SizedBox(height: 16),
+                    Text(
+                      list.isEmpty ? 'No categories yet' : 'No matches',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
                     ),
-                  );
-                },
-              ),
-      ),
+                    const SizedBox(height: 8),
+                    Text(
+                      list.isEmpty
+                          ? 'Add a category to organize items, or create categories while recording a purchase.'
+                          : 'Try a different search.',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: HexaColors.textSecondary),
+                    ),
+                  ],
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
+                  itemCount: filtered.length,
+                  itemBuilder: (context, i) {
+                    final c = filtered[i];
+                    final id = c['id']?.toString() ?? '';
+                    final name = c['name']?.toString() ?? '';
+                    final itemCount = items.where((it) => it['category_id']?.toString() == id).length;
+                    final insKey = '$id|${range.from}|${range.to}';
+                    final ins = ref.watch(categoryInsightsProvider(insKey));
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      child: InkWell(
+                        onTap: () => context.push('/catalog/category/$id'),
+                        borderRadius: BorderRadius.circular(12),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'Items in catalog: $itemCount',
+                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: HexaColors.textSecondary),
+                                    ),
+                                    ins.when(
+                                      loading: () => const Padding(
+                                        padding: EdgeInsets.only(top: 8),
+                                        child: LinearProgressIndicator(),
+                                      ),
+                                      error: (_, __) => const SizedBox.shrink(),
+                                      data: (m) {
+                                        final tp = m['total_profit'];
+                                        final top = m['top_item_name']?.toString();
+                                        final lines = m['linked_line_count'] ?? 0;
+                                        return Padding(
+                                          padding: const EdgeInsets.only(top: 8),
+                                          child: Text(
+                                            'Last 90d: ${_inr(_num(tp))} profit · $lines lines${top != null ? ' · top: $top' : ''}',
+                                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                  height: 1.35,
+                                                ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              PopupMenuButton<String>(
+                                onSelected: (v) {
+                                  if (v == 'edit') _editCategory(context, id, name);
+                                  if (v == 'del') _deleteCategory(context, id, name);
+                                },
+                                itemBuilder: (ctx) => const [
+                                  PopupMenuItem(value: 'edit', child: Text('Rename')),
+                                  PopupMenuItem(value: 'del', child: Text('Delete')),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        );
+      },
     );
   }
 
   Widget _itemsBody(BuildContext context) {
     final catsAsync = ref.watch(itemCategoriesListProvider);
     final itemsAsync = ref.watch(catalogItemsListProvider);
+    final range = catalogInsightsDefaultRange();
     return catsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('$e')),
@@ -131,52 +247,108 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
             final catName = <String, String>{
               for (final c in cats) c['id'].toString(): c['name'].toString(),
             };
+            final filtered = items.where((it) => _matches(it['name']?.toString())).toList();
             return RefreshIndicator(
               onRefresh: () async {
                 ref.invalidate(itemCategoriesListProvider);
                 ref.invalidate(catalogItemsListProvider);
                 await ref.read(catalogItemsListProvider.future);
               },
-              child: items.isEmpty
+              child: filtered.isEmpty
                   ? ListView(
                       physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(24, 48, 24, 88),
                       children: [
-                        const SizedBox(height: 120),
-                        Center(
-                          child: Text(
-                            cats.isEmpty ? 'Add a category first, then catalog items.' : 'No catalog items yet.',
-                            textAlign: TextAlign.center,
-                          ),
+                        Icon(Icons.inventory_2_outlined, size: 48, color: Theme.of(context).colorScheme.primary),
+                        const SizedBox(height: 16),
+                        Text(
+                          items.isEmpty ? 'No catalog items yet' : 'No matches',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          items.isEmpty
+                              ? 'Add items here to get profit and usage on this screen — or create them from a purchase entry.'
+                              : 'Try a different search.',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: HexaColors.textSecondary),
                         ),
                       ],
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
-                      itemCount: items.length,
+                      itemCount: filtered.length,
                       itemBuilder: (context, i) {
-                        final it = items[i];
+                        final it = filtered[i];
                         final id = it['id']?.toString() ?? '';
                         final cid = it['category_id']?.toString() ?? '';
                         final name = it['name']?.toString() ?? '';
                         final du = it['default_unit']?.toString();
-                        final subtitle =
+                        final catLine =
                             '${catName[cid] ?? cid}${du != null && du.isNotEmpty ? ' · default $du' : ''}';
+                        final insKey = '$id|${range.from}|${range.to}';
+                        final ins = ref.watch(catalogItemInsightsProvider(insKey));
                         return Card(
-                          child: ListTile(
-                            title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                            subtitle: Text(subtitle),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.edit_outlined),
-                                  onPressed: () => _editItem(context, cats, it),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline),
-                                  onPressed: () => _deleteItem(context, id, name),
-                                ),
-                              ],
+                          margin: const EdgeInsets.only(bottom: 10),
+                          child: InkWell(
+                            onTap: () => context.push('/catalog/item/$id'),
+                            borderRadius: BorderRadius.circular(12),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          catLine,
+                                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: HexaColors.textSecondary),
+                                        ),
+                                        ins.when(
+                                          loading: () => const Padding(
+                                            padding: EdgeInsets.only(top: 8),
+                                            child: LinearProgressIndicator(),
+                                          ),
+                                          error: (_, __) => const SizedBox.shrink(),
+                                          data: (m) {
+                                            final lines = m['line_count'] ?? 0;
+                                            final profit = m['total_profit'];
+                                            final al = m['avg_landing'];
+                                            final ase = m['avg_selling'];
+                                            final last = m['last_entry_date']?.toString();
+                                            return Padding(
+                                              padding: const EdgeInsets.only(top: 8),
+                                              child: Text(
+                                                'Last 90d: $lines lines · ${_inr(_num(profit))} profit · avg ${_inr(_num(al))} → ${_inr(_num(ase))}'
+                                                '${last != null ? ' · last $last' : ''}',
+                                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                      height: 1.35,
+                                                    ),
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuButton<String>(
+                                    onSelected: (v) {
+                                      if (v == 'edit') _editItem(context, cats, it);
+                                      if (v == 'del') _deleteItem(context, id, name);
+                                    },
+                                    itemBuilder: (ctx) => const [
+                                      PopupMenuItem(value: 'edit', child: Text('Edit')),
+                                      PopupMenuItem(value: 'del', child: Text('Delete')),
+                                    ],
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         );
@@ -362,6 +534,22 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Item created')));
       }
     } on DioException catch (e) {
+      final existing = _existingItemIdFrom409(e);
+      if (existing != null && context.mounted) {
+        final go = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Item already exists'),
+            content: const Text('Open the existing catalog item?'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Open')),
+            ],
+          ),
+        );
+        if (go == true && context.mounted) context.push('/catalog/item/$existing');
+        return;
+      }
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
       }
@@ -438,6 +626,22 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved')));
       }
     } on DioException catch (e) {
+      final existing = _existingItemIdFrom409(e);
+      if (existing != null && context.mounted) {
+        final go = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Name already used'),
+            content: const Text('Another item in that category has this name. Open it?'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Open')),
+            ],
+          ),
+        );
+        if (go == true && context.mounted) context.push('/catalog/item/$existing');
+        return;
+      }
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
       }

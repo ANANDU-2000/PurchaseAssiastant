@@ -137,6 +137,41 @@ def test_confirm_duplicate_409_then_force_succeeds():
     assert third.status_code == 201, third.text
 
 
+def test_preview_confirm_with_supplier_and_transport():
+    h, bid = _register_and_business()
+    sr = client.post(
+        f"/v1/businesses/{bid}/suppliers",
+        headers=h,
+        json={"name": "Seed Supplier Z", "phone": "+919876543210"},
+    )
+    assert sr.status_code == 201, sr.text
+    sid = sr.json()["id"]
+    body = {
+        "entry_date": "2026-04-14",
+        "supplier_id": sid,
+        "transport_cost": 10.0,
+        "confirm": False,
+        "lines": [
+            {
+                "item_name": "Rice",
+                "category": "Staples",
+                "qty": 50,
+                "unit": "kg",
+                "buy_price": 42,
+                "landing_cost": 42,
+                "selling_price": 48,
+            }
+        ],
+    }
+    pr = client.post(f"/v1/businesses/{bid}/entries", json=body, headers=h)
+    assert pr.status_code == 200, pr.text
+    pt = pr.json()["preview_token"]
+    body2 = {**body, "confirm": True, "preview_token": pt}
+    cr = client.post(f"/v1/businesses/{bid}/entries", json=body2, headers=h)
+    assert cr.status_code == 201, cr.text
+    assert cr.json().get("supplier_id") == sid
+
+
 def test_preview_splits_transport_across_lines():
     h, bid = _register_and_business()
     pr = client.post(

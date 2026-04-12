@@ -11,16 +11,18 @@ Cross-tenant operations: health of the product, cost control, compliance with fe
 
 ## Pages (Routes)
 
-| Path | Function |
-|------|----------|
-| `/` | Overview — DAU, entries/day, error rate, estimated API burn |
-| `/users` | Search users/businesses; suspend; impersonate read-only (optional) |
-| `/subscriptions` | Plan distribution, MRR, failed payments |
-| `/api-usage` | By provider: 360dialog, OpenAI, OCR, STT; cost estimates |
-| `/feature-flags` | Global defaults + per-business overrides (AI, Voice, OCR) |
-| `/logs` | Filter audit logs, webhook failures, job failures |
-| `/integrations` | Webhook URL status, last ping, rotate secret workflow |
-| `/settings` | Super admin profile, 2FA (future) |
+
+| Path             | Function                                                           |
+| ---------------- | ------------------------------------------------------------------ |
+| `/`              | Overview — DAU, entries/day, error rate, estimated API burn        |
+| `/users`         | Search users/businesses; suspend; impersonate read-only (optional) |
+| `/subscriptions` | Plan distribution, MRR, failed payments                            |
+| `/api-usage`     | By provider: 360dialog, OpenAI, OCR, STT; cost estimates           |
+| `/feature-flags` | Global defaults + per-business overrides (AI, Voice, OCR)          |
+| `/logs`          | Filter audit logs, webhook failures, job failures                  |
+| `/integrations`  | Webhook URL status, last ping, rotate secret workflow              |
+| `/settings`      | Super admin profile, 2FA (future)                                  |
+
 
 ## Data Sources
 
@@ -44,7 +46,7 @@ Cross-tenant operations: health of the product, cost control, compliance with fe
 ## RBAC
 
 - Only `super_admin` JWT can hit admin routes.
-- Owner/staff JWT receives **403** on `/v1/admin/*`.
+- Owner/staff JWT receives **403** on `/v1/admin/`*.
 
 ## Security
 

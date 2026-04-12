@@ -41,6 +41,27 @@ async def get_current_user(
     return user
 
 
+async def charge_ai_stub_turn(
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> User:
+    """Gate AI routes: feature flag + monthly token budget (stub accounting)."""
+    if not settings.enable_ai:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="AI is disabled for this deployment")
+    budget = user.ai_monthly_token_budget
+    used = user.ai_tokens_used_month or 0
+    if budget is not None and budget > 0 and used >= budget:
+        raise HTTPException(
+            status.HTTP_402_PAYMENT_REQUIRED,
+            detail="Monthly AI limit reached — use manual entry or ask an owner to raise the cap.",
+        )
+    user.ai_tokens_used_month = used + 48
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
 async def require_membership(
     business_id: uuid.UUID,
     user: Annotated[User, Depends(get_current_user)],

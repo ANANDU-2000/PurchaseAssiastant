@@ -10,7 +10,7 @@ class AppSettingsAction extends StatelessWidget {
     return IconButton(
       tooltip: 'Settings',
       icon: const Icon(Icons.settings_outlined),
-      onPressed: () => context.push('/settings'),
+      onPressed: () => context.go('/settings'),
     );
   }
 }

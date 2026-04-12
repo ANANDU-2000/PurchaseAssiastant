@@ -232,12 +232,14 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: searchQ.trim().isEmpty ? const Text('Entries') : Text('Entries · "$searchQ"'),
+        title: searchQ.trim().isEmpty
+            ? const Text('Purchase log')
+            : Text('Purchase log · "$searchQ"'),
         actions: [
           IconButton(
-            tooltip: 'Dashboard',
-            onPressed: () => context.go('/home'),
-            icon: const Icon(Icons.space_dashboard_rounded),
+            tooltip: 'Suppliers & contacts',
+            onPressed: () => context.push('/contacts'),
+            icon: const Icon(Icons.people_alt_outlined),
           ),
           const AppSettingsAction(),
           IconButton(
@@ -330,7 +332,7 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
                     await ref.read(entriesListProvider.future);
                   },
                   child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
                     itemCount: items.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 8),
                     itemBuilder: (context, i) {

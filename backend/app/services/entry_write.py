@@ -11,17 +11,21 @@ from sqlalchemy.orm import selectinload
 
 from app.models import Entry, EntryLineItem
 from app.schemas.entries import EntryCreateRequest, EntryLineOut, EntryOut
-from app.services.entry_logic import line_profit
+from app.services.entry_logic import enrich_line_quantities, entry_line_profit
 
 
 def _line_to_out(line: EntryLineItem) -> EntryLineOut:
     return EntryLineOut(
         id=line.id,
         catalog_item_id=line.catalog_item_id,
+        catalog_variant_id=line.catalog_variant_id,
         item_name=line.item_name,
         category=line.category,
         qty=float(line.qty),
         unit=line.unit,
+        bags=float(line.bags) if line.bags is not None else None,
+        kg_per_bag=float(line.kg_per_bag) if line.kg_per_bag is not None else None,
+        qty_kg=float(line.qty_kg) if line.qty_kg is not None else None,
         buy_price=float(line.buy_price),
         landing_cost=float(line.landing_cost),
         selling_price=float(line.selling_price) if line.selling_price is not None else None,
@@ -69,21 +73,39 @@ async def persist_confirmed_entry(
     db.add(entry)
     await db.flush()
 
-    for li in body.lines:
+    for raw in body.lines:
+        li = enrich_line_quantities(raw)
         qty = Decimal(str(li.qty))
         landing = Decimal(str(li.landing_cost))
         selling = Decimal(str(li.selling_price)) if li.selling_price is not None else None
-        prof = line_profit(qty, landing, selling)
-        base_unit = "kg" if li.unit == "kg" else "piece"
-        qty_base = qty if li.unit in ("kg", "piece") else qty
+        prof = entry_line_profit(li)
+
+        if li.unit == "bag":
+            qty_base = Decimal(str(li.qty_kg)) if li.qty_kg is not None else qty * Decimal(str(li.kg_per_bag or 0))
+            base_unit = "kg"
+        elif li.unit == "kg":
+            qty_base = qty
+            base_unit = "kg"
+        else:
+            qty_base = qty
+            base_unit = "piece"
+
+        bags_v = float(li.bags) if li.bags is not None else (float(li.qty) if li.unit == "bag" else None)
+        kg_pb = float(li.kg_per_bag) if li.kg_per_bag is not None else None
+        qkg = float(li.qty_kg) if li.qty_kg is not None else None
+
         db.add(
             EntryLineItem(
                 entry_id=entry.id,
                 catalog_item_id=li.catalog_item_id,
+                catalog_variant_id=li.catalog_variant_id,
                 item_name=li.item_name,
                 category=li.category,
                 qty=qty,
                 unit=li.unit,
+                bags=Decimal(str(bags_v)) if bags_v is not None else None,
+                kg_per_bag=Decimal(str(kg_pb)) if kg_pb is not None else None,
+                qty_kg=Decimal(str(qkg)) if qkg is not None else None,
                 qty_base=qty_base,
                 base_unit=base_unit,
                 buy_price=Decimal(str(li.buy_price)),

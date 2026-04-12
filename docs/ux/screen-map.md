@@ -1,14 +1,17 @@
 # Screen Map & UX — HEXA Purchase Assistant
 
+> **Code-truth inventory (routes, tabs, buttons, flows):** see `**[user-flow-inventory.md](user-flow-inventory.md)`**.
+
 ## Navigation (Flutter — Owner / Staff)
 
-Bottom navigation (5 tabs):
+Bottom navigation (**4 tabs**) + **Settings** via app bar actions (`AppSettingsAction` on most screens; AI tab has its own settings icon — **not** in the shell top strip):
 
 1. **Home** — Dashboard
-2. **Entries** — List + search + filters
-3. **Analytics** — Reports + PIP context
-4. **Contacts** — Suppliers & brokers
-5. **Settings** — Account, units, notifications, autofill
+2. **Entries** — List + search + filters (+ entry to **Contacts**)
+3. **AI** — Voice / intent chat
+4. **Reports** — Analytics tabs
+
+**Settings** — full-screen route `/settings` (not a tab). **Contacts** — `/contacts` from Entries or Settings.
 
 Staff: same shell; hide or restrict destructive settings per RBAC.
 

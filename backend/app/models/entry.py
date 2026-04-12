@@ -39,10 +39,16 @@ class EntryLineItem(Base):
     catalog_item_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("catalog_items.id"), nullable=True, index=True
     )
+    catalog_variant_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("catalog_variants.id"), nullable=True, index=True
+    )
     item_name: Mapped[str] = mapped_column(String(512))
     category: Mapped[str | None] = mapped_column(String(255), nullable=True)
     qty: Mapped[float] = mapped_column(Numeric(18, 4))
     unit: Mapped[str] = mapped_column(String(32))
+    bags: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
+    kg_per_bag: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
+    qty_kg: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
     qty_base: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
     base_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
     buy_price: Mapped[float] = mapped_column(Numeric(18, 4))
