@@ -1,12 +1,41 @@
+import os
 from functools import lru_cache
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
 
 
 class Settings(BaseSettings):
     """Runtime configuration. Environment variable names match [.env.example](../../.env.example)."""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """Prefer `backend/.env` over machine-level env for local dev; under pytest (`APP_ENV=test`) env overrides .env."""
+        if os.environ.get("APP_ENV", "").lower() == "test":
+            return (
+                init_settings,
+                env_settings,
+                dotenv_settings,
+                file_secret_settings,
+            )
+        return (
+            init_settings,
+            dotenv_settings,
+            env_settings,
+            file_secret_settings,
+        )
 
     app_env: str = "development"
     app_name: str = "hexa-purchase-assistant"
@@ -27,6 +56,8 @@ class Settings(BaseSettings):
 
     # Local dev without Postgres: sqlite+aiosqlite:///./hexa_dev.db (file created next to cwd when running uvicorn from backend/)
     database_url: str = "postgresql+asyncpg://user:password@localhost:5432/hexa"
+    # Dev-only: if TLS fails with CERTIFICATE_VERIFY_FAILED (AV/corporate proxy MITM), set true. Forbidden in production.
+    database_ssl_insecure: bool = False
     redis_url: str | None = "redis://localhost:6379/0"
 
     jwt_secret: str = "change-me-min-32-chars-dev-only"
@@ -115,6 +146,8 @@ class Settings(BaseSettings):
             raise RuntimeError("JWT secrets must be changed in production")
         if len(self.jwt_secret) < 32 or len(self.jwt_refresh_secret) < 32:
             raise RuntimeError("JWT secrets must be at least 32 characters in production")
+        if self.database_ssl_insecure:
+            raise RuntimeError("DATABASE_SSL_INSECURE must be false in production")
 
 
 @lru_cache

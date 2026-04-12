@@ -39,6 +39,8 @@ class _SmartPricePanelState extends ConsumerState<SmartPricePanel> {
   Map<String, dynamic>? _pip;
   bool _loading = false;
   bool _expanded = false;
+  /// Last `currentPriceResolver` value we reacted to — avoids re-scheduling on every parent `setState`.
+  double? _lastResolverSnapshot;
 
   @override
   void initState() {
@@ -60,14 +62,23 @@ class _SmartPricePanelState extends ConsumerState<SmartPricePanel> {
   @override
   void didUpdateWidget(SmartPricePanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.currentPriceResolver != null) {
-      _schedule();
+    // Parent rebuilds on every keystroke in the entry form. Only re-fetch when the resolved
+    // landed price actually changes (e.g. purchase field or entry-level commission).
+    if (widget.currentPriceResolver == null) return;
+    final v = widget.currentPriceResolver!.call();
+    if (v == null || v <= 0) {
+      _lastResolverSnapshot = null;
+      return;
     }
+    final last = _lastResolverSnapshot;
+    if (last != null && (v - last).abs() < 0.005) return;
+    _lastResolverSnapshot = v;
+    _schedule();
   }
 
   void _schedule() {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 500), _fetch);
+    _debounce = Timer(const Duration(milliseconds: 900), _fetch);
   }
 
   Future<void> _fetch() async {

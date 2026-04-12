@@ -1749,6 +1749,13 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     final land = _effectiveLanding(l);
     final cpu = _commissionPerUnit();
     final p = _parseDouble(l.purchase.text) ?? 0;
+    final kgPb = l.unit == 'bag' ? (_parseDouble(l.kgPerBag.text) ?? 0) : 0.0;
+    final perKg = (l.unit == 'bag' && kgPb > 0) ? land / kgPb : null;
+    final title = l.unit == 'bag' ? 'Landed cost (auto)' : 'Landed cost / unit (auto)';
+    final mainValue = perKg != null ? '₹${perKg.toStringAsFixed(2)}/kg' : '₹${land.toStringAsFixed(2)}';
+    final caption = perKg != null
+        ? '₹${land.toStringAsFixed(2)} per bag (${kgPb.toStringAsFixed(0)} kg/bag). Margin uses cost/kg vs sell/kg. Tap for breakdown.'
+        : 'Not editable — purchase ₹/unit + commission share. Tap for breakdown.';
     return Material(
       color: HexaColors.primaryLight,
       borderRadius: BorderRadius.circular(14),
@@ -1767,10 +1774,17 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                         Text('Purchase / unit: ₹${p.toStringAsFixed(2)}'),
                         Text('Allocated commission / unit: ₹${cpu.toStringAsFixed(2)}'),
                         const Divider(),
-                        Text(
-                          'Landed / unit: ₹${land.toStringAsFixed(2)}',
-                          style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-                        ),
+                        if (perKg != null) ...[
+                          Text('Landed / bag: ₹${land.toStringAsFixed(2)}'),
+                          Text(
+                            'Landed / kg: ₹${perKg.toStringAsFixed(2)} (${kgPb.toStringAsFixed(0)} kg/bag)',
+                            style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                        ] else
+                          Text(
+                            'Landed / unit: ₹${land.toStringAsFixed(2)}',
+                            style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                          ),
                         const SizedBox(height: 8),
                         Text(
                           'Entry commission (field above) is divided by total quantity across all lines.',
@@ -1801,16 +1815,16 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Landed cost / unit (auto)',
+                      title,
                       style: tt.labelMedium?.copyWith(color: HexaColors.textSecondary, fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '₹${land.toStringAsFixed(2)}',
+                      mainValue,
                       style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: HexaColors.textPrimary),
                     ),
                     Text(
-                      'Not editable — purchase ₹/unit + commission share. Tap for breakdown.',
+                      caption,
                       style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary, fontSize: 11),
                     ),
                   ],
@@ -2096,6 +2110,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     final qty = _parseDouble(l.qty.text) ?? 0;
     double profit;
     double marginPct;
+    var bagDetail = '';
     if (l.unit == 'bag') {
       final kgPb = _parseDouble(l.kgPerBag.text) ?? 0;
       if (kgPb <= 0) {
@@ -2109,6 +2124,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       final revenue = sell * qtyKg;
       profit = revenue - totalCost;
       marginPct = revenue > 0 ? (profit / revenue) * 100.0 : 0.0;
+      final costPerKg = land / kgPb;
+      bagDetail = ' · Cost ₹${costPerKg.toStringAsFixed(0)}/kg vs sell ₹${sell.toStringAsFixed(0)}/kg';
     } else {
       profit = (sell - land) * qty;
       marginPct = sell > 0 ? ((sell - land) / sell) * 100.0 : 0.0;
@@ -2129,7 +2146,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
             Expanded(
               child: Text(
                 l.unit == 'bag'
-                    ? 'Line profit ₹${profit.toStringAsFixed(0)} · Margin ${marginPct.toStringAsFixed(1)}% of revenue'
+                    ? 'Line profit ₹${profit.toStringAsFixed(0)} · Margin ${marginPct.toStringAsFixed(1)}% of revenue$bagDetail'
                     : 'Profit ₹${profit.toStringAsFixed(2)} · Unit margin ${marginPct.toStringAsFixed(1)}%',
                 style: tt.labelLarge?.copyWith(
                   fontWeight: FontWeight.w800,
