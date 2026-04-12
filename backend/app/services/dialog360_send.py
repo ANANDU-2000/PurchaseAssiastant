@@ -6,23 +6,33 @@ import logging
 from typing import Any
 
 import httpx
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
+from app.services.platform_credentials import effective_dialog360
 
 logger = logging.getLogger(__name__)
 
 
-async def send_text_message(settings: Settings, *, to_e164: str, body: str) -> dict[str, Any] | None:
+async def send_text_message(
+    settings: Settings,
+    db: AsyncSession | None,
+    *,
+    to_e164: str,
+    body: str,
+) -> dict[str, Any] | None:
     """
     Send a plain text message. `to_e164` should be digits only (e.g. 9198...).
+    Credentials: database row `platform_integration` overrides process env — no redeploy.
     If 360dialog is not configured, logs and returns None (dev mode).
     """
-    if not settings.dialog360_api_key or not settings.dialog360_phone_number_id:
+    api_key, phone_id, base_url, _ = await effective_dialog360(settings, db)
+    if not api_key or not phone_id:
         logger.info("360dialog not configured; outbound WA: %s", body[:500])
         return None
 
-    url = f"{settings.dialog360_base_url.rstrip('/')}/{settings.dialog360_phone_number_id}/messages"
-    headers = {"D360-API-KEY": settings.dialog360_api_key, "Content-Type": "application/json"}
+    url = f"{base_url}/{phone_id}/messages"
+    headers = {"D360-API-KEY": api_key, "Content-Type": "application/json"}
     payload: dict[str, Any] = {
         "messaging_product": "whatsapp",
         "recipient_type": "individual",

@@ -55,9 +55,9 @@ def _line_to_out(line: EntryLineItem) -> EntryLineOut:
 @router.post("/parse", response_model=ParseDraftResponse)
 async def parse_draft(
     business_id: uuid.UUID,
-    body: ParseBody,
     _m: Annotated[Membership, Depends(require_membership)],
     _ai: Annotated[None, Depends(require_ai_parse_enabled)],
+    body: ParseBody,
 ):
     del business_id, _m, body, _ai
     return ParseDraftResponse(
@@ -144,10 +144,10 @@ async def get_entry(
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_entry(
     business_id: uuid.UUID,
-    body: EntryCreateRequest,
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
     _m: Annotated[Membership, Depends(require_membership)],
+    body: EntryCreateRequest,
 ):
     del _m
     try:
@@ -244,9 +244,9 @@ async def create_entry(
 @router.post("/check-duplicate", response_model=DuplicateCheckResponse)
 async def check_duplicate(
     business_id: uuid.UUID,
-    body: DuplicateCheckRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
     _m: Annotated[Membership, Depends(require_membership)],
+    body: DuplicateCheckRequest,
 ):
     del _m
     ids = await find_duplicates(

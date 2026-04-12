@@ -2,13 +2,14 @@ import hashlib
 import hmac
 import json
 import logging
-from typing import Annotated, Any
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
 from app.database import get_db
+from app.services.platform_credentials import effective_dialog360
 from app.services.whatsapp_flow import handle_inbound_text
 from app.services.whatsapp_state import idempotent_message
 
@@ -40,8 +41,8 @@ def _extract_messages(payload: dict[str, Any]) -> list[dict[str, Any]]:
 @router.post("/whatsapp/360dialog")
 async def whatsapp_webhook(
     request: Request,
-    settings: Annotated[Settings, Depends(get_settings)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    settings: Settings = Depends(get_settings),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     360dialog / WhatsApp Cloud webhook.
@@ -49,9 +50,10 @@ async def whatsapp_webhook(
     to equal HMAC-SHA256(raw_body, secret) as lowercase hex.
     """
     raw = await request.body()
-    if settings.dialog360_webhook_secret:
+    _, _, _, wh_secret = await effective_dialog360(settings, db)
+    if wh_secret:
         sig = request.headers.get("X-Webhook-Signature") or request.headers.get("X-Signature")
-        if not _verify_signature(raw, settings.dialog360_webhook_secret, sig):
+        if not _verify_signature(raw, wh_secret, sig):
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook signature")
 
     try:

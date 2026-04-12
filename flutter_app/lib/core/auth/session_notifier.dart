@@ -212,6 +212,21 @@ class SessionNotifier extends Notifier<Session?> {
     authRefresh.value++;
   }
 
+  /// Reload workspaces from API (e.g. after branding update).
+  Future<void> refreshBusinesses() async {
+    final cur = state;
+    if (cur == null) return;
+    final api = ref.read(hexaApiProvider);
+    final businesses = await api.meBusinesses();
+    state = Session(
+      accessToken: cur.accessToken,
+      refreshToken: cur.refreshToken,
+      businesses: businesses,
+    );
+    await _persistSession(state!);
+    authRefresh.value++;
+  }
+
   Future<void> logout() async {
     final api = ref.read(hexaApiProvider);
     final store = ref.read(tokenStoreProvider);

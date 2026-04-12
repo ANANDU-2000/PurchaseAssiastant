@@ -6,10 +6,12 @@ const navItems = [
   { to: '/users', label: 'Users' },
   { to: '/businesses', label: 'Businesses' },
   { to: '/subscriptions', label: 'Subscriptions' },
-  { to: '/api-usage', label: 'API usage' },
+  { to: '/api-usage', label: 'Usage' },
+  { to: '/api-keys', label: 'Access keys' },
   { to: '/feature-flags', label: 'Feature flags' },
   { to: '/logs', label: 'Logs' },
   { to: '/integrations', label: 'Integrations' },
+  { to: '/whatsapp', label: 'WhatsApp' },
   { to: '/settings', label: 'Settings' },
 ]
 
@@ -18,7 +20,7 @@ export default function AdminLayout() {
   return (
     <div className="admin-root">
       <aside className="admin-nav">
-        <div className="brand">HEXA Admin</div>
+        <div className="brand">Purchase Assistant</div>
         <button
           type="button"
           className="logout-btn"

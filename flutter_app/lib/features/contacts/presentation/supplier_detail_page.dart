@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/config/app_config.dart';
 import '../../../core/theme/hexa_colors.dart';
 
 final _supplierProvider = FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, supplierId) async {
@@ -253,7 +254,7 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
       }
       buf.writeln('$d,"${names.join(';')}",$q,$avgL,$p');
     }
-    await Share.share(buf.toString(), subject: 'HEXA supplier export');
+    await Share.share(buf.toString(), subject: '${AppConfig.appName} supplier export');
   }
 
   @override

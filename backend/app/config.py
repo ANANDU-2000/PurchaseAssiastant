@@ -12,7 +12,18 @@ class Settings(BaseSettings):
     app_name: str = "hexa-purchase-assistant"
     app_url: str = "http://localhost:8000"
     admin_url: str = "http://localhost:5173"
-    cors_origins: str = "http://localhost:5173,http://localhost:3000,http://localhost:8080"
+    cors_origins: str = (
+        "http://localhost:5173,http://127.0.0.1:5173,"
+        "http://localhost:5174,http://127.0.0.1:5174,"
+        "http://localhost:5175,http://127.0.0.1:5175,"
+        "http://localhost:3000,http://127.0.0.1:3000,"
+        "http://localhost:8080,http://127.0.0.1:8080,"
+        "http://localhost:8081,http://127.0.0.1:8081,"
+        "http://localhost:8082,http://127.0.0.1:8082,"
+        "http://localhost:8090,http://127.0.0.1:8090,"
+        "http://localhost:8091,http://127.0.0.1:8091,"
+        "http://localhost:8092,http://127.0.0.1:8092"
+    )
 
     # Local dev without Postgres: sqlite+aiosqlite:///./hexa_dev.db (file created next to cwd when running uvicorn from backend/)
     database_url: str = "postgresql+asyncpg://user:password@localhost:5432/hexa"
@@ -46,6 +57,12 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     openai_model_parse: str = "gpt-4.1-mini"
     openai_model_summary: str = "gpt-4.1-mini"
+    # stub | openai | groq | gemini — intent extraction uses matching key (env or platform_integration DB).
+    ai_provider: str = "stub"
+    groq_model: str = "llama-3.3-70b-versatile"
+    gemini_model: str = "gemini-2.0-flash"
+    groq_api_key: str | None = None
+    google_ai_api_key: str | None = None
     ocr_provider: str = "google_vision"
     ocr_api_key: str | None = None
     stt_provider: str = "openai_whisper"
@@ -63,6 +80,11 @@ class Settings(BaseSettings):
     plan_basic_price_inr: int = 49900
     plan_pro_price_inr: int = 99900
     plan_premium_price_inr: int = 199900
+    # When true, WhatsApp/AI routes check BusinessSubscription (grandfather: no row = allowed).
+    billing_enforce: bool = False
+    # Default bundle pricing hints (paise): base cloud + optional WhatsApp+AI add-on (admin can override per business).
+    billing_cloud_infra_paise: int = 230_000  # ₹2,300 (paise)
+    billing_whatsapp_ai_addon_paise: int = 250_000  # ₹2,500 (paise)
 
     sentry_dsn: str | None = None
     log_level: str = "INFO"

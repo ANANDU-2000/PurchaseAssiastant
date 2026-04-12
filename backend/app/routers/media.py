@@ -33,9 +33,9 @@ class OcrResponse(BaseModel):
 async def ocr_image(
     business_id: uuid.UUID,
     _m: Annotated[Membership, Depends(require_membership)],
-    _body: OcrRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
+    _body: OcrRequest,
 ):
     del business_id, _m, _body
     if not await is_ocr_enabled(db, settings):
@@ -65,9 +65,9 @@ class VoiceResponse(BaseModel):
 async def voice_transcribe(
     business_id: uuid.UUID,
     _m: Annotated[Membership, Depends(require_membership)],
-    _body: VoiceRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
+    _body: VoiceRequest,
 ):
     del business_id, _m, _body
     if not await is_voice_enabled(db, settings):

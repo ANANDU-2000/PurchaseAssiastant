@@ -1,9 +1,11 @@
+import logging
 import re
 import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import or_, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
@@ -21,6 +23,7 @@ from app.services.jwt_tokens import create_access_token, create_refresh_token, d
 from app.services.passwords import hash_password, verify_password
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 
 def _username_from_google(email: str, sub: str) -> str:
@@ -43,9 +46,9 @@ async def _allocate_username(db: AsyncSession, email: str, sub: str) -> str:
 
 @router.post("/register", response_model=TokenPair)
 async def register(
-    body: RegisterRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
+    body: RegisterRequest,
 ):
     ex = await db.execute(
         select(User.id).where(or_(User.email == body.email, User.username == body.username))
@@ -89,33 +92,58 @@ async def register(
 
 @router.post("/login", response_model=TokenPair)
 async def login(
-    body: LoginRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
+    body: LoginRequest,
 ):
-    q = await db.execute(select(User).where(User.email == body.email))
-    user = q.scalar_one_or_none()
-    if (
-        not user
-        or user.password_hash is None
-        or not verify_password(body.password, user.password_hash)
-    ):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+    try:
+        try:
+            q = await db.execute(select(User).where(User.email == body.email))
+            user = q.scalar_one_or_none()
+        except SQLAlchemyError:
+            logger.exception("auth.login database error")
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Sign-in is temporarily unavailable. Try again shortly.",
+            ) from None
 
-    access = create_access_token(user.id, settings)
-    refresh = create_refresh_token(user.id, settings)
-    return TokenPair(
-        access_token=access,
-        refresh_token=refresh,
-        expires_in=settings.jwt_access_ttl_minutes * 60,
-    )
+        if (
+            not user
+            or user.password_hash is None
+            or not verify_password(body.password, user.password_hash)
+        ):
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+
+        try:
+            access = create_access_token(user.id, settings)
+            refresh = create_refresh_token(user.id, settings)
+        except Exception:
+            logger.exception("auth.login token issue")
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Sign-in is temporarily unavailable. Try again shortly.",
+            ) from None
+
+        return TokenPair(
+            access_token=access,
+            refresh_token=refresh,
+            expires_in=settings.jwt_access_ttl_minutes * 60,
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("auth.login unexpected failure")
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Sign-in is temporarily unavailable. Try again shortly.",
+        ) from None
 
 
 @router.post("/google", response_model=TokenPair)
 async def auth_google(
-    body: GoogleAuthRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
+    body: GoogleAuthRequest,
 ):
     audiences = settings.google_oauth_client_id_list()
     if not audiences:
@@ -182,9 +210,9 @@ async def auth_google(
 
 @router.post("/refresh", response_model=TokenPair)
 async def refresh_token(
-    body: RefreshRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
+    body: RefreshRequest,
 ):
     uid = decode_refresh_token(body.refresh_token, settings)
     if not uid:

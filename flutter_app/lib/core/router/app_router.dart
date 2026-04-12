@@ -16,6 +16,7 @@ import '../../features/contacts/presentation/supplier_detail_page.dart';
 import '../../features/entries/presentation/entries_page.dart';
 import '../../features/entries/presentation/entry_detail_page.dart';
 import '../../features/home/presentation/home_page.dart';
+import '../../features/notifications/presentation/notifications_page.dart';
 import '../../features/settings/presentation/settings_page.dart';
 import '../../features/shell/shell_screen.dart';
 import '../../features/splash/presentation/splash_page.dart';
@@ -28,8 +29,26 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     navigatorKey: _rootNavigatorKey,
     initialLocation: '/splash',
     refreshListenable: authRefresh,
+    errorBuilder: (context, state) => Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'Could not open this page.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+        ),
+      ),
+    ),
     redirect: (context, state) {
-      final container = ProviderScope.containerOf(context);
+      ProviderContainer container;
+      try {
+        container = ProviderScope.containerOf(context);
+      } catch (_) {
+        // First frame / wrong ancestor — don't block navigation.
+        return null;
+      }
       final session = container.read(sessionProvider);
       final loc = state.matchedLocation;
       final public = loc == '/splash' || loc == '/login';
@@ -104,6 +123,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/ai',
         name: 'ai',
         builder: (context, state) => const VoicePage(),
+      ),
+      GoRoute(
+        path: '/notifications',
+        name: 'notifications',
+        builder: (context, state) => const NotificationsPage(),
       ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>

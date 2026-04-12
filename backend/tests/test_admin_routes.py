@@ -54,3 +54,15 @@ def test_api_usage_summary_with_machine_override():
         assert "generated_at" in r.json()
     finally:
         app.dependency_overrides.pop(require_admin_caller, None)
+
+
+def test_platform_integration_get_with_machine_override():
+    app.dependency_overrides[require_admin_caller] = _machine_caller
+    try:
+        r = client.get("/v1/admin/platform-integration", headers={"Authorization": "Bearer x"})
+        assert r.status_code == 200
+        body = r.json()
+        assert "effective" in body
+        assert "fields" in body
+    finally:
+        app.dependency_overrides.pop(require_admin_caller, None)

@@ -14,6 +14,8 @@ backend/hexa_seed_demo.db
 backend/hexa_fullstack.db
 backend/_dbg_entry.db
 backend/hexa_verify.db
+backend/_test_login.db
+backend/_verify_login.db
 
 # Node
 admin_web/node_modules/

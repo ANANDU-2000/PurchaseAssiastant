@@ -14,6 +14,7 @@ import '../../../core/providers/contacts_hub_provider.dart';
 import '../../../core/providers/dashboard_provider.dart';
 import '../../../core/providers/entries_list_provider.dart';
 import '../../../core/providers/home_insights_provider.dart';
+import '../../../core/providers/notifications_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../domain/quick_entry_parser.dart';
@@ -23,12 +24,12 @@ enum _CommissionMode { totalRupees, percentOfPurchase, perUnitRupees }
 
 /// Opens the full entry form (Preview → Confirm & save in dialog, or Save on sheet after preview token).
 Future<void> showEntryCreateSheet(BuildContext context) async {
-  await showModalBottomSheet<void>(
+  await     showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
     showDragHandle: true,
-    backgroundColor: Theme.of(context).colorScheme.surface,
+    backgroundColor: HexaColors.surfaceCard,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
@@ -464,7 +465,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
           builder: (ctx) => AlertDialog(
             title: const Text('Possible duplicate'),
             content: const Text(
-              'The server found an entry with the same item, quantity, and date. Save anyway?',
+              'We found another entry with the same item, quantity, and date. Save anyway?',
             ),
             actions: [
               TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
@@ -537,6 +538,12 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       ref.invalidate(entriesListProvider);
       ref.invalidate(dashboardProvider);
       ref.invalidate(homeInsightsProvider);
+      if (_landingPriceSpike) {
+        final sample = _lines.isNotEmpty ? _lines.first.item.text.trim() : '';
+        ref.read(notificationsProvider.notifier).addPriceSpikeAlert(
+              itemSample: sample.isEmpty ? 'An item' : sample,
+            );
+      }
       HapticFeedback.mediumImpact();
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Entry saved')));
@@ -1161,19 +1168,22 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 100),
               children: [
             if (_landingPriceSpike) ...[
-              Material(
-                color: Colors.amber.shade50,
-                borderRadius: BorderRadius.circular(12),
+              Container(
+                decoration: BoxDecoration(
+                  color: HexaColors.warning.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: HexaColors.warning),
+                ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   child: Row(
                     children: [
-                      Icon(Icons.warning_amber_rounded, color: Colors.amber.shade800),
+                      Icon(Icons.warning_amber_rounded, color: HexaColors.warning),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Price is 15%+ above your recent average — verify before saving.',
-                          style: tt.bodySmall?.copyWith(fontWeight: FontWeight.w700, color: Colors.amber.shade900),
+                          'Landing price 15%+ above recent average — verify before saving.',
+                          style: tt.bodySmall?.copyWith(fontWeight: FontWeight.w700, color: HexaColors.warning),
                         ),
                       ),
                     ],
@@ -1354,9 +1364,9 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                 Expanded(
                   child: OutlinedButton(
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: HexaColors.primaryDeep,
+                      foregroundColor: HexaColors.primaryMid,
                       side: const BorderSide(color: HexaColors.primaryMid, width: 1.5),
-                      backgroundColor: Colors.white,
+                      backgroundColor: HexaColors.surfaceElevated,
                     ),
                     onPressed: _busy ? null : _preview,
                     child: _busy
@@ -1387,7 +1397,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
-                  'Preview once to enable Save (server verifies the same data).',
+                  'Preview once to enable Save — we double-check the same details before saving.',
                   style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                 ),
               ),
@@ -1529,7 +1539,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                     decoration: const InputDecoration(
                       labelText: 'Transport (₹ total, optional)',
                       prefixIcon: Icon(Icons.local_shipping_outlined),
-                      helperText: 'Allocated across lines by value when saving (server).',
+                      helperText: 'Shared costs are split across lines by value when you save.',
                     ),
                   ),
                 ],
@@ -1544,7 +1554,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               child: Material(
                 elevation: 6,
                 borderRadius: BorderRadius.circular(16),
-                color: Colors.white,
+                color: HexaColors.surfaceElevated,
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),

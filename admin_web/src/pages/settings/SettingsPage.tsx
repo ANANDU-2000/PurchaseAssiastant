@@ -2,18 +2,17 @@ import { apiBase } from '../../lib/api'
 
 export default function SettingsPage() {
   return (
-    <section>
-      <h1>Super admin settings</h1>
-      <p>
-        This build does not include a separate admin login UI. Use a super-admin JWT from the mobile OTP bootstrap flow and set{' '}
-        <code>VITE_ADMIN_BEARER</code> in <code>.env.local</code>.
+    <section className="stub-page">
+      <h1>Console settings</h1>
+      <p className="stub-page__hint">
+        Workspace preferences and security options will appear here as they roll out. Sign in from the login page to
+        access the console.
       </p>
-      <p>
-        API base: <code>{apiBase()}</code>
-      </p>
-      <p style={{ opacity: 0.75 }}>
-        Future: profile, session list, and security policy forms backed by dedicated admin endpoints.
-      </p>
+      {import.meta.env.DEV && (
+        <p className="stub-page__hint" style={{ marginTop: '1rem', fontSize: '0.85rem' }}>
+          Dev: connected service <code>{apiBase()}</code>
+        </p>
+      )}
     </section>
   )
 }

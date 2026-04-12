@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { adminGet } from '../../lib/api'
+import { adminGet, userSafePageError } from '../../lib/api'
 
 type Biz = { id: string; name: string; created_at: string | null }
 
@@ -14,7 +14,7 @@ export default function BusinessesPage() {
         const data = await adminGet<{ items: Biz[] }>('/v1/admin/businesses')
         if (!cancelled) setItems(data.items ?? [])
       } catch (e: unknown) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : String(e))
+        if (!cancelled) setErr(userSafePageError(e))
       }
     })()
     return () => {

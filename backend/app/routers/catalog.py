@@ -180,9 +180,9 @@ async def list_item_categories(
 @router.post("/item-categories", response_model=ItemCategoryOut, status_code=status.HTTP_201_CREATED)
 async def create_item_category(
     business_id: uuid.UUID,
-    body: ItemCategoryCreate,
     _m: Annotated[Membership, Depends(require_membership)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    body: ItemCategoryCreate,
 ):
     del _m
     if await _category_dup(db, business_id, body.name):
@@ -221,9 +221,9 @@ async def get_item_category(
 async def update_item_category(
     business_id: uuid.UUID,
     category_id: uuid.UUID,
-    body: ItemCategoryUpdate,
     _m: Annotated[Membership, Depends(require_membership)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    body: ItemCategoryUpdate,
 ):
     del _m
     r = await db.execute(
@@ -305,9 +305,9 @@ async def list_catalog_items(
 @router.post("/catalog-items", response_model=CatalogItemOut, status_code=status.HTTP_201_CREATED)
 async def create_catalog_item(
     business_id: uuid.UUID,
-    body: CatalogItemCreate,
     _m: Annotated[Membership, Depends(require_membership)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    body: CatalogItemCreate,
 ):
     del _m
     rc = await db.execute(
@@ -597,9 +597,9 @@ async def category_insights(
 async def update_catalog_item(
     business_id: uuid.UUID,
     item_id: uuid.UUID,
-    body: CatalogItemUpdate,
     _m: Annotated[Membership, Depends(require_membership)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    body: CatalogItemUpdate,
 ):
     del _m
     r = await db.execute(
@@ -730,9 +730,9 @@ async def list_catalog_variants(
 async def create_catalog_variant(
     business_id: uuid.UUID,
     item_id: uuid.UUID,
-    body: CatalogVariantCreate,
     _m: Annotated[Membership, Depends(require_membership)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    body: CatalogVariantCreate,
 ):
     del _m
     ir = await db.execute(
@@ -763,9 +763,9 @@ async def create_catalog_variant(
 async def update_catalog_variant(
     business_id: uuid.UUID,
     variant_id: uuid.UUID,
-    body: CatalogVariantUpdate,
     _m: Annotated[Membership, Depends(require_membership)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    body: CatalogVariantUpdate,
 ):
     del _m
     r = await db.execute(

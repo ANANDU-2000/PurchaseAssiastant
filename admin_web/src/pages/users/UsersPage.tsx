@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { adminGet } from '../../lib/api'
+import { adminGet, userSafePageError } from '../../lib/api'
 
 type UserRow = {
   id: string
@@ -25,7 +25,7 @@ export default function UsersPage() {
         const d = await adminGet<{ items: UserRow[]; total: number }>('/v1/admin/users')
         if (!cancelled) setData({ items: d.items ?? [], total: d.total ?? 0 })
       } catch (e: unknown) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : String(e))
+        if (!cancelled) setErr(userSafePageError(e))
       }
     })()
     return () => {
@@ -34,13 +34,12 @@ export default function UsersPage() {
   }, [])
 
   return (
-    <section>
+    <section className="stub-page">
       <h1>Users</h1>
-      <p style={{ color: '#555', marginBottom: 12 }}>
-        Accounts in the database ({data?.total ?? '—'} total). Auth: super-admin JWT or{' '}
-        <code>ADMIN_API_TOKEN</code> as Bearer.
+      <p className="stub-page__hint" style={{ marginBottom: 12 }}>
+        Customer accounts ({data?.total ?? '—'} total). Password and Google sign-in are shown per row.
       </p>
-      {err && <p style={{ color: 'crimson' }}>{err}</p>}
+      {err && <p className="stub-page__error">{err}</p>}
       {data && (
         <table style={{ borderCollapse: 'collapse', width: '100%', maxWidth: 960 }}>
           <thead>

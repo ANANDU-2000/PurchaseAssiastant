@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:http_parser/http_parser.dart';
 
 import '../config/app_config.dart';
 import '../models/session.dart';
@@ -118,6 +119,62 @@ class HexaApi {
     final data = res.data;
     if (data is! List) return [];
     return data.map((e) => BusinessBrief.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+  }
+
+  /// Owner: optional in-app title + logo URL (HTTPS recommended).
+  Future<Map<String, dynamic>> patchBusinessBranding({
+    required String businessId,
+    String? brandingTitle,
+    String? brandingLogoUrl,
+  }) async {
+    final res = await _dio.patch<Map<String, dynamic>>(
+      '/v1/me/businesses/$businessId/branding',
+      data: {
+        if (brandingTitle != null) 'branding_title': brandingTitle,
+        if (brandingLogoUrl != null) 'branding_logo_url': brandingLogoUrl,
+      },
+    );
+    return res.data ?? {};
+  }
+
+  /// Owner: multipart logo upload (JPEG/PNG/WebP).
+  Future<Map<String, dynamic>> uploadBusinessLogo({
+    required String businessId,
+    required String filePath,
+  }) async {
+    final formData = FormData.fromMap({
+      'file': await MultipartFile.fromFile(filePath),
+    });
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/me/businesses/$businessId/branding/logo',
+      data: formData,
+    );
+    return res.data ?? {};
+  }
+
+  /// Same as [uploadBusinessLogo] but from bytes (web-friendly).
+  Future<Map<String, dynamic>> uploadBusinessLogoBytes({
+    required String businessId,
+    required List<int> bytes,
+    String filename = 'logo.jpg',
+  }) async {
+    final lower = filename.toLowerCase();
+    final MediaType ct;
+    if (lower.endsWith('.png')) {
+      ct = MediaType('image', 'png');
+    } else if (lower.endsWith('.webp')) {
+      ct = MediaType('image', 'webp');
+    } else {
+      ct = MediaType('image', 'jpeg');
+    }
+    final formData = FormData.fromMap({
+      'file': MultipartFile.fromBytes(bytes, filename: filename, contentType: ct),
+    });
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/me/businesses/$businessId/branding/logo',
+      data: formData,
+    );
+    return res.data ?? {};
   }
 
   Future<Map<String, dynamic>> analyticsSummary({required String businessId, required String from, required String to}) async {
@@ -648,6 +705,62 @@ class HexaApi {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/businesses/$businessId/ai/intent',
       data: {'text': text},
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> billingStatus({required String businessId}) async {
+    final res = await _dio.get<Map<String, dynamic>>('/v1/businesses/$businessId/billing/status');
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> billingQuote({
+    required String businessId,
+    String planCode = 'basic',
+    bool whatsappAddon = false,
+    bool aiAddon = false,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/billing/quote',
+      queryParameters: {
+        'plan_code': planCode,
+        'whatsapp_addon': whatsappAddon,
+        'ai_addon': aiAddon,
+      },
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> billingCreateOrder({
+    required String businessId,
+    String planCode = 'basic',
+    bool whatsappAddon = false,
+    bool aiAddon = false,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/billing/create-order',
+      data: {
+        'plan_code': planCode,
+        'whatsapp_addon': whatsappAddon,
+        'ai_addon': aiAddon,
+      },
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> billingVerify({
+    required String businessId,
+    required String razorpayOrderId,
+    required String razorpayPaymentId,
+    required String razorpaySignature,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/billing/verify',
+      data: {
+        'razorpay_order_id': razorpayOrderId,
+        'razorpay_payment_id': razorpayPaymentId,
+        'razorpay_signature': razorpaySignature,
+      },
     );
     return res.data ?? {};
   }

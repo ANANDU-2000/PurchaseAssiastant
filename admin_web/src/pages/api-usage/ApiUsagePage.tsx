@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { adminGet } from '../../lib/api'
+import { adminGet, userSafePageError } from '../../lib/api'
 
 type PerUser = {
   user_id: string
@@ -29,7 +29,7 @@ export default function ApiUsagePage() {
         const d = await adminGet<Summary>('/v1/admin/api-usage-summary')
         if (!cancelled) setData(d)
       } catch (e: unknown) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : String(e))
+        if (!cancelled) setErr(userSafePageError(e))
       }
     })()
     return () => {
@@ -40,10 +40,10 @@ export default function ApiUsagePage() {
   const rows = data?.per_user ?? []
 
   return (
-    <section>
-      <h1>API usage</h1>
+    <section className="stub-page">
+      <h1>Usage</h1>
       {data?.note && (
-        <p style={{ color: '#64748b', fontSize: 14 }}>
+        <p className="stub-page__hint" style={{ fontSize: 14 }}>
           {data.note}
           {data.generated_at && (
             <>
@@ -53,7 +53,7 @@ export default function ApiUsagePage() {
           )}
         </p>
       )}
-      {err && <p style={{ color: 'crimson' }}>{err}</p>}
+      {err && <p className="stub-page__error">{err}</p>}
       {rows.length > 0 && (
         <table style={{ borderCollapse: 'collapse', width: '100%', maxWidth: 960, marginTop: 16 }}>
           <thead>
@@ -83,10 +83,19 @@ export default function ApiUsagePage() {
         </table>
       )}
       {data != null && rows.length === 0 && !err && <p>No usage rows yet.</p>}
-      {data != null && (
+      {import.meta.env.DEV && data != null && (
         <details style={{ marginTop: 16 }}>
-          <summary style={{ cursor: 'pointer', color: '#64748b' }}>Raw JSON</summary>
-          <pre style={{ background: '#111', color: '#ddd', padding: 12, overflow: 'auto', fontSize: 12 }}>
+          <summary style={{ cursor: 'pointer', color: 'var(--admin-text-muted)' }}>Technical details (dev)</summary>
+          <pre
+            style={{
+              background: 'var(--admin-elevated)',
+              color: 'var(--admin-text-muted)',
+              padding: 12,
+              overflow: 'auto',
+              fontSize: 12,
+              borderRadius: 8,
+            }}
+          >
             {JSON.stringify(data as object, null, 2)}
           </pre>
         </details>

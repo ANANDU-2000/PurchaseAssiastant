@@ -1,3 +1,5 @@
+"""Request dependencies: auth via JWT user id; tenant data scoped by Membership.business_id."""
+
 import secrets
 import uuid
 from dataclasses import dataclass
@@ -11,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings, get_settings
 from app.database import get_db
 from app.models import Membership, User
+from app.services.billing_entitlements import assert_ai_entitled
 from app.services.feature_flags import is_ai_parsing_enabled
 from app.services.jwt_tokens import decode_access_token
 
@@ -52,6 +55,39 @@ async def get_current_user(
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
+    return user
+
+
+async def charge_ai_turn_for_business(
+    business_id: uuid.UUID,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> User:
+    """AI routes: membership + feature flags + billing AI add-on + token budget."""
+    q = await db.execute(
+        select(Membership).where(
+            Membership.business_id == business_id,
+            Membership.user_id == user.id,
+        )
+    )
+    if q.scalar_one_or_none() is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Not a member of this business")
+    if not settings.enable_ai:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="AI is disabled for this deployment")
+    if not await is_ai_parsing_enabled(db, settings):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="AI parsing is disabled")
+    await assert_ai_entitled(db, business_id, settings)
+    budget = user.ai_monthly_token_budget
+    used = user.ai_tokens_used_month or 0
+    if budget is not None and budget > 0 and used >= budget:
+        raise HTTPException(
+            status.HTTP_402_PAYMENT_REQUIRED,
+            detail="Monthly AI limit reached — use manual entry or ask an owner to raise the cap.",
+        )
+    user.ai_tokens_used_month = used + 48
+    await db.commit()
+    await db.refresh(user)
     return user
 
 

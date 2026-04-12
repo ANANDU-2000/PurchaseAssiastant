@@ -7,6 +7,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
+from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +16,7 @@ from app.models import Entry, EntryLineItem, Membership, Supplier, User
 from app.schemas.entries import EntryCreateRequest, EntryLineInput
 from app.services.dialog360_send import send_text_message
 from app.services.entry_write import persist_confirmed_entry
+from app.services.billing_entitlements import assert_whatsapp_entitled
 from app.services.feature_flags import is_whatsapp_bot_enabled
 from app.services.whatsapp_state import get_state, set_state
 
@@ -320,6 +322,7 @@ async def handle_inbound_text(
     if user is None:
         await send_text_message(
             settings,
+            db,
             to_e164=to_digits,
             body="This WhatsApp number is not linked to a HEXA account. Sign in with the same phone in the app first.",
         )
@@ -327,12 +330,24 @@ async def handle_inbound_text(
 
     biz = await primary_business_id(db, user.id)
     if biz is None:
-        await send_text_message(settings, to_e164=to_digits, body="No business workspace found. Open the HEXA app to finish setup.")
+        await send_text_message(settings, db, to_e164=to_digits, body="No business workspace found. Open the HEXA app to finish setup.")
         return {"ok": True, "handled": True, "reason": "no_business"}
+
+    try:
+        await assert_whatsapp_entitled(db, biz, settings)
+    except HTTPException as e:
+        await send_text_message(
+            settings,
+            db,
+            to_e164=to_digits,
+            body=str(e.detail),
+        )
+        return {"ok": True, "handled": True, "reason": "whatsapp_billing"}
 
     if not await is_whatsapp_bot_enabled(db, settings):
         await send_text_message(
             settings,
+            db,
             to_e164=to_digits,
             body="HEXA WhatsApp automation is turned off for this server. Use the mobile app or ask your admin to re-enable the bot.",
         )
@@ -357,22 +372,24 @@ async def handle_inbound_text(
             except Exception as e:  # noqa: BLE001
                 await send_text_message(
                     settings,
+                    db,
                     to_e164=to_digits,
                     body=f"Could not save entry: {e!s}. Fix the draft and try again.",
                 )
                 return {"ok": False, "error": str(e)}
             state = {"phase": "idle"}
             await set_state(settings, to_digits, state)
-            await send_text_message(settings, to_e164=to_digits, body="Saved in HEXA.")
+            await send_text_message(settings, db, to_e164=to_digits, body="Saved in HEXA.")
             return {"ok": True, "handled": True, "saved": True}
 
         if low in ("no", "n", "cancel", "stop"):
             await set_state(settings, to_digits, {"phase": "idle"})
-            await send_text_message(settings, to_e164=to_digits, body="Cancelled. Send a new draft when ready.")
+            await send_text_message(settings, db, to_e164=to_digits, body="Cancelled. Send a new draft when ready.")
             return {"ok": True, "handled": True, "cancelled": True}
 
         await send_text_message(
             settings,
+            db,
             to_e164=to_digits,
             body="Reply YES to save the preview or NO to cancel.",
         )
@@ -381,25 +398,25 @@ async def handle_inbound_text(
     # --- query: today / month overview ---
     if _wants_today_overview(t, low):
         msg = await _today_summary(db, biz)
-        await send_text_message(settings, to_e164=to_digits, body=msg)
+        await send_text_message(settings, db, to_e164=to_digits, body=msg)
         return {"ok": True, "handled": True, "query": "today"}
 
     if _wants_month_overview(t, low):
         msg = await _month_summary(db, biz)
-        await send_text_message(settings, to_e164=to_digits, body=msg)
+        await send_text_message(settings, db, to_e164=to_digits, body=msg)
         return {"ok": True, "handled": True, "query": "overview"}
 
     # --- best supplier (this month) ---
     if low == "best supplier" or low == "top supplier" or "best supplier" in low:
         body = await _best_supplier_overall(db, biz)
-        await send_text_message(settings, to_e164=to_digits, body=body)
+        await send_text_message(settings, db, to_e164=to_digits, body=body)
         return {"ok": True, "handled": True, "query": "best_supplier"}
 
     if low.startswith("best ") and len(low) > 5:
         rest = low[5:].strip()
         if rest and rest != "supplier":
             body = await _best_supplier_for_item(db, biz, rest)
-            await send_text_message(settings, to_e164=to_digits, body=body)
+            await send_text_message(settings, db, to_e164=to_digits, body=body)
             return {"ok": True, "handled": True, "query": "best_supplier_item"}
 
     # --- quick price check: "Oil 1200 ok?" ---
@@ -410,6 +427,7 @@ async def handle_inbound_text(
         # lightweight message — full PIP is available in app; keep short
         await send_text_message(
             settings,
+            db,
             to_e164=to_digits,
             body=(
                 f"Noted: {item} @ ₹{price:,.2f}. Open the app Price Intelligence for full range & trend.\n"
@@ -430,11 +448,12 @@ async def handle_inbound_text(
                 "updated_at": datetime.utcnow().isoformat() + "Z",
             },
         )
-        await send_text_message(settings, to_e164=to_digits, body=_preview_lines(parsed))
+        await send_text_message(settings, db, to_e164=to_digits, body=_preview_lines(parsed))
         return {"ok": True, "handled": True, "preview": True}
 
     await send_text_message(
         settings,
+        db,
         to_e164=to_digits,
         body=(
             "HEXA WhatsApp\n"

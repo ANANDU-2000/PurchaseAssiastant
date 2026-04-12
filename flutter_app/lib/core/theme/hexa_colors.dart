@@ -1,54 +1,101 @@
 import 'package:flutter/material.dart';
 
-/// HEXA semantic + brand palette — deep ocean teal + warm amber (trader / premium SaaS).
+/// Premium dark UI tokens — deep charcoal, blue–white CTAs, purple glow accents.
 abstract final class HexaColors {
-  static const primaryDeep = Color(0xFF0D3D56);
-  static const primaryMid = Color(0xFF1A6B8A);
-  static const primaryLight = Color(0xFFE8F4F8);
+  // === DARK THEME BACKGROUNDS ===
+  static const canvas = Color(0xFF07080D);
+  static const surfaceCard = Color(0xFF12141C);
+  static const surfaceElevated = Color(0xFF1A1D28);
+  static const surfaceMuted = Color(0xFF242833);
 
-  /// Legacy aliases (wide codebase) — map to new brand.
+  // === BRAND (blue + purple, replaces legacy teal) ===
+  static const primaryDeep = Color(0xFF2563EB);
+  static const primaryMid = Color(0xFF7EB8FF);
+  static const primaryLight = Color(0xFF1A2233);
+  static const accentPurple = Color(0xFFA78BFA);
+  static const accentBlue = Color(0xFF60A5FA);
   static const brand = primaryMid;
-  static const brandHover = Color(0xFF155A73);
+  static const brandHover = Color(0xFF93C5FD);
 
-  static const accentAmber = Color(0xFFFF9800);
-  static const canvas = Color(0xFFF4F7FB);
-  static const surfaceCard = Color(0xFFFFFFFF);
-  static const surfaceMuted = Color(0xFFEEF2F7);
-  static const border = Color(0xFFD8E0EA);
-  static const borderSubtle = Color(0xFFE8EEF4);
+  // === SEMANTIC ===
+  static const profit = Color(0xFF34D399);
+  static const loss = Color(0xFFF87171);
+  static const warning = Color(0xFFFBBF24);
+  static const accentAmber = Color(0xFFF59E0B);
 
-  /// Premium accent line (tabs, focus rings).
-  static const accentLine = Color(0xFF2A8EAF);
+  // === CHART COLORS ===
+  static const chartLandingCost = Color(0xFF60A5FA);
+  static const chartSellingCost = Color(0xFF34D399);
+  static const chartPurple = Color(0xFFA78BFA);
+  static const chartOrange = Color(0xFFFB923C);
+  static const chartPink = Color(0xFFF472B6);
 
-  static const profit = Color(0xFF2E7D32);
-  static const loss = Color(0xFFE53935);
-  static const warning = Color(0xFFFF9800);
+  static const List<Color> chartPalette = [
+    Color(0xFF60A5FA),
+    Color(0xFFA78BFA),
+    Color(0xFF34D399),
+    Color(0xFFFB923C),
+    Color(0xFFFBBF24),
+    Color(0xFFF472B6),
+    Color(0xFF94A3B8),
+    Color(0xFFF87171),
+  ];
+
+  // === TEXT ===
+  static const textPrimary = Color(0xFFF8FAFC);
+  static const textSecondary = Color(0xFF94A3B8);
+  static const border = Color(0x14FFFFFF);
+  static const borderSubtle = Color(0x0AFFFFFF);
+  static const textOnLightSurface = Color(0xFF0F172A);
+
+  static const accentLine = primaryMid;
   static const cost = Color(0xFF94A3B8);
   static const costMuted = Color(0xFF64748B);
+  static const heroGradientEnd = Color(0xFF312E81);
 
-  static const textPrimary = Color(0xFF0F1923);
-  static const textSecondary = Color(0xFF64748B);
+  /// Primary CTA: blue → white-ish → purple (premium glow feel).
+  static LinearGradient get ctaGradient => const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color(0xFFE8F0FF),
+          Color(0xFF6366F1),
+          Color(0xFF9333EA),
+        ],
+        stops: [0.0, 0.55, 1.0],
+      );
 
-  /// Hero gradient end (rich green) for profit stories.
-  static const heroGradientEnd = Color(0xFF14532D);
+  /// Softer hero card / balance card gradient.
+  static LinearGradient get heroCardGradient => const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color(0xFF1E3A5F),
+          Color(0xFF312E81),
+          Color(0xFF4C1D95),
+        ],
+      );
 
-  static List<BoxShadow> cardShadow(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    if (isDark) {
-      return [
+  /// FAB / small accent glow (purple haze).
+  static List<BoxShadow> glowShadow(Color color, {double blur = 18}) => [
         BoxShadow(
-          color: Colors.black.withValues(alpha: 0.35),
-          blurRadius: 12,
+          color: color.withValues(alpha: 0.35),
+          blurRadius: blur,
+          spreadRadius: 0,
           offset: const Offset(0, 4),
         ),
       ];
-    }
-    return [
-      BoxShadow(
-        color: primaryDeep.withValues(alpha: 0.06),
-        blurRadius: 12,
-        offset: const Offset(0, 4),
-      ),
-    ];
-  }
+
+  static List<BoxShadow> cardShadow(BuildContext context) => [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.35),
+          blurRadius: 20,
+          offset: const Offset(0, 8),
+        ),
+        BoxShadow(
+          color: accentPurple.withValues(alpha: 0.08),
+          blurRadius: 24,
+          offset: const Offset(0, 4),
+        ),
+      ];
 }

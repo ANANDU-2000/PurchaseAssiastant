@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { adminGet, adminPatch } from '../../lib/api'
+import { adminGet, adminPatch, userSafePageError } from '../../lib/api'
 
 type Flags = {
   enable_ai: boolean
@@ -10,11 +10,11 @@ type Flags = {
 }
 
 const LABELS: { key: keyof Flags; label: string; hint: string }[] = [
-  { key: 'whatsapp_bot', label: 'WhatsApp bot', hint: 'Inbound automation via 360dialog webhook' },
-  { key: 'enable_ai', label: 'AI parsing', hint: 'AI-assisted entry / chat flows' },
-  { key: 'enable_voice', label: 'Voice / STT', hint: 'Voice transcription endpoints' },
-  { key: 'enable_ocr', label: 'OCR', hint: 'Bill scan / image text' },
-  { key: 'enable_realtime', label: 'Realtime (SSE)', hint: 'Live dashboard stream stub' },
+  { key: 'whatsapp_bot', label: 'WhatsApp assistant', hint: 'Automated replies on WhatsApp' },
+  { key: 'enable_ai', label: 'AI assist', hint: 'Smarter purchase entry and chat' },
+  { key: 'enable_voice', label: 'Voice', hint: 'Voice notes and transcription' },
+  { key: 'enable_ocr', label: 'Scan bills', hint: 'Read text from photos' },
+  { key: 'enable_realtime', label: 'Live updates', hint: 'Fresher activity in the dashboard' },
 ]
 
 export default function FeatureFlagsPage() {
@@ -33,7 +33,7 @@ export default function FeatureFlagsPage() {
       try {
         await load()
       } catch (e: unknown) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : String(e))
+        if (!cancelled) setErr(userSafePageError(e))
       }
     })()
     return () => {
@@ -49,7 +49,7 @@ export default function FeatureFlagsPage() {
       await adminPatch('/v1/admin/feature-flags', { [key]: value })
       await load()
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : String(e))
+      setErr(userSafePageError(e))
     } finally {
       setBusy(null)
     }

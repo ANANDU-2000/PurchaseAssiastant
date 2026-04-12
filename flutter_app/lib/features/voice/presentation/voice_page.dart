@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/config/app_config.dart';
+import '../../../core/providers/tenant_branding_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 
 /// Renders `**bold**` segments with heavier weight (WhatsApp-style markdown lite).
@@ -69,12 +71,12 @@ class _VoicePageState extends ConsumerState<VoicePage> with SingleTickerProvider
     _msgs.add(
       _ChatMsg(
         text:
-            '👋 HEXA AI\n\n'
+            '👋 ${AppConfig.appName} AI\n\n'
             '**How it works**\n'
             '• **Tap the mic** — we listen only during a short session (not always-on).\n'
             '• **Type** below — same intent pipeline, often lowest cost.\n'
             '• **Malayalam or English** — preview shows structured fields; **nothing saves** until you confirm in **Entries**.\n\n'
-            '**Wake word “Hey Hexa”** can come later (needs OS/device integration). For now: **tap to speak**.',
+            '**Wake word** support can come later (needs OS/device integration). For now: **tap to speak**.',
         isUser: false,
         time: DateTime.now(),
       ),
@@ -150,7 +152,7 @@ class _VoicePageState extends ConsumerState<VoicePage> with SingleTickerProvider
           _ChatMsg(
             text:
                 '✅ **Preview (draft)**\n'
-                '• Transcript: (when STT is enabled on server)\n'
+                '• Transcript: (when voice-to-text is enabled for your workspace)\n'
                 '• $note\n\n'
                 '**EN:** Review numbers, then **Entries → Add → Preview → Save**.\n'
                 '**ML:** സംഖ്യകൾ പരിശോധിച്ച് എൻട്രികളിൽ സേവ് ചെയ്യുക — യാന്ത്രിക സേവ് ഇല്ല.\n\n'
@@ -317,6 +319,10 @@ class _VoicePageState extends ConsumerState<VoicePage> with SingleTickerProvider
     final tt = Theme.of(context).textTheme;
     final timeFmt = DateFormat.jm();
     final hasText = _textCtrl.text.trim().isNotEmpty;
+    final tenantTitle = ref.watch(tenantAppTitleProvider);
+    final logoUrl = ref.watch(tenantLogoUrlProvider);
+    final t = tenantTitle.trim();
+    final letter = t.isEmpty ? 'M' : t.substring(0, 1).toUpperCase();
 
     return Scaffold(
       backgroundColor: cs.surface,
@@ -325,17 +331,32 @@ class _VoicePageState extends ConsumerState<VoicePage> with SingleTickerProvider
         titleSpacing: 0,
         title: Row(
           children: [
-            CircleAvatar(
-              backgroundColor: HexaColors.primaryMid,
-              radius: 20,
-              child: const Text('H', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
-            ),
+            if (logoUrl != null && logoUrl.isNotEmpty)
+              ClipOval(
+                child: Image.network(
+                  logoUrl,
+                  width: 40,
+                  height: 40,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => CircleAvatar(
+                    backgroundColor: HexaColors.primaryMid,
+                    radius: 20,
+                    child: Text(letter, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
+                  ),
+                ),
+              )
+            else
+              CircleAvatar(
+                backgroundColor: HexaColors.primaryMid,
+                radius: 20,
+                child: Text(letter, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
+              ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('HEXA Assistant', style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                  Text('$tenantTitle Assistant', style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
                   Text(
                     'Ask in Malayalam or English',
                     style: tt.labelSmall?.copyWith(color: HexaColors.textSecondary),

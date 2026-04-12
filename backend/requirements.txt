@@ -1,5 +1,6 @@
 # HEXA Purchase Assistant — backend
 fastapi>=0.115
+python-multipart>=0.0.9
 uvicorn[standard]>=0.32
 sqlalchemy[asyncio]>=2.0.36
 asyncpg>=0.30

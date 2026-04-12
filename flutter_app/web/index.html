@@ -1,71 +1,35 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
-  <base href="$FLUTTER_BASE_HREF">
+  <base href="/">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <!-- Reduce stale index.html when iterating on web UI (Flutter SW caches aggressively). -->
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="My Purchases">
 
-  <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="hexa_purchase_assistant">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
-  <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
   <title>hexa_purchase_assistant</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    html, body { margin: 0; height: 100%; background: #07080D; }
+    /* Optional tiny hint while engine boots — not full-screen (won’t cover the canvas). */
+    #boot {
+      position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 1;
+      font: 12px/1.4 system-ui, sans-serif; color: #64748b; pointer-events: none;
+    }
+  </style>
 </head>
 <body>
-  <script>
-    // Bump this string when shell/navigation changes so returning users are not stuck on an old service worker.
-    (function () {
-      var SHELL_ASSET_VERSION = 'hexa-no-top-strip-titles-20260412d';
-      try {
-        if (localStorage.getItem('hexa_shell_v') === SHELL_ASSET_VERSION) {
-          sessionStorage.removeItem('hexa_sw_reload_once');
-          return;
-        }
-        localStorage.setItem('hexa_shell_v', SHELL_ASSET_VERSION);
-        if (!('serviceWorker' in navigator)) return;
-        navigator.serviceWorker.getRegistrations().then(function (regs) {
-          return Promise.all(regs.map(function (r) { return r.unregister(); }));
-        }).then(function () {
-          if (!sessionStorage.getItem('hexa_sw_reload_once')) {
-            sessionStorage.setItem('hexa_sw_reload_once', '1');
-            location.reload();
-          }
-        });
-      } catch (e) { /* ignore */ }
-    })();
-  </script>
-  <!--
-    You can customize the "flutter_bootstrap.js" script.
-    This is useful to provide a custom configuration to the Flutter loader
-    or to give the user feedback during the initialization process.
-
-    For more details:
-    * https://docs.flutter.dev/platform-integration/web/initialization
-  -->
-  <script src="flutter_bootstrap.js" async></script>
+  <!-- Do not auto-reload here — it races the Flutter engine and causes a permanent white screen. -->
+  <div id="boot" aria-live="polite">Starting…</div>
+  <script src="flutter_bootstrap.js" defer></script>
 </body>
 </html>

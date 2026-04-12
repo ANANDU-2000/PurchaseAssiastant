@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'hexa_colors.dart';
 
-/// HEXA — premium fintech-style theme (teal + slate, high clarity).
+/// Premium dark theme — charcoal surfaces, blue primary, purple accents.
 ThemeData buildHexaTheme(Brightness brightness) {
   final isDark = brightness == Brightness.dark;
 
@@ -26,7 +26,7 @@ ThemeData buildHexaTheme(Brightness brightness) {
     useMaterial3: true,
     brightness: brightness,
     colorScheme: baseScheme,
-    scaffoldBackgroundColor: isDark ? baseScheme.surface : HexaColors.canvas,
+    scaffoldBackgroundColor: isDark ? HexaColors.canvas : const Color(0xFFF4F7FB),
     textTheme: textTheme.copyWith(
       titleLarge: textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.2),
       titleMedium: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
@@ -37,9 +37,9 @@ ThemeData buildHexaTheme(Brightness brightness) {
     appBarTheme: AppBarTheme(
       elevation: 0,
       scrolledUnderElevation: 0.5,
-      surfaceTintColor: HexaColors.primaryMid.withValues(alpha: 0.08),
+      surfaceTintColor: HexaColors.accentPurple.withValues(alpha: 0.06),
       centerTitle: false,
-      backgroundColor: isDark ? null : HexaColors.surfaceCard,
+      backgroundColor: isDark ? HexaColors.canvas : Colors.white,
       foregroundColor: baseScheme.onSurface,
       titleTextStyle: textTheme.titleLarge?.copyWith(
         fontWeight: FontWeight.w800,
@@ -50,17 +50,17 @@ ThemeData buildHexaTheme(Brightness brightness) {
     tabBarTheme: TabBarThemeData(
       indicatorSize: TabBarIndicatorSize.label,
       dividerColor: Colors.transparent,
-      labelColor: HexaColors.primaryMid,
+      labelColor: HexaColors.accentBlue,
       unselectedLabelColor: HexaColors.textSecondary,
       indicator: UnderlineTabIndicator(
-        borderSide: const BorderSide(width: 3, color: HexaColors.accentLine),
+        borderSide: const BorderSide(width: 3, color: HexaColors.accentBlue),
         borderRadius: BorderRadius.circular(2),
       ),
       labelStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800, letterSpacing: 0.2),
       unselectedLabelStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
     ),
     cardTheme: CardThemeData(
-      color: isDark ? baseScheme.surfaceContainerHighest.withValues(alpha: 0.35) : HexaColors.surfaceCard,
+      color: isDark ? HexaColors.surfaceCard : Colors.white,
       elevation: isDark ? 0 : 1.5,
       shadowColor: isDark ? Colors.transparent : HexaColors.primaryDeep.withValues(alpha: 0.07),
       margin: EdgeInsets.zero,
@@ -102,27 +102,27 @@ ThemeData buildHexaTheme(Brightness brightness) {
         backgroundColor: WidgetStateProperty.resolveWith((s) {
           final base = isDark ? baseScheme.surfaceContainerHigh : Colors.white;
           if (s.contains(WidgetState.pressed)) {
-            return Color.alphaBlend(HexaColors.primaryMid.withValues(alpha: 0.14), base);
+            return Color.alphaBlend(HexaColors.accentBlue.withValues(alpha: 0.14), base);
           }
           if (s.contains(WidgetState.hovered)) {
-            return Color.alphaBlend(HexaColors.primaryMid.withValues(alpha: 0.10), base);
+            return Color.alphaBlend(HexaColors.accentBlue.withValues(alpha: 0.10), base);
           }
           return base;
         }),
         foregroundColor: WidgetStateProperty.resolveWith((s) {
           if (s.contains(WidgetState.disabled)) return baseScheme.onSurface.withValues(alpha: 0.38);
-          return HexaColors.primaryDeep;
+          return HexaColors.accentBlue;
         }),
         overlayColor: WidgetStateProperty.resolveWith((s) {
-          if (s.contains(WidgetState.pressed)) return HexaColors.primaryMid.withValues(alpha: 0.16);
-          return HexaColors.primaryMid.withValues(alpha: 0.08);
+          if (s.contains(WidgetState.pressed)) return HexaColors.accentPurple.withValues(alpha: 0.16);
+          return HexaColors.accentPurple.withValues(alpha: 0.08);
         }),
       ),
     ),
     navigationBarTheme: NavigationBarThemeData(
       height: 72,
       elevation: 0,
-      backgroundColor: baseScheme.surfaceContainer,
+      backgroundColor: isDark ? HexaColors.surfaceCard : baseScheme.surfaceContainer,
       indicatorColor: baseScheme.primaryContainer.withValues(alpha: isDark ? 0.45 : 0.65),
       labelTextStyle: WidgetStateProperty.resolveWith((states) {
         final selected = states.contains(WidgetState.selected);
@@ -141,7 +141,7 @@ ThemeData buildHexaTheme(Brightness brightness) {
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: isDark ? baseScheme.surfaceContainerHigh : HexaColors.canvas,
+      fillColor: isDark ? HexaColors.surfaceElevated : HexaColors.canvas,
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
@@ -172,24 +172,24 @@ ThemeData buildHexaTheme(Brightness brightness) {
 ColorScheme _lightScheme() {
   return const ColorScheme(
     brightness: Brightness.light,
-    primary: HexaColors.primaryMid,
+    primary: HexaColors.primaryDeep,
     onPrimary: Colors.white,
-    primaryContainer: HexaColors.primaryLight,
-    onPrimaryContainer: HexaColors.primaryDeep,
-    secondary: HexaColors.primaryDeep,
+    primaryContainer: Color(0xFFE0E7FF),
+    onPrimaryContainer: Color(0xFF1E3A8A),
+    secondary: HexaColors.accentPurple,
     onSecondary: Colors.white,
-    secondaryContainer: Color(0xFFE2E8F0),
-    onSecondaryContainer: HexaColors.textPrimary,
+    secondaryContainer: Color(0xFFF3E8FF),
+    onSecondaryContainer: Color(0xFF581C87),
     tertiary: HexaColors.accentAmber,
     onTertiary: Colors.white,
     error: HexaColors.loss,
     onError: Colors.white,
     surface: Colors.white,
-    onSurface: HexaColors.textPrimary,
+    onSurface: HexaColors.textOnLightSurface,
     surfaceContainerHighest: Color(0xFFF1F5F9),
     surfaceContainerHigh: Color(0xFFE8EEF4),
-    surfaceContainer: HexaColors.canvas,
-    onSurfaceVariant: HexaColors.textSecondary,
+    surfaceContainer: Color(0xFFF4F7FB),
+    onSurfaceVariant: Color(0xFF64748B),
     outline: Color(0xFFCBD5E1),
     outlineVariant: HexaColors.border,
   );
@@ -198,25 +198,25 @@ ColorScheme _lightScheme() {
 ColorScheme _darkScheme() {
   return const ColorScheme(
     brightness: Brightness.dark,
-    primary: Color(0xFF2DD4BF),
-    onPrimary: Color(0xFF04201C),
-    primaryContainer: Color(0xFF134E4A),
-    onPrimaryContainer: Color(0xFFCCFBF1),
-    secondary: Color(0xFF94A3B8),
-    onSecondary: Color(0xFF0F172A),
-    secondaryContainer: Color(0xFF334155),
-    onSecondaryContainer: Color(0xFFF1F5F9),
-    tertiary: Color(0xFFA5B4FC),
-    onTertiary: Color(0xFF1E1B4B),
-    error: Color(0xFFF87171),
+    primary: HexaColors.primaryDeep,
+    onPrimary: Colors.white,
+    primaryContainer: Color(0xFF312E81),
+    onPrimaryContainer: Color(0xFFE0E7FF),
+    secondary: HexaColors.accentPurple,
+    onSecondary: Color(0xFF1E1B4B),
+    secondaryContainer: Color(0xFF4C1D95),
+    onSecondaryContainer: Color(0xFFF3E8FF),
+    tertiary: Color(0xFF93C5FD),
+    onTertiary: Color(0xFF172554),
+    error: HexaColors.loss,
     onError: Color(0xFF450A0A),
-    surface: Color(0xFF0C0F14),
-    onSurface: Color(0xFFF8FAFC),
-    surfaceContainerHighest: Color(0xFF1E293B),
-    surfaceContainerHigh: Color(0xFF1A2230),
-    surfaceContainer: Color(0xFF121826),
-    onSurfaceVariant: Color(0xFF94A3B8),
+    surface: HexaColors.canvas,
+    onSurface: HexaColors.textPrimary,
+    surfaceContainerHighest: HexaColors.surfaceElevated,
+    surfaceContainerHigh: HexaColors.surfaceCard,
+    surfaceContainer: HexaColors.surfaceMuted,
+    onSurfaceVariant: HexaColors.textSecondary,
     outline: Color(0xFF475569),
-    outlineVariant: Color(0xFF2A3341),
+    outlineVariant: Color(0xFF334155),
   );
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { adminGet } from '../../lib/api'
+import { adminGet, userSafePageError } from '../../lib/api'
 
 type Integ = Record<string, { configured?: boolean; provider?: string; base_url?: string }>
 
@@ -14,7 +14,7 @@ export default function IntegrationsPage() {
         const d = await adminGet<Integ>('/v1/admin/integrations')
         if (!cancelled) setData(d)
       } catch (e: unknown) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : String(e))
+        if (!cancelled) setErr(userSafePageError(e))
       }
     })()
     return () => {

@@ -83,9 +83,9 @@ async def list_suppliers(
 @router.post("/suppliers", response_model=SupplierOut, status_code=status.HTTP_201_CREATED)
 async def create_supplier(
     business_id: uuid.UUID,
-    body: SupplierCreate,
     _m: Annotated[Membership, Depends(require_membership)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    body: SupplierCreate,
 ):
     del _m
     if await _supplier_dup(db, business_id, body.name):
@@ -118,9 +118,9 @@ async def create_supplier(
 async def update_supplier(
     business_id: uuid.UUID,
     supplier_id: uuid.UUID,
-    body: SupplierUpdate,
     _m: Annotated[Membership, Depends(require_membership)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    body: SupplierUpdate,
 ):
     del _m
     r = await db.execute(
@@ -244,9 +244,9 @@ class BrokerCreate(BaseModel):
 @router.post("/brokers", response_model=BrokerOut, status_code=status.HTTP_201_CREATED)
 async def create_broker(
     business_id: uuid.UUID,
-    body: BrokerCreate,
     _m: Annotated[Membership, Depends(require_membership)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    body: BrokerCreate,
 ):
     del _m
     if await _broker_dup(db, business_id, body.name):
@@ -275,9 +275,9 @@ async def create_broker(
 async def update_broker(
     business_id: uuid.UUID,
     broker_id: uuid.UUID,
-    body: BrokerUpdate,
     _m: Annotated[Membership, Depends(require_membership)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    body: BrokerUpdate,
 ):
     del _m
     r = await db.execute(

@@ -22,7 +22,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Sign in'), findsWidgets);
+    expect(find.text('Sign In'), findsWidgets);
   });
 
   testWidgets('Analytics screen shows date range UI', (WidgetTester tester) async {
@@ -39,7 +39,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Reports'), findsOneWidget);
-    expect(find.text('Date range'), findsOneWidget);
+    expect(find.text('Overview'), findsOneWidget);
+    expect(find.text('Analytics'), findsOneWidget);
+    expect(find.text('Today'), findsOneWidget);
   });
 }

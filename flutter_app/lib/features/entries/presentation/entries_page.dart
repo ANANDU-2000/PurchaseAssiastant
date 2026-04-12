@@ -318,7 +318,7 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
                   return HexaEmptyState(
                     icon: Icons.receipt_long_rounded,
                     title: 'No entries yet',
-                    subtitle: 'Add a purchase to see it here. Data loads from your API when signed in.',
+                    subtitle: 'Add a purchase to see it here. Entries sync when you are online and signed in.',
                     action: FilledButton.icon(
                       onPressed: () => showEntryCreateSheet(context),
                       icon: const Icon(Icons.add_rounded),
