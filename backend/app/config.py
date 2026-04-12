@@ -67,6 +67,11 @@ class Settings(BaseSettings):
     sentry_dsn: str | None = None
     log_level: str = "INFO"
     metrics_token: str | None = None
+    # Optional static Bearer for admin API + admin_web (machine auth). Prefer long random values in production.
+    admin_api_token: str | None = None
+    # Internal admin SPA login (POST /v1/admin/login). Plaintext — use only on trusted networks.
+    admin_email: str | None = None
+    admin_password: str | None = None
 
     enable_ai: bool = True
     enable_ocr: bool = False

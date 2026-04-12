@@ -3,6 +3,7 @@ from app.models.business import Business
 from app.models.catalog import CatalogItem, CatalogVariant, ItemCategory
 from app.models.contacts import Broker, Supplier
 from app.models.entry import Entry, EntryLineItem
+from app.models.feature_flag import FeatureFlag
 from app.models.membership import Membership
 from app.models.user import User
 
@@ -18,4 +19,5 @@ __all__ = [
     "ItemCategory",
     "CatalogItem",
     "CatalogVariant",
+    "FeatureFlag",
 ]

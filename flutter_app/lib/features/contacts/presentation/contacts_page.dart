@@ -76,6 +76,279 @@ class _StatPill extends StatelessWidget {
   }
 }
 
+/// Supplier row — optional [metrics] from contacts hub (null in global search).
+class _SupplierCard extends StatelessWidget {
+  const _SupplierCard({
+    required this.data,
+    required this.metrics,
+    required this.isOwner,
+    required this.onOpen,
+    required this.onDial,
+    required this.onWhatsApp,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final Map<String, dynamic> data;
+  final Map<String, dynamic>? metrics;
+  final bool isOwner;
+  final VoidCallback onOpen;
+  final void Function(String? phone) onDial;
+  final void Function(String? wa) onWhatsApp;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final id = data['id']?.toString();
+    final m = metrics;
+    final deals = (m?['deals'] as num?)?.toInt();
+    final avg = (m?['avg_landing'] as num?)?.toDouble();
+    final profit = (m?['total_profit'] as num?)?.toDouble();
+    final tq = (m?['total_qty'] as num?)?.toDouble() ?? 0;
+    final nm = data['name']?.toString() ?? '—';
+    var marginStr = '—';
+    if (m != null && tq > 0 && avg != null && avg > 0) {
+      final cost = avg * tq;
+      if (cost > 0) marginStr = '${((profit ?? 0) / cost * 100).toStringAsFixed(0)}%';
+    }
+    final phone = data['phone']?.toString();
+    final wa = data['whatsapp_number']?.toString();
+    final loc = data['location']?.toString() ?? '';
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: HexaColors.border),
+      ),
+      child: InkWell(
+        onTap: id == null ? null : onOpen,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: _avatarColor(nm.isEmpty ? 'x' : nm),
+                    child: Text(
+                      _initials(nm.isEmpty ? '?' : nm),
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(nm, style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                        if (loc.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Row(
+                              children: [
+                                Icon(Icons.place_outlined, size: 16, color: HexaColors.textSecondary),
+                                const SizedBox(width: 4),
+                                Expanded(child: Text(loc, style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary))),
+                              ],
+                            ),
+                          ),
+                        if (phone != null && phone.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: InkWell(
+                              onTap: () => onDial(phone),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.phone_outlined, size: 16, color: HexaColors.primaryMid),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Tap to call',
+                                    style: tt.labelLarge?.copyWith(color: HexaColors.primaryMid, fontWeight: FontWeight.w700),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(phone, style: tt.bodySmall),
+                                ],
+                              ),
+                            ),
+                          ),
+                        if (wa != null && wa.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: InkWell(
+                              onTap: () => onWhatsApp(wa),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.chat_rounded, size: 16, color: const Color(0xFF25D366)),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'WhatsApp',
+                                    style: tt.labelLarge?.copyWith(
+                                      color: const Color(0xFF128C7E),
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(wa, style: tt.bodySmall),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert_rounded),
+                    onSelected: (v) {
+                      if (v == 'detail') onOpen();
+                      if (v == 'edit') onEdit();
+                      if (v == 'delete') onDelete();
+                    },
+                    itemBuilder: (ctx) => [
+                      const PopupMenuItem(value: 'detail', child: Text('View detail')),
+                      const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                      if (isOwner) const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                    ],
+                  ),
+                ],
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 10),
+                child: Divider(height: 1),
+              ),
+              Row(
+                children: [
+                  _StatPill(icon: Icons.local_shipping_outlined, text: 'Deals: ${deals ?? 0}'),
+                  const SizedBox(width: 8),
+                  _StatPill(
+                    icon: Icons.currency_rupee_rounded,
+                    text: avg != null ? 'Avg: ₹${avg.toStringAsFixed(0)}' : 'Avg: —',
+                  ),
+                  const SizedBox(width: 8),
+                  _StatPill(icon: Icons.percent_rounded, text: 'Margin: $marginStr'),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BrokerCard extends StatelessWidget {
+  const _BrokerCard({
+    required this.data,
+    required this.metrics,
+    required this.isOwner,
+    required this.onOpen,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final Map<String, dynamic> data;
+  final Map<String, dynamic>? metrics;
+  final bool isOwner;
+  final VoidCallback onOpen;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final id = data['id']?.toString();
+    final m = metrics;
+    final deals = (m?['deals'] as num?)?.toInt();
+    final comm = (m?['total_commission'] as num?)?.toDouble();
+    final profit = (m?['total_profit'] as num?)?.toDouble();
+    final ct = data['commission_type']?.toString().toLowerCase() ?? '';
+    final cv = data['commission_value'];
+    final isPct = ct == 'percent';
+    final nm = data['name']?.toString() ?? '—';
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: HexaColors.border),
+      ),
+      child: InkWell(
+        onTap: id == null ? null : onOpen,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+                    child: Icon(isPct ? Icons.percent_rounded : Icons.currency_rupee_rounded),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(nm, style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                        const SizedBox(height: 4),
+                        Text(
+                          isPct ? 'Commission: Per cent' : 'Commission: Fixed ₹',
+                          style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary),
+                        ),
+                        if (cv != null) Text('$cv', style: tt.labelLarge?.copyWith(fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert_rounded),
+                    onSelected: (v) {
+                      if (v == 'detail') onOpen();
+                      if (v == 'edit') onEdit();
+                      if (v == 'delete') onDelete();
+                    },
+                    itemBuilder: (ctx) => [
+                      const PopupMenuItem(value: 'detail', child: Text('View detail')),
+                      const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                      if (isOwner) const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                    ],
+                  ),
+                ],
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 10),
+                child: Divider(height: 1),
+              ),
+              Row(
+                children: [
+                  _StatPill(icon: Icons.receipt_long_outlined, text: 'Deals: ${deals ?? 0}'),
+                  const SizedBox(width: 8),
+                  _StatPill(
+                    icon: Icons.payments_outlined,
+                    text: comm != null ? 'Commission: ₹${comm.toStringAsFixed(0)}' : 'Commission: —',
+                  ),
+                  const SizedBox(width: 8),
+                  _StatPill(
+                    icon: Icons.trending_up_rounded,
+                    text: profit != null ? 'Impact: ₹${profit.toStringAsFixed(0)}' : 'Impact: —',
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class ContactsPage extends ConsumerStatefulWidget {
   const ContactsPage({super.key});
 
@@ -88,12 +361,15 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
   final _searchCtrl = TextEditingController();
   Timer? _debounce;
   String _searchQuery = '';
+  Map<String, dynamic>? _searchSnapshot;
+  bool _searchLoading = false;
   static const _searchMinLen = 2;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    _tabController.addListener(() => setState(() {}));
     _searchCtrl.addListener(() => setState(() {}));
   }
 
@@ -107,13 +383,57 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
 
   void _scheduleSearch(String raw) {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400), () {
+    final t = raw.trim();
+    if (t.length < _searchMinLen) {
+      setState(() {
+        _searchQuery = '';
+        _searchSnapshot = null;
+        _searchLoading = false;
+      });
+      return;
+    }
+    _debounce = Timer(const Duration(milliseconds: 400), () async {
       if (!mounted) return;
-      setState(() => _searchQuery = raw.trim());
+      final session = ref.read(sessionProvider);
+      if (session == null) return;
+      setState(() {
+        _searchQuery = t;
+        _searchLoading = true;
+      });
+      try {
+        final data = await ref.read(hexaApiProvider).contactsSearch(
+              businessId: session.primaryBusiness.id,
+              query: t,
+            );
+        if (!mounted) return;
+        setState(() {
+          _searchSnapshot = data;
+          _searchLoading = false;
+        });
+      } catch (e) {
+        if (!mounted) return;
+        setState(() => _searchLoading = false);
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
     });
   }
 
   bool get _isSearching => _searchQuery.length >= _searchMinLen;
+
+  int _searchCountForTab(int i) {
+    final d = _searchSnapshot;
+    if (d == null) return 0;
+    switch (i) {
+      case 0:
+        return ((d['suppliers'] as List?) ?? []).length;
+      case 1:
+        return ((d['brokers'] as List?) ?? []).length;
+      case 2:
+        return ((d['categories'] as List?) ?? []).length;
+      default:
+        return ((d['item_names'] as List?) ?? []).length;
+    }
+  }
 
   Future<void> _dial(String? phone) async {
     if (phone == null || phone.trim().isEmpty) return;
@@ -123,9 +443,20 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
     }
   }
 
+  Future<void> _openWhatsApp(String? raw) async {
+    if (raw == null || raw.trim().isEmpty) return;
+    final d = raw.replaceAll(RegExp(r'\D'), '');
+    if (d.isEmpty) return;
+    final uri = Uri.parse('https://wa.me/$d');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
   Future<void> _addSupplier() async {
     final name = TextEditingController();
     final phone = TextEditingController();
+    final wa = TextEditingController();
     final loc = TextEditingController();
     final brokerId = TextEditingController();
     final ok = await showDialog<bool>(
@@ -138,6 +469,14 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
             children: [
               TextField(controller: name, decoration: const InputDecoration(labelText: 'Name *')),
               TextField(controller: phone, decoration: const InputDecoration(labelText: 'Phone')),
+              TextField(
+                controller: wa,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'WhatsApp number',
+                  helperText: 'Optional — can differ from phone',
+                ),
+              ),
               TextField(controller: loc, decoration: const InputDecoration(labelText: 'Location')),
               TextField(
                 controller: brokerId,
@@ -161,6 +500,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
             businessId: session.primaryBusiness.id,
             name: name.text.trim(),
             phone: phone.text.trim().isEmpty ? null : phone.text.trim(),
+            whatsappNumber: wa.text.trim().isEmpty ? null : wa.text.trim(),
             location: loc.text.trim().isEmpty ? null : loc.text.trim(),
             brokerId: bid.isEmpty ? null : bid,
           );
@@ -285,7 +625,6 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
           );
       ref.invalidate(itemCategoriesListProvider);
       ref.invalidate(catalogItemsListProvider);
-      ref.invalidate(contactsCategoriesProvider);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Category created')));
     } on DioException catch (e) {
       if (mounted) {
@@ -397,8 +736,6 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
           );
       ref.invalidate(catalogItemsListProvider);
       ref.invalidate(itemCategoriesListProvider);
-      ref.invalidate(contactsItemsProvider);
-      ref.invalidate(contactsCategoriesProvider);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Item created')));
     } on DioException catch (e) {
       if (mounted) {
@@ -415,18 +752,26 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
     if (id == null) return;
     final name = TextEditingController(text: s['name']?.toString() ?? '');
     final phone = TextEditingController(text: s['phone']?.toString() ?? '');
+    final wa = TextEditingController(text: s['whatsapp_number']?.toString() ?? '');
     final loc = TextEditingController(text: s['location']?.toString() ?? '');
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Edit supplier'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: name, decoration: const InputDecoration(labelText: 'Name *')),
-            TextField(controller: phone, decoration: const InputDecoration(labelText: 'Phone')),
-            TextField(controller: loc, decoration: const InputDecoration(labelText: 'Location')),
-          ],
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: name, decoration: const InputDecoration(labelText: 'Name *')),
+              TextField(controller: phone, decoration: const InputDecoration(labelText: 'Phone')),
+              TextField(
+                controller: wa,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(labelText: 'WhatsApp number'),
+              ),
+              TextField(controller: loc, decoration: const InputDecoration(labelText: 'Location')),
+            ],
+          ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
@@ -443,6 +788,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
             supplierId: id,
             name: name.text.trim(),
             phone: phone.text.trim().isEmpty ? null : phone.text.trim(),
+            whatsappNumber: wa.text.trim(),
             location: loc.text.trim().isEmpty ? null : loc.text.trim(),
           );
       ref.invalidate(suppliersListProvider);
@@ -559,82 +905,117 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
     }
   }
 
-  Widget _buildSearchResults() {
-    final session = ref.watch(sessionProvider);
-    if (session == null) return const SizedBox.shrink();
-    return FutureBuilder<Map<String, dynamic>>(
-      key: ValueKey(_searchQuery),
-      future: ref.read(hexaApiProvider).contactsSearch(businessId: session.primaryBusiness.id, query: _searchQuery),
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()));
-        }
-        final data = snap.data ?? {};
-        final suppliers = (data['suppliers'] as List?) ?? [];
-        final brokers = (data['brokers'] as List?) ?? [];
-        final items = (data['item_names'] as List?) ?? [];
-        final cats = (data['categories'] as List?) ?? [];
-        if (suppliers.isEmpty && brokers.isEmpty && items.isEmpty && cats.isEmpty) {
-          return const Padding(
-            padding: EdgeInsets.all(24),
-            child: Text('No matches. Try another keyword.'),
-          );
-        }
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          children: [
-            if (suppliers.isNotEmpty) ...[
-              Text('Suppliers', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-              ...suppliers.map((e) {
-                final m = Map<String, dynamic>.from(e as Map);
-                final id = m['id']?.toString();
-                return ListTile(
-                  leading: const Icon(Icons.storefront_outlined),
-                  title: Text(m['name']?.toString() ?? ''),
-                  onTap: id == null ? null : () => context.push('/supplier/$id'),
-                );
-              }),
-            ],
-            if (brokers.isNotEmpty) ...[
-              Text('Brokers', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-              ...brokers.map((e) {
-                final m = Map<String, dynamic>.from(e as Map);
-                final id = m['id']?.toString();
-                return ListTile(
-                  leading: const Icon(Icons.handshake_outlined),
-                  title: Text(m['name']?.toString() ?? ''),
-                  onTap: id == null ? null : () => context.push('/broker/$id'),
-                );
-              }),
-            ],
-            if (items.isNotEmpty) ...[
-              Text('Items', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-              ...items.map((name) {
-                final n = name.toString();
-                return ListTile(
-                  leading: const Icon(Icons.inventory_2_outlined),
-                  title: Text(n),
-                  onTap: () => context.push('/item-analytics/${Uri.encodeComponent(n)}'),
-                );
-              }),
-            ],
-            if (cats.isNotEmpty) ...[
-              Text('Categories', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-              ...cats.map((c) {
-                final name = c.toString();
-                return ListTile(
-                  leading: const Icon(Icons.category_outlined),
-                  title: Text(name),
-                  onTap: () => context.push('/contacts/category?name=${Uri.encodeComponent(name)}'),
-                );
-              }),
-            ],
-          ],
-        );
-      },
+  Widget _tabWithBadge(String label, int count) {
+    final c = count > 0 ? count : null;
+    return Tab(
+      child: Badge(
+        isLabelVisible: c != null,
+        label: Text(c == null ? '' : '$c', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+        child: Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
+      ),
     );
+  }
+
+  Widget _searchResultsForTab(int tabIndex, {required bool isOwner}) {
+    final d = _searchSnapshot ?? {};
+    final tt = Theme.of(context).textTheme;
+    switch (tabIndex) {
+      case 0:
+        final suppliers = (d['suppliers'] as List?) ?? [];
+        if (suppliers.isEmpty) {
+          return Center(child: Text('No supplier matches.', style: tt.bodyMedium?.copyWith(color: HexaColors.textSecondary)));
+        }
+        return ListView.separated(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          itemCount: suppliers.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (context, i) {
+            final m = Map<String, dynamic>.from(suppliers[i] as Map);
+            final id = m['id']?.toString();
+            return _SupplierCard(
+              data: m,
+              metrics: null,
+              isOwner: isOwner,
+              onOpen: id == null ? () {} : () => context.push('/supplier/$id'),
+              onDial: _dial,
+              onWhatsApp: _openWhatsApp,
+              onEdit: () => _editSupplier(m),
+              onDelete: () => _deleteSupplier(m),
+            );
+          },
+        );
+      case 1:
+        final brokers = (d['brokers'] as List?) ?? [];
+        if (brokers.isEmpty) {
+          return Center(child: Text('No broker matches.', style: tt.bodyMedium?.copyWith(color: HexaColors.textSecondary)));
+        }
+        return ListView.separated(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          itemCount: brokers.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (context, i) {
+            final b = Map<String, dynamic>.from(brokers[i] as Map);
+            final id = b['id']?.toString();
+            return _BrokerCard(
+              data: b,
+              metrics: null,
+              isOwner: isOwner,
+              onOpen: id == null ? () {} : () => context.push('/broker/$id'),
+              onEdit: () => _editBroker(b),
+              onDelete: () => _deleteBroker(b),
+            );
+          },
+        );
+      case 2:
+        final cats = (d['categories'] as List?) ?? [];
+        if (cats.isEmpty) {
+          return Center(child: Text('No category matches.', style: tt.bodyMedium?.copyWith(color: HexaColors.textSecondary)));
+        }
+        return ListView.separated(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          itemCount: cats.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (context, i) {
+            final name = cats[i].toString();
+            return Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: const BorderSide(color: HexaColors.border)),
+              child: ListTile(
+                leading: const Icon(Icons.folder_outlined, color: HexaColors.primaryMid),
+                title: Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: const Text('Open items in this category'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => context.push('/contacts/category?name=${Uri.encodeComponent(name)}'),
+              ),
+            );
+          },
+        );
+      default:
+        final items = (d['item_names'] as List?) ?? [];
+        if (items.isEmpty) {
+          return Center(child: Text('No item name matches.', style: tt.bodyMedium?.copyWith(color: HexaColors.textSecondary)));
+        }
+        return ListView.separated(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          itemCount: items.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (context, i) {
+            final n = items[i].toString();
+            return Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: const BorderSide(color: HexaColors.border)),
+              child: ListTile(
+                leading: const Icon(Icons.inventory_2_outlined, color: HexaColors.primaryMid),
+                title: Text(n, style: const TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: const Text('Item analytics'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => context.push('/item-analytics/${Uri.encodeComponent(n)}'),
+              ),
+            );
+          },
+        );
+    }
   }
 
   void _addForCurrentTab() {
@@ -657,7 +1038,22 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final isOwner = ref.watch(sessionProvider)?.primaryBusiness.role == 'owner';
     return Scaffold(
+      floatingActionButton: AnimatedBuilder(
+        animation: _tabController,
+        builder: (context, _) {
+          final labels = ['＋ Supplier', '＋ Broker', '＋ Category', '＋ Item'];
+          return FloatingActionButton.extended(
+            onPressed: _addForCurrentTab,
+            icon: const Icon(Icons.add_rounded),
+            label: Text(labels[_tabController.index.clamp(0, 3)]),
+            backgroundColor: HexaColors.primaryMid,
+            foregroundColor: Colors.white,
+          );
+        },
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       appBar: AppBar(
         toolbarHeight: 72,
         titleSpacing: 16,
@@ -680,33 +1076,8 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
             ),
           ],
         ),
-        actions: [
-          const AppSettingsAction(),
-          // Always show add — searching must not hide create (was causing “missing +” reports).
-          Padding(
-            padding: const EdgeInsets.only(right: 4),
-            child: AnimatedBuilder(
-              animation: _tabController,
-              builder: (context, _) {
-                final i = _tabController.index;
-                final tip = switch (i) {
-                  0 => 'Add supplier',
-                  1 => 'Add broker',
-                  2 => 'Add category',
-                  _ => 'Add item',
-                };
-                return IconButton.filled(
-                  style: IconButton.styleFrom(
-                    backgroundColor: HexaColors.primaryMid,
-                    foregroundColor: Colors.white,
-                  ),
-                  tooltip: tip,
-                  onPressed: _addForCurrentTab,
-                  icon: const Icon(Icons.add_rounded),
-                );
-              },
-            ),
-          ),
+        actions: const [
+          AppSettingsAction(),
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
@@ -719,11 +1090,12 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
               child: TabBar(
                 controller: _tabController,
                 isScrollable: true,
-                tabs: const [
-                  Tab(text: 'Suppliers'),
-                  Tab(text: 'Brokers'),
-                  Tab(text: 'Categories'),
-                  Tab(text: 'Items'),
+                tabAlignment: TabAlignment.start,
+                tabs: [
+                  _tabWithBadge('Suppliers', _searchCountForTab(0)),
+                  _tabWithBadge('Brokers', _searchCountForTab(1)),
+                  _tabWithBadge('Categories', _searchCountForTab(2)),
+                  _tabWithBadge('Items', _searchCountForTab(3)),
                 ],
               ),
             ),
@@ -739,14 +1111,14 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
               controller: _searchCtrl,
               onChanged: _scheduleSearch,
               decoration: InputDecoration(
-                hintText: 'Search suppliers, brokers, items, categories…',
+                hintText: 'Search suppliers, items, categories…',
                 prefixIcon: const Icon(Icons.search_rounded),
                 suffixIcon: _searchCtrl.text.isNotEmpty
                     ? IconButton(
                         icon: const Icon(Icons.clear_rounded),
                         onPressed: () {
                           _searchCtrl.clear();
-                          setState(() => _searchQuery = '');
+                          _scheduleSearch('');
                         },
                       )
                     : null,
@@ -755,29 +1127,37 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
               ),
             ),
           ),
-          if (_isSearching)
-            Expanded(
-              child: SingleChildScrollView(child: _buildSearchResults()),
-            )
-          else
-            Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  _SuppliersTab(
-                    onDial: _dial,
-                    onEdit: _editSupplier,
-                    onDelete: _deleteSupplier,
+          Expanded(
+            child: _isSearching
+                ? (_searchLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : TabBarView(
+                        controller: _tabController,
+                        children: [
+                          _searchResultsForTab(0, isOwner: isOwner),
+                          _searchResultsForTab(1, isOwner: isOwner),
+                          _searchResultsForTab(2, isOwner: isOwner),
+                          _searchResultsForTab(3, isOwner: isOwner),
+                        ],
+                      ))
+                : TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _SuppliersTab(
+                        onDial: _dial,
+                        onWhatsApp: _openWhatsApp,
+                        onEdit: _editSupplier,
+                        onDelete: _deleteSupplier,
+                      ),
+                      _BrokersTab(
+                        onEdit: _editBroker,
+                        onDelete: _deleteBroker,
+                      ),
+                      _CategoriesTab(),
+                      _ItemsTab(),
+                    ],
                   ),
-                  _BrokersTab(
-                    onEdit: _editBroker,
-                    onDelete: _deleteBroker,
-                  ),
-                  _CategoriesTab(),
-                  _ItemsTab(),
-                ],
-              ),
-            ),
+          ),
         ],
       ),
     );
@@ -785,9 +1165,15 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
 }
 
 class _SuppliersTab extends ConsumerWidget {
-  const _SuppliersTab({required this.onDial, required this.onEdit, required this.onDelete});
+  const _SuppliersTab({
+    required this.onDial,
+    required this.onWhatsApp,
+    required this.onEdit,
+    required this.onDelete,
+  });
 
   final void Function(String?) onDial;
+  final void Function(String?) onWhatsApp;
   final Future<void> Function(Map<String, dynamic>) onEdit;
   final Future<void> Function(Map<String, dynamic>) onDelete;
 
@@ -826,85 +1212,15 @@ class _SuppliersTab extends ConsumerWidget {
             final s = list[i];
             final id = s['id']?.toString();
             final m = s['_metrics'] as Map<String, dynamic>?;
-            final deals = (m?['deals'] as num?)?.toInt();
-            final avg = (m?['avg_landing'] as num?)?.toDouble();
-            final profit = (m?['total_profit'] as num?)?.toDouble();
-            final tq = (m?['total_qty'] as num?)?.toDouble() ?? 0;
-            final nm = s['name']?.toString() ?? '';
-            String marginStr = '—';
-            if (m != null && tq > 0 && avg != null && avg > 0) {
-              final cost = avg * tq;
-              if (cost > 0) marginStr = '${((profit ?? 0) / cost * 100).toStringAsFixed(0)}%';
-            }
-            final phone = s['phone']?.toString();
-            return Card(
-              child: InkWell(
-                onTap: id == null ? null : () => context.push('/supplier/$id'),
-                borderRadius: BorderRadius.circular(12),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          CircleAvatar(
-                            backgroundColor: _avatarColor(nm.isEmpty ? 'x' : nm),
-                            child: Text(
-                              _initials(nm.isEmpty ? '?' : nm),
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(s['name']?.toString() ?? '—', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-                                if (phone != null && phone.isNotEmpty) Text(phone, style: Theme.of(context).textTheme.bodySmall),
-                                if (s['location'] != null && s['location'].toString().isNotEmpty)
-                                  Text(s['location'].toString(), style: Theme.of(context).textTheme.bodySmall),
-                                if (m != null)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 8),
-                                    child: Row(
-                                      children: [
-                                        _StatPill(icon: Icons.receipt_long_outlined, text: '${deals ?? 0} deals'),
-                                        const SizedBox(width: 8),
-                                        _StatPill(
-                                          icon: Icons.currency_rupee_rounded,
-                                          text: avg != null ? '₹${avg.toStringAsFixed(0)} avg' : '—',
-                                        ),
-                                        const SizedBox(width: 8),
-                                        _StatPill(icon: Icons.percent_rounded, text: marginStr),
-                                      ],
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          IconButton(
-                            tooltip: 'Call',
-                            icon: const Icon(Icons.call_rounded),
-                            onPressed: phone == null || phone.isEmpty ? null : () => onDial(phone),
-                          ),
-                          PopupMenuButton<String>(
-                            onSelected: (v) {
-                              if (v == 'edit') onEdit(s);
-                              if (v == 'delete') onDelete(s);
-                            },
-                            itemBuilder: (ctx) => [
-                              const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                              if (isOwner) const PopupMenuItem(value: 'delete', child: Text('Delete')),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+            return _SupplierCard(
+              data: Map<String, dynamic>.from(s),
+              metrics: m,
+              isOwner: isOwner,
+              onOpen: id == null ? () {} : () => context.push('/supplier/$id'),
+              onDial: onDial,
+              onWhatsApp: onWhatsApp,
+              onEdit: () => onEdit(s),
+              onDelete: () => onDelete(s),
             );
           },
         ),
@@ -938,58 +1254,13 @@ class _BrokersTab extends ConsumerWidget {
             final b = list[i];
             final id = b['id']?.toString();
             final m = b['_metrics'] as Map<String, dynamic>?;
-            final deals = (m?['deals'] as num?)?.toInt();
-            final comm = (m?['total_commission'] as num?)?.toDouble();
-            final profit = (m?['total_profit'] as num?)?.toDouble();
-            final ct = b['commission_type']?.toString().toLowerCase() ?? '';
-            final cv = b['commission_value'];
-            final isPct = ct == 'percent';
-            return Card(
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
-                  child: Icon(isPct ? Icons.percent_rounded : Icons.currency_rupee_rounded),
-                ),
-                title: Text(b['name']?.toString() ?? '—', style: const TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 6,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Chip(
-                          visualDensity: VisualDensity.compact,
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          label: Text(isPct ? '% per unit' : '₹ fixed', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                          side: BorderSide(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.35)),
-                        ),
-                        if (cv != null) Text('$cv', style: Theme.of(context).textTheme.labelLarge),
-                      ],
-                    ),
-                    if (m != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          'Deals: ${deals ?? 0} · Commission: ${comm?.toStringAsFixed(0) ?? '—'} · Profit: ${profit?.toStringAsFixed(0) ?? '—'}',
-                          style: Theme.of(context).textTheme.labelSmall,
-                        ),
-                      ),
-                  ],
-                ),
-                trailing: PopupMenuButton<String>(
-                  onSelected: (v) {
-                    if (v == 'edit') onEdit(b);
-                    if (v == 'delete') onDelete(b);
-                  },
-                  itemBuilder: (ctx) => [
-                    const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                    if (isOwner) const PopupMenuItem(value: 'delete', child: Text('Delete')),
-                  ],
-                ),
-                onTap: id == null ? null : () => context.push('/broker/$id'),
-              ),
+            return _BrokerCard(
+              data: Map<String, dynamic>.from(b),
+              metrics: m,
+              isOwner: isOwner,
+              onOpen: id == null ? () {} : () => context.push('/broker/$id'),
+              onEdit: () => onEdit(b),
+              onDelete: () => onDelete(b),
             );
           },
         );
@@ -1001,31 +1272,59 @@ class _BrokersTab extends ConsumerWidget {
 class _CategoriesTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(contactsCategoriesProvider);
-    return async.when(
+    final catsAsync = ref.watch(itemCategoriesListProvider);
+    final itemsAsync = ref.watch(catalogItemsListProvider);
+    return catsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('Error: $e')),
-      data: (rows) {
-        if (rows.isEmpty) {
-          return const Center(child: Text('No categories in the last $contactsLookbackDays days'));
-        }
-        return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-          itemCount: rows.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 8),
-          itemBuilder: (context, i) {
-            final r = rows[i];
-            final name = r['category']?.toString() ?? '—';
-            final profit = (r['total_profit'] as num?)?.toDouble() ?? 0;
-            final lines = (r['line_count'] as num?)?.toInt() ?? 0;
-            return Card(
-              child: ListTile(
-                leading: const Icon(Icons.folder_outlined),
-                title: Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: Text('Lines: $lines · Profit: ${profit.toStringAsFixed(0)}'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => context.push('/contacts/category?name=${Uri.encodeComponent(name)}'),
-              ),
+      data: (cats) {
+        return itemsAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Center(child: Text('$e')),
+          data: (items) {
+            if (cats.isEmpty) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    'No categories yet. Use ＋ Category to add one — same list as Settings → Item catalog.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: HexaColors.textSecondary),
+                  ),
+                ),
+              );
+            }
+            return ListView.separated(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              itemCount: cats.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (context, i) {
+                final c = cats[i];
+                final id = c['id']?.toString() ?? '';
+                final name = c['name']?.toString() ?? '—';
+                final nItems = items.where((it) => it['category_id']?.toString() == id).length;
+                return Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: const BorderSide(color: HexaColors.border),
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    leading: CircleAvatar(
+                      backgroundColor: HexaColors.primaryLight,
+                      child: Icon(Icons.grass_outlined, color: HexaColors.primaryMid),
+                    ),
+                    title: Text(name, style: const TextStyle(fontWeight: FontWeight.w800)),
+                    subtitle: Text(
+                      '$nItems items · tap to see items',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: HexaColors.textSecondary),
+                    ),
+                    trailing: const Icon(Icons.chevron_right_rounded, color: HexaColors.textSecondary),
+                    onTap: () => context.push('/catalog/category/$id'),
+                  ),
+                );
+              },
             );
           },
         );
@@ -1037,32 +1336,64 @@ class _CategoriesTab extends ConsumerWidget {
 class _ItemsTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(contactsItemsProvider);
-    return async.when(
+    final catsAsync = ref.watch(itemCategoriesListProvider);
+    final itemsAsync = ref.watch(catalogItemsListProvider);
+    return catsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('Error: $e')),
-      data: (rows) {
-        if (rows.isEmpty) {
-          return const Center(child: Text('No items in the last $contactsLookbackDays days'));
-        }
-        return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-          itemCount: rows.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 8),
-          itemBuilder: (context, i) {
-            final r = rows[i];
-            final name = r['item_name']?.toString() ?? '—';
-            final avg = (r['avg_landing'] as num?)?.toDouble() ?? 0;
-            final profit = (r['total_profit'] as num?)?.toDouble() ?? 0;
-            final lc = (r['line_count'] as num?)?.toInt() ?? 0;
-            return Card(
-              child: ListTile(
-                leading: const Icon(Icons.inventory_2_outlined),
-                title: Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: Text('Lines: $lc · Avg landing: ${avg.toStringAsFixed(1)} · Profit: ${profit.toStringAsFixed(0)}'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => context.push('/item-analytics/${Uri.encodeComponent(name)}'),
-              ),
+      data: (cats) {
+        final catName = <String, String>{
+          for (final x in cats) x['id'].toString(): x['name'].toString(),
+        };
+        return itemsAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Center(child: Text('$e')),
+          data: (items) {
+            if (items.isEmpty) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    'No catalog items yet. Use ＋ Item or Settings → Item catalog.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: HexaColors.textSecondary),
+                  ),
+                ),
+              );
+            }
+            return ListView.separated(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              itemCount: items.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (context, i) {
+                final it = items[i];
+                final id = it['id']?.toString() ?? '';
+                final name = it['name']?.toString() ?? '—';
+                final cid = it['category_id']?.toString() ?? '';
+                final du = it['default_unit']?.toString();
+                final sub = '${catName[cid] ?? '—'}${du != null && du.isNotEmpty ? ' · default: $du' : ''}';
+                return Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: const BorderSide(color: HexaColors.border),
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    leading: CircleAvatar(
+                      backgroundColor: HexaColors.primaryLight,
+                      child: Icon(Icons.inventory_2_outlined, color: HexaColors.primaryMid),
+                    ),
+                    title: Text(name, style: const TextStyle(fontWeight: FontWeight.w800)),
+                    subtitle: Text(
+                      sub,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: HexaColors.textSecondary),
+                    ),
+                    trailing: const Icon(Icons.chevron_right_rounded, color: HexaColors.textSecondary),
+                    onTap: () => context.push('/catalog/item/$id'),
+                  ),
+                );
+              },
             );
           },
         );

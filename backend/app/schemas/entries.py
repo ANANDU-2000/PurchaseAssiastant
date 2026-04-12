@@ -29,6 +29,7 @@ class EntryLineInput(BaseModel):
     bags: float | None = Field(default=None, gt=0, description="Redundant with qty when unit=bag")
     kg_per_bag: float | None = Field(default=None, gt=0)
     qty_kg: float | None = Field(default=None, gt=0, description="Total kg; computed for bag lines when possible")
+    stock_note: str | None = Field(default=None, max_length=512, description="Optional stock / volume note before this purchase")
 
     @model_validator(mode="after")
     def validate_bag_fields(self) -> EntryLineInput:
@@ -43,6 +44,7 @@ class EntryCreateRequest(BaseModel):
     supplier_id: uuid.UUID | None = None
     broker_id: uuid.UUID | None = None
     invoice_no: str | None = None
+    place: str | None = Field(default=None, max_length=512, description="Purchase location / market / yard (optional)")
     transport_cost: float | None = None
     commission_amount: float | None = Field(default=None, ge=0)
     confirm: bool = False
@@ -72,6 +74,7 @@ class EntryLineOut(BaseModel):
     landing_cost: float
     selling_price: float | None
     profit: float | None
+    stock_note: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -83,6 +86,7 @@ class EntryOut(BaseModel):
     supplier_id: uuid.UUID | None = None
     broker_id: uuid.UUID | None = None
     invoice_no: str | None = None
+    place: str | None = None
     transport_cost: float | None = None
     commission_amount: float | None = None
     lines: list[EntryLineOut]

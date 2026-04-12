@@ -46,7 +46,8 @@ class _LineControllers {
         qty = TextEditingController(text: '1'),
         kgPerBag = TextEditingController(text: '50'),
         purchase = TextEditingController(),
-        selling = TextEditingController();
+        selling = TextEditingController(),
+        stockNote = TextEditingController();
 
   final TextEditingController item;
   final TextEditingController category;
@@ -56,6 +57,7 @@ class _LineControllers {
   /// Invoice / purchase price per unit (excludes allocated entry commission — see landed cost).
   final TextEditingController purchase;
   final TextEditingController selling;
+  final TextEditingController stockNote;
   String unit = 'kg';
   /// Set when user picks a row from the master catalog (sent as catalog_item_id).
   String? catalogItemId;
@@ -68,6 +70,7 @@ class _LineControllers {
     kgPerBag.dispose();
     purchase.dispose();
     selling.dispose();
+    stockNote.dispose();
   }
 }
 
@@ -82,6 +85,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
   final _invoice = TextEditingController();
   final _commission = TextEditingController();
   final _transport = TextEditingController();
+  final _place = TextEditingController();
   final _quickEntry = TextEditingController();
   /// When false: one landed-cost field per line + selling; invoice/commission/transport hidden.
   bool _advancedEntryOptions = false;
@@ -129,6 +133,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     _invoice.dispose();
     _commission.dispose();
     _transport.dispose();
+    _place.dispose();
     _quickEntry.dispose();
     for (final l in _lines) {
       l.dispose();
@@ -195,6 +200,15 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     }
   }
 
+  String? _commissionSummaryLine() {
+    final total = _effectiveCommissionTotalRupees();
+    if (total == null || total <= 0) return null;
+    final nf = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 2);
+    final cpu = _commissionPerUnit();
+    final nLines = _lines.length;
+    return '${nf.format(total)} total commission = ${nf.format(cpu)} / unit · $nLines line${nLines == 1 ? '' : 's'}';
+  }
+
   double _effectiveLanding(_LineControllers l) {
     final p = _parseDouble(l.purchase.text) ?? 0;
     return p + _commissionPerUnit();
@@ -226,6 +240,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       }
       final cat = l.category.text.trim();
       if (cat.isNotEmpty) m['category'] = cat;
+      final sn = l.stockNote.text.trim();
+      if (sn.isNotEmpty) m['stock_note'] = sn;
       if (sell != null) m['selling_price'] = sell;
       return m;
     }).toList();
@@ -345,6 +361,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       }
       final cat = mm['category']?.toString();
       _lines[i].category.text = cat ?? '';
+      final sn = mm['stock_note']?.toString();
+      _lines[i].stockNote.text = (sn != null && sn.isNotEmpty) ? sn : '';
     }
   }
 
@@ -414,6 +432,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       'entry_date': fmt.format(_entryDate),
       if (_supplierId != null) 'supplier_id': _supplierId,
       if (_brokerId != null) 'broker_id': _brokerId,
+      if (_place.text.trim().isNotEmpty) 'place': _place.text.trim(),
       if (_invoice.text.trim().isNotEmpty) 'invoice_no': _invoice.text.trim(),
       if (commTotal != null && commTotal > 0) 'commission_amount': commTotal,
       if (_advancedEntryOptions && tr != null && tr > 0) 'transport_cost': tr,
@@ -534,6 +553,15 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
     if (picked != null) setState(() => _entryDate = picked);
+  }
+
+  String _entryDateChipLabel() {
+    final d = _entryDate;
+    final now = DateTime.now();
+    if (d.year == now.year && d.month == now.month && d.day == now.day) {
+      return 'Today, ${DateFormat.MMMd().format(d)}';
+    }
+    return DateFormat.yMMMd().format(d);
   }
 
   String? _brokerIdForSupplier(List<Map<String, dynamic>> suppliers, String? supplierId) {
@@ -1109,7 +1137,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
   void _goToContactsForMaps() {
     final router = GoRouter.of(context);
     Navigator.of(context).pop();
-    Future.microtask(() => router.push('/contacts'));
+    Future.microtask(() => router.go('/contacts'));
   }
 
   @override
@@ -1132,63 +1160,194 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               controller: scrollController,
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 100),
               children: [
-            Row(
-              children: [
-                Icon(Icons.edit_note_rounded, color: HexaColors.primaryMid, size: 28),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text('Add purchase', style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Nothing is saved until you Preview and tap Confirm & save.',
-              style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
-            ),
             if (_landingPriceSpike) ...[
-              const SizedBox(height: 8),
               Material(
-                color: cs.tertiaryContainer.withValues(alpha: 0.9),
+                color: Colors.amber.shade50,
                 borderRadius: BorderRadius.circular(12),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   child: Row(
                     children: [
-                      Icon(Icons.warning_amber_rounded, color: cs.tertiary),
+                      Icon(Icons.warning_amber_rounded, color: Colors.amber.shade800),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Landing price is well above your recent average — double-check before saving.',
-                          style: tt.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+                          'Price is 15%+ above your recent average — verify before saving.',
+                          style: tt.bodySmall?.copyWith(fontWeight: FontWeight.w700, color: Colors.amber.shade900),
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
+              const SizedBox(height: 12),
             ],
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CircleAvatar(
+                  radius: 22,
+                  backgroundColor: HexaColors.primaryLight.withValues(alpha: 0.9),
+                  child: Icon(Icons.edit_note_rounded, color: HexaColors.primaryMid, size: 26),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('New Entry', style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Preview → Confirm to save',
+                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
+                      ),
+                    ],
+                  ),
+                ),
+                ActionChip(
+                  avatar: Icon(Icons.calendar_today_rounded, size: 18, color: HexaColors.primaryMid),
+                  label: Text(_entryDateChipLabel(), style: const TextStyle(fontWeight: FontWeight.w600)),
+                  onPressed: _busy ? null : _pickDate,
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _quickEntry,
+              enabled: !_busy,
+              decoration: InputDecoration(
+                labelText: 'Quick line',
+                hintText: 'rice 50kg 42 ravi  OR  ari 50kg 42 ravi',
+                prefixIcon: Icon(Icons.bolt_rounded, color: HexaColors.primaryMid),
+                suffixIcon: IconButton(
+                  tooltip: 'Parse into line 1',
+                  onPressed: _busy ? null : _parseQuickEntry,
+                  icon: const Icon(Icons.arrow_downward_rounded),
+                ),
+              ),
+              onSubmitted: (_) => _parseQuickEntry(),
+              onChanged: (_) => setState(() {}),
+            ),
+            _quickLineParseChips(),
+            const SizedBox(height: 16),
+            Text('Supplier & Broker', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
             const SizedBox(height: 8),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Entry date'),
-              subtitle: Text(DateFormat.yMMMd().format(_entryDate)),
-              trailing: const Icon(Icons.calendar_today_rounded),
-              onTap: _busy ? null : _pickDate,
+            suppliersAsync.when(
+              loading: () => const LinearProgressIndicator(),
+              error: (_, __) => const Text('Could not load suppliers'),
+              data: (list) {
+                final suppliers = list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+                if (suppliers.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Material(
+                      color: HexaColors.primaryLight.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(10),
+                      child: const ListTile(
+                        dense: true,
+                        leading: Icon(Icons.info_outline_rounded),
+                        title: Text('No suppliers yet — tap ＋ to add one'),
+                      ),
+                    ),
+                  );
+                }
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String?>(
+                        // ignore: deprecated_member_use
+                        value: _supplierId,
+                        decoration: const InputDecoration(labelText: 'Supplier (optional)'),
+                        items: [
+                          const DropdownMenuItem<String?>(value: null, child: Text('None')),
+                          ...suppliers.map(
+                            (s) => DropdownMenuItem<String?>(
+                              value: s['id']?.toString(),
+                              child: Text(s['name']?.toString() ?? ''),
+                            ),
+                          ),
+                        ],
+                        onChanged: _busy ? null : (v) => _onSupplierChanged(v, suppliers),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: TextButton(
+                        onPressed: _busy ? null : _addSupplierDialog,
+                        child: const Text('＋ New'),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+            brokersAsync.when(
+              loading: () => const SizedBox.shrink(),
+              error: (_, __) => const SizedBox.shrink(),
+              data: (list) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String?>(
+                        // ignore: deprecated_member_use
+                        value: _brokerId,
+                        decoration: const InputDecoration(
+                          labelText: 'Broker (from supplier or pick)',
+                          helperText: 'Updates when you choose a supplier',
+                        ),
+                        items: [
+                          const DropdownMenuItem<String?>(value: null, child: Text('None')),
+                          ...list.map(
+                            (b) => DropdownMenuItem<String?>(
+                              value: b['id']?.toString(),
+                              child: Text(b['name']?.toString() ?? ''),
+                            ),
+                          ),
+                        ],
+                        onChanged: _busy ? null : (v) => setState(() => _brokerId = v),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: TextButton(
+                        onPressed: _busy ? null : _addBrokerDialog,
+                        child: const Text('＋ New'),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+            TextField(
+              controller: _place,
+              enabled: !_busy,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                labelText: 'Purchase place / market (optional)',
+                hintText: 'e.g. Koyambedu, wholesale yard',
+                prefixIcon: Icon(Icons.place_outlined, color: HexaColors.primaryMid),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Text('Items', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                const Spacer(),
+                TextButton(
+                  onPressed: _busy
+                      ? null
+                      : () {
+                          setState(() => _lines.add(_LineControllers()));
+                        },
+                  child: const Text('＋ Add line'),
+                ),
+              ],
             ),
             const SizedBox(height: 4),
-            Text('Line items', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-            const SizedBox(height: 8),
             ...List.generate(_lines.length, (i) => _lineCard(context, lineIndex: i)),
-            TextButton.icon(
-              onPressed: _busy
-                  ? null
-                  : () {
-                      setState(() => _lines.add(_LineControllers()));
-                    },
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Add line'),
-            ),
             const SizedBox(height: 16),
             Row(
               children: [
@@ -1236,9 +1395,9 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
             ExpansionTile(
               initiallyExpanded: false,
               tilePadding: EdgeInsets.zero,
-              title: Text('Supplier, catalog & extra costs', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+              title: Text('Advanced costs & catalog tools', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
               subtitle: Text(
-                'Optional — people, masters, quick line, invoice & transport',
+                'Invoice, commission, transport, quick-create masters',
                 style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
               ),
               children: [
@@ -1275,7 +1434,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Create masters here or under Entries → people icon → Contacts.',
+                          'Create masters here or open the Contacts tab in the bottom navigation.',
                           style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary, height: 1.35),
                         ),
                         const SizedBox(height: 10),
@@ -1319,86 +1478,6 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _quickEntry,
-                  enabled: !_busy,
-                  decoration: InputDecoration(
-                    labelText: 'Quick line',
-                    hintText: 'rice vaani 43 aju · rice vaani 43 aju 46 · Basmati 50kg 1200',
-                    prefixIcon: const Icon(Icons.bolt_rounded),
-                    suffixIcon: IconButton(
-                      tooltip: 'Parse into line 1',
-                      onPressed: _busy ? null : _parseQuickEntry,
-                      icon: const Icon(Icons.arrow_downward_rounded),
-                    ),
-                  ),
-                  onSubmitted: (_) => _parseQuickEntry(),
-                  onChanged: (_) => setState(() {}),
-                ),
-                _quickLineParseChips(),
-                const SizedBox(height: 12),
-                suppliersAsync.when(
-                  loading: () => const LinearProgressIndicator(),
-                  error: (_, __) => const Text('Could not load suppliers'),
-                  data: (list) {
-                    final suppliers = list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-                    return DropdownButtonFormField<String?>(
-                      // ignore: deprecated_member_use
-                      value: _supplierId,
-                      decoration: const InputDecoration(labelText: 'Supplier (optional)'),
-                      items: [
-                        const DropdownMenuItem<String?>(value: null, child: Text('None')),
-                        ...suppliers.map(
-                          (s) => DropdownMenuItem<String?>(
-                            value: s['id']?.toString(),
-                            child: Text(s['name']?.toString() ?? ''),
-                          ),
-                        ),
-                      ],
-                      onChanged: _busy ? null : (v) => _onSupplierChanged(v, suppliers),
-                    );
-                  },
-                ),
-                brokersAsync.when(
-                  loading: () => const SizedBox.shrink(),
-                  error: (_, __) => const SizedBox.shrink(),
-                  data: (list) {
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: DropdownButtonFormField<String?>(
-                            // ignore: deprecated_member_use
-                            value: _brokerId,
-                            decoration: const InputDecoration(
-                              labelText: 'Broker (from supplier or pick)',
-                              helperText: 'Updates when you choose a supplier',
-                            ),
-                            items: [
-                              const DropdownMenuItem<String?>(value: null, child: Text('None')),
-                              ...list.map(
-                                (b) => DropdownMenuItem<String?>(
-                                  value: b['id']?.toString(),
-                                  child: Text(b['name']?.toString() ?? ''),
-                                ),
-                              ),
-                            ],
-                            onChanged: _busy ? null : (v) => setState(() => _brokerId = v),
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: IconButton(
-                            tooltip: 'Add broker',
-                            onPressed: _busy ? null : _addBrokerDialog,
-                            icon: const Icon(Icons.person_add_alt_1_outlined),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
                 if (_advancedEntryOptions) ...[
                   TextField(
                     controller: _invoice,
@@ -1417,8 +1496,10 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                               : 'Commission (₹ total)',
                       prefixIcon: const Icon(Icons.percent_outlined),
                       helperText: _commMode == _CommissionMode.percentOfPurchase
-                          ? 'Applied to Σ(qty × purchase price); adds to landed cost / unit.'
-                          : 'Total ₹ for this entry; split across line qty for landed cost / unit.',
+                          ? 'Percent of Σ(qty × purchase before commission). That amount is spread by quantity so each line’s landed cost includes its share.'
+                          : _commMode == _CommissionMode.perUnitRupees
+                              ? 'Fixed ₹ per purchase unit on each line (same number you typed in Qty). Added to purchase → landed.'
+                              : 'Total rupees for this entry, split evenly by total quantity across lines so landed cost per unit rises equally.',
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -1433,6 +1514,13 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                         ? null
                         : (s) => setState(() => _commMode = s.first),
                   ),
+                  if (_commissionSummaryLine() != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      _commissionSummaryLine()!,
+                      style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary, fontWeight: FontWeight.w600),
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   TextField(
                     controller: _transport,
@@ -1454,10 +1542,14 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               right: 10,
               bottom: 10,
               child: Material(
-                elevation: 8,
+                elevation: 6,
                 borderRadius: BorderRadius.circular(16),
-                color: cs.surfaceContainerHighest,
-                child: Padding(
+                color: Colors.white,
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border(top: BorderSide(color: HexaColors.border.withValues(alpha: 0.6), width: 1)),
+                  ),
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   child: _liveTotalsSummary(),
                 ),
@@ -1469,28 +1561,62 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     );
   }
 
-  ({double cost, double kg, double revenue, double profit}) _rollupTotals() {
+  ({
+    double cost,
+    double kg,
+    double unitQty,
+    double revenue,
+    double profit,
+    bool mixedUnits,
+    double bagQty,
+  })
+  _rollupTotals() {
     var cost = 0.0;
     var kg = 0.0;
+    var unitQty = 0.0;
+    var bagQty = 0.0;
     var revenue = 0.0;
+    final kinds = <String>{};
     for (final l in _lines) {
+      final q = _parseDouble(l.qty.text) ?? 0;
+      if (q > 0) kinds.add(l.unit);
       final land = _effectiveLanding(l);
       final sell = _parseDouble(l.selling.text);
       if (l.unit == 'bag') {
         final bags = _parseDouble(l.qty.text) ?? 0;
         final kgPb = _parseDouble(l.kgPerBag.text) ?? 0;
         final qk = bags * kgPb;
+        bagQty += bags;
         cost += bags * land;
         kg += qk;
         if (sell != null) revenue += sell * qk;
       } else {
-        final q = _parseDouble(l.qty.text) ?? 0;
-        cost += q * land;
-        if (l.unit == 'kg') kg += q;
-        if (sell != null) revenue += sell * q;
+        final qq = _parseDouble(l.qty.text) ?? 0;
+        cost += qq * land;
+        if (l.unit == 'kg') {
+          kg += qq;
+        } else {
+          unitQty += qq;
+        }
+        if (sell != null) revenue += sell * qq;
       }
     }
-    return (cost: cost, kg: kg, revenue: revenue, profit: revenue - cost);
+    final mixedUnits = kinds.length > 1;
+    return (
+      cost: cost,
+      kg: kg,
+      unitQty: unitQty,
+      revenue: revenue,
+      profit: revenue - cost,
+      mixedUnits: mixedUnits,
+      bagQty: bagQty,
+    );
+  }
+
+  String _formatRollupQty(double q) {
+    if (q == 0) return '0';
+    if ((q - q.round()).abs() < 1e-6) return q.round().toString();
+    return q.toStringAsFixed(1);
   }
 
   Widget _liveTotalsSummary() {
@@ -1498,6 +1624,34 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     final nf = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
     final tt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
+    final String qtyTitle;
+    final String qtyBody;
+    if (t.mixedUnits) {
+      qtyTitle = 'Total qty (mixed)';
+      final parts = <String>[];
+      if (t.bagQty > 0) parts.add('${_formatRollupQty(t.bagQty)} bags');
+      if (t.kg > 0) parts.add('${t.kg.toStringAsFixed(1)} kg');
+      if (t.unitQty > 0) parts.add('${_formatRollupQty(t.unitQty)} u');
+      qtyBody = parts.isEmpty ? '—' : parts.join(' · ');
+    } else if (t.kg > 0 && t.unitQty <= 0 && t.bagQty <= 0) {
+      qtyTitle = 'Total kg';
+      qtyBody = t.kg.toStringAsFixed(1);
+    } else if (t.bagQty > 0 && t.kg <= 0 && t.unitQty <= 0) {
+      qtyTitle = 'Total bags';
+      qtyBody = _formatRollupQty(t.bagQty);
+    } else if (t.kg <= 0 && t.unitQty > 0 && t.bagQty <= 0) {
+      qtyTitle = 'Total qty (units)';
+      qtyBody = _formatRollupQty(t.unitQty);
+    } else if (t.kg > 0 && t.unitQty > 0) {
+      qtyTitle = 'Weight / units';
+      qtyBody = '${t.kg.toStringAsFixed(1)} kg · ${_formatRollupQty(t.unitQty)} u';
+    } else if (t.bagQty > 0) {
+      qtyTitle = 'Bags / weight';
+      qtyBody = '${_formatRollupQty(t.bagQty)} bags → ${t.kg.toStringAsFixed(1)} kg';
+    } else {
+      qtyTitle = 'Qty';
+      qtyBody = '—';
+    }
     return Row(
       children: [
         Expanded(
@@ -1507,7 +1661,13 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
             style: tt.labelSmall?.copyWith(color: HexaColors.costMuted, fontWeight: FontWeight.w600),
           ),
         ),
-        Expanded(child: Text('Total kg\n${t.kg.toStringAsFixed(1)}', textAlign: TextAlign.center, style: tt.labelSmall)),
+        Expanded(
+          child: Text(
+            '$qtyTitle\n$qtyBody',
+            textAlign: TextAlign.center,
+            style: tt.labelSmall?.copyWith(height: 1.25),
+          ),
+        ),
         Expanded(
           child: Text(
             'Revenue\n${nf.format(t.revenue)}',
@@ -1542,15 +1702,32 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
         runSpacing: 8,
         children: [
           Chip(
-            avatar: const Icon(Icons.inventory_2_outlined, size: 18),
-            label: Text(parsed.itemName, style: const TextStyle(fontWeight: FontWeight.w600)),
+            avatar: Icon(Icons.inventory_2_outlined, size: 18, color: Colors.white.withValues(alpha: 0.95)),
+            label: Text(parsed.itemName, style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.white)),
+            backgroundColor: HexaColors.primaryMid,
+            side: BorderSide.none,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           ),
-          Chip(label: Text('${parsed.qty} ${parsed.unit}')),
           Chip(
-            avatar: const Icon(Icons.payments_outlined, size: 18),
-            label: Text('Buy ${nf.format(parsed.landing)}'),
+            label: Text('${parsed.qty} ${parsed.unit}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+            backgroundColor: HexaColors.primaryMid,
+            side: BorderSide.none,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           ),
-          if (parsed.selling != null) Chip(label: Text('Sell ${nf.format(parsed.selling!)}')),
+          Chip(
+            avatar: Icon(Icons.payments_outlined, size: 18, color: Colors.white.withValues(alpha: 0.95)),
+            label: Text('Buy ${nf.format(parsed.landing)}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+            backgroundColor: HexaColors.primaryMid,
+            side: BorderSide.none,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          ),
+          if (parsed.selling != null)
+            Chip(
+              label: Text('Sell ${nf.format(parsed.selling!)}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+              backgroundColor: HexaColors.primaryMid,
+              side: BorderSide.none,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            ),
         ],
       ),
     );
@@ -1563,8 +1740,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     final cpu = _commissionPerUnit();
     final p = _parseDouble(l.purchase.text) ?? 0;
     return Material(
-      color: cs.primaryContainer.withValues(alpha: 0.5),
-      borderRadius: BorderRadius.circular(12),
+      color: HexaColors.primaryLight,
+      borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: _busy
             ? null
@@ -1597,12 +1774,17 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                   ),
                 );
               },
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: HexaColors.primaryMid.withValues(alpha: 0.35)),
+            boxShadow: HexaColors.cardShadow(context),
+          ),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             children: [
-              Icon(Icons.balance_rounded, color: cs.primary),
+              Icon(Icons.balance_rounded, color: HexaColors.primaryMid),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -1610,15 +1792,16 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                   children: [
                     Text(
                       'Landed cost / unit (auto)',
-                      style: tt.labelMedium?.copyWith(color: cs.onPrimaryContainer, fontWeight: FontWeight.w600),
+                      style: tt.labelMedium?.copyWith(color: HexaColors.textSecondary, fontWeight: FontWeight.w700),
                     ),
+                    const SizedBox(height: 2),
                     Text(
                       '₹${land.toStringAsFixed(2)}',
-                      style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: cs.onPrimaryContainer),
+                      style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: HexaColors.textPrimary),
                     ),
                     Text(
                       'Not editable — purchase ₹/unit + commission share. Tap for breakdown.',
-                      style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontSize: 11),
+                      style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary, fontSize: 11),
                     ),
                   ],
                 ),
@@ -1634,20 +1817,33 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     final l = _lines[lineIndex];
     final tt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
+    final unitSet = {'kg', 'bag', 'box', 'piece'};
+    if (!unitSet.contains(l.unit)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() => l.unit = 'kg');
+      });
+    }
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
+      elevation: 1,
+      shadowColor: HexaColors.primaryDeep.withValues(alpha: 0.12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: HexaColors.border),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
               children: [
-                Text('Line ${lineIndex + 1}', style: Theme.of(context).textTheme.labelLarge),
+                Text('Line ${lineIndex + 1}', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
                 const Spacer(),
                 if (_lines.length > 1)
                   IconButton(
-                    icon: const Icon(Icons.delete_outline_rounded),
+                    icon: Icon(Icons.delete_outline_rounded, color: cs.error),
                     onPressed: _busy
                         ? null
                         : () {
@@ -1659,73 +1855,116 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                   ),
               ],
             ),
-            TextField(
-              controller: l.item,
-              onChanged: (_) => setState(() {
-                l.catalogItemId = null;
-                l.catalogVariantId = null;
-              }),
-              decoration: InputDecoration(
-                labelText: 'Item *',
-                prefixIcon: const Icon(Icons.inventory_2_outlined),
-                suffixIcon: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      tooltip: 'Variant',
-                      icon: const Icon(Icons.subdirectory_arrow_right_rounded),
-                      onPressed: _busy ? null : () => _pickVariantForLine(lineIndex),
-                    ),
-                    IconButton(
-                      tooltip: 'Catalog',
-                      icon: const Icon(Icons.apps_rounded),
-                      onPressed: _busy ? null : () => _pickCatalogForLine(lineIndex),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            TextField(
-              controller: l.category,
-              decoration: const InputDecoration(labelText: 'Category', prefixIcon: Icon(Icons.category_outlined)),
-            ),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  flex: 2,
                   child: TextField(
-                    controller: l.qty,
-                    keyboardType: TextInputType.number,
-                    onChanged: (_) => setState(() {}),
-                    decoration: InputDecoration(
-                      labelText: l.unit == 'bag' ? 'Bags *' : 'Qty *',
-                      prefixIcon: const Icon(Icons.numbers_rounded),
+                    controller: l.item,
+                    onChanged: (_) => setState(() {
+                      l.catalogItemId = null;
+                      l.catalogVariantId = null;
+                    }),
+                    decoration: const InputDecoration(
+                      labelText: 'Item *',
+                      prefixIcon: Icon(Icons.inventory_2_outlined),
                     ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: TextButton(
+                    onPressed: _busy ? null : _addItemFromEntry,
+                    child: const Text('＋ New'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: HexaColors.primaryMid,
+                      side: const BorderSide(color: HexaColors.primaryMid, width: 1.2),
+                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+                    ),
+                    onPressed: _busy ? null : () => _pickCatalogForLine(lineIndex),
+                    icon: const Icon(Icons.list_alt_outlined, size: 20),
+                    label: const Text('📋 Pick from catalog'),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  flex: 3,
-                  child: DropdownButtonFormField<String>(
-                    // ignore: deprecated_member_use
-                    value: l.unit,
-                    decoration: const InputDecoration(labelText: 'Unit'),
-                    items: const [
-                      DropdownMenuItem(value: 'kg', child: Text('kg')),
-                      DropdownMenuItem(value: 'bag', child: Text('Bag')),
-                      DropdownMenuItem(value: 'box', child: Text('box')),
-                      DropdownMenuItem(value: 'piece', child: Text('pc')),
-                    ],
-                    onChanged: _busy
-                        ? null
-                        : (v) {
-                            if (v == null) return;
-                            setState(() => l.unit = v);
-                          },
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+                      side: BorderSide(color: cs.outlineVariant),
+                    ),
+                    onPressed: _busy ? null : () => _pickVariantForLine(lineIndex),
+                    icon: const Icon(Icons.subdirectory_arrow_right_rounded, size: 20),
+                    label: const Text('Variant'),
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: l.category,
+                    decoration: const InputDecoration(labelText: 'Category', prefixIcon: Icon(Icons.category_outlined)),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: TextButton(
+                    onPressed: _busy ? null : _addCategoryFromEntry,
+                    child: const Text('＋ New'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text('Unit', style: tt.labelSmall?.copyWith(color: HexaColors.textSecondary, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SegmentedButton<String>(
+                style: SegmentedButton.styleFrom(
+                  selectedBackgroundColor: HexaColors.primaryMid,
+                  selectedForegroundColor: Colors.white,
+                  foregroundColor: HexaColors.textSecondary,
+                  side: const BorderSide(color: HexaColors.border),
+                ),
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment<String>(value: 'kg', label: Text('kg')),
+                  ButtonSegment<String>(value: 'bag', label: Text('bag')),
+                  ButtonSegment<String>(value: 'box', label: Text('box')),
+                  ButtonSegment<String>(value: 'piece', label: Text('pc')),
+                ],
+                selected: {if (unitSet.contains(l.unit)) l.unit else 'kg'},
+                onSelectionChanged: _busy
+                    ? null
+                    : (Set<String> next) {
+                        final v = next.first;
+                        setState(() => l.unit = v);
+                      },
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: l.qty,
+              keyboardType: TextInputType.number,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                labelText: l.unit == 'bag' ? 'Bags *' : 'Qty *',
+                prefixIcon: const Icon(Icons.numbers_rounded),
+              ),
             ),
             if (l.unit == 'bag') ...[
               const SizedBox(height: 8),
@@ -1748,6 +1987,31 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                 ],
               ),
             ],
+            Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                title: Text(
+                  'Stock notes (optional)',
+                  style: tt.labelMedium?.copyWith(fontWeight: FontWeight.w700, color: HexaColors.textSecondary),
+                ),
+                children: [
+                  TextField(
+                    controller: l.stockNote,
+                    enabled: !_busy,
+                    maxLines: 2,
+                    onChanged: (_) => setState(() {}),
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: const InputDecoration(
+                      hintText: 'Current stock before purchase',
+                      prefixIcon: Icon(Icons.warehouse_outlined),
+                      alignLabelWithHint: true,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
             TextField(
               controller: l.purchase,
               keyboardType: TextInputType.number,
@@ -1766,18 +2030,9 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                         : 'All-in landed ₹ per kg/pc — use Advanced for invoice + commission split.'),
               ),
             ),
-            if (_advancedEntryOptions)
-              _landedCostReadout(l)
-            else
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  'Landed / unit: ₹${_effectiveLanding(l).toStringAsFixed(2)} · matches the field above',
-                  style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontWeight: FontWeight.w600),
-                ),
-              ),
-            if (_advancedEntryOptions)
-              SmartPricePanel(
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: SmartPricePanel(
                 item: l.item,
                 qty: l.qty,
                 priceController: l.purchase,
@@ -1785,6 +2040,12 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                 currentPriceResolver: () => _effectiveLanding(l),
                 onInsight: lineIndex == 0 ? _onLandingInsight : null,
               ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: _landedCostReadout(l),
+            ),
+            const SizedBox(height: 8),
             TextField(
               controller: l.selling,
               keyboardType: TextInputType.number,

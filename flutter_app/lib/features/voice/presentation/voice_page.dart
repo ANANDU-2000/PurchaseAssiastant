@@ -7,6 +7,22 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/theme/hexa_colors.dart';
+
+/// Renders `**bold**` segments with heavier weight (WhatsApp-style markdown lite).
+List<InlineSpan> _boldMarkdownSpans(String text, TextStyle base) {
+  final parts = text.split('**');
+  final out = <InlineSpan>[];
+  for (var i = 0; i < parts.length; i++) {
+    out.add(
+      TextSpan(
+        text: parts[i],
+        style: i.isOdd ? base.copyWith(fontWeight: FontWeight.w800) : base,
+      ),
+    );
+  }
+  return out;
+}
 
 class _ChatMsg {
   const _ChatMsg({
@@ -38,6 +54,7 @@ class _VoicePageState extends ConsumerState<VoicePage> with SingleTickerProvider
   final _textCtrl = TextEditingController();
   final _scroll = ScrollController();
   bool _recording = false;
+  bool _showVoiceBanner = true;
   _AiPhase _phase = _AiPhase.idle;
   Timer? _maxListenTimer;
   late final AnimationController _pulse;
@@ -48,6 +65,7 @@ class _VoicePageState extends ConsumerState<VoicePage> with SingleTickerProvider
   void initState() {
     super.initState();
     _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
+    _textCtrl.addListener(() => setState(() {}));
     _msgs.add(
       _ChatMsg(
         text:
@@ -218,49 +236,109 @@ class _VoicePageState extends ConsumerState<VoicePage> with SingleTickerProvider
     setState(() => _phase = _AiPhase.idle);
   }
 
+  Widget _botMessageBody(_ChatMsg m, int index, TextTheme tt, ColorScheme cs) {
+    final baseBot = (tt.bodyMedium ?? const TextStyle(fontSize: 15)).copyWith(color: HexaColors.textPrimary, height: 1.35);
+    if (index == 0 && !m.isUser) {
+      final paras = m.text.split('\n\n').where((s) => s.trim().isNotEmpty).toList();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var j = 0; j < paras.length; j++) ...[
+            if (j > 0) const SizedBox(height: 10),
+            Text.rich(TextSpan(children: _boldMarkdownSpans(paras[j], baseBot))),
+          ],
+        ],
+      );
+    }
+    return Text.rich(TextSpan(children: _boldMarkdownSpans(m.text, baseBot)));
+  }
+
+  Widget _micControl() {
+    final busy = _phase == _AiPhase.processing;
+    if (busy && !_recording) {
+      return SizedBox(
+        width: 48,
+        height: 48,
+        child: Center(
+          child: SizedBox(
+            width: 26,
+            height: 26,
+            child: CircularProgressIndicator(strokeWidth: 2.5, color: HexaColors.primaryMid),
+          ),
+        ),
+      );
+    }
+    if (_phase == _AiPhase.error && !_recording && !busy) {
+      return SizedBox(
+        width: 48,
+        height: 48,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: _recording || busy ? null : () => unawaited(_sendVoicePreview()),
+            child: Icon(Icons.mic_rounded, color: HexaColors.loss, size: 28),
+          ),
+        ),
+      );
+    }
+    final pulseChild = Material(
+      color: HexaColors.primaryMid,
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: _recording || busy ? null : () => unawaited(_sendVoicePreview()),
+        child: SizedBox(
+          width: 48,
+          height: 48,
+          child: Icon(
+            _recording ? Icons.stop_rounded : Icons.mic_rounded,
+            color: Colors.white,
+            size: 24,
+          ),
+        ),
+      ),
+    );
+    if (_recording) {
+      return ScaleTransition(
+        scale: Tween<double>(begin: 0.92, end: 1.0).animate(
+          CurvedAnimation(parent: _pulse, curve: Curves.easeInOut),
+        ),
+        child: pulseChild,
+      );
+    }
+    return pulseChild;
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
     final timeFmt = DateFormat.jm();
-
-    String phaseLabel;
-    switch (_phase) {
-      case _AiPhase.idle:
-        phaseLabel = 'Tap mic or type — not always listening';
-        break;
-      case _AiPhase.listening:
-        phaseLabel = 'Short listen session…';
-        break;
-      case _AiPhase.processing:
-        phaseLabel = 'Processing…';
-        break;
-      case _AiPhase.preview:
-        phaseLabel = 'Preview — confirm in Entries';
-        break;
-      case _AiPhase.error:
-        phaseLabel = 'Try again';
-        break;
-    }
+    final hasText = _textCtrl.text.trim().isNotEmpty;
 
     return Scaffold(
+      backgroundColor: cs.surface,
       appBar: AppBar(
+        scrolledUnderElevation: 0,
         titleSpacing: 0,
         title: Row(
           children: [
             CircleAvatar(
-              backgroundColor: cs.primary,
-              child: const Text('H', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+              backgroundColor: HexaColors.primaryMid,
+              radius: 20,
+              child: const Text('H', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('HEXA AI', style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                  Text('HEXA Assistant', style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
                   Text(
-                    phaseLabel,
-                    style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+                    'Ask in Malayalam or English',
+                    style: tt.labelSmall?.copyWith(color: HexaColors.textSecondary),
                   ),
                 ],
               ),
@@ -271,81 +349,12 @@ class _VoicePageState extends ConsumerState<VoicePage> with SingleTickerProvider
           IconButton(
             tooltip: 'Settings',
             icon: const Icon(Icons.settings_outlined),
-            onPressed: () => context.go('/settings'),
+            onPressed: () => context.push('/settings'),
           ),
         ],
       ),
       body: Column(
         children: [
-          if (_phase == _AiPhase.processing) const LinearProgressIndicator(minHeight: 2),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-            child: Card(
-              elevation: 0,
-              color: cs.surfaceContainerHighest,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.shield_outlined, color: cs.primary, size: 22),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Controlled voice — listen only when you tap',
-                            style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'No always-on mic · lower API cost · less noise · you confirm before save.',
-                      style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
-                    ),
-                    const SizedBox(height: 12),
-                    FilledButton.tonalIcon(
-                      icon: Icon(_recording ? Icons.graphic_eq_rounded : Icons.mic_rounded, size: 26),
-                      label: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        child: Text(
-                          _recording ? 'Listening…' : 'Tap to speak (short session)',
-                          style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
-                        ),
-                      ),
-                      onPressed: _recording || _phase == _AiPhase.processing ? null : () => unawaited(_sendVoicePreview()),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                ActionChip(
-                  avatar: const Icon(Icons.add_circle_outline, size: 18),
-                  label: const Text('Add entry'),
-                  onPressed: () => context.go('/entries'),
-                ),
-                ActionChip(
-                  avatar: const Icon(Icons.insights_outlined, size: 18),
-                  label: const Text('Reports'),
-                  onPressed: () => context.go('/analytics'),
-                ),
-                ActionChip(
-                  avatar: const Icon(Icons.home_outlined, size: 18),
-                  label: const Text('Home'),
-                  onPressed: () => context.go('/home'),
-                ),
-              ],
-            ),
-          ),
           if (_phase == _AiPhase.preview)
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
@@ -360,6 +369,7 @@ class _VoicePageState extends ConsumerState<VoicePage> with SingleTickerProvider
                   const SizedBox(width: 8),
                   Expanded(
                     child: FilledButton(
+                      style: FilledButton.styleFrom(backgroundColor: HexaColors.primaryMid, foregroundColor: Colors.white),
                       onPressed: () {
                         context.go('/entries');
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -374,128 +384,173 @@ class _VoicePageState extends ConsumerState<VoicePage> with SingleTickerProvider
             ),
           Expanded(
             child: Container(
-              color: cs.surfaceContainerHighest.withValues(alpha: 0.2),
-              child: ListView.builder(
+              color: HexaColors.canvas.withValues(alpha: 0.5),
+              child: ListView(
                 controller: _scroll,
-                padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
-                itemCount: _msgs.length,
-                itemBuilder: (context, i) {
-                  final m = _msgs[i];
-                  final bubble = DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: m.isUser ? cs.primary : cs.surface,
-                      borderRadius: BorderRadius.only(
-                        topLeft: const Radius.circular(18),
-                        topRight: const Radius.circular(18),
-                        bottomLeft: Radius.circular(m.isUser ? 18 : 4),
-                        bottomRight: Radius.circular(m.isUser ? 4 : 18),
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                children: [
+                  if (_showVoiceBanner)
+                    Dismissible(
+                      key: const ValueKey('voiceBanner'),
+                      direction: DismissDirection.horizontal,
+                      onDismissed: (_) => setState(() => _showVoiceBanner = false),
+                      child: Material(
+                        color: HexaColors.primaryLight,
+                        borderRadius: BorderRadius.circular(12),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          child: Row(
+                            children: [
+                              Icon(Icons.info_outline_rounded, color: HexaColors.primaryMid, size: 22),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  '🎙 Tap mic only — short session, then confirm in Entries',
+                                  style: tt.bodySmall?.copyWith(color: HexaColors.textPrimary, fontWeight: FontWeight.w600, height: 1.35),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                      border: m.isUser ? null : Border.all(color: cs.outline.withValues(alpha: 0.25)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.06),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
+                    ),
+                  if (_showVoiceBanner) const SizedBox(height: 10),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        ActionChip(
+                          avatar: Icon(Icons.add_rounded, size: 18, color: HexaColors.primaryMid),
+                          label: const Text('＋ Add Entry'),
+                          onPressed: () => context.go('/entries'),
+                        ),
+                        const SizedBox(width: 8),
+                        ActionChip(
+                          avatar: Icon(Icons.insights_outlined, size: 18, color: HexaColors.primaryMid),
+                          label: const Text('Reports'),
+                          onPressed: () => context.go('/analytics'),
+                        ),
+                        const SizedBox(width: 8),
+                        ActionChip(
+                          avatar: Icon(Icons.home_outlined, size: 18, color: HexaColors.primaryMid),
+                          label: const Text('Home'),
+                          onPressed: () => context.go('/home'),
                         ),
                       ],
                     ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (m.isVoice && m.isUser)
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.mic_rounded, size: 18, color: cs.onPrimary),
-                                const SizedBox(width: 6),
-                                Text('Voice', style: tt.labelSmall?.copyWith(color: cs.onPrimary)),
-                              ],
-                            ),
-                          if (m.isVoice && m.isUser) const SizedBox(height: 4),
-                          Text(
-                            m.text,
-                            style: tt.bodyMedium?.copyWith(
-                              color: m.isUser ? cs.onPrimary : cs.onSurface,
-                              height: 1.35,
-                            ),
+                  ),
+                  const SizedBox(height: 12),
+                  ...List.generate(_msgs.length, (i) {
+                    final m = _msgs[i];
+                    final bubble = DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: m.isUser ? HexaColors.primaryMid : cs.surface,
+                        borderRadius: BorderRadius.only(
+                          topLeft: const Radius.circular(18),
+                          topRight: const Radius.circular(18),
+                          bottomLeft: Radius.circular(m.isUser ? 18 : 4),
+                          bottomRight: Radius.circular(m.isUser ? 4 : 18),
+                        ),
+                        border: m.isUser ? null : Border.all(color: HexaColors.border),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.06),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            timeFmt.format(m.time),
-                            style: tt.labelSmall?.copyWith(
-                              color: (m.isUser ? cs.onPrimary : cs.onSurface).withValues(alpha: 0.65),
-                              fontSize: 11,
+                        ],
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (m.isVoice && m.isUser)
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.mic_rounded, size: 18, color: Colors.white),
+                                  const SizedBox(width: 6),
+                                  Text('Voice', style: tt.labelSmall?.copyWith(color: Colors.white.withValues(alpha: 0.9))),
+                                ],
+                              ),
+                            if (m.isVoice && m.isUser) const SizedBox(height: 4),
+                            m.isUser
+                                ? Text(
+                                    m.text,
+                                    style: tt.bodyMedium?.copyWith(color: Colors.white, height: 1.35),
+                                  )
+                                : _botMessageBody(m, i, tt, cs),
+                            const SizedBox(height: 4),
+                            Align(
+                              alignment: m.isUser ? Alignment.centerRight : Alignment.centerLeft,
+                              child: Text(
+                                timeFmt.format(m.time),
+                                style: tt.labelSmall?.copyWith(
+                                  color: m.isUser ? Colors.white.withValues(alpha: 0.65) : HexaColors.textSecondary,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+
+                    if (m.isUser) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.80),
+                            child: bubble,
+                          ),
+                        ),
+                      );
+                    }
+
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          CircleAvatar(
+                            radius: 18,
+                            backgroundColor: HexaColors.primaryMid,
+                            child: const Text('H', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14)),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.85),
+                                child: bubble,
+                              ),
                             ),
                           ),
                         ],
                       ),
-                    ),
-                  );
-
-                  if (m.isUser) {
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.88),
-                          child: bubble,
-                        ),
-                      ),
                     );
-                  }
-
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        CircleAvatar(
-                          radius: 18,
-                          backgroundColor: cs.primary.withValues(alpha: 0.15),
-                          child: Icon(Icons.smart_toy_rounded, color: cs.primary, size: 20),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: ConstrainedBox(
-                              constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.82),
-                              child: bubble,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
+                  }),
+                ],
               ),
             ),
           ),
           Material(
-            elevation: 10,
+            elevation: 8,
+            shadowColor: Colors.black26,
             color: cs.surface,
             child: SafeArea(
               top: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    ScaleTransition(
-                      scale: Tween<double>(begin: 0.94, end: 1.0).animate(
-                        CurvedAnimation(parent: _pulse, curve: Curves.easeInOut),
-                      ),
-                      child: IconButton.filledTonal(
-                        tooltip: 'Push-to-talk (short session)',
-                        icon: Icon(_recording ? Icons.graphic_eq_rounded : Icons.mic_rounded),
-                        onPressed: _recording || _phase == _AiPhase.processing
-                            ? null
-                            : () => unawaited(_sendVoicePreview()),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
+                    _micControl(),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: TextField(
                         controller: _textCtrl,
@@ -504,19 +559,36 @@ class _VoicePageState extends ConsumerState<VoicePage> with SingleTickerProvider
                         textInputAction: TextInputAction.send,
                         onSubmitted: (_) => unawaited(_sendText()),
                         decoration: InputDecoration(
-                          hintText: _phase == _AiPhase.processing
-                              ? 'Working…'
-                              : 'Type Malayalam or English…',
+                          hintText: _phase == _AiPhase.processing && !_recording ? 'Working…' : 'Type in Malayalam or English…',
                           filled: true,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: const BorderSide(color: HexaColors.primaryMid, width: 1.5),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                         ),
                       ),
                     ),
-                    IconButton.filled(
-                      onPressed: _phase == _AiPhase.processing ? null : () => unawaited(_sendText()),
-                      icon: const Icon(Icons.send_rounded),
-                    ),
+                    if (hasText) ...[
+                      const SizedBox(width: 6),
+                      SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: Material(
+                          color: HexaColors.primaryMid,
+                          shape: const CircleBorder(),
+                          clipBehavior: Clip.antiAlias,
+                          child: InkWell(
+                            customBorder: const CircleBorder(),
+                            onTap: _phase == _AiPhase.processing ? null : () => unawaited(_sendText()),
+                            child: const Icon(Icons.send_rounded, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

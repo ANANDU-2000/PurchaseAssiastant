@@ -238,7 +238,7 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
         actions: [
           IconButton(
             tooltip: 'Suppliers & contacts',
-            onPressed: () => context.push('/contacts'),
+            onPressed: () => context.go('/contacts'),
             icon: const Icon(Icons.people_alt_outlined),
           ),
           const AppSettingsAction(),

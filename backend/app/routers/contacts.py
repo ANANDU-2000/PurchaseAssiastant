@@ -21,6 +21,7 @@ def _norm_name(s: str) -> str:
 class SupplierCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     phone: str | None = None
+    whatsapp_number: str | None = Field(default=None, max_length=32)
     location: str | None = None
     broker_id: uuid.UUID | None = None
 
@@ -29,6 +30,7 @@ class SupplierOut(BaseModel):
     id: uuid.UUID
     name: str
     phone: str | None
+    whatsapp_number: str | None
     location: str | None
     broker_id: uuid.UUID | None
 
@@ -38,6 +40,7 @@ class SupplierOut(BaseModel):
 class SupplierUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     phone: str | None = None
+    whatsapp_number: str | None = Field(default=None, max_length=32)
     location: str | None = None
     broker_id: uuid.UUID | None = None
 
@@ -69,6 +72,7 @@ async def list_suppliers(
             id=s.id,
             name=s.name,
             phone=s.phone,
+            whatsapp_number=s.whatsapp_number,
             location=s.location,
             broker_id=s.broker_id,
         )
@@ -93,6 +97,7 @@ async def create_supplier(
         business_id=business_id,
         name=body.name.strip(),
         phone=body.phone,
+        whatsapp_number=body.whatsapp_number,
         location=body.location,
         broker_id=body.broker_id,
     )
@@ -103,6 +108,7 @@ async def create_supplier(
         id=s.id,
         name=s.name,
         phone=s.phone,
+        whatsapp_number=s.whatsapp_number,
         location=s.location,
         broker_id=s.broker_id,
     )
@@ -133,6 +139,9 @@ async def update_supplier(
         s.name = data["name"].strip()
     if "phone" in data:
         s.phone = data["phone"]
+    if "whatsapp_number" in data:
+        v = data["whatsapp_number"]
+        s.whatsapp_number = None if v is None or (isinstance(v, str) and not str(v).strip()) else str(v).strip()
     if "location" in data:
         s.location = data["location"]
     if "broker_id" in data:
@@ -143,6 +152,7 @@ async def update_supplier(
         id=s.id,
         name=s.name,
         phone=s.phone,
+        whatsapp_number=s.whatsapp_number,
         location=s.location,
         broker_id=s.broker_id,
     )
@@ -378,6 +388,7 @@ async def get_supplier(
         id=s.id,
         name=s.name,
         phone=s.phone,
+        whatsapp_number=s.whatsapp_number,
         location=s.location,
         broker_id=s.broker_id,
     )
@@ -520,6 +531,7 @@ async def contacts_search(
             id=s.id,
             name=s.name,
             phone=s.phone,
+            whatsapp_number=s.whatsapp_number,
             location=s.location,
             broker_id=s.broker_id,
         )

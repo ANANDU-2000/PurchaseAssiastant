@@ -30,12 +30,14 @@ def _line_to_out(line: EntryLineItem) -> EntryLineOut:
         landing_cost=float(line.landing_cost),
         selling_price=float(line.selling_price) if line.selling_price is not None else None,
         profit=float(line.profit) if line.profit is not None else None,
+        stock_note=line.stock_note.strip() if line.stock_note else None,
     )
 
 
 def _entry_to_out(entry: Entry) -> EntryOut:
     tc = float(entry.transport_cost) if entry.transport_cost is not None else None
     ca = float(entry.commission_amount) if entry.commission_amount is not None else None
+    pl = entry.place.strip() if entry.place else None
     return EntryOut(
         id=entry.id,
         business_id=entry.business_id,
@@ -43,6 +45,7 @@ def _entry_to_out(entry: Entry) -> EntryOut:
         supplier_id=entry.supplier_id,
         broker_id=entry.broker_id,
         invoice_no=entry.invoice_no,
+        place=pl,
         transport_cost=tc,
         commission_amount=ca,
         lines=[_line_to_out(li) for li in entry.lines],
@@ -58,6 +61,7 @@ async def persist_confirmed_entry(
     source: str = "app",
 ) -> EntryOut:
     """Insert a confirmed entry and line items. Caller must validate membership and duplicates."""
+    pl = body.place.strip() if body.place and body.place.strip() else None
     entry = Entry(
         business_id=business_id,
         user_id=user_id,
@@ -65,6 +69,7 @@ async def persist_confirmed_entry(
         broker_id=body.broker_id,
         entry_date=body.entry_date,
         invoice_no=body.invoice_no,
+        place=pl,
         transport_cost=Decimal(str(body.transport_cost)) if body.transport_cost is not None else None,
         commission_amount=Decimal(str(body.commission_amount)) if body.commission_amount is not None else None,
         source=source,
@@ -93,6 +98,7 @@ async def persist_confirmed_entry(
         bags_v = float(li.bags) if li.bags is not None else (float(li.qty) if li.unit == "bag" else None)
         kg_pb = float(li.kg_per_bag) if li.kg_per_bag is not None else None
         qkg = float(li.qty_kg) if li.qty_kg is not None else None
+        note = li.stock_note.strip() if li.stock_note and li.stock_note.strip() else None
 
         db.add(
             EntryLineItem(
@@ -112,6 +118,7 @@ async def persist_confirmed_entry(
                 landing_cost=landing,
                 selling_price=selling,
                 profit=prof,
+                stock_note=note,
             )
         )
     await db.commit()

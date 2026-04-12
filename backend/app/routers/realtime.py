@@ -8,7 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from app.deps import require_membership, require_realtime_enabled
+from app.deps import require_membership, require_realtime_effective
 from app.models import Membership
 
 router = APIRouter(prefix="/v1/businesses/{business_id}/realtime", tags=["realtime"])
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/v1/businesses/{business_id}/realtime", tags=["realti
 async def sse_events(
     business_id: uuid.UUID,
     _m: Annotated[Membership, Depends(require_membership)],
-    _rt: Annotated[None, Depends(require_realtime_enabled)],
+    _rt: Annotated[None, Depends(require_realtime_effective)],
 ):
     del _m, _rt
 

@@ -165,6 +165,16 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
     if (await canLaunchUrl(uri)) await launchUrl(uri);
   }
 
+  Future<void> _openWhatsApp(String? raw) async {
+    if (raw == null || raw.trim().isEmpty) return;
+    final d = raw.replaceAll(RegExp(r'\D'), '');
+    if (d.isEmpty) return;
+    final uri = Uri.parse('https://wa.me/$d');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
   List<FlSpot> _chartSpots() {
     final items = _entries;
     if (items == null || items.isEmpty) return [];
@@ -272,6 +282,7 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
         error: (e, _) => Center(child: Text('$e')),
         data: (s) {
           final phone = s['phone']?.toString();
+          final wa = s['whatsapp_number']?.toString();
           final bid = s['broker_id']?.toString();
           final loc = s['location']?.toString() ?? '';
           final name = s['name']?.toString() ?? '—';
@@ -281,29 +292,6 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
               children: [
                 const SizedBox(height: 8),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _ChipPill(label: '7d', onTap: () => _preset(7)),
-                      _ChipPill(label: '30d', onTap: () => _preset(30)),
-                      _ChipPill(label: '90d', onTap: () => _preset(90)),
-                      _ChipPill(label: 'YTD', onTap: () {
-                        final n = DateTime.now();
-                        setState(() {
-                          _from = DateTime(n.year, 1, 1);
-                          _to = _dOnly(n);
-                        });
-                        _reload();
-                      }),
-                      _ChipPill(label: 'All', onTap: () => _preset(0)),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Text('${fmt.format(_from)} – ${fmt.format(_to)}', style: tt.labelMedium?.copyWith(color: HexaColors.textSecondary)),
-                ),
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(20),
@@ -318,30 +306,81 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(name, style: tt.headlineSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w800)),
+                      Text(
+                        name,
+                        style: tt.headlineSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 22),
+                      ),
                       if (loc.isNotEmpty) ...[
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 8),
                         Row(
                           children: [
-                            Icon(Icons.place_outlined, size: 18, color: Colors.white.withValues(alpha: 0.9)),
+                            Icon(Icons.place_outlined, size: 18, color: Colors.white.withValues(alpha: 0.85)),
                             const SizedBox(width: 6),
-                            Expanded(child: Text(loc, style: tt.bodyMedium?.copyWith(color: Colors.white.withValues(alpha: 0.92)))),
+                            Expanded(child: Text(loc, style: tt.bodyMedium?.copyWith(color: Colors.white.withValues(alpha: 0.85)))),
                           ],
                         ),
                       ],
                       if (phone != null && phone.isNotEmpty) ...[
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 8),
                         Text(phone, style: tt.bodyMedium?.copyWith(color: Colors.white.withValues(alpha: 0.95))),
                       ],
+                      if (wa != null && wa.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text('WhatsApp: $wa', style: tt.bodySmall?.copyWith(color: Colors.white.withValues(alpha: 0.88))),
+                      ],
                       const SizedBox(height: 14),
-                      OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          side: BorderSide(color: Colors.white.withValues(alpha: 0.85)),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 8,
+                        children: [
+                          OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              side: BorderSide(color: Colors.white.withValues(alpha: 0.85)),
+                            ),
+                            onPressed: phone == null || phone.isEmpty ? null : () => _dial(phone),
+                            icon: const Icon(Icons.call_rounded, size: 20),
+                            label: const Text('Call'),
+                          ),
+                          OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              side: BorderSide(color: Colors.white.withValues(alpha: 0.85)),
+                            ),
+                            onPressed: wa == null || wa.isEmpty ? null : () => _openWhatsApp(wa),
+                            icon: const Icon(Icons.chat_rounded, size: 20),
+                            label: const Text('WhatsApp'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            _ChipPill(label: '7d', onTap: () => _preset(7), onGradient: true),
+                            _ChipPill(label: '30d', onTap: () => _preset(30), onGradient: true),
+                            _ChipPill(label: '90d', onTap: () => _preset(90), onGradient: true),
+                            _ChipPill(
+                              label: 'YTD',
+                              onGradient: true,
+                              onTap: () {
+                                final n = DateTime.now();
+                                setState(() {
+                                  _from = DateTime(n.year, 1, 1);
+                                  _to = _dOnly(n);
+                                });
+                                _reload();
+                              },
+                            ),
+                            _ChipPill(label: 'All', onTap: () => _preset(0), onGradient: true),
+                          ],
                         ),
-                        onPressed: phone == null || phone.isEmpty ? null : () => _dial(phone),
-                        icon: const Icon(Icons.call_rounded, size: 20),
-                        label: const Text('Call'),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        '${fmt.format(_from)} – ${fmt.format(_to)}',
+                        style: tt.labelMedium?.copyWith(color: Colors.white.withValues(alpha: 0.65)),
                       ),
                     ],
                   ),
@@ -364,9 +403,12 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                   const SizedBox(height: 10),
                   _metricsGrid(_metrics!, tt),
                   const SizedBox(height: 16),
-                  Text('Price competitiveness', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                  Text('Price vs other suppliers', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
                   const SizedBox(height: 8),
-                  _PerfBar(pct: _performancePct()),
+                  _PerfBar(
+                    pct: _performancePct(),
+                    hasSupplierData: ((_metrics!['deals'] as num?)?.toInt() ?? 0) > 0,
+                  ),
                   const SizedBox(height: 16),
                   Text('Avg landing trend', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
                   const SizedBox(height: 8),
@@ -380,7 +422,30 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  _EntryTable(entries: _entries ?? []),
+                  if ((_entries ?? []).isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                        child: Column(
+                          children: [
+                            Icon(Icons.receipt_long_outlined, size: 56, color: HexaColors.primaryMid.withValues(alpha: 0.5)),
+                            const SizedBox(height: 12),
+                            Text(
+                              '0 entries in this period',
+                              style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700, color: HexaColors.textSecondary),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Add purchases from this supplier to see history here',
+                              textAlign: TextAlign.center,
+                              style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    _EntryTable(entries: _entries ?? []),
                 ],
               ],
             ),
@@ -428,36 +493,49 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
 }
 
 class _ChipPill extends StatelessWidget {
-  const _ChipPill({required this.label, required this.onTap});
+  const _ChipPill({required this.label, required this.onTap, this.onGradient = false});
 
   final String label;
   final VoidCallback onTap;
+  final bool onGradient;
 
   @override
   Widget build(BuildContext context) {
+    final child = onGradient
+        ? ActionChip(
+            label: Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+            backgroundColor: Colors.white.withValues(alpha: 0.15),
+            side: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
+            onPressed: onTap,
+          )
+        : ActionChip(label: Text(label), onPressed: onTap);
     return Padding(
       padding: const EdgeInsets.only(right: 8),
-      child: ActionChip(label: Text(label), onPressed: onTap),
+      child: child,
     );
   }
 }
 
 class _PerfBar extends StatelessWidget {
-  const _PerfBar({required this.pct});
+  const _PerfBar({required this.pct, required this.hasSupplierData});
 
   final double pct;
+  final bool hasSupplierData;
 
   @override
   Widget build(BuildContext context) {
     final good = pct >= 60;
     final col = good ? HexaColors.profit : (pct >= 40 ? HexaColors.accentAmber : HexaColors.loss);
+    final caption = !hasSupplierData
+        ? '${pct.toStringAsFixed(0)}% — No data yet. Add purchases from this supplier'
+        : '${pct.toStringAsFixed(0)}% — ${good ? 'Better than many on price' : 'Negotiate harder on landing'}';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(8),
           child: LinearProgressIndicator(
-            value: pct / 100,
+            value: hasSupplierData ? (pct / 100).clamp(0.0, 1.0) : 0,
             minHeight: 10,
             backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
             color: col,
@@ -465,7 +543,7 @@ class _PerfBar extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          '${pct.toStringAsFixed(0)}% — ${good ? 'Better than many on price' : 'Negotiate harder on landing'}',
+          caption,
           style: Theme.of(context).textTheme.labelSmall?.copyWith(color: HexaColors.textSecondary),
         ),
       ],

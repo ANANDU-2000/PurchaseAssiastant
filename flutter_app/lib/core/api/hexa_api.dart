@@ -198,6 +198,7 @@ class HexaApi {
     required String businessId,
     required String name,
     String? phone,
+    String? whatsappNumber,
     String? location,
     String? brokerId,
   }) async {
@@ -206,6 +207,7 @@ class HexaApi {
       data: {
         'name': name,
         if (phone != null && phone.isNotEmpty) 'phone': phone,
+        if (whatsappNumber != null && whatsappNumber.isNotEmpty) 'whatsapp_number': whatsappNumber,
         if (location != null && location.isNotEmpty) 'location': location,
         if (brokerId != null && brokerId.isNotEmpty) 'broker_id': brokerId,
       },
@@ -256,6 +258,7 @@ class HexaApi {
     required String supplierId,
     String? name,
     String? phone,
+    String? whatsappNumber,
     String? location,
     String? brokerId,
   }) async {
@@ -264,6 +267,7 @@ class HexaApi {
       data: {
         if (name != null) 'name': name,
         if (phone != null) 'phone': phone,
+        if (whatsappNumber != null) 'whatsapp_number': whatsappNumber,
         if (location != null) 'location': location,
         if (brokerId != null) 'broker_id': brokerId,
       },

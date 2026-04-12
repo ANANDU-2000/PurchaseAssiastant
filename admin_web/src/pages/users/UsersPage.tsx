@@ -1,18 +1,29 @@
 import { useEffect, useState } from 'react'
 import { adminGet } from '../../lib/api'
 
-type Biz = { id: string; name: string; created_at: string | null }
+type UserRow = {
+  id: string
+  email: string
+  username: string
+  name: string | null
+  phone: string | null
+  is_super_admin: boolean
+  created_at: string | null
+  has_password: boolean
+  google_linked: boolean
+  total_entries?: number
+}
 
 export default function UsersPage() {
-  const [items, setItems] = useState<Biz[]>([])
+  const [data, setData] = useState<{ items: UserRow[]; total: number } | null>(null)
   const [err, setErr] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       try {
-        const data = await adminGet<{ items: Biz[] }>('/v1/admin/businesses')
-        if (!cancelled) setItems(data.items ?? [])
+        const d = await adminGet<{ items: UserRow[]; total: number }>('/v1/admin/users')
+        if (!cancelled) setData({ items: d.items ?? [], total: d.total ?? 0 })
       } catch (e: unknown) {
         if (!cancelled) setErr(e instanceof Error ? e.message : String(e))
       }
@@ -24,27 +35,43 @@ export default function UsersPage() {
 
   return (
     <section>
-      <h1>Tenants / businesses</h1>
+      <h1>Users</h1>
+      <p style={{ color: '#555', marginBottom: 12 }}>
+        Accounts in the database ({data?.total ?? '—'} total). Auth: super-admin JWT or{' '}
+        <code>ADMIN_API_TOKEN</code> as Bearer.
+      </p>
       {err && <p style={{ color: 'crimson' }}>{err}</p>}
-      <table style={{ borderCollapse: 'collapse', width: '100%', maxWidth: 720 }}>
-        <thead>
-          <tr>
-            <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Name</th>
-            <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Id</th>
-            <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Created</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((b) => (
-            <tr key={b.id}>
-              <td style={{ padding: '8px 0' }}>{b.name}</td>
-              <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{b.id}</td>
-              <td>{b.created_at ?? '—'}</td>
+      {data && (
+        <table style={{ borderCollapse: 'collapse', width: '100%', maxWidth: 960 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc', padding: '8px 4px' }}>Email</th>
+              <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Username</th>
+              <th style={{ textAlign: 'right', borderBottom: '1px solid #ccc' }}>Entries</th>
+              <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Admin</th>
+              <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Auth</th>
+              <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Created</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-      {items.length === 0 && !err && <p>No data (or still loading).</p>}
+          </thead>
+          <tbody>
+            {data.items.map((u) => (
+              <tr key={u.id}>
+                <td style={{ padding: '8px 4px' }}>{u.email}</td>
+                <td style={{ fontFamily: 'monospace', fontSize: 13 }}>{u.username}</td>
+                <td style={{ textAlign: 'right' }}>{u.total_entries ?? '—'}</td>
+                <td>{u.is_super_admin ? 'yes' : '—'}</td>
+                <td style={{ fontSize: 13 }}>
+                  {u.has_password && 'password '}
+                  {u.google_linked && 'google '}
+                  {!u.has_password && !u.google_linked && '—'}
+                </td>
+                <td style={{ fontSize: 13 }}>{u.created_at ?? '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {data && data.items.length === 0 && !err && <p>No users.</p>}
     </section>
   )
 }

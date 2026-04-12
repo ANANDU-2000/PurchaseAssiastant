@@ -1,8 +1,10 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { setAdminToken } from '../lib/api'
 
-const nav = [
+const navItems = [
   { to: '/', label: 'Overview' },
   { to: '/users', label: 'Users' },
+  { to: '/businesses', label: 'Businesses' },
   { to: '/subscriptions', label: 'Subscriptions' },
   { to: '/api-usage', label: 'API usage' },
   { to: '/feature-flags', label: 'Feature flags' },
@@ -12,12 +14,23 @@ const nav = [
 ]
 
 export default function AdminLayout() {
+  const go = useNavigate()
   return (
     <div className="admin-root">
       <aside className="admin-nav">
         <div className="brand">HEXA Admin</div>
+        <button
+          type="button"
+          className="logout-btn"
+          onClick={() => {
+            setAdminToken(null)
+            go('/login', { replace: true })
+          }}
+        >
+          Log out
+        </button>
         <nav>
-          {nav.map((item) => (
+          {navItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}

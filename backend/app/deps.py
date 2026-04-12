@@ -1,4 +1,6 @@
+import secrets
 import uuid
+from dataclasses import dataclass
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
@@ -9,18 +11,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings, get_settings
 from app.database import get_db
 from app.models import Membership, User
+from app.services.feature_flags import is_ai_parsing_enabled
 from app.services.jwt_tokens import decode_access_token
 
 security = HTTPBearer(auto_error=False)
 
 
-def require_ai_enabled(settings: Annotated[Settings, Depends(get_settings)]) -> None:
+async def require_ai_parse_enabled(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> None:
+    """Env + DB feature flag for `/parse` and similar AI-assisted entry flows."""
     if not settings.enable_ai:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="AI parse is disabled")
+    if not await is_ai_parsing_enabled(db, settings):
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="AI parse is disabled")
 
 
-def require_realtime_enabled(settings: Annotated[Settings, Depends(get_settings)]) -> None:
-    if not settings.enable_realtime:
+async def require_realtime_effective(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> None:
+    from app.services.feature_flags import is_realtime_enabled
+
+    if not await is_realtime_enabled(db, settings):
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Realtime is disabled")
 
 
@@ -49,6 +63,8 @@ async def charge_ai_stub_turn(
     """Gate AI routes: feature flag + monthly token budget (stub accounting)."""
     if not settings.enable_ai:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="AI is disabled for this deployment")
+    if not await is_ai_parsing_enabled(db, settings):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="AI parsing is disabled")
     budget = user.ai_monthly_token_budget
     used = user.ai_tokens_used_month or 0
     if budget is not None and budget > 0 and used >= budget:
@@ -93,3 +109,35 @@ async def require_super_admin(
     if not user.is_super_admin:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Super admin only")
     return user
+
+
+@dataclass(frozen=True)
+class AdminCaller:
+    """Admin panel auth: static `ADMIN_API_TOKEN` Bearer, or JWT for a user with `is_super_admin`."""
+
+    machine: bool
+    user: User | None
+
+
+async def require_admin_caller(
+    creds: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> AdminCaller:
+    """Authorize admin routes via `Authorization: Bearer <ADMIN_API_TOKEN>` or super-admin JWT."""
+    tok = settings.admin_api_token
+    if creds and creds.scheme.lower() == "bearer" and tok:
+        if len(tok) >= 8 and secrets.compare_digest(creds.credentials, tok):
+            return AdminCaller(machine=True, user=None)
+    if not creds or creds.scheme.lower() != "bearer":
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    uid = decode_access_token(creds.credentials, settings)
+    if not uid:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    result = await db.execute(select(User).where(User.id == uid))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    if not user.is_super_admin:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Super admin only")
+    return AdminCaller(machine=False, user=user)

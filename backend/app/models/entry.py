@@ -21,6 +21,7 @@ class Entry(Base):
     broker_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("brokers.id"), nullable=True)
     entry_date: Mapped[date] = mapped_column(Date, index=True)
     invoice_no: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    place: Mapped[str | None] = mapped_column(String(512), nullable=True)
     transport_cost: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
     commission_amount: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
     source: Mapped[str] = mapped_column(String(32), default="app")
@@ -56,5 +57,6 @@ class EntryLineItem(Base):
     selling_price: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
     currency: Mapped[str] = mapped_column(String(3), default="INR")
     profit: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
+    stock_note: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     entry = relationship("Entry", back_populates="lines")

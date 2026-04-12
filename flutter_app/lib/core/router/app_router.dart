@@ -59,11 +59,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         },
       ),
       GoRoute(
-        path: '/contacts',
-        name: 'contacts',
-        builder: (context, state) => const ContactsPage(),
-      ),
-      GoRoute(
         path: '/entry/:entryId',
         builder: (context, state) {
           final id = state.pathParameters['entryId']!;
@@ -99,11 +94,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           return ItemAnalyticsDetailPage(itemName: name);
         },
       ),
-      // Full-screen settings (opened from AppBar actions, not shell strip) — 4 shell tabs: Home | Entries | AI | Reports
+      // Full-screen: Settings, AI assistant (opened from Home quick actions — not in bottom nav)
       GoRoute(
         path: '/settings',
         name: 'settings',
         builder: (context, state) => const SettingsPage(),
+      ),
+      GoRoute(
+        path: '/ai',
+        name: 'ai',
+        builder: (context, state) => const VoicePage(),
       ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
@@ -121,7 +121,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           StatefulShellBranch(
             routes: [
-              GoRoute(path: '/ai', name: 'ai', builder: (context, state) => const VoicePage()),
+              GoRoute(path: '/contacts', name: 'contacts', builder: (context, state) => const ContactsPage()),
             ],
           ),
           StatefulShellBranch(

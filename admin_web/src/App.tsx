@@ -1,8 +1,10 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import AdminLayout from './layout/AdminLayout'
 import ApiUsagePage from './pages/api-usage/ApiUsagePage'
+import BusinessesPage from './pages/businesses/BusinessesPage'
 import FeatureFlagsPage from './pages/feature-flags/FeatureFlagsPage'
 import IntegrationsPage from './pages/integrations/IntegrationsPage'
+import LoginPage from './pages/login/LoginPage'
 import LogsPage from './pages/logs/LogsPage'
 import OverviewPage from './pages/overview/OverviewPage'
 import SettingsPage from './pages/settings/SettingsPage'
@@ -14,9 +16,11 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={<AdminLayout />}>
           <Route index element={<OverviewPage />} />
           <Route path="users" element={<UsersPage />} />
+          <Route path="businesses" element={<BusinessesPage />} />
           <Route path="subscriptions" element={<SubscriptionsPage />} />
           <Route path="api-usage" element={<ApiUsagePage />} />
           <Route path="feature-flags" element={<FeatureFlagsPage />} />

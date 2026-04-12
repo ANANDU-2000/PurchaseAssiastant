@@ -102,7 +102,7 @@ class SettingsPage extends ConsumerWidget {
                   title: const Text('Suppliers & brokers'),
                   subtitle: const Text('Contacts hub — categories, items, people.'),
                   trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => context.push('/contacts'),
+                  onTap: () => context.go('/contacts'),
                 ),
                 const Divider(height: 1),
                 ListTile(

@@ -7,8 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.config import Settings, get_settings
+from app.database import get_db
 from app.deps import require_membership
 from app.models import Membership
+from app.services.feature_flags import is_ocr_enabled, is_voice_enabled
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/v1/businesses/{business_id}/media", tags=["media"])
 
@@ -31,10 +34,11 @@ async def ocr_image(
     business_id: uuid.UUID,
     _m: Annotated[Membership, Depends(require_membership)],
     _body: OcrRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
 ):
     del business_id, _m, _body
-    if not settings.enable_ocr:
+    if not await is_ocr_enabled(db, settings):
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="OCR is disabled for this deployment")
     return OcrResponse(
         confidence=0.0,
@@ -62,10 +66,11 @@ async def voice_transcribe(
     business_id: uuid.UUID,
     _m: Annotated[Membership, Depends(require_membership)],
     _body: VoiceRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
 ):
     del business_id, _m, _body
-    if not settings.enable_voice:
+    if not await is_voice_enabled(db, settings):
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Voice is disabled for this deployment")
     return VoiceResponse(
         confidence=0.0,

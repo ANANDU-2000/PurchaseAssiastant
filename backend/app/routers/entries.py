@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.deps import get_current_user, require_ai_enabled, require_membership
+from app.deps import get_current_user, require_ai_parse_enabled, require_membership
 from app.models import Entry, EntryLineItem, Membership, User
 from app.services.entry_preview_token import consume_preview_token, issue_preview_token, verify_preview_token
 from app.services.entry_write import persist_confirmed_entry
@@ -48,6 +48,7 @@ def _line_to_out(line: EntryLineItem) -> EntryLineOut:
         landing_cost=float(line.landing_cost),
         selling_price=float(line.selling_price) if line.selling_price is not None else None,
         profit=float(line.profit) if line.profit is not None else None,
+        stock_note=line.stock_note.strip() if line.stock_note else None,
     )
 
 
@@ -56,7 +57,7 @@ async def parse_draft(
     business_id: uuid.UUID,
     body: ParseBody,
     _m: Annotated[Membership, Depends(require_membership)],
-    _ai: Annotated[None, Depends(require_ai_enabled)],
+    _ai: Annotated[None, Depends(require_ai_parse_enabled)],
 ):
     del business_id, _m, body, _ai
     return ParseDraftResponse(
@@ -69,6 +70,7 @@ async def parse_draft(
 def _entry_to_out(entry: Entry) -> EntryOut:
     tc = float(entry.transport_cost) if entry.transport_cost is not None else None
     ca = float(entry.commission_amount) if entry.commission_amount is not None else None
+    pl = entry.place.strip() if entry.place else None
     return EntryOut(
         id=entry.id,
         business_id=entry.business_id,
@@ -76,6 +78,7 @@ def _entry_to_out(entry: Entry) -> EntryOut:
         supplier_id=entry.supplier_id,
         broker_id=entry.broker_id,
         invoice_no=entry.invoice_no,
+        place=pl,
         transport_cost=tc,
         commission_amount=ca,
         lines=[_line_to_out(li) for li in entry.lines],
@@ -174,6 +177,7 @@ async def create_entry(
                 landing_cost=float(li.landing_cost),
                 selling_price=float(li.selling_price) if li.selling_price is not None else None,
                 profit=float(prof) if prof is not None else None,
+                stock_note=li.stock_note.strip() if li.stock_note else None,
             )
         )
 

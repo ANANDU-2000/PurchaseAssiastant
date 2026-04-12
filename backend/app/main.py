@@ -6,6 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.config import get_settings
+from sqlalchemy import inspect
+
 from app.database import engine
 from app.models import Base
 from app.routers import admin, ai_chat, analytics, auth, catalog, contacts, entries, health, me, media, price_intelligence, realtime, whatsapp
@@ -30,6 +32,39 @@ async def lifespan(app: FastAPI):
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+        def _ensure_entries_place(sync_conn):
+            insp = inspect(sync_conn)
+            if not insp.has_table("entries"):
+                return
+            cols = {c["name"] for c in insp.get_columns("entries")}
+            if "place" in cols:
+                return
+            sync_conn.exec_driver_sql("ALTER TABLE entries ADD COLUMN place VARCHAR(512)")
+
+        await conn.run_sync(_ensure_entries_place)
+
+        def _ensure_suppliers_whatsapp_number(sync_conn):
+            insp = inspect(sync_conn)
+            if not insp.has_table("suppliers"):
+                return
+            cols = {c["name"] for c in insp.get_columns("suppliers")}
+            if "whatsapp_number" in cols:
+                return
+            sync_conn.exec_driver_sql("ALTER TABLE suppliers ADD COLUMN whatsapp_number VARCHAR(32)")
+
+        await conn.run_sync(_ensure_suppliers_whatsapp_number)
+
+        def _ensure_entry_line_items_stock_note(sync_conn):
+            insp = inspect(sync_conn)
+            if not insp.has_table("entry_line_items"):
+                return
+            cols = {c["name"] for c in insp.get_columns("entry_line_items")}
+            if "stock_note" in cols:
+                return
+            sync_conn.exec_driver_sql("ALTER TABLE entry_line_items ADD COLUMN stock_note VARCHAR(512)")
+
+        await conn.run_sync(_ensure_entry_line_items_stock_note)
     yield
     await engine.dispose()
 

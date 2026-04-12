@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import uuid
 from datetime import date, datetime
 from typing import Any
 
@@ -10,10 +11,11 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.models import Entry, EntryLineItem, Membership, User
+from app.models import Entry, EntryLineItem, Membership, Supplier, User
 from app.schemas.entries import EntryCreateRequest, EntryLineInput
 from app.services.dialog360_send import send_text_message
 from app.services.entry_write import persist_confirmed_entry
+from app.services.feature_flags import is_whatsapp_bot_enabled
 from app.services.whatsapp_state import get_state, set_state
 
 
@@ -45,33 +47,133 @@ async def primary_business_id(db: AsyncSession, user_id: uuid.UUID) -> uuid.UUID
     return row[0] if row else None
 
 
-async def _month_summary(db: AsyncSession, business_id: uuid.UUID) -> str:
+def _month_date_filter(business_id: uuid.UUID):
+    """MTD inclusive: first of month → today."""
     today = date.today()
     start = date(today.year, today.month, 1)
-    base_filter = (
+    return (
         Entry.business_id == business_id,
         Entry.entry_date >= start,
         Entry.entry_date <= today,
+    )
+
+
+async def _today_summary(db: AsyncSession, business_id: uuid.UUID) -> str:
+    today = date.today()
+    bf = (
+        Entry.business_id == business_id,
+        Entry.entry_date == today,
     )
     purchase = await db.execute(
         select(func.coalesce(func.sum(EntryLineItem.qty * EntryLineItem.buy_price), 0))
         .select_from(EntryLineItem)
         .join(Entry, Entry.id == EntryLineItem.entry_id)
-        .where(*base_filter)
+        .where(*bf)
     )
     profit = await db.execute(
         select(func.coalesce(func.sum(EntryLineItem.profit), 0))
         .select_from(EntryLineItem)
         .join(Entry, Entry.id == EntryLineItem.entry_id)
-        .where(*base_filter)
+        .where(*bf)
     )
     p = float(purchase.scalar() or 0)
     pr = float(profit.scalar() or 0)
+    margin = (pr / p * 100) if p > 0 else 0.0
     return (
-        f"This month ({start.isoformat()} → {today.isoformat()}):\n"
-        f"Purchase: ₹{p:,.0f}\n"
-        f"Profit: ₹{pr:,.0f}"
+        f"📅 *Today*\n_{today.strftime('%b %d, %Y')}_\n\n"
+        f"🛒 Purchase: ₹{p:,.0f}\n"
+        f"📈 Profit: ₹{pr:,.0f} ({margin:.1f}%)\n\n"
+        f"{'✅ Good margin!' if margin > 10 else '⚠️ Low margin — check your costs'}"
     )
+
+
+async def _month_summary(db: AsyncSession, business_id: uuid.UUID) -> str:
+    today = date.today()
+    start = date(today.year, today.month, 1)
+    bf = _month_date_filter(business_id)
+    purchase = await db.execute(
+        select(func.coalesce(func.sum(EntryLineItem.qty * EntryLineItem.buy_price), 0))
+        .select_from(EntryLineItem)
+        .join(Entry, Entry.id == EntryLineItem.entry_id)
+        .where(*bf)
+    )
+    profit = await db.execute(
+        select(func.coalesce(func.sum(EntryLineItem.profit), 0))
+        .select_from(EntryLineItem)
+        .join(Entry, Entry.id == EntryLineItem.entry_id)
+        .where(*bf)
+    )
+    p = float(purchase.scalar() or 0)
+    pr = float(profit.scalar() or 0)
+    margin = (pr / p * 100) if p > 0 else 0.0
+    return (
+        f"📊 *This Month Overview*\n"
+        f"_{start.strftime('%b %d')} → {today.strftime('%b %d, %Y')}_\n\n"
+        f"🛒 Purchase: ₹{p:,.0f}\n"
+        f"📈 Profit: ₹{pr:,.0f} ({margin:.1f}%)\n\n"
+        f"{'✅ Good margin!' if margin > 10 else '⚠️ Low margin — check your costs'}"
+    )
+
+
+def _wants_today_overview(text: str, low: str) -> bool:
+    if "ഇന്ന്" in text:
+        return True
+    if low in ("today", "daily"):
+        return True
+    return False
+
+
+def _wants_month_overview(text: str, low: str) -> bool:
+    """Malayalam / English keywords → month summary."""
+    if low in ("overview", "summary", "stats", "report") or low == "?":
+        return True
+    if "overview" in low or "report" in low:
+        return True
+    if "ഈ മാസം" in text:
+        return True
+    return False
+
+
+async def _best_supplier_overall(db: AsyncSession, business_id: uuid.UUID) -> str:
+    bf = _month_date_filter(business_id)
+    q = await db.execute(
+        select(Supplier.name, func.coalesce(func.sum(EntryLineItem.profit), 0).label("tp"))
+        .select_from(Supplier)
+        .join(Entry, Entry.supplier_id == Supplier.id)
+        .join(EntryLineItem, EntryLineItem.entry_id == Entry.id)
+        .where(*bf, Entry.supplier_id.isnot(None))
+        .group_by(Supplier.id, Supplier.name)
+        .order_by(func.coalesce(func.sum(EntryLineItem.profit), 0).desc())
+        .limit(1)
+    )
+    row = q.first()
+    if not row or float(row[1] or 0) == 0:
+        return "🏪 *Best supplier*\n_No purchases with a supplier this month yet._"
+    name, tp = row[0], float(row[1] or 0)
+    return f"🏪 *Top supplier (this month)*\n*{name}* — profit ₹{tp:,.0f}"
+
+
+async def _best_supplier_for_item(db: AsyncSession, business_id: uuid.UUID, item_fragment: str) -> str:
+    frag = item_fragment.strip()
+    if len(frag) < 2:
+        return "Send: *best rice* (item name) to see which supplier did best on that item."
+    bf = _month_date_filter(business_id)
+    like = f"%{frag}%"
+    q = await db.execute(
+        select(Supplier.name, func.coalesce(func.sum(EntryLineItem.profit), 0).label("tp"))
+        .select_from(Supplier)
+        .join(Entry, Entry.supplier_id == Supplier.id)
+        .join(EntryLineItem, EntryLineItem.entry_id == Entry.id)
+        .where(*bf, Entry.supplier_id.isnot(None), EntryLineItem.item_name.ilike(like))
+        .group_by(Supplier.id, Supplier.name)
+        .order_by(func.coalesce(func.sum(EntryLineItem.profit), 0).desc())
+        .limit(1)
+    )
+    row = q.first()
+    if not row or float(row[1] or 0) == 0:
+        return f"🔍 *Best supplier for “{frag}”*\n_No matching lines this month — check spelling or add purchases._"
+    name, tp = row[0], float(row[1] or 0)
+    return f"🔍 *Best for “{frag}”*\n*{name}* — profit ₹{tp:,.0f} (this month)"
 
 
 def _parse_entry_text(text: str) -> EntryCreateRequest | None:
@@ -228,6 +330,14 @@ async def handle_inbound_text(
         await send_text_message(settings, to_e164=to_digits, body="No business workspace found. Open the HEXA app to finish setup.")
         return {"ok": True, "handled": True, "reason": "no_business"}
 
+    if not await is_whatsapp_bot_enabled(db, settings):
+        await send_text_message(
+            settings,
+            to_e164=to_digits,
+            body="HEXA WhatsApp automation is turned off for this server. Use the mobile app or ask your admin to re-enable the bot.",
+        )
+        return {"ok": True, "handled": True, "reason": "whatsapp_bot_disabled"}
+
     state = await get_state(settings, to_digits) or {"phase": "idle"}
     t = text.strip()
     low = t.lower()
@@ -268,11 +378,29 @@ async def handle_inbound_text(
         )
         return {"ok": True, "handled": True, "prompt": True}
 
-    # --- query: overview ---
-    if low in ("overview", "summary", "stats", "report") or low == "?":
+    # --- query: today / month overview ---
+    if _wants_today_overview(t, low):
+        msg = await _today_summary(db, biz)
+        await send_text_message(settings, to_e164=to_digits, body=msg)
+        return {"ok": True, "handled": True, "query": "today"}
+
+    if _wants_month_overview(t, low):
         msg = await _month_summary(db, biz)
         await send_text_message(settings, to_e164=to_digits, body=msg)
         return {"ok": True, "handled": True, "query": "overview"}
+
+    # --- best supplier (this month) ---
+    if low == "best supplier" or low == "top supplier" or "best supplier" in low:
+        body = await _best_supplier_overall(db, biz)
+        await send_text_message(settings, to_e164=to_digits, body=body)
+        return {"ok": True, "handled": True, "query": "best_supplier"}
+
+    if low.startswith("best ") and len(low) > 5:
+        rest = low[5:].strip()
+        if rest and rest != "supplier":
+            body = await _best_supplier_for_item(db, biz, rest)
+            await send_text_message(settings, to_e164=to_digits, body=body)
+            return {"ok": True, "handled": True, "query": "best_supplier_item"}
 
     # --- quick price check: "Oil 1200 ok?" ---
     m = _QUERY_RE.match(t.strip())
@@ -310,7 +438,10 @@ async def handle_inbound_text(
         to_e164=to_digits,
         body=(
             "HEXA WhatsApp\n"
-            "• Send OVERVIEW for this month's totals.\n"
+            "• *OVERVIEW* or *REPORT* — this month.\n"
+            "• *TODAY* — today's totals.\n"
+            "• *BEST SUPPLIER* — top supplier (MTD).\n"
+            "• *BEST rice* — best supplier for an item name.\n"
             "• To add a purchase, send:\n"
             "item: …\n"
             "qty: …\n"

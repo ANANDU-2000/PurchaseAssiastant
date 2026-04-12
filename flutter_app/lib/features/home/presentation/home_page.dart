@@ -93,24 +93,22 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
     final hi = insights.valueOrNull;
 
     return Scaffold(
+      backgroundColor: cs.surface,
       appBar: AppBar(
-        title: const Text('Overview'),
+        title: Text('HEXA', style: GoogleFonts.dmSerifDisplay(fontSize: 26, fontWeight: FontWeight.w600)),
         leading: ModalRoute.of(context)?.canPop == true
             ? IconButton(
                 icon: const Icon(Icons.arrow_back_rounded),
                 onPressed: () => context.pop(),
               )
             : null,
+        scrolledUnderElevation: 0,
+        elevation: 0,
         actions: [
           IconButton(
             tooltip: 'Refresh',
             onPressed: _refresh,
             icon: const Icon(Icons.refresh_rounded),
-          ),
-          IconButton(
-            tooltip: 'Contacts',
-            onPressed: () => context.push('/contacts'),
-            icon: const Icon(Icons.people_alt_outlined),
           ),
           const AppSettingsAction(),
         ],
@@ -123,51 +121,48 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
           slivers: [
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Decision snapshot',
-                      style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.2),
-                    ),
-                    const SizedBox(height: 10),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: DashboardPeriod.values.map((p) {
-                          final sel = period == p;
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: ChoiceChip(
-                              label: Text(dashboardPeriodLabel(p)),
-                              selected: sel,
-                              onSelected: (_) {
-                                ref.read(dashboardPeriodProvider.notifier).state = p;
-                                ref.invalidate(dashboardProvider);
-                                ref.invalidate(homeInsightsProvider);
-                              },
-                              selectedColor: cs.primary,
-                              labelStyle: TextStyle(
-                                color: sel ? Colors.white : cs.onSurface,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                  ],
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      for (final p in DashboardPeriod.values) ...[
+                        _DatePeriodPill(
+                          label: dashboardPeriodLabel(p),
+                          selected: period == p,
+                          onTap: () {
+                            ref.read(dashboardPeriodProvider.notifier).state = p;
+                            ref.invalidate(dashboardProvider);
+                            ref.invalidate(homeInsightsProvider);
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                child: Text(
+                  _rangeCaption(period),
+                  style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary, fontWeight: FontWeight.w500),
                 ),
               ),
             ),
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
               sliver: SliverToBoxAdapter(
                 child: dash.when(
-                  loading: () => const Padding(
-                    padding: EdgeInsets.all(32),
-                    child: Center(child: CircularProgressIndicator()),
+                  loading: () => Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const _HeroProfitLoading(),
+                      const SizedBox(height: 16),
+                      _StatsGridSkeleton(),
+                    ],
                   ),
                   error: (e, _) => Card(
                     child: Padding(
@@ -191,173 +186,78 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
                     final marginPct = d.totalPurchase > 0 ? (d.totalProfit / d.totalPurchase) * 100.0 : null;
                     final mom = hi?.profitChangePctPriorMtd;
                     final empty = d.purchaseCount == 0 && d.totalPurchase <= 0;
+                    final avgPurchase = d.purchaseCount > 0 ? d.totalPurchase / d.purchaseCount : null;
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text(
-                          _rangeCaption(period),
-                          style: tt.labelLarge?.copyWith(color: HexaColors.textSecondary, fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 12),
                         _HeroProfitCard(
-                          profitText: _inr(d.totalProfit),
-                          profitValue: d.totalProfit,
+                          profitText: empty ? '—' : _inr(d.totalProfit),
                           changePct: mom,
-                          subtitle: '${dashboardPeriodLabel(period)} · pull to refresh',
+                          periodLabel: dashboardPeriodLabel(period),
+                          rangeCaption: _rangeCaption(period),
                         ),
                         const SizedBox(height: 16),
+                        _StatsGrid(
+                          purchase: empty ? null : d.totalPurchase,
+                          profit: empty ? null : d.totalProfit,
+                          marginPct: empty ? null : marginPct,
+                          count: d.purchaseCount,
+                          qtyBase: empty ? null : d.totalQtyBase,
+                          avgPurchase: avgPurchase,
+                          inr: _inr,
+                        ),
+                        const SizedBox(height: 20),
+                        Row(
+                          children: [
+                            Icon(Icons.notifications_active_outlined, size: 22, color: HexaColors.primaryMid),
+                            const SizedBox(width: 8),
+                            Text('Signals', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
                         if (empty)
-                          _DashboardEmptyCta(onAdd: () => showEntryCreateSheet(context))
-                        else ...[
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _MetricCard(
-                                  label: 'Purchase',
-                                  value: _inr(d.totalPurchase),
-                                  tone: _MetricTone.cost,
-                                  marginValue: null,
-                                  icon: Icons.shopping_bag_outlined,
-                                  iconColor: const Color(0xFF2563EB),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _MetricCard(
-                                  label: 'Profit',
-                                  value: _inr(d.totalProfit),
-                                  tone: _MetricTone.profit,
-                                  marginValue: null,
-                                  icon: Icons.trending_up_rounded,
-                                  iconColor: HexaColors.profit,
-                                ),
-                              ),
-                            ],
+                          _SignalsEmptyState(onAdd: () => showEntryCreateSheet(context))
+                        else
+                          insights.when(
+                            loading: () => const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 24),
+                              child: Center(child: CircularProgressIndicator()),
+                            ),
+                            error: (_, __) => const SizedBox.shrink(),
+                            data: (ins) => _SignalsContent(insights: ins, inr: _inr),
                           ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _MetricCard(
-                                  label: 'Margin',
-                                  value: marginPct != null ? '${marginPct.toStringAsFixed(1)}%' : '—',
-                                  tone: _MetricTone.margin,
-                                  marginValue: marginPct,
-                                  icon: Icons.pie_chart_outline_rounded,
-                                  iconColor: HexaColors.accentAmber,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _MetricCard(
-                                  label: 'Purchases',
-                                  value: d.purchaseCount.toString(),
-                                  tone: _MetricTone.neutral,
-                                  marginValue: null,
-                                  icon: Icons.receipt_long_rounded,
-                                  iconColor: HexaColors.primaryMid,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _MetricCard(
-                                  label: 'Qty (base)',
-                                  value: d.totalQtyBase.toStringAsFixed(1),
-                                  tone: _MetricTone.neutral,
-                                  marginValue: null,
-                                  icon: Icons.scale_rounded,
-                                  iconColor: const Color(0xFF7C3AED),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _MetricCard(
-                                  label: 'Avg / purchase',
-                                  value: d.purchaseCount > 0 ? _inr(d.totalProfit / d.purchaseCount) : '—',
-                                  tone: _MetricTone.neutral,
-                                  marginValue: null,
-                                  icon: Icons.analytics_outlined,
-                                  iconColor: const Color(0xFFEA580C),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                        if (hi != null &&
-                            (hi.topItem != null ||
-                                hi.worstItem != null ||
-                                hi.bestSupplierName != null ||
-                                hi.alerts.isNotEmpty)) ...[
-                          const SizedBox(height: 20),
-                          Row(
-                            children: [
-                              Icon(Icons.notifications_active_outlined, size: 22, color: cs.primary),
-                              const SizedBox(width: 8),
-                              Text('Insights & alerts', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          if (hi.negativeLineCount > 0)
-                            _AlertSummaryCard(
-                              count: hi.negativeLineCount,
-                              title: 'Lines with loss',
-                              body: 'Review selling vs landing on these rows.',
-                            ),
-                          if (hi.topItem != null)
-                            _InsightTile(
-                              icon: Icons.emoji_events_rounded,
-                              iconColor: HexaColors.warning,
-                              title: 'Top item',
-                              name: hi.topItem!,
-                              amount: hi.topItemProfit ?? 0,
-                            ),
-                          if (hi.worstItem != null &&
-                              hi.worstItemProfit != null &&
-                              (hi.worstItem != hi.topItem || hi.worstItemProfit! < 0)) ...[
-                            const SizedBox(height: 8),
-                            _InsightTile(
-                              icon: Icons.trending_down_rounded,
-                              iconColor: HexaColors.loss,
-                              title: 'Needs attention',
-                              name: hi.worstItem!,
-                              amount: hi.worstItemProfit!,
-                              valueColor: hi.worstItemProfit! < 0 ? HexaColors.loss : HexaColors.warning,
-                            ),
-                          ],
-                          if (hi.bestSupplierName != null) ...[
-                            const SizedBox(height: 8),
-                            _InsightTile(
-                              icon: Icons.storefront_rounded,
-                              iconColor: HexaColors.brand,
-                              title: 'Best supplier',
-                              name: hi.bestSupplierName!,
-                              amount: hi.bestSupplierProfit ?? 0,
-                            ),
-                          ],
-                          for (final a in hi.alerts) ...[
-                            const SizedBox(height: 8),
-                            _AlertMessageCard(
-                              message: a['message']?.toString() ?? 'Alert',
-                              severity: a['severity']?.toString() ?? 'info',
-                            ),
-                          ],
-                        ],
                         const SizedBox(height: 24),
                         Text(
                           'Quick actions',
                           style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
                         ),
                         const SizedBox(height: 12),
-                        _QuickActions(
-                          onViewEntries: () => context.go('/entries'),
-                          onCatalog: () => context.push('/catalog'),
-                          onReports: () => context.go('/analytics'),
-                          onVoice: () => context.go('/ai'),
+                        _QuickActionCards(
+                          onAddEntry: () => showEntryCreateSheet(context),
                           onScan: () => unawaited(_mediaOcrSnack(context, ref)),
+                          onReports: () => context.go('/analytics'),
+                        ),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _SecondaryChip(
+                              icon: Icons.mic_rounded,
+                              label: 'Voice',
+                              onTap: () => context.push('/ai'),
+                            ),
+                            _SecondaryChip(
+                              icon: Icons.receipt_long_outlined,
+                              label: 'History',
+                              onTap: () => context.go('/entries'),
+                            ),
+                            _SecondaryChip(
+                              icon: Icons.inventory_2_outlined,
+                              label: 'Catalog',
+                              onTap: () => context.push('/catalog'),
+                            ),
+                          ],
                         ),
                       ],
                     );
@@ -372,18 +272,656 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
   }
 }
 
-class _HeroProfitCard extends StatelessWidget {
-  const _HeroProfitCard({
-    required this.profitText,
-    required this.profitValue,
-    required this.changePct,
+class _DatePeriodPill extends StatelessWidget {
+  const _DatePeriodPill({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          height: 36,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected ? HexaColors.primaryMid : Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: selected ? HexaColors.primaryMid : HexaColors.border,
+              width: 1,
+            ),
+          ),
+          child: Text(
+            label,
+            style: tt.labelLarge?.copyWith(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: selected ? Colors.white : HexaColors.textSecondary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HeroProfitLoading extends StatefulWidget {
+  const _HeroProfitLoading();
+
+  @override
+  State<_HeroProfitLoading> createState() => _HeroProfitLoadingState();
+}
+
+class _HeroProfitLoadingState extends State<_HeroProfitLoading> with SingleTickerProviderStateMixin {
+  late AnimationController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600))..repeat();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, child) {
+        final t = _c.value;
+        return Container(
+          height: 130,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: LinearGradient(
+              begin: Alignment(-1.2 + t * 2.4, 0),
+              end: Alignment(-0.2 + t * 2.4, 0.2),
+              colors: [
+                HexaColors.primaryDeep,
+                HexaColors.primaryMid.withValues(alpha: 0.85),
+                HexaColors.primaryDeep,
+              ],
+            ),
+          ),
+          child: Center(
+            child: SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.5,
+                color: Colors.white.withValues(alpha: 0.85),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _StatsGridSkeleton extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        for (var i = 0; i < 3; i++) ...[
+          Row(
+            children: [
+              Expanded(child: _statSkeletonCell(context)),
+              const SizedBox(width: 10),
+              Expanded(child: _statSkeletonCell(context)),
+            ],
+          ),
+          if (i < 2) const SizedBox(height: 10),
+        ],
+      ],
+    );
+  }
+
+  Widget _statSkeletonCell(BuildContext context) {
+    return Container(
+      height: 88,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: HexaColors.border.withValues(alpha: 0.5)),
+      ),
+    );
+  }
+}
+
+class _StatsGrid extends StatelessWidget {
+  const _StatsGrid({
+    required this.purchase,
+    required this.profit,
+    required this.marginPct,
+    required this.count,
+    required this.qtyBase,
+    required this.avgPurchase,
+    required this.inr,
+  });
+
+  final double? purchase;
+  final double? profit;
+  final double? marginPct;
+  final int count;
+  final double? qtyBase;
+  final double? avgPurchase;
+  final String Function(num n) inr;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _StatCard(
+                label: 'Purchase ₹',
+                value: purchase != null ? inr(purchase!) : '—',
+                stripe: const Color(0xFF2563EB),
+                icon: Icons.shopping_bag_outlined,
+                iconTint: const Color(0xFF2563EB),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _StatCard(
+                label: 'Profit ₹',
+                value: profit != null ? inr(profit!) : '—',
+                stripe: HexaColors.profit,
+                icon: Icons.trending_up_rounded,
+                iconTint: HexaColors.profit,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _StatCard(
+                label: 'Margin %',
+                value: marginPct != null ? '${marginPct!.toStringAsFixed(1)}%' : '—',
+                stripe: HexaColors.accentAmber,
+                icon: Icons.percent_rounded,
+                iconTint: HexaColors.accentAmber,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _StatCard(
+                label: 'Count',
+                value: count > 0 ? '$count' : '—',
+                stripe: HexaColors.primaryMid,
+                icon: Icons.receipt_long_outlined,
+                iconTint: HexaColors.primaryMid,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _StatCard(
+                label: 'Qty (base)',
+                value: qtyBase != null ? qtyBase!.toStringAsFixed(1) : '—',
+                stripe: const Color(0xFF7C3AED),
+                icon: Icons.scale_outlined,
+                iconTint: const Color(0xFF7C3AED),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _StatCard(
+                label: 'Avg/Purchase',
+                value: avgPurchase != null ? inr(avgPurchase!) : '—',
+                stripe: const Color(0xFFEA580C),
+                icon: Icons.bar_chart_rounded,
+                iconTint: const Color(0xFFEA580C),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  const _StatCard({
+    required this.label,
+    required this.value,
+    required this.stripe,
+    required this.icon,
+    required this.iconTint,
+  });
+
+  final String label;
+  final String value;
+  final Color stripe;
+  final IconData icon;
+  final Color iconTint;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    return Material(
+      color: Theme.of(context).cardTheme.color ?? Theme.of(context).colorScheme.surface,
+      elevation: 0,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: HexaColors.border),
+          boxShadow: HexaColors.cardShadow(context),
+        ),
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 4,
+              height: 44,
+              decoration: BoxDecoration(
+                color: stripe,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Container(
+              width: 36,
+              height: 36,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: iconTint.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 20, color: iconTint),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label.toUpperCase(),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: tt.labelSmall?.copyWith(
+                      fontSize: 11,
+                      color: HexaColors.textSecondary,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    value,
+                    style: tt.titleMedium?.copyWith(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: HexaColors.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SignalsEmptyState extends StatelessWidget {
+  const _SignalsEmptyState({required this.onAdd});
+
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardTheme.color,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: HexaColors.border),
+        boxShadow: HexaColors.cardShadow(context),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: const BoxDecoration(
+              color: HexaColors.primaryLight,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.receipt_long_rounded, size: 56, color: HexaColors.primaryMid),
+          ),
+          const SizedBox(height: 14),
+          Text('No purchases yet', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          Text(
+            'Add your first purchase to see profit signals here',
+            textAlign: TextAlign.center,
+            style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary),
+          ),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: HexaColors.primaryMid,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: onAdd,
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('+ Add first purchase'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SignalsContent extends StatelessWidget {
+  const _SignalsContent({required this.insights, required this.inr});
+
+  final HomeInsightsData insights;
+  final String Function(num n) inr;
+
+  @override
+  Widget build(BuildContext context) {
+    final hi = insights;
+    final chips = <Widget>[];
+
+    if (hi.negativeLineCount > 0) {
+      chips.add(
+        _SignalChip(
+          color: HexaColors.loss.withValues(alpha: 0.12),
+          border: HexaColors.loss.withValues(alpha: 0.35),
+          icon: Icons.warning_amber_rounded,
+          iconColor: HexaColors.loss,
+          title: '${hi.negativeLineCount} loss lines',
+          subtitle: 'Check selling vs landing',
+        ),
+      );
+    }
+    if (hi.topItem != null) {
+      chips.add(
+        _SignalChip(
+          color: HexaColors.warning.withValues(alpha: 0.12),
+          border: HexaColors.warning.withValues(alpha: 0.3),
+          icon: Icons.emoji_events_rounded,
+          iconColor: HexaColors.warning,
+          title: 'Top item',
+          subtitle: '${hi.topItem!} · ${inr(hi.topItemProfit ?? 0)}',
+        ),
+      );
+    }
+    if (hi.worstItem != null &&
+        hi.worstItemProfit != null &&
+        (hi.worstItem != hi.topItem || hi.worstItemProfit! < 0)) {
+      chips.add(
+        _SignalChip(
+          color: HexaColors.loss.withValues(alpha: 0.1),
+          border: HexaColors.loss.withValues(alpha: 0.28),
+          icon: Icons.trending_down_rounded,
+          iconColor: HexaColors.loss,
+          title: 'Needs attention',
+          subtitle: '${hi.worstItem!} · ${inr(hi.worstItemProfit!)}',
+        ),
+      );
+    }
+    if (hi.bestSupplierName != null) {
+      chips.add(
+        _SignalChip(
+          color: HexaColors.primaryLight,
+          border: HexaColors.primaryMid.withValues(alpha: 0.25),
+          icon: Icons.storefront_rounded,
+          iconColor: HexaColors.primaryMid,
+          title: 'Best supplier',
+          subtitle: '${hi.bestSupplierName!} · ${inr(hi.bestSupplierProfit ?? 0)}',
+        ),
+      );
+    }
+    for (final a in hi.alerts) {
+      final sev = a['severity']?.toString() ?? 'info';
+      final warn = sev == 'warning';
+      chips.add(
+        _SignalChip(
+          color: warn ? HexaColors.loss.withValues(alpha: 0.08) : HexaColors.primaryLight,
+          border: warn ? HexaColors.loss.withValues(alpha: 0.25) : HexaColors.primaryMid.withValues(alpha: 0.2),
+          icon: warn ? Icons.error_outline_rounded : Icons.info_outline_rounded,
+          iconColor: warn ? HexaColors.loss : HexaColors.primaryMid,
+          title: 'Alert',
+          subtitle: a['message']?.toString() ?? '',
+        ),
+      );
+    }
+
+    if (chips.isEmpty) {
+      return Text(
+        'Signals will appear after you record purchases in this period.',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: HexaColors.textSecondary),
+      );
+    }
+
+    return Wrap(spacing: 8, runSpacing: 8, children: chips);
+  }
+}
+
+class _SignalChip extends StatelessWidget {
+  const _SignalChip({
+    required this.color,
+    required this.border,
+    required this.icon,
+    required this.iconColor,
+    required this.title,
     required this.subtitle,
   });
 
-  final String profitText;
-  final double profitValue;
-  final double? changePct;
+  final Color color;
+  final Color border;
+  final IconData icon;
+  final Color iconColor;
+  final String title;
   final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 520),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 20, color: iconColor),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(title, style: tt.labelSmall?.copyWith(fontWeight: FontWeight.w800)),
+                if (subtitle.isNotEmpty)
+                  Text(
+                    subtitle,
+                    style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuickActionCards extends StatelessWidget {
+  const _QuickActionCards({
+    required this.onAddEntry,
+    required this.onScan,
+    required this.onReports,
+  });
+
+  final VoidCallback onAddEntry;
+  final VoidCallback onScan;
+  final VoidCallback onReports;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          flex: 2,
+          child: FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: HexaColors.primaryMid,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              elevation: 0,
+            ),
+            onPressed: onAddEntry,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.add_rounded, size: 22),
+                const SizedBox(width: 6),
+                Text('+ Add Entry', style: tt.labelLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.w800)),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              side: const BorderSide(color: HexaColors.border),
+            ),
+            onPressed: onScan,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.document_scanner_outlined, size: 22, color: HexaColors.primaryMid),
+                const SizedBox(height: 4),
+                Text(
+                  'Scan Bill',
+                  textAlign: TextAlign.center,
+                  style: tt.labelSmall?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              side: const BorderSide(color: HexaColors.border),
+            ),
+            onPressed: onReports,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.insights_outlined, size: 22, color: HexaColors.primaryMid),
+                const SizedBox(height: 4),
+                Text(
+                  'Reports',
+                  textAlign: TextAlign.center,
+                  style: tt.labelSmall?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SecondaryChip extends StatelessWidget {
+  const _SecondaryChip({required this.icon, required this.label, required this.onTap});
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: cs.surface,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.8)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 20, color: HexaColors.primaryMid),
+              const SizedBox(width: 8),
+              Text(label, style: tt.labelLarge?.copyWith(fontWeight: FontWeight.w700)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HeroProfitCard extends StatelessWidget {
+  const _HeroProfitCard({
+    required this.profitText,
+    required this.changePct,
+    required this.periodLabel,
+    required this.rangeCaption,
+  });
+
+  final String profitText;
+  final double? changePct;
+  final String periodLabel;
+  final String rangeCaption;
 
   @override
   Widget build(BuildContext context) {
@@ -393,466 +931,99 @@ class _HeroProfitCard extends StatelessWidget {
         ? Colors.white.withValues(alpha: 0.85)
         : (up ? const Color(0xFFBBF7D0) : const Color(0xFFFECACA));
 
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            HexaColors.primaryDeep,
-            HexaColors.primaryMid,
-            HexaColors.heroGradientEnd,
-          ],
-          stops: [0.0, 0.45, 1.0],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: HexaColors.primaryMid.withValues(alpha: 0.4),
-            blurRadius: 28,
-            offset: const Offset(0, 14),
+    return SizedBox(
+      height: 130,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              HexaColors.primaryDeep,
+              HexaColors.primaryMid,
+            ],
           ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          boxShadow: [
+            BoxShadow(
+              color: HexaColors.primaryMid.withValues(alpha: 0.35),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
           children: [
-            Row(
-              children: [
-                Icon(Icons.account_balance_wallet_rounded, color: Colors.white.withValues(alpha: 0.92), size: 22),
-                const SizedBox(width: 8),
-                Text(
-                  'Total profit',
-                  style: tt.labelLarge?.copyWith(
-                    color: Colors.white.withValues(alpha: 0.9),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              profitText,
-              style: GoogleFonts.dmSerifDisplay(
-                fontSize: 40,
-                height: 1.05,
-                color: profitValue == 0 ? Colors.white.withValues(alpha: 0.95) : Colors.white,
-                fontWeight: FontWeight.w600,
-                letterSpacing: -1,
-              ),
-            ),
-            if (changePct != null) ...[
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+            Positioned.fill(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        Icon(
-                          up ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
-                          size: 18,
-                          color: trendColor,
-                        ),
-                        const SizedBox(width: 4),
+                        Icon(Icons.trending_up_rounded, color: Colors.white.withValues(alpha: 0.7), size: 20),
+                        const SizedBox(width: 6),
                         Text(
-                          '${up ? '+' : ''}${changePct!.toStringAsFixed(1)}% vs last month MTD',
+                          'Total Profit',
                           style: tt.labelLarge?.copyWith(
-                            color: trendColor,
-                            fontWeight: FontWeight.w800,
+                            color: Colors.white.withValues(alpha: 0.7),
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ],
-              ),
-            ],
-            const SizedBox(height: 8),
-            Text(
-              subtitle,
-              style: tt.bodySmall?.copyWith(color: Colors.white.withValues(alpha: 0.82)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-enum _MetricTone { cost, profit, margin, warning, neutral }
-
-class _DashboardEmptyCta extends StatelessWidget {
-  const _DashboardEmptyCta({required this.onAdd});
-
-  final VoidCallback onAdd;
-
-  @override
-  Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    final cs = Theme.of(context).colorScheme;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            Icon(Icons.receipt_long_rounded, size: 48, color: cs.primary),
-            const SizedBox(height: 12),
-            Text('No purchases in this period', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-            const SizedBox(height: 6),
-            Text(
-              'Add your first purchase to see totals here, or pick another date range above.',
-              textAlign: TextAlign.center,
-              style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary),
-            ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: onAdd,
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Add first purchase'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MetricCard extends StatelessWidget {
-  const _MetricCard({
-    required this.label,
-    required this.value,
-    required this.tone,
-    required this.marginValue,
-    this.icon,
-    this.iconColor,
-  });
-
-  final String label;
-  final String value;
-  final _MetricTone tone;
-  final double? marginValue;
-  final IconData? icon;
-  final Color? iconColor;
-
-  Color _accent(bool dark) {
-    switch (tone) {
-      case _MetricTone.cost:
-        return HexaColors.cost;
-      case _MetricTone.profit:
-        return HexaColors.profit;
-      case _MetricTone.margin:
-        final m = marginValue ?? 0;
-        return m >= 0 ? HexaColors.profit : HexaColors.loss;
-      case _MetricTone.warning:
-        return HexaColors.warning;
-      case _MetricTone.neutral:
-        return HexaColors.textSecondary;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final accent = _accent(dark);
-
-    return Material(
-      color: Theme.of(context).cardTheme.color,
-      elevation: Theme.of(context).cardTheme.elevation ?? 0,
-      shadowColor: Theme.of(context).cardTheme.shadowColor,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: HexaColors.border.withValues(alpha: dark ? 0.25 : 0.7)),
-        ),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 4,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: accent,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                if (icon != null)
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: (iconColor ?? accent).withValues(alpha: 0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(icon, size: 22, color: iconColor ?? accent),
-                  ),
-                if (icon != null) const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    label.toUpperCase(),
-                    style: tt.labelSmall?.copyWith(
-                      color: HexaColors.textSecondary,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.4,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.3),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _AlertSummaryCard extends StatelessWidget {
-  const _AlertSummaryCard({required this.count, required this.title, required this.body});
-
-  final int count;
-  final String title;
-  final String body;
-
-  @override
-  Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: HexaColors.warning.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: HexaColors.warning.withValues(alpha: 0.35)),
-        boxShadow: HexaColors.cardShadow(context),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.warning_amber_rounded, color: HexaColors.warning, size: 26),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '$count $title',
-                  style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 4),
-                Text(body, style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _InsightTile extends StatelessWidget {
-  const _InsightTile({
-    required this.icon,
-    required this.iconColor,
-    required this.title,
-    required this.name,
-    required this.amount,
-    this.valueColor,
-  });
-
-  final IconData icon;
-  final Color iconColor;
-  final String title;
-  final String name;
-  final double amount;
-  /// When null, green if [amount] ≥ 0 else red.
-  final Color? valueColor;
-
-  String _fmt(num n) => NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(n);
-
-  @override
-  Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    final amtColor = valueColor ?? (amount >= 0 ? HexaColors.profit : HexaColors.loss);
-    return Material(
-      color: Theme.of(context).cardTheme.color,
-      elevation: Theme.of(context).cardTheme.elevation ?? 0,
-      shadowColor: Theme.of(context).cardTheme.shadowColor,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5)),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Row(
-          children: [
-            Icon(icon, color: iconColor, size: 26),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: tt.labelSmall?.copyWith(color: HexaColors.textSecondary, fontWeight: FontWeight.w600)),
-                  Text(name, style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-                ],
-              ),
-            ),
-            Text(
-              '${amount >= 0 ? '+' : ''}${_fmt(amount)}',
-              style: tt.titleMedium?.copyWith(color: amtColor, fontWeight: FontWeight.w800),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _AlertMessageCard extends StatelessWidget {
-  const _AlertMessageCard({required this.message, required this.severity});
-
-  final String message;
-  final String severity;
-
-  @override
-  Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    final isWarn = severity == 'warning';
-    return Material(
-      color: isWarn ? HexaColors.loss.withValues(alpha: 0.08) : HexaColors.primaryLight.withValues(alpha: 0.5),
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isWarn ? HexaColors.loss.withValues(alpha: 0.25) : HexaColors.primaryMid.withValues(alpha: 0.2),
-          ),
-        ),
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              isWarn ? Icons.error_outline_rounded : Icons.info_outline_rounded,
-              color: isWarn ? HexaColors.loss : HexaColors.primaryMid,
-            ),
-            const SizedBox(width: 10),
-            Expanded(child: Text(message, style: tt.bodyMedium)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _QuickActions extends StatelessWidget {
-  const _QuickActions({
-    required this.onViewEntries,
-    required this.onCatalog,
-    required this.onReports,
-    required this.onVoice,
-    required this.onScan,
-  });
-
-  final VoidCallback onViewEntries;
-  final VoidCallback onCatalog;
-  final VoidCallback onReports;
-  final VoidCallback onVoice;
-  final VoidCallback onScan;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _ActionChipButton(icon: Icons.mic_rounded, label: 'Voice', onTap: onVoice),
-            _ActionChipButton(icon: Icons.document_scanner_outlined, label: 'Scan bill', onTap: onScan),
-            _ActionChipButton(icon: Icons.insights_outlined, label: 'Reports', onTap: onReports),
-            _ActionChipButton(icon: Icons.receipt_long_outlined, label: 'History', onTap: onViewEntries),
-            _ActionChipButton(icon: Icons.inventory_2_outlined, label: 'Catalog', onTap: onCatalog),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _ActionChipButton extends StatefulWidget {
-  const _ActionChipButton({required this.icon, required this.label, required this.onTap});
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  State<_ActionChipButton> createState() => _ActionChipButtonState();
-}
-
-class _ActionChipButtonState extends State<_ActionChipButton> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: Material(
-        color: _hover ? cs.primary.withValues(alpha: 0.08) : cs.surface,
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: widget.onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: cs.outlineVariant.withValues(alpha: _hover ? 1.0 : 0.7)),
-              boxShadow: _hover
-                  ? [
-                      BoxShadow(
-                        color: cs.shadow.withValues(alpha: 0.08),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
+                    const Spacer(),
+                    Text(
+                      profitText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.dmSerifDisplay(
+                        fontSize: 42,
+                        height: 1.0,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w400,
+                        letterSpacing: -0.5,
                       ),
-                    ]
-                  : null,
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(widget.icon, size: 20, color: cs.primary),
-                const SizedBox(width: 8),
-                Text(
-                  widget.label,
-                  style: tt.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '$periodLabel · $rangeCaption',
+                      style: tt.bodySmall?.copyWith(color: Colors.white.withValues(alpha: 0.6)),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
+            if (changePct != null)
+              Positioned(
+                top: 10,
+                right: 10,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.22),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        up ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+                        size: 14,
+                        color: trendColor,
+                      ),
+                      const SizedBox(width: 2),
+                      Text(
+                        '${up ? '+' : ''}${changePct!.toStringAsFixed(1)}% vs last month',
+                        style: tt.labelSmall?.copyWith(color: trendColor, fontWeight: FontWeight.w800),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

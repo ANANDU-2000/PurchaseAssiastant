@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/auth/google_sign_in_helper.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/config/app_config.dart';
+import '../../../core/theme/hexa_colors.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
@@ -141,90 +143,196 @@ class _LoginPageState extends ConsumerState<LoginPage> with SingleTickerProvider
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final showGoogle = AppConfig.googleOAuthClientId.isNotEmpty;
+    final inputTheme = InputDecorationTheme(
+      filled: true,
+      fillColor: HexaColors.surfaceMuted,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: HexaColors.primaryMid, width: 1.5),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    );
+
     return Scaffold(
+      backgroundColor: HexaColors.primaryDeep,
       body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
-              child: Column(
-                children: [
-                  Icon(Icons.lock_outline_rounded, size: 44, color: cs.primary),
-                  const SizedBox(height: 12),
-                  Text('HEXA', style: tt.headlineMedium?.copyWith(fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Create an account with username, email, and password. Sign in with email and password (or Google if configured).',
-                    style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
-            TabBar(
-              controller: _tab,
-              tabs: const [
-                Tab(text: 'Sign in'),
-                Tab(text: 'Create account'),
-              ],
-            ),
-            if (AppConfig.googleOAuthClientId.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
-                child: OutlinedButton.icon(
-                  onPressed: _loading ? null : _googleSignIn,
-                  icon: const Text('G', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-                  label: const Text('Continue with Google'),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final tabH = (constraints.maxHeight * 0.52).clamp(340.0, 520.0);
+            return SingleChildScrollView(
+              padding: const EdgeInsets.only(bottom: 24),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight - MediaQuery.paddingOf(context).vertical),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 28),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.12),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            'H',
+                            style: GoogleFonts.dmSerifDisplay(
+                              fontSize: 26,
+                              fontWeight: FontWeight.w700,
+                              color: HexaColors.primaryDeep,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'HEXA',
+                              style: GoogleFonts.dmSerifDisplay(
+                                fontSize: 34,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                                height: 1.05,
+                              ),
+                            ),
+                            Text(
+                              'Purchase Intelligence',
+                              style: tt.titleSmall?.copyWith(
+                                color: Colors.white.withValues(alpha: 0.72),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 28),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Material(
+                        color: HexaColors.surfaceCard,
+                        elevation: 10,
+                        shadowColor: HexaColors.primaryDeep.withValues(alpha: 0.25),
+                        borderRadius: BorderRadius.circular(24),
+                        child: Theme(
+                          data: Theme.of(context).copyWith(inputDecorationTheme: inputTheme),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              TabBar(
+                                controller: _tab,
+                                labelColor: HexaColors.primaryMid,
+                                unselectedLabelColor: HexaColors.textSecondary,
+                                indicatorColor: HexaColors.primaryMid,
+                                indicatorWeight: 3,
+                                labelStyle: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                                unselectedLabelStyle: tt.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                                tabs: const [
+                                  Tab(text: 'Sign in'),
+                                  Tab(text: 'Create account'),
+                                ],
+                              ),
+                              SizedBox(
+                                height: tabH,
+                                child: TabBarView(
+                                  controller: _tab,
+                                  children: [
+                                    _SignInForm(
+                                      tt: tt,
+                                      emailCtrl: _loginEmail,
+                                      passCtrl: _loginPass,
+                                      loading: _loading,
+                                      error: _error,
+                                      onSubmit: _signIn,
+                                    ),
+                                    _SignUpForm(
+                                      tt: tt,
+                                      userCtrl: _regUser,
+                                      emailCtrl: _regEmail,
+                                      passCtrl: _regPass,
+                                      pass2Ctrl: _regPass2,
+                                      loading: _loading,
+                                      error: _error,
+                                      onSubmit: _signUp,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (showGoogle) ...[
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                                  child: Row(
+                                    children: [
+                                      Expanded(child: Divider(color: HexaColors.border.withValues(alpha: 0.9))),
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                                        child: Text('or', style: tt.labelMedium?.copyWith(color: HexaColors.textSecondary)),
+                                      ),
+                                      Expanded(child: Divider(color: HexaColors.border.withValues(alpha: 0.9))),
+                                    ],
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                                  child: OutlinedButton.icon(
+                                    onPressed: _loading ? null : _googleSignIn,
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: HexaColors.textPrimary,
+                                      side: BorderSide(color: HexaColors.border.withValues(alpha: 0.95)),
+                                      padding: const EdgeInsets.symmetric(vertical: 14),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                    ),
+                                    icon: const Text('G', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+                                    label: const Text('Continue with Google'),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    Text(
+                      'HEXA © 2026',
+                      textAlign: TextAlign.center,
+                      style: tt.labelMedium?.copyWith(color: Colors.white.withValues(alpha: 0.45)),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      AppConfig.apiBaseUrl,
+                      textAlign: TextAlign.center,
+                      style: tt.labelSmall?.copyWith(color: Colors.white.withValues(alpha: 0.28)),
+                    ),
+                  ],
                 ),
               ),
-            Expanded(
-              child: TabBarView(
-                controller: _tab,
-                children: [
-                  _SignInForm(
-                    cs: cs,
-                    tt: tt,
-                    emailCtrl: _loginEmail,
-                    passCtrl: _loginPass,
-                    loading: _loading,
-                    error: _error,
-                    onSubmit: _signIn,
-                  ),
-                  _SignUpForm(
-                    cs: cs,
-                    tt: tt,
-                    userCtrl: _regUser,
-                    emailCtrl: _regEmail,
-                    passCtrl: _regPass,
-                    pass2Ctrl: _regPass2,
-                    loading: _loading,
-                    error: _error,
-                    onSubmit: _signUp,
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                'API: ${AppConfig.apiBaseUrl}',
-                style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );
   }
 }
 
-class _SignInForm extends StatelessWidget {
+class _SignInForm extends StatefulWidget {
   const _SignInForm({
-    required this.cs,
     required this.tt,
     required this.emailCtrl,
     required this.passCtrl,
@@ -233,7 +341,6 @@ class _SignInForm extends StatelessWidget {
     required this.onSubmit,
   });
 
-  final ColorScheme cs;
   final TextTheme tt;
   final TextEditingController emailCtrl;
   final TextEditingController passCtrl;
@@ -242,49 +349,70 @@ class _SignInForm extends StatelessWidget {
   final VoidCallback onSubmit;
 
   @override
+  State<_SignInForm> createState() => _SignInFormState();
+}
+
+class _SignInFormState extends State<_SignInForm> {
+  bool _obscure = true;
+
+  @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
       children: [
         TextField(
-          controller: emailCtrl,
+          controller: widget.emailCtrl,
           keyboardType: TextInputType.emailAddress,
           textInputAction: TextInputAction.next,
           autocorrect: false,
+          style: widget.tt.bodyLarge?.copyWith(color: HexaColors.textPrimary),
           decoration: const InputDecoration(
             labelText: 'Email',
-            prefixIcon: Icon(Icons.mail_outline_rounded),
+            prefixIcon: Icon(Icons.mail_outline_rounded, color: HexaColors.primaryMid),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         TextField(
-          controller: passCtrl,
-          obscureText: true,
-          decoration: const InputDecoration(
+          controller: widget.passCtrl,
+          obscureText: _obscure,
+          style: widget.tt.bodyLarge?.copyWith(color: HexaColors.textPrimary),
+          decoration: InputDecoration(
             labelText: 'Password',
-            prefixIcon: Icon(Icons.key_rounded),
+            prefixIcon: const Icon(Icons.key_rounded, color: HexaColors.primaryMid),
+            suffixIcon: IconButton(
+              tooltip: _obscure ? 'Show password' : 'Hide password',
+              onPressed: () => setState(() => _obscure = !_obscure),
+              icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: HexaColors.textSecondary),
+            ),
           ),
-          onSubmitted: (_) => onSubmit(),
+          onSubmitted: (_) => widget.onSubmit(),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 22),
         FilledButton(
-          onPressed: loading ? null : onSubmit,
-          child: loading
-              ? const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Text('Sign in'),
+          onPressed: widget.loading ? null : widget.onSubmit,
+          style: FilledButton.styleFrom(
+            backgroundColor: HexaColors.primaryMid,
+            disabledBackgroundColor: HexaColors.primaryMid.withValues(alpha: 0.45),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          ),
+          child: widget.loading
+              ? const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Text('Sign in', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
         ),
-        if (error != null) ...[
-          const SizedBox(height: 16),
-          Text(error!, style: tt.bodySmall?.copyWith(color: cs.error)),
+        if (widget.error != null) ...[
+          const SizedBox(height: 14),
+          Text(widget.error!, style: widget.tt.bodySmall?.copyWith(color: cs.error, fontWeight: FontWeight.w600)),
         ],
       ],
     );
   }
 }
 
-class _SignUpForm extends StatelessWidget {
+class _SignUpForm extends StatefulWidget {
   const _SignUpForm({
-    required this.cs,
     required this.tt,
     required this.userCtrl,
     required this.emailCtrl,
@@ -295,7 +423,6 @@ class _SignUpForm extends StatelessWidget {
     required this.onSubmit,
   });
 
-  final ColorScheme cs;
   final TextTheme tt;
   final TextEditingController userCtrl;
   final TextEditingController emailCtrl;
@@ -306,59 +433,87 @@ class _SignUpForm extends StatelessWidget {
   final VoidCallback onSubmit;
 
   @override
+  State<_SignUpForm> createState() => _SignUpFormState();
+}
+
+class _SignUpFormState extends State<_SignUpForm> {
+  bool _obscure1 = true;
+  bool _obscure2 = true;
+
+  @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
       children: [
         TextField(
-          controller: userCtrl,
+          controller: widget.userCtrl,
           autocorrect: false,
+          style: widget.tt.bodyLarge?.copyWith(color: HexaColors.textPrimary),
           decoration: const InputDecoration(
             labelText: 'Username',
             helperText: '3–64 chars: letters, numbers, underscore',
-            prefixIcon: Icon(Icons.badge_outlined),
+            prefixIcon: Icon(Icons.badge_outlined, color: HexaColors.primaryMid),
           ),
         ),
         const SizedBox(height: 12),
         TextField(
-          controller: emailCtrl,
+          controller: widget.emailCtrl,
           keyboardType: TextInputType.emailAddress,
           autocorrect: false,
+          style: widget.tt.bodyLarge?.copyWith(color: HexaColors.textPrimary),
           decoration: const InputDecoration(
             labelText: 'Email',
-            prefixIcon: Icon(Icons.mail_outline_rounded),
+            prefixIcon: Icon(Icons.mail_outline_rounded, color: HexaColors.primaryMid),
           ),
         ),
         const SizedBox(height: 12),
         TextField(
-          controller: passCtrl,
-          obscureText: true,
-          decoration: const InputDecoration(
+          controller: widget.passCtrl,
+          obscureText: _obscure1,
+          style: widget.tt.bodyLarge?.copyWith(color: HexaColors.textPrimary),
+          decoration: InputDecoration(
             labelText: 'Password',
             helperText: 'At least 8 characters',
-            prefixIcon: Icon(Icons.key_rounded),
+            prefixIcon: const Icon(Icons.key_rounded, color: HexaColors.primaryMid),
+            suffixIcon: IconButton(
+              onPressed: () => setState(() => _obscure1 = !_obscure1),
+              icon: Icon(_obscure1 ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: HexaColors.textSecondary),
+            ),
           ),
         ),
         const SizedBox(height: 12),
         TextField(
-          controller: pass2Ctrl,
-          obscureText: true,
-          decoration: const InputDecoration(
+          controller: widget.pass2Ctrl,
+          obscureText: _obscure2,
+          style: widget.tt.bodyLarge?.copyWith(color: HexaColors.textPrimary),
+          decoration: InputDecoration(
             labelText: 'Confirm password',
-            prefixIcon: Icon(Icons.key_off_outlined),
+            prefixIcon: const Icon(Icons.key_off_outlined, color: HexaColors.primaryMid),
+            suffixIcon: IconButton(
+              onPressed: () => setState(() => _obscure2 = !_obscure2),
+              icon: Icon(_obscure2 ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: HexaColors.textSecondary),
+            ),
           ),
-          onSubmitted: (_) => onSubmit(),
+          onSubmitted: (_) => widget.onSubmit(),
         ),
         const SizedBox(height: 20),
         FilledButton(
-          onPressed: loading ? null : onSubmit,
-          child: loading
-              ? const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Text('Create account'),
+          onPressed: widget.loading ? null : widget.onSubmit,
+          style: FilledButton.styleFrom(
+            backgroundColor: HexaColors.primaryMid,
+            disabledBackgroundColor: HexaColors.primaryMid.withValues(alpha: 0.45),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          ),
+          child: widget.loading
+              ? const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Text('Create account', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
         ),
-        if (error != null) ...[
-          const SizedBox(height: 16),
-          Text(error!, style: tt.bodySmall?.copyWith(color: cs.error)),
+        if (widget.error != null) ...[
+          const SizedBox(height: 14),
+          Text(widget.error!, style: widget.tt.bodySmall?.copyWith(color: cs.error, fontWeight: FontWeight.w600)),
         ],
       ],
     );

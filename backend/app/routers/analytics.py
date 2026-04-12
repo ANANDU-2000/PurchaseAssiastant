@@ -1,11 +1,11 @@
 import calendar
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -72,6 +72,21 @@ def _date_filter(business_id: uuid.UUID, from_date: date, to_date: date):
         Entry.entry_date >= from_date,
         Entry.entry_date <= to_date,
     )
+
+
+def _profit_trend_label(p_old: float, p_new: float) -> str:
+    """Compare profit in first vs second half of the selected date range."""
+    po = float(p_old or 0)
+    pn = float(p_new or 0)
+    if abs(po) < 1e-9 and abs(pn) < 1e-9:
+        return "flat"
+    if abs(po) < 1e-9:
+        return "up" if pn > 1e-9 else "flat"
+    if pn > po * 1.05:
+        return "up"
+    if pn < po * 0.95:
+        return "down"
+    return "flat"
 
 
 def _prior_month_mtd_window(from_date: date, to_date: date) -> tuple[date, date] | None:
@@ -236,6 +251,8 @@ class ItemAnalyticsRow(BaseModel):
     avg_landing: float
     total_profit: float
     line_count: int
+    margin_pct: float = 0.0  # rough markup vs implied line cost (qty × avg landing)
+    trend: str | None = None  # up|down|flat vs split range; None if single-day range
 
 
 @router.get("/items", response_model=list[ItemAnalyticsRow])
@@ -263,16 +280,48 @@ async def analytics_items(
         .order_by(func.coalesce(func.sum(EntryLineItem.profit), 0).desc())
     )
     r = await db.execute(q)
-    return [
-        ItemAnalyticsRow(
-            item_name=row[0],
-            total_qty=float(row[1] or 0),
-            avg_landing=float(row[2] or 0),
-            total_profit=float(row[3] or 0),
-            line_count=int(row[4] or 0),
+    rows = r.all()
+    trend_by_item: dict[str, str] = {}
+    span_days = (to_date - from_date).days
+    if span_days >= 1:
+        mid = from_date + timedelta(days=span_days // 2)
+        profit_x = func.coalesce(EntryLineItem.profit, 0)
+        q_tr = (
+            select(
+                EntryLineItem.item_name,
+                func.sum(case((Entry.entry_date <= mid, profit_x), else_=0)).label("p_old"),
+                func.sum(case((Entry.entry_date > mid, profit_x), else_=0)).label("p_new"),
+            )
+            .select_from(EntryLineItem)
+            .join(Entry, Entry.id == EntryLineItem.entry_id)
+            .where(*bf)
+            .group_by(EntryLineItem.item_name)
         )
-        for row in r.all()
-    ]
+        r_tr = await db.execute(q_tr)
+        for tr in r_tr.all():
+            trend_by_item[str(tr[0])] = _profit_trend_label(float(tr[1] or 0), float(tr[2] or 0))
+
+    out: list[ItemAnalyticsRow] = []
+    for row in rows:
+        tq = float(row[1] or 0)
+        al = float(row[2] or 0)
+        tp = float(row[3] or 0)
+        basis = tq * al
+        margin_pct = (100.0 * tp / basis) if basis > 1e-9 else 0.0
+        iname = str(row[0])
+        tr = trend_by_item.get(iname) if span_days >= 1 else None
+        out.append(
+            ItemAnalyticsRow(
+                item_name=iname,
+                total_qty=tq,
+                avg_landing=al,
+                total_profit=tp,
+                line_count=int(row[4] or 0),
+                margin_pct=margin_pct,
+                trend=tr,
+            )
+        )
+    return out
 
 
 class CategoryAnalyticsRow(BaseModel):
@@ -280,6 +329,7 @@ class CategoryAnalyticsRow(BaseModel):
     total_profit: float
     total_qty: float
     line_count: int
+    best_item_name: str | None = None
 
 
 @router.get("/categories", response_model=list[CategoryAnalyticsRow])
@@ -306,15 +356,42 @@ async def analytics_categories(
         .order_by(func.coalesce(func.sum(EntryLineItem.profit), 0).desc())
     )
     r = await db.execute(q)
-    return [
-        CategoryAnalyticsRow(
-            category=row[0],
-            total_profit=float(row[1] or 0),
-            total_qty=float(row[2] or 0),
-            line_count=int(row[3] or 0),
+    cat_rows = r.all()
+
+    q_best = (
+        select(
+            func.coalesce(EntryLineItem.category, "Uncategorized").label("cat"),
+            EntryLineItem.item_name,
+            func.coalesce(func.sum(EntryLineItem.profit), 0).label("ip"),
         )
-        for row in r.all()
-    ]
+        .select_from(EntryLineItem)
+        .join(Entry, Entry.id == EntryLineItem.entry_id)
+        .where(*bf)
+        .group_by(func.coalesce(EntryLineItem.category, "Uncategorized"), EntryLineItem.item_name)
+    )
+    r2 = await db.execute(q_best)
+    best: dict[str, tuple[str, float]] = {}
+    for row in r2.all():
+        cat, name, ip = row[0], row[1], float(row[2] or 0)
+        prev = best.get(cat)
+        if prev is None or ip > prev[1]:
+            best[cat] = (str(name), ip)
+
+    out: list[CategoryAnalyticsRow] = []
+    for row in cat_rows:
+        cname = row[0]
+        bip = best.get(cname)
+        best_name = bip[0] if bip and bip[1] > 1e-9 else None
+        out.append(
+            CategoryAnalyticsRow(
+                category=cname,
+                total_profit=float(row[1] or 0),
+                total_qty=float(row[2] or 0),
+                line_count=int(row[3] or 0),
+                best_item_name=best_name,
+            )
+        )
+    return out
 
 
 class SupplierAnalyticsRow(BaseModel):
@@ -324,6 +401,7 @@ class SupplierAnalyticsRow(BaseModel):
     avg_landing: float
     total_qty: float
     total_profit: float
+    margin_pct: float = 0.0
 
 
 @router.get("/suppliers", response_model=list[SupplierAnalyticsRow])
@@ -353,17 +431,25 @@ async def analytics_suppliers(
         .order_by(func.coalesce(func.sum(EntryLineItem.profit), 0).desc())
     )
     r = await db.execute(q)
-    return [
-        SupplierAnalyticsRow(
-            supplier_id=row[0],
-            supplier_name=row[1],
-            deals=int(row[2] or 0),
-            avg_landing=float(row[3] or 0),
-            total_qty=float(row[4] or 0),
-            total_profit=float(row[5] or 0),
+    out: list[SupplierAnalyticsRow] = []
+    for row in r.all():
+        al = float(row[3] or 0)
+        tq = float(row[4] or 0)
+        tp = float(row[5] or 0)
+        basis = tq * al
+        margin_pct = (100.0 * tp / basis) if basis > 1e-9 else 0.0
+        out.append(
+            SupplierAnalyticsRow(
+                supplier_id=row[0],
+                supplier_name=row[1],
+                deals=int(row[2] or 0),
+                avg_landing=al,
+                total_qty=tq,
+                total_profit=tp,
+                margin_pct=margin_pct,
+            )
         )
-        for row in r.all()
-    ]
+    return out
 
 
 class BrokerAnalyticsRow(BaseModel):
@@ -372,6 +458,7 @@ class BrokerAnalyticsRow(BaseModel):
     deals: int
     total_commission: float
     total_profit: float
+    commission_pct_of_profit: float = 0.0
 
 
 @router.get("/brokers", response_model=list[BrokerAnalyticsRow])
@@ -400,13 +487,20 @@ async def analytics_brokers(
         .order_by(func.coalesce(func.sum(EntryLineItem.profit), 0).desc())
     )
     r = await db.execute(q)
-    return [
-        BrokerAnalyticsRow(
-            broker_id=row[0],
-            broker_name=row[1],
-            deals=int(row[2] or 0),
-            total_commission=float(row[3] or 0),
-            total_profit=float(row[4] or 0),
+    out: list[BrokerAnalyticsRow] = []
+    for row in r.all():
+        tc = float(row[3] or 0)
+        tp = float(row[4] or 0)
+        denom = abs(tp) if abs(tp) > 1e-9 else 1.0
+        commission_pct_of_profit = 100.0 * tc / denom
+        out.append(
+            BrokerAnalyticsRow(
+                broker_id=row[0],
+                broker_name=row[1],
+                deals=int(row[2] or 0),
+                total_commission=tc,
+                total_profit=tp,
+                commission_pct_of_profit=commission_pct_of_profit,
+            )
         )
-        for row in r.all()
-    ]
+    return out
