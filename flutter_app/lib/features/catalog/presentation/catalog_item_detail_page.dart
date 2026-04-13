@@ -11,6 +11,7 @@ import '../../../core/providers/catalog_providers.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/bag_default_unit_hint.dart';
+import '../../entries/presentation/entry_create_sheet.dart';
 
 class CatalogItemDetailPage extends ConsumerStatefulWidget {
   const CatalogItemDetailPage({super.key, required this.itemId});
@@ -363,55 +364,26 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                       color: Theme.of(context).colorScheme.primary,
                     ),
                     title: Text(
-                      'Category: $catName',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleSmall
-                          ?.copyWith(fontWeight: FontWeight.w700),
+                      'In category: $catName',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                          ),
+                    ),
+                    subtitle: Text(
+                      'View items in this category',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                            fontSize: 12,
+                          ),
                     ),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () => context.push(
                       '/contacts/category?name=${Uri.encodeComponent(catName!)}',
                     ),
                   ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 4, bottom: 4),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Builder(
-                          builder: (context) {
-                            final du = item['default_unit']?.toString();
-                            final dkg = item['default_kg_per_bag'];
-                            final line = (du == null || du.isEmpty)
-                                ? 'No default unit'
-                                : (du == 'bag' && dkg != null)
-                                    ? 'Default: $du · $dkg kg/bag'
-                                    : 'Default unit: $du';
-                            return Text(
-                              line,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodyMedium
-                                  ?.copyWith(fontWeight: FontWeight.w600),
-                            );
-                          },
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () => _editItemDefaults(item),
-                        child: const Text('Edit'),
-                      ),
-                    ],
-                  ),
-                ),
-                Text(
-                  'Last ${_range.from} → ${_range.to}',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant),
-                ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 insAsync.when(
                   loading: () => const Center(
                       child: Padding(
@@ -435,51 +407,6 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Card(
-                          color: Theme.of(context).colorScheme.surface,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            side: BorderSide(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .outlineVariant,
-                            ),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Performance',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleSmall
-                                        ?.copyWith(fontWeight: FontWeight.w800)),
-                                const SizedBox(height: 12),
-                                Wrap(
-                                  spacing: 12,
-                                  runSpacing: 8,
-                                  children: [
-                                    _chip(context, 'Lines', '$lc'),
-                                    _chip(context, 'Purchases', '$ec'),
-                                    _chip(
-                                        context, 'Total profit', _inr(_num(tp))),
-                                    _chip(context, 'Avg landing', _inr(_num(al))),
-                                    _chip(
-                                        context, 'Avg selling', _inr(_num(as))),
-                                    if (pm != null)
-                                      _chip(context, 'Margin %',
-                                          '${(pm as num).toStringAsFixed(1)}%'),
-                                    if (ld != null)
-                                      _chip(context, 'Last purchase', ld),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
                         Consumer(
                           builder: (context, ref, _) {
                             final pip = ref.watch(
@@ -493,11 +420,110 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                               data: (p) => _PriceIntelDecisionCard(
                                 pip: p,
                                 inr: _inr,
+                                onAddPurchase: () =>
+                                    showEntryCreateSheet(context),
                               ),
                             );
                           },
                         ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Key numbers',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16,
+                              ),
+                        ),
                         const SizedBox(height: 8),
+                        _GoldenMetricStrip(
+                          profit: _inr(_num(tp)),
+                          avgLanding: _inr(_num(al)),
+                          marginPct: pm == null
+                              ? '—'
+                              : '${(pm as num).toStringAsFixed(1)}%',
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Details',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16,
+                              ),
+                        ),
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Builder(
+                                  builder: (context) {
+                                    final du = item['default_unit']?.toString();
+                                    final dkg = item['default_kg_per_bag'];
+                                    final line = (du == null || du.isEmpty)
+                                        ? 'No default unit'
+                                        : (du == 'bag' && dkg != null)
+                                            ? 'Default: $du · $dkg kg/bag'
+                                            : 'Default unit: $du';
+                                    return Text(
+                                      line,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                            fontSize: 12,
+                                          ),
+                                    );
+                                  },
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: () => _editItemDefaults(item),
+                                child: const Text('Edit'),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          'Lines $lc · Purchases $ec · Avg sell ${_inr(_num(as))}',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                                fontSize: 12,
+                              ),
+                        ),
+                        if (ld != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              'Last purchase $ld · Period ${_range.from} → ${_range.to}',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                    fontSize: 12,
+                                  ),
+                            ),
+                          )
+                        else
+                          Text(
+                            'Period ${_range.from} → ${_range.to}',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                  fontSize: 12,
+                                ),
+                          ),
+                        const SizedBox(height: 12),
                         linesAsync.when(
                           loading: () => const SizedBox.shrink(),
                           error: (_, __) => const SizedBox.shrink(),
@@ -561,11 +587,13 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                   },
                 ),
                 const SizedBox(height: 20),
-                Text('Purchase history',
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w800)),
+                Text(
+                  'Purchase history',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                      ),
+                ),
                 const SizedBox(height: 8),
                 linesAsync.when(
                   loading: () =>
@@ -584,100 +612,13 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                             ?.copyWith(color: HexaColors.textSecondary),
                       );
                     }
-                    final cs = Theme.of(context).colorScheme;
-                    return Column(
-                      children: List.generate(rows.length, (i) {
-                        final r = rows[i];
-                        final eid = r['entry_id']?.toString() ?? '';
-                        final d = r['entry_date']?.toString().split('T').first ?? '';
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Material(
-                            color: cs.surface,
-                            borderRadius: BorderRadius.circular(12),
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(12),
-                              onTap: eid.isEmpty
-                                  ? null
-                                  : () => context.push('/entry/$eid'),
-                              child: Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 10),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                      color: cs.outlineVariant),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            d,
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .labelMedium
-                                                ?.copyWith(
-                                                  fontWeight:
-                                                      FontWeight.w700,
-                                                ),
-                                          ),
-                                        ),
-                                        Text(
-                                          _inr(_num(r['profit'])),
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .titleSmall
-                                              ?.copyWith(
-                                                fontWeight: FontWeight.w800,
-                                                color: HexaColors.profit,
-                                              ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            'Qty ${r['qty']} ${r['unit']}',
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .bodySmall
-                                                ?.copyWith(
-                                                  color: cs.onSurfaceVariant,
-                                                ),
-                                          ),
-                                        ),
-                                        Text(
-                                          'Landing ${_inr(_num(r['landing_cost']))}',
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodySmall,
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'Selling ${_inr(_num(r['selling_price']))}',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(
-                                            color: cs.onSurfaceVariant,
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      }),
+                    return _PurchaseHistoryTable(
+                      rows: rows,
+                      inr: _inr,
+                      readNum: _num,
+                      onRowTap: (eid) {
+                        if (eid.isNotEmpty) context.push('/entry/$eid');
+                      },
                     );
                   },
                 ),
@@ -694,29 +635,215 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
     if (v is num) return v;
     return num.tryParse(v.toString());
   }
+}
 
-  Widget _chip(BuildContext context, String label, String value) {
+/// Compact metrics: number first, label second — target ~76px height.
+class _GoldenMetricStrip extends StatelessWidget {
+  const _GoldenMetricStrip({
+    required this.profit,
+    required this.avgLanding,
+    required this.marginPct,
+  });
+
+  final String profit;
+  final String avgLanding;
+  final String marginPct;
+
+  @override
+  Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    final tt = Theme.of(context).textTheme;
+
+    Widget cell(String value, String label) {
+      return Expanded(
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 68, maxHeight: 80),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: cs.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: cs.outlineVariant.withValues(alpha: 0.9),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: tt.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
+                  color: cs.onSurface,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: tt.labelSmall?.copyWith(
+                  fontSize: 12,
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        cell(profit, 'Total profit'),
+        const SizedBox(width: 8),
+        cell(avgLanding, 'Avg landing'),
+        const SizedBox(width: 8),
+        cell(marginPct, 'Margin %'),
+      ],
+    );
+  }
+}
+
+/// Dense history: header + aligned rows (no card stack per row).
+class _PurchaseHistoryTable extends StatelessWidget {
+  const _PurchaseHistoryTable({
+    required this.rows,
+    required this.inr,
+    required this.readNum,
+    required this.onRowTap,
+  });
+
+  final List<Map<String, dynamic>> rows;
+  final String Function(num?) inr;
+  final num? Function(dynamic v) readNum;
+  final void Function(String entryId) onRowTap;
+
+  String _fmtDate(String? raw) {
+    if (raw == null || raw.isEmpty) return '—';
+    final d = DateTime.tryParse(raw);
+    if (d == null) return raw.split('T').first;
+    return DateFormat.MMMd().format(d);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final border = cs.outlineVariant.withValues(alpha: 0.85);
+
+    TextStyle? hdr = tt.labelSmall?.copyWith(
+      fontSize: 12,
+      fontWeight: FontWeight.w700,
+      color: cs.onSurfaceVariant,
+    );
+    TextStyle? cell = tt.bodySmall?.copyWith(
+      color: cs.onSurface,
+      fontWeight: FontWeight.w600,
+    );
+
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: border),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label,
-              style: Theme.of(context)
-                  .textTheme
-                  .labelSmall
-                  ?.copyWith(color: cs.onSurfaceVariant)),
-          Text(value,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(fontWeight: FontWeight.w700)),
-        ],
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: Text('Date', style: hdr),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: Text('Qty', style: hdr),
+                  ),
+                  Expanded(
+                    flex: 3,
+                    child: Text(
+                      'Landing',
+                      style: hdr,
+                      textAlign: TextAlign.right,
+                    ),
+                  ),
+                  Expanded(
+                    flex: 3,
+                    child: Text(
+                      'P/L',
+                      style: hdr,
+                      textAlign: TextAlign.right,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Divider(height: 1, color: border),
+            ...rows.map((r) {
+              final eid = r['entry_id']?.toString() ?? '';
+              final rawD = r['entry_date']?.toString();
+              return InkWell(
+                onTap: eid.isEmpty ? null : () => onRowTap(eid),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: Text(_fmtDate(rawD), style: cell),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Text(
+                          '${r['qty'] ?? ''} ${r['unit'] ?? ''}'.trim(),
+                          style: cell,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Expanded(
+                        flex: 3,
+                        child: Text(
+                          inr(readNum(r['landing_cost'])),
+                          style: cell,
+                          textAlign: TextAlign.right,
+                        ),
+                      ),
+                      Expanded(
+                        flex: 3,
+                        child: Text(
+                          inr(readNum(r['profit'])),
+                          style: cell?.copyWith(
+                            color: HexaColors.profit,
+                            fontWeight: FontWeight.w800,
+                          ),
+                          textAlign: TextAlign.right,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ],
+        ),
       ),
     );
   }
@@ -726,10 +853,12 @@ class _PriceIntelDecisionCard extends StatelessWidget {
   const _PriceIntelDecisionCard({
     required this.pip,
     required this.inr,
+    this.onAddPurchase,
   });
 
   final Map<String, dynamic> pip;
   final String Function(num?) inr;
+  final VoidCallback? onAddPurchase;
 
   @override
   Widget build(BuildContext context) {
@@ -763,45 +892,84 @@ class _PriceIntelDecisionCard extends StatelessWidget {
     final pos = pip['position_pct'];
     final hints = (pip['decision_hints'] as List?) ?? [];
     final sups = (pip['supplier_compare'] as List?) ?? [];
+    Map<String, dynamic>? bestSup;
+    double? bestVal;
+    for (final s in sups) {
+      if (s is! Map) continue;
+      final m = Map<String, dynamic>.from(s);
+      final av = m['avg_landing'];
+      final v = av is num ? av.toDouble() : double.tryParse('$av');
+      if (v == null) continue;
+      if (bestVal == null || v < bestVal) {
+        bestVal = v;
+        bestSup = m;
+      }
+    }
 
     return Card(
       color: cs.surface,
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: cs.outlineVariant),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Decisions · landing cost',
-              style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+              'Decision',
+              style: tt.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+              ),
             ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 10,
-              runSpacing: 8,
-              children: [
-                _miniMetric(context, 'Avg', avg is num ? inr(avg) : '—'),
-                _miniMetric(context, 'Last', last is num ? inr(last) : '—'),
-                _miniMetric(context, 'Best', low is num ? inr(low) : '—'),
-                _miniMetric(context, 'Worst', high is num ? inr(high) : '—'),
-              ],
+            const SizedBox(height: 8),
+            if (bestSup != null && bestVal != null)
+              Text(
+                'Best supplier: ${bestSup['name']?.toString() ?? '—'} — ${inr(bestVal)}/unit',
+                style: tt.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 22,
+                  height: 1.2,
+                  color: cs.onSurface,
+                ),
+              ),
+            if (avg is num &&
+                bestVal != null &&
+                avg.toDouble() > bestVal) ...[
+              const SizedBox(height: 6),
+              Text(
+                'You pay ${inr(avg.toDouble() - bestVal)} more than best on average',
+                style: tt.labelLarge?.copyWith(
+                  fontSize: 12,
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+            const SizedBox(height: 8),
+            Text(
+              'Avg ${avg is num ? inr(avg) : '—'} · Last ${last is num ? inr(last) : '—'} · Low ${low is num ? inr(low) : '—'} · High ${high is num ? inr(high) : '—'}',
+              style: tt.labelSmall?.copyWith(
+                fontSize: 12,
+                color: cs.onSurfaceVariant,
+                height: 1.35,
+              ),
             ),
             if (pos is num) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               Text(
                 pos >= 66
-                    ? 'Latest landing is on the high side of your range'
+                    ? 'Latest buy is on the high side — negotiate or switch supplier.'
                     : (pos <= 33
-                        ? 'Latest landing is on the low side of your range'
-                        : 'Latest landing is mid-range vs your history'),
-                style: tt.labelSmall?.copyWith(
-                  color: pos >= 66 ? HexaColors.warning : cs.onSurfaceVariant,
+                        ? 'You are buying at a good price vs your range.'
+                        : 'Landing is mid-range vs your history.'),
+                style: tt.bodySmall?.copyWith(
+                  color: pos >= 66 ? HexaColors.warning : cs.onSurface,
                   fontWeight: FontWeight.w600,
+                  height: 1.35,
                 ),
               ),
               const SizedBox(height: 6),
@@ -817,31 +985,28 @@ class _PriceIntelDecisionCard extends StatelessWidget {
             ],
             if (hints.isNotEmpty) ...[
               const SizedBox(height: 10),
-              ...hints.take(3).map(
+              ...hints.take(2).map(
                     (h) => Padding(
                       padding: const EdgeInsets.only(bottom: 4),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(Icons.tips_and_updates_outlined,
-                              size: 16, color: cs.tertiary),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              '$h',
-                              style: tt.bodySmall?.copyWith(height: 1.3),
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        '• $h',
+                        style: tt.bodySmall?.copyWith(
+                          height: 1.35,
+                          color: cs.onSurfaceVariant,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   ),
             ],
             if (sups.isNotEmpty) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Text(
                 'Suppliers (avg landing)',
-                style: tt.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+                style: tt.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
               ),
               const SizedBox(height: 6),
               ...sups.take(6).map((s) {
@@ -850,62 +1015,53 @@ class _PriceIntelDecisionCard extends StatelessWidget {
                 final n = m['name']?.toString() ?? '';
                 final av = m['avg_landing'];
                 final avn = av is num ? av.toDouble() : double.tryParse('$av');
-                final good = avg is num && avn != null && avn <= avg;
+                final isBest = bestSup != null &&
+                    n == bestSup['name']?.toString();
                 return Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
+                  padding: const EdgeInsets.only(bottom: 6),
                   child: Row(
                     children: [
-                      Icon(
-                        good
-                            ? Icons.check_circle_outline
-                            : Icons.circle_outlined,
-                        size: 18,
-                        color: good ? HexaColors.profit : cs.onSurfaceVariant,
+                      Expanded(
+                        child: Text(
+                          n,
+                          style: tt.bodyMedium?.copyWith(
+                            fontWeight:
+                                isBest ? FontWeight.w800 : FontWeight.w500,
+                          ),
+                        ),
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(n, style: tt.bodyMedium)),
+                      if (isBest)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: Text(
+                            'Best',
+                            style: tt.labelSmall?.copyWith(
+                              color: HexaColors.profit,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
                       Text(
                         avn != null ? inr(avn) : '—',
-                        style: tt.bodyMedium
-                            ?.copyWith(fontWeight: FontWeight.w700),
+                        style: tt.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ],
                   ),
                 );
               }),
             ],
+            if (onAddPurchase != null) ...[
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: onAddPurchase,
+                icon: const Icon(Icons.add_shopping_cart_rounded, size: 20),
+                label: const Text('Add purchase'),
+              ),
+            ],
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _miniMetric(BuildContext context, String k, String v) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            k,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: cs.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                ),
-          ),
-          Text(
-            v,
-            style: Theme.of(context)
-                .textTheme
-                .titleSmall
-                ?.copyWith(fontWeight: FontWeight.w800),
-          ),
-        ],
       ),
     );
   }

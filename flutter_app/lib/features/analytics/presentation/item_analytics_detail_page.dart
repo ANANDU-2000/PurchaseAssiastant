@@ -135,6 +135,9 @@ class _ItemAnalyticsDetailPageState
                   best: best,
                   bestLanding: bestAvg,
                   savingsVsAvg: savings,
+                  positionPct: pos,
+                  hintLine:
+                      hints.isNotEmpty ? hints.first.toString() : null,
                   inr: _inr,
                   onAddPurchase: () => showEntryCreateSheet(context),
                 ),
@@ -181,7 +184,7 @@ class _ItemAnalyticsDetailPageState
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  'Snapshot',
+                  'Key numbers',
                   style: tt.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                     fontSize: 16,
@@ -294,90 +297,71 @@ class _ItemAnalyticsDetailPageState
                                 .onSurfaceVariant)),
                   )
                 else
-                  ...rows.asMap().entries.map((e) {
-                    final i = e.key;
-                    final m = e.value;
-                    final name = m['name']?.toString() ?? '—';
-                    final v = (m['avg_landing'] as num?)?.toDouble();
-                    final isBest =
-                        best != null && name == best['name']?.toString();
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: context.adaptiveCard,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                              color: isBest
-                                  ? HexaColors.primaryMid
-                                  : Theme.of(context)
-                                      .colorScheme
-                                      .outlineVariant),
-                          boxShadow: HexaColors.cardShadow(context),
-                        ),
-                        padding: const EdgeInsets.all(14),
-                        child: Row(
+                  Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.outlineVariant,
+                      ),
+                    ),
+                    child: Column(
+                      children: rows.asMap().entries.map((e) {
+                        final m = e.value;
+                        final name = m['name']?.toString() ?? '—';
+                        final v = (m['avg_landing'] as num?)?.toDouble();
+                        final isBest =
+                            best != null && name == best['name']?.toString();
+                        return Column(
                           children: [
-                            CircleAvatar(
-                              backgroundColor: HexaColors.chartPalette[
-                                      i % HexaColors.chartPalette.length]
-                                  .withValues(alpha: 0.25),
-                              child: Text(
-                                name.isNotEmpty ? name[0].toUpperCase() : '?',
-                                style: tt.titleSmall?.copyWith(
-                                    fontWeight: FontWeight.w900,
-                                    color: onSurf),
+                            if (e.key > 0)
+                              Divider(
+                                height: 1,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .outlineVariant,
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 10),
+                              child: Row(
                                 children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(name,
-                                            style: tt.titleSmall?.copyWith(
-                                                fontWeight: FontWeight.w800,
-                                                color: onSurf)),
+                                  Expanded(
+                                    child: Text(
+                                      name,
+                                      style: tt.bodyMedium?.copyWith(
+                                        fontWeight: isBest
+                                            ? FontWeight.w800
+                                            : FontWeight.w600,
+                                        color: onSurf,
                                       ),
-                                      if (isBest)
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 8, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color: HexaColors.profit
-                                                .withValues(alpha: 0.2),
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                          ),
-                                          child: Text(
-                                            'Best',
-                                            style: tt.labelSmall?.copyWith(
-                                                color: HexaColors.profit,
-                                                fontWeight: FontWeight.w900),
-                                          ),
-                                        ),
-                                    ],
+                                    ),
                                   ),
-                                  const SizedBox(height: 4),
+                                  if (isBest)
+                                    Padding(
+                                      padding:
+                                          const EdgeInsets.only(right: 8),
+                                      child: Text(
+                                        'Best',
+                                        style: tt.labelSmall?.copyWith(
+                                          color: HexaColors.profit,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ),
                                   Text(
-                                    'Avg landing ${_inr(v)}',
-                                    style: tt.bodySmall?.copyWith(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onSurfaceVariant,
-                                        fontWeight: FontWeight.w600),
+                                    _inr(v),
+                                    style: tt.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                    ),
                                   ),
                                 ],
                               ),
                             ),
                           ],
-                        ),
-                      ),
-                    );
-                  }),
+                        );
+                      }).toList(),
+                    ),
+                  ),
               ],
             ),
           );
@@ -393,6 +377,8 @@ class _DecisionCard extends StatelessWidget {
     required this.best,
     required this.bestLanding,
     required this.savingsVsAvg,
+    required this.positionPct,
+    this.hintLine,
     required this.inr,
     required this.onAddPurchase,
   });
@@ -401,8 +387,23 @@ class _DecisionCard extends StatelessWidget {
   final Map<String, dynamic>? best;
   final double? bestLanding;
   final double? savingsVsAvg;
+  final double positionPct;
+  final String? hintLine;
   final String Function(num?) inr;
   final VoidCallback onAddPurchase;
+
+  String _narrative() {
+    if (hintLine != null && hintLine!.trim().isNotEmpty) {
+      return hintLine!.trim();
+    }
+    if (positionPct <= 33) {
+      return 'You are buying at a good price vs your recent range.';
+    }
+    if (positionPct >= 66) {
+      return 'Latest landing is high — negotiate or try another supplier.';
+    }
+    return 'Landing is mid-range vs your history.';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -428,6 +429,16 @@ class _DecisionCard extends StatelessWidget {
                 fontSize: 16,
               ),
             ),
+            const SizedBox(height: 8),
+            Text(
+              _narrative(),
+              style: tt.bodySmall?.copyWith(
+                color: cs.onSurfaceVariant,
+                fontSize: 12,
+                height: 1.35,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             const SizedBox(height: 12),
             if (name != null && bestLanding != null) ...[
               Text(
@@ -442,7 +453,7 @@ class _DecisionCard extends StatelessWidget {
               if (savingsVsAvg != null && savingsVsAvg! > 0) ...[
                 const SizedBox(height: 8),
                 Text(
-                  'You save ${inr(savingsVsAvg)} vs average',
+                  'You save ${inr(savingsVsAvg)} vs others on average',
                   style: tt.labelLarge?.copyWith(
                     color: cs.onSurfaceVariant,
                     fontSize: 12,
