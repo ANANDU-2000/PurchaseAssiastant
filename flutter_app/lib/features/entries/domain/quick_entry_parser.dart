@@ -27,11 +27,15 @@ bool _isNum(String s) => double.tryParse(s) != null;
 
 /// [supplierNamesLower] — optional supplier names (lowercase) to peel the last word
 /// after prices (e.g. `aju` matching catalog supplier "Aju Traders").
-QuickParseResult? parseQuickLine(String raw, {Iterable<String> supplierNamesLower = const []}) {
+QuickParseResult? parseQuickLine(String raw,
+    {Iterable<String> supplierNamesLower = const []}) {
   var t = raw.trim().split(RegExp(r'\s+'));
   if (t.length < 2) return null;
 
-  final supplierSet = supplierNamesLower.map((s) => s.trim().toLowerCase()).where((s) => s.isNotEmpty).toSet();
+  final supplierSet = supplierNamesLower
+      .map((s) => s.trim().toLowerCase())
+      .where((s) => s.isNotEmpty)
+      .toSet();
 
   /// `… 43 aju` → peel `aju` before reading numbers
   String? peeledSupplier;
@@ -59,7 +63,11 @@ QuickParseResult? parseQuickLine(String raw, {Iterable<String> supplierNamesLowe
   if (supplierHint == null && t.isNotEmpty) {
     final cand = t.last.toLowerCase();
     final match = supplierSet.contains(cand) ||
-        supplierSet.any((s) => s.contains(cand) || cand.contains(s) || s.startsWith(cand) || cand.startsWith(s));
+        supplierSet.any((s) =>
+            s.contains(cand) ||
+            cand.contains(s) ||
+            s.startsWith(cand) ||
+            cand.startsWith(s));
     if (match && t.length >= 2) {
       supplierHint = t.removeLast();
     }
@@ -81,11 +89,17 @@ QuickParseResult? parseQuickLine(String raw, {Iterable<String> supplierNamesLowe
   String unit = 'kg';
   late String itemName;
   final maybeQtyUnit = t.last;
-  final um = RegExp(r'^(\d+(?:\.\d+)?)(kg|box|pcs?|piece)$', caseSensitive: false).firstMatch(maybeQtyUnit);
+  final um =
+      RegExp(r'^(\d+(?:\.\d+)?)(kg|box|pcs?|piece)$', caseSensitive: false)
+          .firstMatch(maybeQtyUnit);
   if (um != null) {
     qty = double.tryParse(um.group(1)!) ?? 1;
     final u = um.group(2)!.toLowerCase();
-    unit = u == 'box' ? 'box' : (u == 'pc' || u == 'pcs' || u == 'piece') ? 'piece' : 'kg';
+    unit = u == 'box'
+        ? 'box'
+        : (u == 'pc' || u == 'pcs' || u == 'piece')
+            ? 'piece'
+            : 'kg';
     t.removeLast();
     itemName = t.join(' ');
   } else {
@@ -118,6 +132,7 @@ QuickParseResult? parseQuickLine(String raw, {Iterable<String> supplierNamesLowe
     unit: unit,
     landing: landing,
     selling: selling,
-    supplierHint: supplierHint?.trim().isEmpty ?? true ? null : supplierHint!.trim(),
+    supplierHint:
+        supplierHint?.trim().isEmpty ?? true ? null : supplierHint!.trim(),
   );
 }

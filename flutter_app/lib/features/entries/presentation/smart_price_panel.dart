@@ -15,6 +15,7 @@ class SmartPricePanel extends ConsumerStatefulWidget {
     required this.metric,
     this.compact = false,
     this.onInsight,
+
     /// When [metric] is `landing`, pass landed cost here so the API compares apples to apples (history is landed cost).
     this.currentPriceResolver,
   });
@@ -22,11 +23,14 @@ class SmartPricePanel extends ConsumerStatefulWidget {
   final TextEditingController item;
   final TextEditingController qty;
   final TextEditingController priceController;
+
   /// API `price_field`: landing | selling
   final String metric;
   final bool compact;
+
   /// Fired when price intelligence payload updates (or clears).
   final void Function(Map<String, dynamic>? pip)? onInsight;
+
   /// Optional override for the numeric price sent as `current_price` (defaults to parsing [priceController]).
   final double? Function()? currentPriceResolver;
 
@@ -39,6 +43,7 @@ class _SmartPricePanelState extends ConsumerState<SmartPricePanel> {
   Map<String, dynamic>? _pip;
   bool _loading = false;
   bool _expanded = false;
+
   /// Last `currentPriceResolver` value we reacted to — avoids re-scheduling on every parent `setState`.
   double? _lastResolverSnapshot;
 
@@ -83,7 +88,8 @@ class _SmartPricePanelState extends ConsumerState<SmartPricePanel> {
 
   Future<void> _fetch() async {
     final name = widget.item.text.trim();
-    final price = widget.currentPriceResolver?.call() ?? double.tryParse(widget.priceController.text.trim());
+    final price = widget.currentPriceResolver?.call() ??
+        double.tryParse(widget.priceController.text.trim());
     final q = double.tryParse(widget.qty.text.trim());
     if (name.length < 2 || price == null || price <= 0 || q == null || q <= 0) {
       if (mounted) {
@@ -120,7 +126,8 @@ class _SmartPricePanelState extends ConsumerState<SmartPricePanel> {
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
-    final title = widget.metric == 'landing' ? 'Landing insight' : 'Selling insight';
+    final title =
+        widget.metric == 'landing' ? 'Landing insight' : 'Selling insight';
 
     if (_loading) {
       return Padding(
@@ -129,7 +136,8 @@ class _SmartPricePanelState extends ConsumerState<SmartPricePanel> {
       );
     }
     final p = _pip;
-    if (p == null || (p['confidence'] is num && (p['confidence'] as num) <= 0)) {
+    if (p == null ||
+        (p['confidence'] is num && (p['confidence'] as num) <= 0)) {
       return Padding(
         padding: const EdgeInsets.only(top: 6),
         child: Text(
@@ -162,8 +170,10 @@ class _SmartPricePanelState extends ConsumerState<SmartPricePanel> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('₹${low.toStringAsFixed(0)}', style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant)),
-                Text('₹${high.toStringAsFixed(0)}', style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant)),
+                Text('₹${low.toStringAsFixed(0)}',
+                    style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant)),
+                Text('₹${high.toStringAsFixed(0)}',
+                    style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant)),
               ],
             ),
             const SizedBox(height: 4),
@@ -218,7 +228,9 @@ class _SmartPricePanelState extends ConsumerState<SmartPricePanel> {
               children: [
                 Icon(Icons.insights_outlined, size: 18, color: cs.primary),
                 const SizedBox(width: 6),
-                Text(title, style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                Text(title,
+                    style:
+                        tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
               ],
             ),
             const SizedBox(height: 8),
@@ -227,8 +239,10 @@ class _SmartPricePanelState extends ConsumerState<SmartPricePanel> {
               spacing: 12,
               runSpacing: 6,
               children: [
-                _chip(tt, 'Avg', avg is num ? '₹${avg.toStringAsFixed(2)}' : '—', cs),
-                _chip(tt, 'Last', last is num ? '₹${last.toStringAsFixed(2)}' : '—', cs),
+                _chip(tt, 'Avg',
+                    avg is num ? '₹${avg.toStringAsFixed(2)}' : '—', cs),
+                _chip(tt, 'Last',
+                    last is num ? '₹${last.toStringAsFixed(2)}' : '—', cs),
                 _chip(tt, 'Times', freq is int ? '$freq' : '—', cs),
                 Row(
                   mainAxisSize: MainAxisSize.min,
@@ -243,14 +257,17 @@ class _SmartPricePanelState extends ConsumerState<SmartPricePanel> {
             if (hints is List && hints.isNotEmpty) ...[
               const SizedBox(height: 8),
               ...hints.take(3).map(
-                    (e) => Padding(
+                    (hint) => Padding(
                       padding: const EdgeInsets.only(bottom: 4),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(Icons.notifications_active_outlined, size: 16, color: cs.tertiary),
+                          Icon(Icons.notifications_active_outlined,
+                              size: 16, color: cs.tertiary),
                           const SizedBox(width: 6),
-                          Expanded(child: Text(e.toString(), style: tt.bodySmall)),
+                          Expanded(
+                            child: Text('$hint', style: tt.bodySmall),
+                          ),
                         ],
                       ),
                     ),
@@ -261,23 +278,25 @@ class _SmartPricePanelState extends ConsumerState<SmartPricePanel> {
                 alignment: Alignment.centerLeft,
                 child: TextButton(
                   onPressed: () => setState(() => _expanded = !_expanded),
-                  child: Text(_expanded ? 'Hide supplier prices' : 'Supplier-wise avg (${suppliers.length})'),
+                  child: Text(_expanded
+                      ? 'Hide supplier prices'
+                      : 'Supplier-wise avg (${suppliers.length})'),
                 ),
               ),
             if (_expanded && suppliers.isNotEmpty)
               ...suppliers.take(5).map(
-                    (s) {
-                      if (s is! Map) return const SizedBox.shrink();
-                      final m = Map<String, dynamic>.from(s);
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Text(
-                          '${m['name']}: ₹${(m['avg_landing'] as num?)?.toStringAsFixed(2) ?? '—'}',
-                          style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-                        ),
-                      );
-                    },
-                  ),
+                (s) {
+                  if (s is! Map) return const SizedBox.shrink();
+                  final m = Map<String, dynamic>.from(s);
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(
+                      '${m['name']}: ₹${(m['avg_landing'] as num?)?.toStringAsFixed(2) ?? '—'}',
+                      style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                    ),
+                  );
+                },
+              ),
           ],
         ),
       ),
@@ -297,7 +316,8 @@ class _SmartPricePanelState extends ConsumerState<SmartPricePanel> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: cs.outlineVariant),
       ),
-      child: Text('$k: $v', style: tt.labelSmall?.copyWith(fontWeight: FontWeight.w600)),
+      child: Text('$k: $v',
+          style: tt.labelSmall?.copyWith(fontWeight: FontWeight.w600)),
     );
   }
 }

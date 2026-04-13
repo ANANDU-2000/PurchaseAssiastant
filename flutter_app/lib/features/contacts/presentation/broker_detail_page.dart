@@ -4,10 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/widgets/friendly_load_error.dart';
 
-final _brokerProvider = FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, brokerId) async {
+final _brokerProvider = FutureProvider.autoDispose
+    .family<Map<String, dynamic>, String>((ref, brokerId) async {
   final session = ref.watch(sessionProvider);
   if (session == null) throw StateError('Not signed in');
   return ref.read(hexaApiProvider).getBroker(
@@ -51,8 +54,16 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
     final f = fmt.format(_from);
     final t = fmt.format(_to);
     try {
-      final m = await api.brokerMetrics(businessId: session.primaryBusiness.id, brokerId: widget.brokerId, from: f, to: t);
-      final e = await api.listEntries(businessId: session.primaryBusiness.id, from: f, to: t, brokerId: widget.brokerId);
+      final m = await api.brokerMetrics(
+          businessId: session.primaryBusiness.id,
+          brokerId: widget.brokerId,
+          from: f,
+          to: t);
+      final e = await api.listEntries(
+          businessId: session.primaryBusiness.id,
+          from: f,
+          to: t,
+          brokerId: widget.brokerId);
       if (mounted) {
         setState(() {
           _metrics = m;
@@ -63,7 +74,8 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
     } catch (e) {
       if (mounted) {
         setState(() => _loading = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
       }
     }
   }
@@ -94,7 +106,8 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
       if (lines is List) {
         for (final ln in lines) {
           if (ln is! Map) continue;
-          g += (Map<String, dynamic>.from(ln)['profit'] as num?)?.toDouble() ?? 0;
+          g += (Map<String, dynamic>.from(ln)['profit'] as num?)?.toDouble() ??
+              0;
         }
       }
       final prev = out[mk] ?? (gross: 0.0, commission: 0.0);
@@ -118,8 +131,18 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
           barsSpace: 4,
           groupVertically: true,
           barRods: [
-            BarChartRodData(toY: row.gross, width: 10, color: HexaColors.primaryMid, borderRadius: const BorderRadius.vertical(top: Radius.circular(3))),
-            BarChartRodData(toY: net, width: 10, color: HexaColors.profit, borderRadius: const BorderRadius.vertical(top: Radius.circular(3))),
+            BarChartRodData(
+                toY: row.gross,
+                width: 10,
+                color: HexaColors.primaryMid,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(3))),
+            BarChartRodData(
+                toY: net,
+                width: 10,
+                color: HexaColors.profit,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(3))),
           ],
         ),
       );
@@ -136,7 +159,9 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
 
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: () => context.pop()),
+        leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            onPressed: () => context.pop()),
         title: async.maybeWhen(
           data: (b) => Text(b['name']?.toString() ?? 'Broker'),
           orElse: () => const Text('Broker'),
@@ -144,11 +169,18 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
       ),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('$e')),
+        error: (_, __) => FriendlyLoadError(
+          message: 'Could not load broker',
+          onRetry: () => ref.invalidate(_brokerProvider(widget.brokerId)),
+        ),
         data: (b) {
           final ct = b['commission_type']?.toString() ?? '';
           final cv = b['commission_value'];
-          final badgeLabel = ct == 'flat' ? '₹ Fixed' : ct == 'percent' ? '% of deal' : ct;
+          final badgeLabel = ct == 'flat'
+              ? '₹ Fixed'
+              : ct == 'percent'
+                  ? '% of deal'
+                  : ct;
           return RefreshIndicator(
             onRefresh: _reload,
             child: ListView(
@@ -158,36 +190,61 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      ActionChip(label: const Text('7d'), onPressed: () => _preset(7)),
+                      ActionChip(
+                          label: const Text('7d'), onPressed: () => _preset(7)),
                       const SizedBox(width: 8),
-                      ActionChip(label: const Text('30d'), onPressed: () => _preset(30)),
+                      ActionChip(
+                          label: const Text('30d'),
+                          onPressed: () => _preset(30)),
                       const SizedBox(width: 8),
-                      ActionChip(label: const Text('90d'), onPressed: () => _preset(90)),
+                      ActionChip(
+                          label: const Text('90d'),
+                          onPressed: () => _preset(90)),
                       const SizedBox(width: 8),
-                      ActionChip(label: const Text('All'), onPressed: () => _preset(0)),
+                      ActionChip(
+                          label: const Text('All'),
+                          onPressed: () => _preset(0)),
                     ],
                   ),
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Text('${fmt.format(_from)} – ${fmt.format(_to)}', style: tt.labelMedium?.copyWith(color: HexaColors.textSecondary)),
+                  child: Text('${fmt.format(_from)} – ${fmt.format(_to)}',
+                      style: tt.labelMedium
+                          ?.copyWith(color: HexaColors.textSecondary)),
                 ),
-                Text(b['name']?.toString() ?? '—', style: tt.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
+                Text(b['name']?.toString() ?? '—',
+                    style: tt.headlineSmall
+                        ?.copyWith(fontWeight: FontWeight.w800)),
                 const SizedBox(height: 10),
                 Chip(
-                  avatar: Icon(ct == 'flat' ? Icons.payments_rounded : Icons.percent_rounded, size: 18, color: HexaColors.primaryMid),
-                  label: Text('$badgeLabel${cv != null ? ' · $cv' : ''}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                  side: BorderSide(color: HexaColors.border),
-                  backgroundColor: HexaColors.primaryLight.withValues(alpha: 0.65),
+                  avatar: Icon(
+                      ct == 'flat'
+                          ? Icons.payments_rounded
+                          : Icons.percent_rounded,
+                      size: 18,
+                      color: HexaColors.primaryMid),
+                  label: Text('$badgeLabel${cv != null ? ' · $cv' : ''}',
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  side: const BorderSide(color: HexaColors.border),
+                  backgroundColor:
+                      HexaColors.primaryLight.withValues(alpha: 0.65),
                 ),
                 const SizedBox(height: 16),
                 if (_loading)
-                  const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()))
+                  const Center(
+                      child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: CircularProgressIndicator()))
                 else if (_metrics != null) ...[
                   Row(
                     children: [
                       Expanded(
-                        child: _miniStat(context, 'Deals', '${(_metrics!['deals'] as num?)?.toInt() ?? 0}', Icons.receipt_long_rounded),
+                        child: _miniStat(
+                            context,
+                            'Deals',
+                            '${(_metrics!['deals'] as num?)?.toInt() ?? 0}',
+                            Icons.receipt_long_rounded),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -217,8 +274,12 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
                           context,
                           'Net (profit − comm.)',
                           () {
-                            final tp = (_metrics!['total_profit'] as num?)?.toDouble() ?? 0;
-                            final tc = (_metrics!['total_commission'] as num?)?.toDouble() ?? 0;
+                            final tp = (_metrics!['total_profit'] as num?)
+                                    ?.toDouble() ??
+                                0;
+                            final tc = (_metrics!['total_commission'] as num?)
+                                    ?.toDouble() ??
+                                0;
                             return '₹${(tp - tc).toStringAsFixed(0)}';
                           }(),
                           Icons.balance_rounded,
@@ -227,12 +288,18 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
                     ],
                   ),
                   const SizedBox(height: 20),
-                  Text('Commission impact (monthly)', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                  Text('Commission impact (monthly)',
+                      style:
+                          tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
                   const SizedBox(height: 6),
-                  Text('Teal = gross line profit · Green = after commission', style: tt.labelSmall?.copyWith(color: HexaColors.textSecondary)),
+                  Text('Teal = gross line profit · Green = after commission',
+                      style: tt.labelSmall
+                          ?.copyWith(color: HexaColors.textSecondary)),
                   const SizedBox(height: 12),
                   if (groups.isEmpty)
-                    Text('No broker-linked entries in this range.', style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary))
+                    Text('No broker-linked entries in this range.',
+                        style: tt.bodySmall
+                            ?.copyWith(color: HexaColors.textSecondary))
                   else
                     SizedBox(
                       height: 220,
@@ -240,9 +307,12 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
                         BarChartData(
                           alignment: BarChartAlignment.spaceAround,
                           maxY: groups.fold<double>(1, (m, g) {
-                            final a = g.barRods.map((r) => r.toY).fold<double>(0, (a, b) => a > b ? a : b);
-                            return m > a ? m : a;
-                          }) * 1.15,
+                                final a = g.barRods
+                                    .map((r) => r.toY)
+                                    .fold<double>(0, (a, b) => a > b ? a : b);
+                                return m > a ? m : a;
+                              }) *
+                              1.15,
                           gridData: const FlGridData(show: false),
                           borderData: FlBorderData(show: false),
                           titlesData: FlTitlesData(
@@ -253,7 +323,9 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
                                 getTitlesWidget: (v, _) {
                                   final keys = _monthly().keys.toList()..sort();
                                   final i = v.toInt();
-                                  if (i < 0 || i >= keys.length) return const SizedBox.shrink();
+                                  if (i < 0 || i >= keys.length) {
+                                    return const SizedBox.shrink();
+                                  }
                                   return Padding(
                                     padding: const EdgeInsets.only(top: 6),
                                     child: Text(keys[i], style: tt.labelSmall),
@@ -265,11 +337,17 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
                               sideTitles: SideTitles(
                                 showTitles: true,
                                 reservedSize: 36,
-                                getTitlesWidget: (v, _) => Text(v >= 1000 ? '${(v / 1000).toStringAsFixed(0)}k' : v.toStringAsFixed(0), style: tt.labelSmall),
+                                getTitlesWidget: (v, _) => Text(
+                                    v >= 1000
+                                        ? '${(v / 1000).toStringAsFixed(0)}k'
+                                        : v.toStringAsFixed(0),
+                                    style: tt.labelSmall),
                               ),
                             ),
-                            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                            topTitles: const AxisTitles(
+                                sideTitles: SideTitles(showTitles: false)),
+                            rightTitles: const AxisTitles(
+                                sideTitles: SideTitles(showTitles: false)),
                           ),
                           barGroups: groups,
                         ),
@@ -284,7 +362,8 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
     );
   }
 
-  Widget _miniStat(BuildContext context, String label, String value, IconData icon) {
+  Widget _miniStat(
+      BuildContext context, String label, String value, IconData icon) {
     final tt = Theme.of(context).textTheme;
     return Card(
       child: Padding(
@@ -294,9 +373,12 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
           children: [
             Icon(icon, size: 22, color: HexaColors.primaryMid),
             const SizedBox(height: 8),
-            Text(label, style: tt.labelSmall?.copyWith(color: HexaColors.textSecondary)),
+            Text(label,
+                style:
+                    tt.labelSmall?.copyWith(color: HexaColors.textSecondary)),
             const SizedBox(height: 4),
-            Text(value, style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+            Text(value,
+                style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
           ],
         ),
       ),

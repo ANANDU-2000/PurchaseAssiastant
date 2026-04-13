@@ -6,8 +6,10 @@ import 'package:intl/intl.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/widgets/friendly_load_error.dart';
 
-final _pipProvider = FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, itemName) async {
+final _pipProvider = FutureProvider.autoDispose
+    .family<Map<String, dynamic>, String>((ref, itemName) async {
   final session = ref.watch(sessionProvider);
   if (session == null) throw StateError('Not signed in');
   return ref.read(hexaApiProvider).priceIntelligence(
@@ -23,16 +25,19 @@ class ItemAnalyticsDetailPage extends ConsumerStatefulWidget {
   final String itemName;
 
   @override
-  ConsumerState<ItemAnalyticsDetailPage> createState() => _ItemAnalyticsDetailPageState();
+  ConsumerState<ItemAnalyticsDetailPage> createState() =>
+      _ItemAnalyticsDetailPageState();
 }
 
-class _ItemAnalyticsDetailPageState extends ConsumerState<ItemAnalyticsDetailPage> {
+class _ItemAnalyticsDetailPageState
+    extends ConsumerState<ItemAnalyticsDetailPage> {
   int _sortColumn = 1;
   bool _asc = true;
 
   String _inr(num? n) {
     if (n == null) return '—';
-    return NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(n);
+    return NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
+        .format(n);
   }
 
   double _positionPct(Map<String, dynamic> p) {
@@ -56,7 +61,8 @@ class _ItemAnalyticsDetailPageState extends ConsumerState<ItemAnalyticsDetailPag
         backgroundColor: HexaColors.canvas,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: HexaColors.textPrimary),
+          icon: const Icon(Icons.arrow_back_rounded,
+              color: HexaColors.textPrimary),
           onPressed: () => context.pop(),
         ),
         title: Text(
@@ -72,7 +78,9 @@ class _ItemAnalyticsDetailPageState extends ConsumerState<ItemAnalyticsDetailPag
       ),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('$e', style: TextStyle(color: Theme.of(context).colorScheme.error))),
+        error: (_, __) => FriendlyLoadError(
+          onRetry: () => ref.invalidate(_pipProvider(widget.itemName)),
+        ),
         data: (p) {
           final hints = (p['decision_hints'] as List<dynamic>?) ?? [];
           final sup = (p['supplier_compare'] as List<dynamic>?) ?? [];
@@ -82,11 +90,13 @@ class _ItemAnalyticsDetailPageState extends ConsumerState<ItemAnalyticsDetailPag
           final avg = (p['avg'] as num?)?.toDouble();
           final pos = _positionPct(p);
 
-          final rows = sup.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+          final rows =
+              sup.map((e) => Map<String, dynamic>.from(e as Map)).toList();
           rows.sort((a, b) {
             int c;
             if (_sortColumn == 0) {
-              c = (a['name']?.toString() ?? '').compareTo(b['name']?.toString() ?? '');
+              c = (a['name']?.toString() ?? '')
+                  .compareTo(b['name']?.toString() ?? '');
             } else {
               final va = a['avg_landing'] as num? ?? 0;
               final vb = b['avg_landing'] as num? ?? 0;
@@ -103,7 +113,8 @@ class _ItemAnalyticsDetailPageState extends ConsumerState<ItemAnalyticsDetailPag
                 });
 
           return RefreshIndicator(
-            onRefresh: () async => ref.invalidate(_pipProvider(widget.itemName)),
+            onRefresh: () async =>
+                ref.invalidate(_pipProvider(widget.itemName)),
             color: HexaColors.primaryMid,
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
@@ -116,9 +127,14 @@ class _ItemAnalyticsDetailPageState extends ConsumerState<ItemAnalyticsDetailPag
                     gradient: const LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [HexaColors.heroGradientEnd, HexaColors.primaryDeep, HexaColors.primaryMid],
+                      colors: [
+                        HexaColors.heroGradientEnd,
+                        HexaColors.primaryDeep,
+                        HexaColors.primaryMid
+                      ],
                     ),
-                    border: Border.all(color: HexaColors.primaryMid.withValues(alpha: 0.35)),
+                    border: Border.all(
+                        color: HexaColors.primaryMid.withValues(alpha: 0.35)),
                     boxShadow: HexaColors.cardShadow(context),
                   ),
                   child: Column(
@@ -144,18 +160,25 @@ class _ItemAnalyticsDetailPageState extends ConsumerState<ItemAnalyticsDetailPag
                       if (best != null)
                         Text(
                           'Best landing: ${best['name']?.toString() ?? '—'} at ${_inr((best['avg_landing'] as num?)?.toDouble())}',
-                          style: tt.bodySmall?.copyWith(color: HexaColors.textPrimary, fontWeight: FontWeight.w700, height: 1.35),
+                          style: tt.bodySmall?.copyWith(
+                              color: HexaColors.textPrimary,
+                              fontWeight: FontWeight.w700,
+                              height: 1.35),
                         ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 20),
-                Text('Price position (landing)', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800, color: HexaColors.textPrimary)),
+                Text('Price position (landing)',
+                    style: tt.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: HexaColors.textPrimary)),
                 const SizedBox(height: 8),
                 if (low != null && high != null && last != null)
                   Text(
                     '${_inr(low)} min · ${_inr(high)} max · last ${_inr(last)}',
-                    style: tt.labelMedium?.copyWith(color: HexaColors.textSecondary),
+                    style: tt.labelMedium
+                        ?.copyWith(color: HexaColors.textSecondary),
                   ),
                 const SizedBox(height: 10),
                 ClipRRect(
@@ -164,32 +187,62 @@ class _ItemAnalyticsDetailPageState extends ConsumerState<ItemAnalyticsDetailPag
                     value: pos / 100,
                     minHeight: 14,
                     backgroundColor: HexaColors.surfaceElevated,
-                    color: pos > 66 ? HexaColors.warning : (pos < 33 ? HexaColors.profit : HexaColors.primaryMid),
+                    color: pos > 66
+                        ? HexaColors.warning
+                        : (pos < 33
+                            ? HexaColors.profit
+                            : HexaColors.primaryMid),
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   '${pos.toStringAsFixed(0)}% in range · Avg ${_inr(avg)}',
-                  style: tt.labelSmall?.copyWith(color: HexaColors.textSecondary, fontWeight: FontWeight.w600),
+                  style: tt.labelSmall?.copyWith(
+                      color: HexaColors.textSecondary,
+                      fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 20),
-                Text('Snapshot', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800, color: HexaColors.textPrimary)),
+                Text('Snapshot',
+                    style: tt.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: HexaColors.textPrimary)),
                 const SizedBox(height: 10),
                 Wrap(
                   spacing: 10,
                   runSpacing: 10,
                   children: [
-                    _StatTile(label: 'Avg', value: _inr(avg), accent: HexaColors.primaryMid),
-                    _StatTile(label: 'Low', value: _inr(low), accent: HexaColors.profit),
-                    _StatTile(label: 'High', value: _inr(high), accent: HexaColors.warning),
-                    _StatTile(label: 'Last', value: _inr(last), accent: HexaColors.chartPurple),
-                    _StatTile(label: 'Trend', value: p['trend']?.toString() ?? '—', accent: HexaColors.chartOrange),
-                    _StatTile(label: 'Frequency', value: '${p['frequency'] ?? 0}', accent: HexaColors.chartSellingCost),
+                    _StatTile(
+                        label: 'Avg',
+                        value: _inr(avg),
+                        accent: HexaColors.primaryMid),
+                    _StatTile(
+                        label: 'Low',
+                        value: _inr(low),
+                        accent: HexaColors.profit),
+                    _StatTile(
+                        label: 'High',
+                        value: _inr(high),
+                        accent: HexaColors.warning),
+                    _StatTile(
+                        label: 'Last',
+                        value: _inr(last),
+                        accent: HexaColors.chartPurple),
+                    _StatTile(
+                        label: 'Trend',
+                        value: p['trend']?.toString() ?? '—',
+                        accent: HexaColors.chartOrange),
+                    _StatTile(
+                        label: 'Frequency',
+                        value: '${p['frequency'] ?? 0}',
+                        accent: HexaColors.chartSellingCost),
                   ],
                 ),
                 if (hints.isNotEmpty) ...[
                   const SizedBox(height: 20),
-                  Text('Verdicts', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800, color: HexaColors.textPrimary)),
+                  Text('Verdicts',
+                      style: tt.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: HexaColors.textPrimary)),
                   const SizedBox(height: 8),
                   ...hints.map(
                     (h) => Padding(
@@ -200,14 +253,21 @@ class _ItemAnalyticsDetailPageState extends ConsumerState<ItemAnalyticsDetailPag
                         decoration: BoxDecoration(
                           color: HexaColors.accentAmber.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: HexaColors.accentAmber.withValues(alpha: 0.45)),
+                          border: Border.all(
+                              color: HexaColors.accentAmber
+                                  .withValues(alpha: 0.45)),
                         ),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(Icons.tips_and_updates_rounded, size: 20, color: HexaColors.accentAmber),
+                            const Icon(Icons.tips_and_updates_rounded,
+                                size: 20, color: HexaColors.accentAmber),
                             const SizedBox(width: 10),
-                            Expanded(child: Text(h.toString(), style: tt.bodySmall?.copyWith(color: HexaColors.textPrimary, height: 1.35))),
+                            Expanded(
+                                child: Text(h.toString(),
+                                    style: tt.bodySmall?.copyWith(
+                                        color: HexaColors.textPrimary,
+                                        height: 1.35))),
                           ],
                         ),
                       ),
@@ -217,7 +277,10 @@ class _ItemAnalyticsDetailPageState extends ConsumerState<ItemAnalyticsDetailPag
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    Text('Suppliers', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800, color: HexaColors.textPrimary)),
+                    Text('Suppliers',
+                        style: tt.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: HexaColors.textPrimary)),
                     const Spacer(),
                     FilterChip(
                       label: const Text('Name'),
@@ -254,7 +317,9 @@ class _ItemAnalyticsDetailPageState extends ConsumerState<ItemAnalyticsDetailPag
                 if (rows.isEmpty)
                   Padding(
                     padding: const EdgeInsets.all(16),
-                    child: Text('No supplier breakdown for this item yet.', style: tt.bodyMedium?.copyWith(color: HexaColors.textSecondary)),
+                    child: Text('No supplier breakdown for this item yet.',
+                        style: tt.bodyMedium
+                            ?.copyWith(color: HexaColors.textSecondary)),
                   )
                 else
                   ...rows.asMap().entries.map((e) {
@@ -262,24 +327,32 @@ class _ItemAnalyticsDetailPageState extends ConsumerState<ItemAnalyticsDetailPag
                     final m = e.value;
                     final name = m['name']?.toString() ?? '—';
                     final v = (m['avg_landing'] as num?)?.toDouble();
-                    final isBest = best != null && name == best['name']?.toString();
+                    final isBest =
+                        best != null && name == best['name']?.toString();
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 10),
                       child: Container(
                         decoration: BoxDecoration(
                           color: HexaColors.surfaceCard,
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: isBest ? HexaColors.primaryMid : HexaColors.border),
+                          border: Border.all(
+                              color: isBest
+                                  ? HexaColors.primaryMid
+                                  : HexaColors.border),
                           boxShadow: HexaColors.cardShadow(context),
                         ),
                         padding: const EdgeInsets.all(14),
                         child: Row(
                           children: [
                             CircleAvatar(
-                              backgroundColor: HexaColors.chartPalette[i % HexaColors.chartPalette.length].withValues(alpha: 0.25),
+                              backgroundColor: HexaColors.chartPalette[
+                                      i % HexaColors.chartPalette.length]
+                                  .withValues(alpha: 0.25),
                               child: Text(
                                 name.isNotEmpty ? name[0].toUpperCase() : '?',
-                                style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w900, color: HexaColors.textPrimary),
+                                style: tt.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.w900,
+                                    color: HexaColors.textPrimary),
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -290,18 +363,26 @@ class _ItemAnalyticsDetailPageState extends ConsumerState<ItemAnalyticsDetailPag
                                   Row(
                                     children: [
                                       Expanded(
-                                        child: Text(name, style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800, color: HexaColors.textPrimary)),
+                                        child: Text(name,
+                                            style: tt.titleSmall?.copyWith(
+                                                fontWeight: FontWeight.w800,
+                                                color: HexaColors.textPrimary)),
                                       ),
                                       if (isBest)
                                         Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 8, vertical: 2),
                                           decoration: BoxDecoration(
-                                            color: HexaColors.profit.withValues(alpha: 0.2),
-                                            borderRadius: BorderRadius.circular(8),
+                                            color: HexaColors.profit
+                                                .withValues(alpha: 0.2),
+                                            borderRadius:
+                                                BorderRadius.circular(8),
                                           ),
                                           child: Text(
                                             'Best',
-                                            style: tt.labelSmall?.copyWith(color: HexaColors.profit, fontWeight: FontWeight.w900),
+                                            style: tt.labelSmall?.copyWith(
+                                                color: HexaColors.profit,
+                                                fontWeight: FontWeight.w900),
                                           ),
                                         ),
                                     ],
@@ -309,7 +390,9 @@ class _ItemAnalyticsDetailPageState extends ConsumerState<ItemAnalyticsDetailPag
                                   const SizedBox(height: 4),
                                   Text(
                                     'Avg landing ${_inr(v)}',
-                                    style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary, fontWeight: FontWeight.w600),
+                                    style: tt.bodySmall?.copyWith(
+                                        color: HexaColors.textSecondary,
+                                        fontWeight: FontWeight.w600),
                                   ),
                                 ],
                               ),
@@ -329,7 +412,8 @@ class _ItemAnalyticsDetailPageState extends ConsumerState<ItemAnalyticsDetailPag
 }
 
 class _StatTile extends StatelessWidget {
-  const _StatTile({required this.label, required this.value, required this.accent});
+  const _StatTile(
+      {required this.label, required this.value, required this.accent});
 
   final String label;
   final String value;
@@ -352,16 +436,26 @@ class _StatTile extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(width: 3, height: 14, decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(2))),
+              Container(
+                  width: 3,
+                  height: 14,
+                  decoration: BoxDecoration(
+                      color: accent, borderRadius: BorderRadius.circular(2))),
               const SizedBox(width: 6),
               Text(
                 label.toUpperCase(),
-                style: tt.labelSmall?.copyWith(color: HexaColors.textSecondary, fontWeight: FontWeight.w800, fontSize: 10, letterSpacing: 0.4),
+                style: tt.labelSmall?.copyWith(
+                    color: HexaColors.textSecondary,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 10,
+                    letterSpacing: 0.4),
               ),
             ],
           ),
           const SizedBox(height: 6),
-          Text(value, style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w900, color: HexaColors.textPrimary)),
+          Text(value,
+              style: tt.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w900, color: HexaColors.textPrimary)),
         ],
       ),
     );

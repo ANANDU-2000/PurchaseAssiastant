@@ -19,11 +19,13 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
   bool _matchesFilter(NotificationItem n) {
     switch (_filter) {
       case 'alerts':
-        return n.type == NotificationType.priceAlert || n.type == NotificationType.profitLow;
+        return n.type == NotificationType.priceAlert ||
+            n.type == NotificationType.profitLow;
       case 'reminders':
         return n.type == NotificationType.reminder;
       case 'system':
-        return n.type == NotificationType.system || n.type == NotificationType.whatsapp;
+        return n.type == NotificationType.system ||
+            n.type == NotificationType.whatsapp;
       default:
         return true;
     }
@@ -41,15 +43,19 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
       appBar: AppBar(
         backgroundColor: HexaColors.canvas,
         surfaceTintColor: Colors.transparent,
-        title: Text('Alerts & Reminders', style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: HexaColors.textPrimary)),
+        title: Text('Alerts & Reminders',
+            style: tt.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800, color: HexaColors.textPrimary)),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: HexaColors.textSecondary),
+          icon: const Icon(Icons.arrow_back_rounded,
+              color: HexaColors.textSecondary),
           onPressed: () => context.pop(),
         ),
         actions: [
           IconButton(
             tooltip: 'Notification settings',
-            icon: const Icon(Icons.tune_rounded, color: HexaColors.textSecondary),
+            icon:
+                const Icon(Icons.tune_rounded, color: HexaColors.textSecondary),
             onPressed: () {
               showModalBottomSheet<void>(
                 context: context,
@@ -63,11 +69,14 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Preferences', style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                      Text('Preferences',
+                          style: tt.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w800)),
                       const SizedBox(height: 12),
                       Text(
                         'Price alerts, profit drop, daily summary, and WhatsApp status toggles will be available in a future update.',
-                        style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary, height: 1.4),
+                        style: tt.bodySmall?.copyWith(
+                            color: HexaColors.textSecondary, height: 1.4),
                       ),
                       const SizedBox(height: 16),
                     ],
@@ -86,17 +95,31 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
             child: Row(
               children: [
-                _FilterChip(label: 'All', selected: _filter == 'all', onTap: () => setState(() => _filter = 'all')),
-                _FilterChip(label: 'Alerts', selected: _filter == 'alerts', onTap: () => setState(() => _filter = 'alerts')),
-                _FilterChip(label: 'Reminders', selected: _filter == 'reminders', onTap: () => setState(() => _filter = 'reminders')),
-                _FilterChip(label: 'System', selected: _filter == 'system', onTap: () => setState(() => _filter = 'system')),
+                _FilterChip(
+                    label: 'All',
+                    selected: _filter == 'all',
+                    onTap: () => setState(() => _filter = 'all')),
+                _FilterChip(
+                    label: 'Alerts',
+                    selected: _filter == 'alerts',
+                    onTap: () => setState(() => _filter = 'alerts')),
+                _FilterChip(
+                    label: 'Reminders',
+                    selected: _filter == 'reminders',
+                    onTap: () => setState(() => _filter = 'reminders')),
+                _FilterChip(
+                    label: 'System',
+                    selected: _filter == 'system',
+                    onTap: () => setState(() => _filter = 'system')),
               ],
             ),
           ),
           Expanded(
             child: filtered.isEmpty
                 ? Center(
-                    child: Text('No notifications', style: tt.bodyMedium?.copyWith(color: HexaColors.textSecondary)),
+                    child: Text('No notifications',
+                        style: tt.bodyMedium
+                            ?.copyWith(color: HexaColors.textSecondary)),
                   )
                 : ListView.builder(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
@@ -111,8 +134,10 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                         _ => HexaColors.textSecondary,
                       };
                       final icon = switch (n.type) {
-                        NotificationType.priceAlert => Icons.warning_amber_rounded,
-                        NotificationType.profitLow => Icons.trending_down_rounded,
+                        NotificationType.priceAlert =>
+                          Icons.warning_amber_rounded,
+                        NotificationType.profitLow =>
+                          Icons.trending_down_rounded,
                         NotificationType.reminder => Icons.schedule_rounded,
                         NotificationType.whatsapp => Icons.chat_rounded,
                         _ => Icons.notifications_rounded,
@@ -125,18 +150,28 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                           child: InkWell(
                             borderRadius: BorderRadius.circular(14),
                             onTap: () {
-                              ref.read(notificationsProvider.notifier).markRead(n.id);
+                              ref
+                                  .read(notificationsProvider.notifier)
+                                  .markRead(n.id);
                               final route = n.actionRoute;
-                              if (route != null && route.isNotEmpty) context.go(route);
+                              if (route != null && route.isNotEmpty) {
+                                context.go(route);
+                              }
                             },
                             child: Container(
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(14),
                                 border: Border(
-                                  left: BorderSide(color: n.isRead ? HexaColors.border : color, width: n.isRead ? 1 : 3),
-                                  top: BorderSide(color: HexaColors.border),
-                                  right: BorderSide(color: HexaColors.border),
-                                  bottom: BorderSide(color: HexaColors.border),
+                                  left: BorderSide(
+                                      color:
+                                          n.isRead ? HexaColors.border : color,
+                                      width: n.isRead ? 1 : 3),
+                                  top: const BorderSide(
+                                      color: HexaColors.border),
+                                  right: const BorderSide(
+                                      color: HexaColors.border),
+                                  bottom: const BorderSide(
+                                      color: HexaColors.border),
                                 ),
                               ),
                               padding: const EdgeInsets.all(14),
@@ -144,28 +179,42 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   CircleAvatar(
-                                    backgroundColor: color.withValues(alpha: 0.2),
+                                    backgroundColor:
+                                        color.withValues(alpha: 0.2),
                                     child: Icon(icon, color: color, size: 20),
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        Text(n.title, style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800, color: HexaColors.textPrimary)),
+                                        Text(n.title,
+                                            style: tt.titleSmall?.copyWith(
+                                                fontWeight: FontWeight.w800,
+                                                color: HexaColors.textPrimary)),
                                         const SizedBox(height: 4),
-                                        Text(n.subtitle, style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary, height: 1.35)),
+                                        Text(n.subtitle,
+                                            style: tt.bodySmall?.copyWith(
+                                                color: HexaColors.textSecondary,
+                                                height: 1.35)),
                                       ],
                                     ),
                                   ),
                                   Column(
                                     crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
-                                      Text(rel.format(n.createdAt), style: tt.labelSmall?.copyWith(color: HexaColors.textSecondary)),
+                                      Text(rel.format(n.createdAt),
+                                          style: tt.labelSmall?.copyWith(
+                                              color: HexaColors.textSecondary)),
                                       IconButton(
-                                        icon: const Icon(Icons.close_rounded, size: 18),
+                                        icon: const Icon(Icons.close_rounded,
+                                            size: 18),
                                         color: HexaColors.textSecondary,
-                                        onPressed: () => ref.read(notificationsProvider.notifier).dismiss(n.id),
+                                        onPressed: () => ref
+                                            .read(
+                                                notificationsProvider.notifier)
+                                            .dismiss(n.id),
                                       ),
                                     ],
                                   ),
@@ -185,7 +234,8 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
 }
 
 class _FilterChip extends StatelessWidget {
-  const _FilterChip({required this.label, required this.selected, required this.onTap});
+  const _FilterChip(
+      {required this.label, required this.selected, required this.onTap});
 
   final String label;
   final bool selected;
@@ -208,7 +258,9 @@ class _FilterChip extends StatelessWidget {
               label,
               style: tt.labelMedium?.copyWith(
                 fontWeight: FontWeight.w700,
-                color: selected ? const Color(0xFF04201C) : HexaColors.textSecondary,
+                color: selected
+                    ? const Color(0xFF04201C)
+                    : HexaColors.textSecondary,
               ),
             ),
           ),

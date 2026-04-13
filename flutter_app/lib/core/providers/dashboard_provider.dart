@@ -18,7 +18,8 @@ class DashboardData {
   final int purchaseCount;
 }
 
-final dashboardProvider = FutureProvider.autoDispose<DashboardData>((ref) async {
+final dashboardProvider =
+    FutureProvider.autoDispose<DashboardData>((ref) async {
   final session = ref.watch(sessionProvider);
   if (session == null) {
     throw StateError('No session');

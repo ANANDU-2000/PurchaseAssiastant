@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/providers/entry_detail_provider.dart';
+import '../../../core/widgets/friendly_load_error.dart';
 
 class EntryDetailPage extends ConsumerWidget {
   const EntryDetailPage({super.key, required this.entryId});
@@ -12,7 +13,8 @@ class EntryDetailPage extends ConsumerWidget {
 
   String _inr(num? n) {
     if (n == null) return '—';
-    return NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(n);
+    return NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
+        .format(n);
   }
 
   @override
@@ -30,39 +32,34 @@ class EntryDetailPage extends ConsumerWidget {
       ),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text('Could not load entry', style: tt.titleMedium),
-                const SizedBox(height: 8),
-                Text(e.toString(), textAlign: TextAlign.center),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: () => ref.invalidate(entryDetailProvider(entryId)),
-                  child: const Text('Retry'),
-                ),
-              ],
-            ),
-          ),
+        error: (_, __) => FriendlyLoadError(
+          message: 'Could not load entry',
+          onRetry: () => ref.invalidate(entryDetailProvider(entryId)),
         ),
         data: (data) {
           final rawDate = data['entry_date'];
-          final dateStr = rawDate != null ? DateFormat.yMMMd().format(DateTime.parse(rawDate.toString())) : '—';
+          final dateStr = rawDate != null
+              ? DateFormat.yMMMd().format(DateTime.parse(rawDate.toString()))
+              : '—';
           final lines = data['lines'];
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
             children: [
-              Text(dateStr, style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
-              if (data['invoice_no'] != null) Text('Invoice: ${data['invoice_no']}', style: tt.bodyMedium),
+              Text(dateStr,
+                  style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+              if (data['invoice_no'] != null)
+                Text('Invoice: ${data['invoice_no']}', style: tt.bodyMedium),
               if (data['transport_cost'] != null)
-                Text('Transport: ${_inr((data['transport_cost'] as num?)?.toDouble())}', style: tt.bodyMedium),
+                Text(
+                    'Transport: ${_inr((data['transport_cost'] as num?)?.toDouble())}',
+                    style: tt.bodyMedium),
               if (data['commission_amount'] != null)
-                Text('Commission: ${_inr((data['commission_amount'] as num?)?.toDouble())}', style: tt.bodyMedium),
+                Text(
+                    'Commission: ${_inr((data['commission_amount'] as num?)?.toDouble())}',
+                    style: tt.bodyMedium),
               const SizedBox(height: 16),
-              Text('Lines', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+              Text('Lines',
+                  style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
               if (lines is List)
                 ...lines.map((line) {
@@ -71,8 +68,12 @@ class EntryDetailPage extends ConsumerWidget {
                   final linked = m['catalog_item_id'] != null;
                   return Card(
                     child: ListTile(
-                      leading: linked ? Icon(Icons.bookmark_outline, color: Theme.of(context).colorScheme.primary) : null,
-                      title: Text(m['item_name']?.toString() ?? '—', style: const TextStyle(fontWeight: FontWeight.w700)),
+                      leading: linked
+                          ? Icon(Icons.bookmark_outline,
+                              color: Theme.of(context).colorScheme.primary)
+                          : null,
+                      title: Text(m['item_name']?.toString() ?? '—',
+                          style: const TextStyle(fontWeight: FontWeight.w700)),
                       subtitle: Text(
                         '${m['qty']} ${m['unit']} · landing ${_inr((m['landing_cost'] as num?)?.toDouble())} · '
                         'P/L ${_inr((m['profit'] as num?)?.toDouble())}'

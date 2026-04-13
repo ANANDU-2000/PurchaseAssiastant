@@ -87,7 +87,8 @@ class _PriceIntelStripState extends ConsumerState<PriceIntelStrip> {
       );
     }
     final p = _pip;
-    if (p == null || (p['confidence'] is num && (p['confidence'] as num) <= 0)) {
+    if (p == null ||
+        (p['confidence'] is num && (p['confidence'] as num) <= 0)) {
       return const SizedBox.shrink();
     }
     final avg = p['avg'];
@@ -103,15 +104,20 @@ class _PriceIntelStripState extends ConsumerState<PriceIntelStrip> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Price intelligence', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+              Text('Price intelligence',
+                  style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
               const SizedBox(height: 6),
-              Text('Avg landing: ${avg is num ? '₹${avg.toStringAsFixed(2)}' : '—'} · Trend: $trend · Confidence: ${conf is num ? (conf * 100).toStringAsFixed(0) : '—'}%'),
+              Text(
+                  'Avg landing: ${avg is num ? '₹${avg.toStringAsFixed(2)}' : '—'} · Trend: $trend · Confidence: ${conf is num ? (conf * 100).toStringAsFixed(0) : '—'}%'),
               if (hints is List && hints.isNotEmpty) ...[
                 const SizedBox(height: 6),
-                Text(hints.take(3).map((e) => e.toString()).join(' '), style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                Text(hints.take(3).map((e) => e.toString()).join(' '),
+                    style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
               ],
               const SizedBox(height: 4),
-              Text('Based on your history only — landing cost stays what you enter.', style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant)),
+              Text(
+                  'Based on your history only — landing cost stays what you enter.',
+                  style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant)),
             ],
           ),
         ),

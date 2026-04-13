@@ -4,8 +4,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/contacts_hub_provider.dart';
+import '../../../core/widgets/friendly_load_error.dart';
 
-final _categoryItemsProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, category) async {
+final _categoryItemsProvider = FutureProvider.autoDispose
+    .family<List<Map<String, dynamic>>, String>((ref, category) async {
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   final api = ref.read(hexaApiProvider);
@@ -28,12 +30,17 @@ class CategoryItemsPage extends ConsumerWidget {
     final async = ref.watch(_categoryItemsProvider(category));
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: () => context.pop()),
+        leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            onPressed: () => context.pop()),
         title: Text(category),
       ),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('$e')),
+        error: (_, __) => FriendlyLoadError(
+          message: 'Could not load category items',
+          onRetry: () => ref.invalidate(_categoryItemsProvider(category)),
+        ),
         data: (rows) {
           if (rows.isEmpty) {
             return const Center(
@@ -58,10 +65,13 @@ class CategoryItemsPage extends ConsumerWidget {
               final lines = (row['line_count'] as num?)?.toInt() ?? 0;
               return Card(
                 child: ListTile(
-                  title: Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                  subtitle: Text('Lines: $lines · Qty: ${qty.toStringAsFixed(2)} · Profit: ${profit.toStringAsFixed(0)}'),
+                  title: Text(name,
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: Text(
+                      'Lines: $lines · Qty: ${qty.toStringAsFixed(2)} · Profit: ${profit.toStringAsFixed(0)}'),
                   trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => context.push('/item-analytics/${Uri.encodeComponent(name)}'),
+                  onTap: () => context
+                      .push('/item-analytics/${Uri.encodeComponent(name)}'),
                 ),
               );
             },

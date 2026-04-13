@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class SecureTokenStore {
   static const _access = 'hexa_access_token';
   static const _refresh = 'hexa_refresh_token';
+
   /// Plain backup on web — survives refresh reliably if IndexedDB path is cleared.
   static const _accessBk = 'hexa_access_token_bk';
   static const _refreshBk = 'hexa_refresh_token_bk';

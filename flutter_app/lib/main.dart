@@ -22,10 +22,8 @@ Future<void> main() async {
   );
   // Restore session before routes; cap wait on web so a slow/unreachable API never blocks runApp (blank screen).
   try {
-    await container
-        .read(sessionProvider.notifier)
-        .restore()
-        .timeout(kIsWeb ? const Duration(seconds: 4) : const Duration(seconds: 25));
+    await container.read(sessionProvider.notifier).restore().timeout(
+        kIsWeb ? const Duration(seconds: 4) : const Duration(seconds: 25));
   } catch (_) {
     // Offline / timeout — app still mounts; splash/login flows handle retry.
   }

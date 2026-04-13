@@ -89,14 +89,8 @@
   color: var(--admin-text);
 }
 
-.overview-page .overview-intro {
-  color: var(--admin-text-muted);
-  font-size: 0.95rem;
-  line-height: 1.55;
-  max-width: 52rem;
-}
-
-.overview-page .overview-error {
+/* Shared by AdminErrorBanner (all admin pages + login) */
+.overview-error {
   color: #fecaca;
   padding: 0.85rem 1rem;
   background: rgba(248, 113, 113, 0.12);
@@ -104,8 +98,22 @@
   border: 1px solid rgba(248, 113, 113, 0.35);
 }
 
-.overview-page .overview-error-detail {
-  margin: 0.75rem 0 0;
+.overview-error > p:first-of-type {
+  margin: 0;
+}
+
+.overview-error details {
+  margin-top: 0.65rem;
+}
+
+.overview-error summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--admin-text-muted);
+}
+
+.overview-error-detail {
+  margin: 0.5rem 0 0;
   padding: 0.75rem;
   font-size: 0.78rem;
   line-height: 1.45;
@@ -268,10 +276,21 @@
   cursor: not-allowed;
 }
 
-.login-err {
-  color: #fecaca;
-  font-size: 0.9rem;
-  margin: 0.5rem 0 0;
+.login-card .overview-error {
+  margin: 0.35rem 0 0.85rem;
+}
+
+.login-dev-api {
+  margin: 1.25rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--admin-text-muted);
+  opacity: 0.85;
+}
+
+.login-dev-api code {
+  font-size: 0.8rem;
+  color: var(--admin-primary-soft);
 }
 
 .ff-list {
@@ -334,4 +353,666 @@
 
 .stub-page .metric-card-value {
   color: var(--admin-primary-soft);
+}
+
+/* Integrations (read-only status) */
+.integrations-page .integ-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.35rem;
+}
+
+.integrations-page .integ-head h1 {
+  margin: 0;
+}
+
+.integrations-page .integ-intro {
+  color: var(--admin-text-muted);
+  max-width: 44rem;
+  line-height: 1.55;
+  margin: 0.75rem 0 1.25rem;
+  font-size: 0.95rem;
+}
+
+.integrations-page .integ-intro a {
+  color: var(--admin-primary-soft);
+  font-weight: 600;
+}
+
+.integrations-page .integ-loading {
+  color: var(--admin-text-muted);
+}
+
+.integrations-page .integ-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+  max-width: 960px;
+}
+
+.integrations-page .integ-card {
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-border);
+  border-radius: 16px;
+  padding: 1rem 1.1rem;
+  box-shadow: var(--admin-shadow);
+}
+
+.integrations-page .integ-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.integrations-page .integ-card-title {
+  font-weight: 800;
+  font-size: 0.95rem;
+  line-height: 1.3;
+}
+
+.integrations-page .integ-pill {
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.integrations-page .integ-pill--on {
+  color: #bbf7d0;
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid rgba(34, 197, 94, 0.4);
+}
+
+.integrations-page .integ-pill--off {
+  color: var(--admin-text-muted);
+  background: var(--admin-elevated);
+  border: 1px solid var(--admin-border);
+}
+
+.integrations-page .integ-card-meta {
+  margin-top: 0.65rem;
+  font-size: 0.78rem;
+  color: var(--admin-text-muted);
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.integrations-page .integ-card-meta code {
+  color: var(--admin-text);
+  font-size: 0.8rem;
+}
+
+/* Access keys (platform integration) */
+.api-keys-page .admin-data-note--tight {
+  margin-top: 0.5rem;
+  margin-bottom: 0;
+}
+
+.api-keys-page .pk-banner {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border-radius: var(--admin-radius);
+  font-size: 0.9rem;
+  max-width: 48rem;
+}
+
+.api-keys-page .pk-banner--err {
+  color: #fecaca;
+  background: rgba(248, 113, 113, 0.12);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+}
+
+.api-keys-page .pk-banner--ok {
+  color: #bbf7d0;
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+}
+
+.pk-effective {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 1.25rem 0 0.25rem;
+}
+
+.pk-metric {
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-border);
+  border-radius: 12px;
+  padding: 0.65rem 1rem;
+  min-width: 120px;
+}
+
+.pk-metric-label {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--admin-text-muted);
+}
+
+.pk-metric-val {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--admin-primary-soft);
+}
+
+.pk-group {
+  margin-top: 2rem;
+}
+
+.pk-group-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  margin: 0 0 0.35rem;
+  color: var(--admin-text);
+}
+
+.pk-group-hint {
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
+  color: var(--admin-text-muted);
+  max-width: 44rem;
+  line-height: 1.5;
+}
+
+.pk-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 44rem;
+}
+
+.pk-field {
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius);
+  padding: 1rem 1.1rem;
+  box-shadow: var(--admin-shadow);
+}
+
+.pk-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.pk-field-label {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.pk-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--admin-border);
+  color: var(--admin-text-muted);
+}
+
+.pk-badge--database {
+  border-color: rgba(96, 165, 250, 0.45);
+  color: var(--admin-primary-soft);
+  background: rgba(37, 99, 235, 0.12);
+}
+
+.pk-badge--environment {
+  border-color: rgba(167, 139, 250, 0.4);
+  color: var(--admin-accent);
+  background: rgba(167, 139, 250, 0.1);
+}
+
+.pk-badge--none {
+  opacity: 0.75;
+}
+
+.pk-field-meta {
+  margin: 0.5rem 0 0.65rem;
+  font-size: 0.82rem;
+  color: var(--admin-text-muted);
+}
+
+.pk-field-meta code {
+  color: var(--admin-text);
+  font-size: 0.85rem;
+}
+
+.pk-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--admin-border);
+  background: var(--admin-elevated);
+  color: var(--admin-text);
+  font-size: 0.9rem;
+}
+
+.pk-input:focus {
+  outline: none;
+  border-color: rgba(96, 165, 250, 0.55);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+.pk-field-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.pk-btn {
+  padding: 0.45rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: 10px;
+  border: 1px solid var(--admin-border);
+  background: var(--admin-elevated);
+  color: var(--admin-text-muted);
+  cursor: pointer;
+}
+
+.pk-btn:hover:not(:disabled) {
+  color: var(--admin-text);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.pk-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pk-btn--primary {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.35), rgba(167, 139, 250, 0.2));
+  border-color: rgba(96, 165, 250, 0.45);
+  color: var(--admin-primary-soft);
+}
+
+.pk-btn--primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.5), rgba(167, 139, 250, 0.28));
+}
+
+/* Audit logs */
+.audit-logs-page .audit-logs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.35rem;
+}
+
+.audit-logs-page .audit-logs-head h1 {
+  margin: 0;
+}
+
+.audit-logs-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.audit-logs-limit {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  color: var(--admin-text-muted);
+  font-weight: 600;
+}
+
+.audit-logs-limit select {
+  padding: 0.4rem 0.55rem;
+  border-radius: 10px;
+  border: 1px solid var(--admin-border);
+  background: var(--admin-elevated);
+  color: var(--admin-text);
+  font-size: 0.85rem;
+}
+
+.audit-logs-intro {
+  color: var(--admin-text-muted);
+  max-width: 44rem;
+  line-height: 1.55;
+  margin: 0.5rem 0 1rem;
+  font-size: 0.95rem;
+}
+
+.audit-logs-loading,
+.audit-logs-meta {
+  color: var(--admin-text-muted);
+  font-size: 0.9rem;
+}
+
+.audit-logs-meta {
+  margin: 0 0 0.75rem;
+}
+
+.audit-logs-empty {
+  color: var(--admin-text-muted);
+  max-width: 36rem;
+  line-height: 1.5;
+}
+
+.audit-logs-table-wrap,
+.admin-table-wrap {
+  overflow-x: auto;
+  max-width: 100%;
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius);
+  background: var(--admin-surface);
+  box-shadow: var(--admin-shadow);
+}
+
+.audit-logs-table,
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.audit-logs-table th,
+.audit-logs-table td,
+.admin-table th,
+.admin-table td {
+  padding: 0.65rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--admin-border);
+}
+
+.audit-logs-table th,
+.admin-table th {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--admin-text-muted);
+  font-weight: 800;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.audit-logs-table tr:last-child td,
+.admin-table tr:last-child td {
+  border-bottom: none;
+}
+
+.audit-logs-table tbody tr:hover td,
+.admin-table tbody tr:hover td {
+  background: rgba(96, 165, 250, 0.06);
+}
+
+.admin-table .admin-table-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-table th.admin-table-num {
+  text-align: right;
+}
+
+.admin-table .admin-table-mono {
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+}
+
+.admin-table .admin-table-muted {
+  color: var(--admin-text-muted);
+}
+
+/* Users / Usage pages */
+.admin-data-page .admin-page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.35rem;
+}
+
+.admin-data-page .admin-page-head h1 {
+  margin: 0;
+}
+
+.admin-data-page .admin-data-intro {
+  color: var(--admin-text-muted);
+  max-width: 44rem;
+  line-height: 1.55;
+  margin: 0.5rem 0 1rem;
+  font-size: 0.95rem;
+}
+
+.admin-data-page .admin-data-intro a {
+  color: var(--admin-primary-soft);
+  font-weight: 600;
+}
+
+.admin-data-page .admin-data-intro code {
+  font-size: 0.85rem;
+  color: var(--admin-primary-soft);
+}
+
+.admin-data-page .admin-data-section-title {
+  margin: 1.25rem 0 0.65rem;
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--admin-text);
+}
+
+.admin-data-page .admin-data-section-title:first-of-type {
+  margin-top: 0;
+}
+
+.admin-data-page .metric-grid + .admin-data-note {
+  margin-top: 0.5rem;
+}
+
+/* Feature flags — list width matches intro */
+.admin-data-page.feature-flags-page .ff-list {
+  margin-top: 0.25rem;
+}
+
+.admin-data-page .admin-data-note {
+  color: var(--admin-text-muted);
+  font-size: 0.9rem;
+  max-width: 48rem;
+  line-height: 1.5;
+  margin: 0 0 1rem;
+}
+
+.admin-data-page .admin-data-note code {
+  color: var(--admin-primary-soft);
+  font-size: 0.85rem;
+}
+
+.admin-data-page .admin-data-empty {
+  color: var(--admin-text-muted);
+  margin: 0.5rem 0;
+}
+
+.admin-data-page .admin-data-dev {
+  margin-top: 1.25rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--admin-radius);
+  border: 1px solid var(--admin-border);
+  background: var(--admin-elevated);
+}
+
+.admin-data-page .admin-data-dev summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--admin-text-muted);
+  font-weight: 600;
+}
+
+.admin-data-page .admin-data-dev pre {
+  margin: 0.65rem 0 0;
+  padding: 0.75rem;
+  overflow: auto;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--admin-text-muted);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.audit-logs-nowrap {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.audit-logs-code {
+  font-size: 0.78rem;
+  color: var(--admin-primary-soft);
+}
+
+.audit-logs-details code {
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--admin-text-muted);
+}
+
+.audit-logs-note {
+  color: var(--admin-text-muted);
+  max-width: 14rem;
+}
+
+.audit-logs-muted {
+  font-size: 0.78rem;
+  color: var(--admin-text-muted);
+}
+
+/* Console settings (shortcuts + connection) */
+.admin-settings-page .admin-data-intro {
+  margin-bottom: 1.5rem;
+}
+
+.admin-settings-page .settings-h2 {
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--admin-text-muted);
+  margin: 1.75rem 0 0.75rem;
+}
+
+.admin-settings-page .settings-shortcuts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  max-width: 40rem;
+}
+
+.admin-settings-page .settings-shortcut {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    'title chevron'
+    'desc chevron';
+  gap: 0.15rem 0.75rem;
+  padding: 1rem 1.1rem;
+  border-radius: var(--admin-radius);
+  border: 1px solid var(--admin-border);
+  background: var(--admin-surface);
+  box-shadow: var(--admin-shadow);
+  text-decoration: none;
+  color: inherit;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.admin-settings-page .settings-shortcut:hover {
+  border-color: rgba(96, 165, 250, 0.45);
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.admin-settings-page .settings-shortcut-title {
+  grid-area: title;
+  font-weight: 800;
+  font-size: 1rem;
+  color: var(--admin-text);
+}
+
+.admin-settings-page .settings-shortcut-desc {
+  grid-area: desc;
+  font-size: 0.85rem;
+  color: var(--admin-text-muted);
+  line-height: 1.45;
+}
+
+.admin-settings-page .settings-shortcut-chevron {
+  grid-area: chevron;
+  grid-row: 1 / span 2;
+  align-self: center;
+  font-size: 1.15rem;
+  color: var(--admin-primary-soft);
+  opacity: 0.85;
+}
+
+.admin-settings-page .settings-dl {
+  margin: 0;
+  max-width: 44rem;
+}
+
+.admin-settings-page .settings-dl > div {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 0.5rem 1rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid var(--admin-border);
+  font-size: 0.9rem;
+}
+
+.admin-settings-page .settings-dl > div:last-child {
+  border-bottom: none;
+}
+
+.admin-settings-page .settings-dl dt {
+  margin: 0;
+  color: var(--admin-text-muted);
+  font-weight: 600;
+}
+
+.admin-settings-page .settings-dl dd {
+  margin: 0;
+  color: var(--admin-text);
+  word-break: break-word;
+}
+
+.admin-settings-page .settings-dl code {
+  font-size: 0.82rem;
+  color: var(--admin-primary-soft);
+}
+
+.admin-settings-page .settings-dev {
+  margin-top: 1.5rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--admin-radius);
+  border: 1px dashed rgba(167, 139, 250, 0.45);
+  background: rgba(167, 139, 250, 0.08);
+  font-size: 0.82rem;
+  color: var(--admin-text-muted);
+  max-width: 44rem;
+  line-height: 1.5;
+}
+
+.admin-settings-page .settings-dev code {
+  color: var(--admin-accent);
+  font-size: 0.8rem;
 }

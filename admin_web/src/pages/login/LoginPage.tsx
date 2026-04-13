@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { AdminErrorBanner } from '../../components/AdminErrorBanner'
 import { adminPost, apiBase, devErrorDetail, setAdminToken, userSafeLoginError } from '../../lib/api'
 
 export default function LoginPage() {
@@ -53,32 +54,13 @@ export default function LoginPage() {
               required
             />
           </label>
-          {err && <p className="login-err">{err}</p>}
-          {errDev && (
-            <details style={{ marginTop: '0.5rem', fontSize: '0.78rem', color: 'var(--admin-text-muted)' }}>
-              <summary style={{ cursor: 'pointer' }}>Technical details</summary>
-              <pre
-                style={{
-                  marginTop: '0.35rem',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                  maxHeight: 160,
-                  overflow: 'auto',
-                }}
-              >
-                {errDev}
-              </pre>
-            </details>
-          )}
+          {err && <AdminErrorBanner message={err} devDetail={errDev} />}
           <button type="submit" disabled={busy}>
             {busy ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
         {import.meta.env.DEV && (
-          <p
-            className="login-hint"
-            style={{ marginTop: '1.25rem', fontSize: '0.78rem', opacity: 0.85 }}
-          >
+          <p className="login-dev-api">
             Dev: service URL <code>{apiBase()}</code>
           </p>
         )}

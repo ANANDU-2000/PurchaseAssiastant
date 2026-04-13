@@ -72,12 +72,17 @@ class HexaApi {
     }
   }
 
-  ({String access, String refresh}) _tokenPairFromResponse(Response<Map<String, dynamic>> res) {
+  ({String access, String refresh}) _tokenPairFromResponse(
+      Response<Map<String, dynamic>> res) {
     final d = res.data!;
-    return (access: d['access_token'] as String, refresh: d['refresh_token'] as String);
+    return (
+      access: d['access_token'] as String,
+      refresh: d['refresh_token'] as String
+    );
   }
 
-  Future<({String access, String refresh})> login({required String email, required String password}) async {
+  Future<({String access, String refresh})> login(
+      {required String email, required String password}) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/auth/login',
       data: {'email': email, 'password': password},
@@ -97,7 +102,8 @@ class HexaApi {
     return _tokenPairFromResponse(res);
   }
 
-  Future<({String access, String refresh})> loginWithGoogle({required String idToken}) async {
+  Future<({String access, String refresh})> loginWithGoogle(
+      {required String idToken}) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/auth/google',
       data: {'id_token': idToken},
@@ -106,7 +112,8 @@ class HexaApi {
   }
 
   /// No Bearer header — uses body only. Kept on [_plain] so it never inherits [setAuthToken].
-  Future<({String access, String refresh})> refreshTokens({required String refreshToken}) async {
+  Future<({String access, String refresh})> refreshTokens(
+      {required String refreshToken}) async {
     final res = await _plain.post<Map<String, dynamic>>(
       '/v1/auth/refresh',
       data: {'refresh_token': refreshToken},
@@ -118,7 +125,9 @@ class HexaApi {
     final res = await _dio.get<dynamic>('/v1/me/businesses');
     final data = res.data;
     if (data is! List) return [];
-    return data.map((e) => BusinessBrief.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+    return data
+        .map((e) => BusinessBrief.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
   }
 
   /// Owner: optional in-app title + logo URL (HTTPS recommended).
@@ -168,7 +177,8 @@ class HexaApi {
       ct = MediaType('image', 'jpeg');
     }
     final formData = FormData.fromMap({
-      'file': MultipartFile.fromBytes(bytes, filename: filename, contentType: ct),
+      'file':
+          MultipartFile.fromBytes(bytes, filename: filename, contentType: ct),
     });
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/me/businesses/$businessId/branding/logo',
@@ -177,7 +187,10 @@ class HexaApi {
     return res.data ?? {};
   }
 
-  Future<Map<String, dynamic>> analyticsSummary({required String businessId, required String from, required String to}) async {
+  Future<Map<String, dynamic>> analyticsSummary(
+      {required String businessId,
+      required String from,
+      required String to}) async {
     final res = await _dio.get<Map<String, dynamic>>(
       '/v1/businesses/$businessId/analytics/summary',
       queryParameters: {'from': from, 'to': to},
@@ -199,7 +212,8 @@ class HexaApi {
         if (from != null) 'from': from,
         if (to != null) 'to': to,
         if (item != null && item.isNotEmpty) 'item': item,
-        if (supplierId != null && supplierId.isNotEmpty) 'supplier_id': supplierId,
+        if (supplierId != null && supplierId.isNotEmpty)
+          'supplier_id': supplierId,
         if (brokerId != null && brokerId.isNotEmpty) 'broker_id': brokerId,
       },
     );
@@ -208,16 +222,20 @@ class HexaApi {
     return [];
   }
 
-  Future<Map<String, dynamic>> getEntry({required String businessId, required String entryId}) async {
-    final res = await _dio.get<dynamic>('/v1/businesses/$businessId/entries/$entryId');
+  Future<Map<String, dynamic>> getEntry(
+      {required String businessId, required String entryId}) async {
+    final res =
+        await _dio.get<dynamic>('/v1/businesses/$businessId/entries/$entryId');
     final d = res.data;
     if (d is Map) return Map<String, dynamic>.from(d);
     return {};
   }
 
   /// Preview (`confirm: false`) returns 200 with `preview: true`. Confirm returns 201.
-  Future<Map<String, dynamic>> createEntry({required String businessId, required Map<String, dynamic> body}) async {
-    final res = await _dio.post<dynamic>('/v1/businesses/$businessId/entries', data: body);
+  Future<Map<String, dynamic>> createEntry(
+      {required String businessId, required Map<String, dynamic> body}) async {
+    final res = await _dio.post<dynamic>('/v1/businesses/$businessId/entries',
+        data: body);
     final d = res.data;
     if (d is Map) return Map<String, dynamic>.from(d);
     return {};
@@ -237,14 +255,17 @@ class HexaApi {
         'item_name': itemName,
         'qty': qty,
         'entry_date': entryDateIso,
-        if (supplierId != null && supplierId.isNotEmpty) 'supplier_id': supplierId,
-        if (catalogVariantId != null && catalogVariantId.isNotEmpty) 'catalog_variant_id': catalogVariantId,
+        if (supplierId != null && supplierId.isNotEmpty)
+          'supplier_id': supplierId,
+        if (catalogVariantId != null && catalogVariantId.isNotEmpty)
+          'catalog_variant_id': catalogVariantId,
       },
     );
     return res.data ?? {};
   }
 
-  Future<List<Map<String, dynamic>>> listSuppliers({required String businessId}) async {
+  Future<List<Map<String, dynamic>>> listSuppliers(
+      {required String businessId}) async {
     final res = await _dio.get<dynamic>('/v1/businesses/$businessId/suppliers');
     final data = res.data;
     if (data is! List) return [];
@@ -264,7 +285,8 @@ class HexaApi {
       data: {
         'name': name,
         if (phone != null && phone.isNotEmpty) 'phone': phone,
-        if (whatsappNumber != null && whatsappNumber.isNotEmpty) 'whatsapp_number': whatsappNumber,
+        if (whatsappNumber != null && whatsappNumber.isNotEmpty)
+          'whatsapp_number': whatsappNumber,
         if (location != null && location.isNotEmpty) 'location': location,
         if (brokerId != null && brokerId.isNotEmpty) 'broker_id': brokerId,
       },
@@ -272,22 +294,27 @@ class HexaApi {
     return res.data ?? {};
   }
 
-  Future<List<Map<String, dynamic>>> listBrokers({required String businessId}) async {
+  Future<List<Map<String, dynamic>>> listBrokers(
+      {required String businessId}) async {
     final res = await _dio.get<dynamic>('/v1/businesses/$businessId/brokers');
     final data = res.data;
     if (data is! List) return [];
     return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 
-  Future<Map<String, dynamic>> getSupplier({required String businessId, required String supplierId}) async {
-    final res = await _dio.get<dynamic>('/v1/businesses/$businessId/suppliers/$supplierId');
+  Future<Map<String, dynamic>> getSupplier(
+      {required String businessId, required String supplierId}) async {
+    final res = await _dio
+        .get<dynamic>('/v1/businesses/$businessId/suppliers/$supplierId');
     final d = res.data;
     if (d is Map) return Map<String, dynamic>.from(d);
     return {};
   }
 
-  Future<Map<String, dynamic>> getBroker({required String businessId, required String brokerId}) async {
-    final res = await _dio.get<dynamic>('/v1/businesses/$businessId/brokers/$brokerId');
+  Future<Map<String, dynamic>> getBroker(
+      {required String businessId, required String brokerId}) async {
+    final res =
+        await _dio.get<dynamic>('/v1/businesses/$businessId/brokers/$brokerId');
     final d = res.data;
     if (d is Map) return Map<String, dynamic>.from(d);
     return {};
@@ -332,7 +359,8 @@ class HexaApi {
     return res.data ?? {};
   }
 
-  Future<void> deleteSupplier({required String businessId, required String supplierId}) async {
+  Future<void> deleteSupplier(
+      {required String businessId, required String supplierId}) async {
     await _dio.delete<void>('/v1/businesses/$businessId/suppliers/$supplierId');
   }
 
@@ -354,18 +382,22 @@ class HexaApi {
     return res.data ?? {};
   }
 
-  Future<void> deleteBroker({required String businessId, required String brokerId}) async {
+  Future<void> deleteBroker(
+      {required String businessId, required String brokerId}) async {
     await _dio.delete<void>('/v1/businesses/$businessId/brokers/$brokerId');
   }
 
-  Future<List<Map<String, dynamic>>> listItemCategories({required String businessId}) async {
-    final res = await _dio.get<dynamic>('/v1/businesses/$businessId/item-categories');
+  Future<List<Map<String, dynamic>>> listItemCategories(
+      {required String businessId}) async {
+    final res =
+        await _dio.get<dynamic>('/v1/businesses/$businessId/item-categories');
     final data = res.data;
     if (data is! List) return [];
     return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 
-  Future<Map<String, dynamic>> createItemCategory({required String businessId, required String name}) async {
+  Future<Map<String, dynamic>> createItemCategory(
+      {required String businessId, required String name}) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/businesses/$businessId/item-categories',
       data: {'name': name},
@@ -385,8 +417,10 @@ class HexaApi {
     return res.data ?? {};
   }
 
-  Future<void> deleteItemCategory({required String businessId, required String categoryId}) async {
-    await _dio.delete<void>('/v1/businesses/$businessId/item-categories/$categoryId');
+  Future<void> deleteItemCategory(
+      {required String businessId, required String categoryId}) async {
+    await _dio
+        .delete<void>('/v1/businesses/$businessId/item-categories/$categoryId');
   }
 
   Future<List<Map<String, dynamic>>> listCatalogItems({
@@ -396,7 +430,8 @@ class HexaApi {
     final res = await _dio.get<dynamic>(
       '/v1/businesses/$businessId/catalog-items',
       queryParameters: {
-        if (categoryId != null && categoryId.isNotEmpty) 'category_id': categoryId,
+        if (categoryId != null && categoryId.isNotEmpty)
+          'category_id': categoryId,
       },
     );
     final data = res.data;
@@ -415,14 +450,17 @@ class HexaApi {
       data: {
         'category_id': categoryId,
         'name': name,
-        if (defaultUnit != null && defaultUnit.isNotEmpty) 'default_unit': defaultUnit,
+        if (defaultUnit != null && defaultUnit.isNotEmpty)
+          'default_unit': defaultUnit,
       },
     );
     return res.data ?? {};
   }
 
-  Future<Map<String, dynamic>> getCatalogItem({required String businessId, required String itemId}) async {
-    final res = await _dio.get<Map<String, dynamic>>('/v1/businesses/$businessId/catalog-items/$itemId');
+  Future<Map<String, dynamic>> getCatalogItem(
+      {required String businessId, required String itemId}) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+        '/v1/businesses/$businessId/catalog-items/$itemId');
     return res.data ?? {};
   }
 
@@ -444,7 +482,8 @@ class HexaApi {
     return res.data ?? {};
   }
 
-  Future<void> deleteCatalogItem({required String businessId, required String itemId}) async {
+  Future<void> deleteCatalogItem(
+      {required String businessId, required String itemId}) async {
     await _dio.delete<void>('/v1/businesses/$businessId/catalog-items/$itemId');
   }
 
@@ -547,11 +586,14 @@ class HexaApi {
     return res.data ?? {};
   }
 
-  Future<void> deleteCatalogVariant({required String businessId, required String variantId}) async {
-    await _dio.delete<void>('/v1/businesses/$businessId/catalog-variants/$variantId');
+  Future<void> deleteCatalogVariant(
+      {required String businessId, required String variantId}) async {
+    await _dio
+        .delete<void>('/v1/businesses/$businessId/catalog-variants/$variantId');
   }
 
-  Future<Map<String, dynamic>> contactsSearch({required String businessId, required String query}) async {
+  Future<Map<String, dynamic>> contactsSearch(
+      {required String businessId, required String query}) async {
     final res = await _dio.get<Map<String, dynamic>>(
       '/v1/businesses/$businessId/contacts/search',
       queryParameters: {'q': query},
@@ -600,7 +642,10 @@ class HexaApi {
     return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 
-  Future<Map<String, dynamic>> homeInsights({required String businessId, required String from, required String to}) async {
+  Future<Map<String, dynamic>> homeInsights(
+      {required String businessId,
+      required String from,
+      required String to}) async {
     final res = await _dio.get<Map<String, dynamic>>(
       '/v1/businesses/$businessId/analytics/insights',
       queryParameters: {'from': from, 'to': to},
@@ -608,7 +653,10 @@ class HexaApi {
     return res.data ?? {};
   }
 
-  Future<List<Map<String, dynamic>>> analyticsItems({required String businessId, required String from, required String to}) async {
+  Future<List<Map<String, dynamic>>> analyticsItems(
+      {required String businessId,
+      required String from,
+      required String to}) async {
     final res = await _dio.get<dynamic>(
       '/v1/businesses/$businessId/analytics/items',
       queryParameters: {'from': from, 'to': to},
@@ -618,7 +666,10 @@ class HexaApi {
     return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 
-  Future<List<Map<String, dynamic>>> analyticsCategories({required String businessId, required String from, required String to}) async {
+  Future<List<Map<String, dynamic>>> analyticsCategories(
+      {required String businessId,
+      required String from,
+      required String to}) async {
     final res = await _dio.get<dynamic>(
       '/v1/businesses/$businessId/analytics/categories',
       queryParameters: {'from': from, 'to': to},
@@ -628,7 +679,10 @@ class HexaApi {
     return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 
-  Future<List<Map<String, dynamic>>> analyticsSuppliers({required String businessId, required String from, required String to}) async {
+  Future<List<Map<String, dynamic>>> analyticsSuppliers(
+      {required String businessId,
+      required String from,
+      required String to}) async {
     final res = await _dio.get<dynamic>(
       '/v1/businesses/$businessId/analytics/suppliers',
       queryParameters: {'from': from, 'to': to},
@@ -638,7 +692,10 @@ class HexaApi {
     return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 
-  Future<List<Map<String, dynamic>>> analyticsBrokers({required String businessId, required String from, required String to}) async {
+  Future<List<Map<String, dynamic>>> analyticsBrokers(
+      {required String businessId,
+      required String from,
+      required String to}) async {
     final res = await _dio.get<dynamic>(
       '/v1/businesses/$businessId/analytics/brokers',
       queryParameters: {'from': from, 'to': to},
@@ -668,7 +725,8 @@ class HexaApi {
   }
 
   /// OCR preview stub — requires `ENABLE_OCR` on server; never auto-saves.
-  Future<Map<String, dynamic>> mediaOcrPreview({required String businessId, String imageBase64 = 'QQ=='}) async {
+  Future<Map<String, dynamic>> mediaOcrPreview(
+      {required String businessId, String imageBase64 = 'QQ=='}) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/businesses/$businessId/media/ocr',
       data: {'image_base64': imageBase64},
@@ -677,7 +735,8 @@ class HexaApi {
   }
 
   /// Voice/STT preview stub — requires `ENABLE_VOICE` on server; never auto-saves.
-  Future<Map<String, dynamic>> mediaVoicePreview({required String businessId, String audioBase64 = 'QQ=='}) async {
+  Future<Map<String, dynamic>> mediaVoicePreview(
+      {required String businessId, String audioBase64 = 'QQ=='}) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/businesses/$businessId/media/voice',
       data: {'audio_base64': audioBase64},
@@ -709,8 +768,10 @@ class HexaApi {
     return res.data ?? {};
   }
 
-  Future<Map<String, dynamic>> billingStatus({required String businessId}) async {
-    final res = await _dio.get<Map<String, dynamic>>('/v1/businesses/$businessId/billing/status');
+  Future<Map<String, dynamic>> billingStatus(
+      {required String businessId}) async {
+    final res = await _dio
+        .get<Map<String, dynamic>>('/v1/businesses/$businessId/billing/status');
     return res.data ?? {};
   }
 

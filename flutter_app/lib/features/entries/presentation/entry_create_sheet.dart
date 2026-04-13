@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/catalog_providers.dart';
@@ -17,6 +18,7 @@ import '../../../core/providers/home_insights_provider.dart';
 import '../../../core/providers/notifications_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/widgets/friendly_load_error.dart';
 import '../domain/quick_entry_parser.dart';
 import 'smart_price_panel.dart';
 
@@ -24,7 +26,7 @@ enum _CommissionMode { totalRupees, percentOfPurchase, perUnitRupees }
 
 /// Opens the full entry form (Preview → Confirm & save in dialog, or Save on sheet after preview token).
 Future<void> showEntryCreateSheet(BuildContext context) async {
-  await     showModalBottomSheet<void>(
+  await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
@@ -53,13 +55,16 @@ class _LineControllers {
   final TextEditingController item;
   final TextEditingController category;
   final TextEditingController qty;
+
   /// Kg per bag when [unit] == bag.
   final TextEditingController kgPerBag;
+
   /// Invoice / purchase price per unit (excludes allocated entry commission — see landed cost).
   final TextEditingController purchase;
   final TextEditingController selling;
   final TextEditingController stockNote;
   String unit = 'kg';
+
   /// Set when user picks a row from the master catalog (sent as catalog_item_id).
   String? catalogItemId;
   String? catalogVariantId;
@@ -88,6 +93,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
   final _transport = TextEditingController();
   final _place = TextEditingController();
   final _quickEntry = TextEditingController();
+
   /// When false: one landed-cost field per line + selling; invoice/commission/transport hidden.
   bool _advancedEntryOptions = false;
   DateTime _entryDate = DateTime.now();
@@ -95,6 +101,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
   String? _brokerId;
   final _lines = <_LineControllers>[_LineControllers()];
   bool _busy = false;
+
   /// Server-issued after a successful Preview; required to Save (confirm=true).
   String? _previewToken;
 
@@ -204,7 +211,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
   String? _commissionSummaryLine() {
     final total = _effectiveCommissionTotalRupees();
     if (total == null || total <= 0) return null;
-    final nf = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 2);
+    final nf =
+        NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 2);
     final cpu = _commissionPerUnit();
     final nLines = _lines.length;
     return '${nf.format(total)} total commission = ${nf.format(cpu)} / unit · $nLines line${nLines == 1 ? '' : 's'}';
@@ -254,7 +262,9 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       if ((_parseDouble(l.qty.text) ?? 0) <= 0) return false;
       if ((_parseDouble(l.purchase.text) ?? -1) < 0) return false;
       if (_effectiveLanding(l) < 0) return false;
-      if (l.unit == 'bag' && (_parseDouble(l.kgPerBag.text) ?? 0) <= 0) return false;
+      if (l.unit == 'bag' && (_parseDouble(l.kgPerBag.text) ?? 0) <= 0) {
+        return false;
+      }
     }
     return true;
   }
@@ -262,7 +272,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
   Future<void> _preview() async {
     if (!_validate()) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Fill item, qty, and purchase price per line.')),
+        const SnackBar(
+            content: Text('Fill item, qty, and purchase price per line.')),
       );
       return;
     }
@@ -272,7 +283,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       if (session == null) return;
       final api = ref.read(hexaApiProvider);
       final body = _body(confirm: false);
-      final res = await api.createEntry(businessId: session.primaryBusiness.id, body: body);
+      final res = await api.createEntry(
+          businessId: session.primaryBusiness.id, body: body);
       if (!mounted) return;
       if (res['preview'] == true) {
         final tok = res['preview_token']?.toString();
@@ -308,7 +320,9 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                     ...warns.map(
                       (w) => Padding(
                         padding: const EdgeInsets.only(bottom: 6),
-                        child: Text(w.toString(), style: TextStyle(color: Theme.of(ctx).colorScheme.tertiary)),
+                        child: Text(w.toString(),
+                            style: TextStyle(
+                                color: Theme.of(ctx).colorScheme.tertiary)),
                       ),
                     ),
                   ],
@@ -316,7 +330,9 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               ),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Edit')),
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Edit')),
               FilledButton(
                 onPressed: () {
                   Navigator.pop(ctx);
@@ -330,7 +346,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Preview failed: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -354,7 +371,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       _lines[i].catalogVariantId = (vid != null && vid.isNotEmpty) ? vid : null;
       final kgpb = mm['kg_per_bag'];
       if (kgpb != null) {
-        _lines[i].kgPerBag.text = kgpb is num ? kgpb.toString() : kgpb.toString();
+        _lines[i].kgPerBag.text =
+            kgpb is num ? kgpb.toString() : kgpb.toString();
       }
       final iname = mm['item_name']?.toString();
       if (iname != null && iname.isNotEmpty) {
@@ -373,7 +391,9 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     if (!mounted) return;
     if (items.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add categories and items under Settings → Item catalog.')),
+        const SnackBar(
+            content: Text(
+                'Add categories and items under Settings → Item catalog.')),
       );
       return;
     }
@@ -401,16 +421,22 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                 final name = it['name']?.toString() ?? '';
                 final cid = it['category_id']?.toString() ?? '';
                 final du = it['default_unit']?.toString();
-                final sub = '${catName[cid] ?? ''}${du != null && du.isNotEmpty ? ' · $du' : ''}';
+                final sub =
+                    '${catName[cid] ?? ''}${du != null && du.isNotEmpty ? ' · $du' : ''}';
                 return ListTile(
-                  title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  title: Text(name,
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
                   subtitle: Text(sub),
                   onTap: () {
                     setState(() {
                       l.catalogItemId = it['id']?.toString();
                       l.item.text = name;
                       l.category.text = catName[cid] ?? '';
-                      if (du != null && (du == 'kg' || du == 'box' || du == 'piece' || du == 'bag')) {
+                      if (du != null &&
+                          (du == 'kg' ||
+                              du == 'box' ||
+                              du == 'piece' ||
+                              du == 'bag')) {
                         l.unit = du;
                       }
                     });
@@ -425,7 +451,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     );
   }
 
-  Map<String, dynamic> _body({required bool confirm, bool forceDuplicate = false}) {
+  Map<String, dynamic> _body(
+      {required bool confirm, bool forceDuplicate = false}) {
     final fmt = DateFormat('yyyy-MM-dd');
     final commTotal = _effectiveCommissionTotalRupees();
     final tr = _parseDouble(_transport.text);
@@ -438,7 +465,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       if (commTotal != null && commTotal > 0) 'commission_amount': commTotal,
       if (_advancedEntryOptions && tr != null && tr > 0) 'transport_cost': tr,
       'confirm': confirm,
-      if (confirm && _previewToken != null && _previewToken!.isNotEmpty) 'preview_token': _previewToken,
+      if (confirm && _previewToken != null && _previewToken!.isNotEmpty)
+        'preview_token': _previewToken,
       if (confirm && forceDuplicate) 'force_duplicate': true,
       'lines': _linesPayload(),
     };
@@ -450,7 +478,9 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     if (_previewToken == null || _previewToken!.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Tap Preview first, then Confirm & save. If you changed the form, Preview again.')),
+          const SnackBar(
+              content: Text(
+                  'Tap Preview first, then Confirm & save. If you changed the form, Preview again.')),
         );
       }
       return;
@@ -468,8 +498,12 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               'We found another entry with the same item, quantity, and date. Save anyway?',
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save anyway')),
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel')),
+              FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Save anyway')),
             ],
           ),
         );
@@ -478,16 +512,19 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
             await _runSaveAttempt(forceDuplicate: true);
           } catch (e2) {
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e2')));
+              ScaffoldMessenger.of(context)
+                  .showSnackBar(SnackBar(content: Text(friendlyApiError(e2))));
             }
           }
         }
       } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -517,10 +554,15 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('Possible duplicate'),
-            content: const Text('An entry with the same item, qty, and date exists. Save anyway?'),
+            content: const Text(
+                'An entry with the same item, qty, and date exists. Save anyway?'),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save anyway')),
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel')),
+              FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Save anyway')),
             ],
           ),
         );
@@ -546,9 +588,16 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       }
       HapticFeedback.mediumImpact();
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Entry saved')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Entry saved')));
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Unexpected response: $res')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Save did not complete (no entry id from server). Try again.',
+          ),
+        ),
+      );
     }
   }
 
@@ -571,7 +620,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     return DateFormat.yMMMd().format(d);
   }
 
-  String? _brokerIdForSupplier(List<Map<String, dynamic>> suppliers, String? supplierId) {
+  String? _brokerIdForSupplier(
+      List<Map<String, dynamic>> suppliers, String? supplierId) {
     if (supplierId == null) return null;
     for (final s in suppliers) {
       if (s['id']?.toString() == supplierId) {
@@ -583,11 +633,61 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     return null;
   }
 
+  String? _supplierLocationForSupplier(
+      List<Map<String, dynamic>> suppliers, String? supplierId) {
+    if (supplierId == null) return null;
+    for (final s in suppliers) {
+      if (s['id']?.toString() == supplierId) {
+        final loc = s['location']?.toString().trim();
+        if (loc == null || loc.isEmpty) return null;
+        return loc;
+      }
+    }
+    return null;
+  }
+
   void _onSupplierChanged(String? v, List<Map<String, dynamic>> suppliers) {
     setState(() {
       _supplierId = v;
       _brokerId = _brokerIdForSupplier(suppliers, v);
     });
+  }
+
+  String? _selectedSupplierName(List<Map<String, dynamic>> suppliers) {
+    if (_supplierId == null) return null;
+    for (final s in suppliers) {
+      if (s['id']?.toString() == _supplierId) {
+        return s['name']?.toString();
+      }
+    }
+    return null;
+  }
+
+  Future<void> _openSupplierPicker(List<Map<String, dynamic>> suppliers) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: HexaColors.surfaceCard,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.55,
+        minChildSize: 0.35,
+        maxChildSize: 0.92,
+        builder: (ctx, scrollController) => _SupplierPickerSheet(
+          scrollController: scrollController,
+          suppliers: suppliers,
+          selectedId: _supplierId,
+          onPick: (id) {
+            Navigator.pop(ctx);
+            _onSupplierChanged(id, suppliers);
+          },
+        ),
+      ),
+    );
   }
 
   Future<void> _addBrokerDialog() async {
@@ -602,8 +702,12 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
           autofocus: true,
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Create')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Create')),
         ],
       ),
     );
@@ -619,11 +723,13 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       final id = res['id']?.toString();
       if (mounted && id != null) {
         setState(() => _brokerId = id);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Broker added')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Broker added')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
       }
     }
   }
@@ -631,8 +737,11 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
   void _parseQuickEntry() {
     ref.read(suppliersListProvider).when(
       data: (list) {
-        final suppliers = list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-        final names = suppliers.map((s) => (s['name']?.toString() ?? '').toLowerCase()).where((s) => s.isNotEmpty);
+        final suppliers =
+            list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        final names = suppliers
+            .map((s) => (s['name']?.toString() ?? '').toLowerCase())
+            .where((s) => s.isNotEmpty);
         unawaited(_applyQuickEntry(suppliers, names));
       },
       loading: () {
@@ -658,7 +767,9 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     try {
       final items = await ref.read(catalogItemsListProvider.future);
       final cats = await ref.read(itemCategoriesListProvider.future);
-      final catNameById = {for (final c in cats) c['id'].toString(): c['name'].toString()};
+      final catNameById = {
+        for (final c in cats) c['id'].toString(): c['name'].toString()
+      };
       Map<String, dynamic>? best;
       var bestScore = 0;
       for (final it in items) {
@@ -689,7 +800,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
             l.category.text = catNameById[cid]!;
           }
           final du = b['default_unit']?.toString();
-          if (du != null && (du == 'kg' || du == 'box' || du == 'piece' || du == 'bag')) {
+          if (du != null &&
+              (du == 'kg' || du == 'box' || du == 'piece' || du == 'bag')) {
             l.unit = du;
           }
         });
@@ -697,8 +809,10 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     } catch (_) {}
   }
 
-  Future<void> _applyQuickEntry(List<Map<String, dynamic>> suppliers, Iterable<String> supplierNamesLower) async {
-    final parsed = parseQuickLine(_quickEntry.text.trim(), supplierNamesLower: supplierNamesLower);
+  Future<void> _applyQuickEntry(List<Map<String, dynamic>> suppliers,
+      Iterable<String> supplierNamesLower) async {
+    final parsed = parseQuickLine(_quickEntry.text.trim(),
+        supplierNamesLower: supplierNamesLower);
     if (parsed == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -739,7 +853,9 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     await _enrichLineFromCatalog(_lines.first);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Filled line 1 — category auto-filled when catalog matches')),
+        const SnackBar(
+            content: Text(
+                'Filled line 1 — category auto-filled when catalog matches')),
       );
     }
   }
@@ -755,14 +871,24 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: name, decoration: const InputDecoration(labelText: 'Name *')),
-            TextField(controller: phone, decoration: const InputDecoration(labelText: 'Phone')),
-            TextField(controller: loc, decoration: const InputDecoration(labelText: 'Location')),
+            TextField(
+                controller: name,
+                decoration: const InputDecoration(labelText: 'Name *')),
+            TextField(
+                controller: phone,
+                decoration: const InputDecoration(labelText: 'Phone')),
+            TextField(
+                controller: loc,
+                decoration: const InputDecoration(labelText: 'Location')),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Create')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Create')),
         ],
       ),
     );
@@ -778,11 +904,13 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
           );
       ref.invalidate(suppliersListProvider);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Supplier added')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Supplier added')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
       }
     }
   }
@@ -806,13 +934,20 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('New category', style: Theme.of(ctx).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+              Text('New category',
+                  style: Theme.of(ctx)
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(fontWeight: FontWeight.w800)),
               const SizedBox(height: 16),
               TextField(
                 controller: emojiCtrl,
                 textAlign: TextAlign.center,
                 maxLength: 4,
-                decoration: const InputDecoration(labelText: 'Icon (emoji, optional)', hintText: '🌾', counterText: ''),
+                decoration: const InputDecoration(
+                    labelText: 'Icon (emoji, optional)',
+                    hintText: '🌾',
+                    counterText: ''),
               ),
               const SizedBox(height: 8),
               TextField(
@@ -849,13 +984,20 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       ref.invalidate(itemCategoriesListProvider);
       ref.invalidate(catalogItemsListProvider);
       ref.invalidate(contactsCategoriesProvider);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Category created — pick in line or type name')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Category created — pick in line or type name')));
+      }
     } on DioException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.response?.data?.toString() ?? '$e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+      }
     }
   }
 
@@ -867,7 +1009,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     if (!mounted) return;
     if (cats.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Create a category first (button above).')),
+        const SnackBar(
+            content: Text('Create a category first (button above).')),
       );
       return;
     }
@@ -892,7 +1035,11 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('New catalog item', style: Theme.of(ctx).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                  Text('New catalog item',
+                      style: Theme.of(ctx)
+                          .textTheme
+                          .titleLarge
+                          ?.copyWith(fontWeight: FontWeight.w800)),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
                     key: ValueKey(selectedCat),
@@ -919,7 +1066,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                   DropdownButtonFormField<String?>(
                     key: ValueKey(unit),
                     initialValue: unit,
-                    decoration: const InputDecoration(labelText: 'Default unit (optional)'),
+                    decoration: const InputDecoration(
+                        labelText: 'Default unit (optional)'),
                     items: const [
                       DropdownMenuItem(value: null, child: Text('—')),
                       DropdownMenuItem(value: 'kg', child: Text('kg')),
@@ -962,13 +1110,20 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       ref.invalidate(itemCategoriesListProvider);
       ref.invalidate(contactsItemsProvider);
       ref.invalidate(contactsCategoriesProvider);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Item created — use Catalog icon on line')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Item created — use Catalog icon on line')));
+      }
     } on DioException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.response?.data?.toString() ?? '$e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+      }
     }
     nameCtrl.dispose();
   }
@@ -981,7 +1136,9 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     if (!mounted) return;
     if (items.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Create a catalog item first, then add a variant (e.g. Basmati).')),
+        const SnackBar(
+            content: Text(
+                'Create a catalog item first, then add a variant (e.g. Basmati).')),
       );
       return;
     }
@@ -1006,11 +1163,17 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('New variant', style: Theme.of(ctx).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                  Text('New variant',
+                      style: Theme.of(ctx)
+                          .textTheme
+                          .titleLarge
+                          ?.copyWith(fontWeight: FontWeight.w800)),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                    value: itemId,
-                    decoration: const InputDecoration(labelText: 'Catalog item *'),
+                    key: ValueKey(itemId ?? ''),
+                    initialValue: itemId,
+                    decoration:
+                        const InputDecoration(labelText: 'Catalog item *'),
                     items: items
                         .map(
                           (it) => DropdownMenuItem<String>(
@@ -1025,13 +1188,15 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                   TextField(
                     controller: nameCtrl,
                     autofocus: true,
-                    decoration: const InputDecoration(labelText: 'Variant name *', hintText: 'Basmati'),
+                    decoration: const InputDecoration(
+                        labelText: 'Variant name *', hintText: 'Basmati'),
                   ),
                   const SizedBox(height: 8),
                   TextField(
                     controller: kgCtrl,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'Default kg/bag (optional)', hintText: '50'),
+                    decoration: const InputDecoration(
+                        labelText: 'Default kg/bag (optional)', hintText: '50'),
                   ),
                   const SizedBox(height: 16),
                   FilledButton(
@@ -1066,10 +1231,14 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
           );
       ref.invalidate(catalogItemsListProvider);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Variant created — pick it from the catalog line')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Variant created — pick it from the catalog line')));
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+      }
     }
     nameCtrl.dispose();
     kgCtrl.dispose();
@@ -1080,7 +1249,9 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     final cid = l.catalogItemId;
     if (cid == null || cid.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pick a catalog item first (catalog icon), then choose variant.')),
+        const SnackBar(
+            content: Text(
+                'Pick a catalog item first (catalog icon), then choose variant.')),
       );
       return;
     }
@@ -1094,7 +1265,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       if (!mounted) return;
       if (vars.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No variants yet — use Quick create → Variant')),
+          const SnackBar(
+              content: Text('No variants yet — use Quick create → Variant')),
         );
         return;
       }
@@ -1125,7 +1297,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                     setState(() {
                       l.catalogVariantId = id;
                       if (kg != null) {
-                        l.kgPerBag.text = kg is num ? kg.toString() : kg.toString();
+                        l.kgPerBag.text =
+                            kg is num ? kg.toString() : kg.toString();
                       }
                     });
                     Navigator.pop(ctx);
@@ -1137,7 +1310,10 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
         },
       );
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+      }
     }
   }
 
@@ -1153,6 +1329,13 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     final tt = Theme.of(context).textTheme;
     final suppliersAsync = ref.watch(suppliersListProvider);
     final brokersAsync = ref.watch(brokersListProvider);
+    final suppliersForPlace = suppliersAsync.maybeWhen(
+      data: (list) =>
+          list.map((e) => Map<String, dynamic>.from(e as Map)).toList(),
+      orElse: () => <Map<String, dynamic>>[],
+    );
+    final selectedSupplierLocation =
+        _supplierLocationForSupplier(suppliersForPlace, _supplierId);
 
     return DraggableScrollableSheet(
       expand: false,
@@ -1167,384 +1350,481 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               controller: scrollController,
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 100),
               children: [
-            if (_landingPriceSpike) ...[
-              Container(
-                decoration: BoxDecoration(
-                  color: HexaColors.warning.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: HexaColors.warning),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  child: Row(
-                    children: [
-                      Icon(Icons.warning_amber_rounded, color: HexaColors.warning),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Landing price 15%+ above recent average — verify before saving.',
-                          style: tt.bodySmall?.copyWith(fontWeight: FontWeight.w700, color: HexaColors.warning),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-            ],
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CircleAvatar(
-                  radius: 22,
-                  backgroundColor: HexaColors.primaryLight.withValues(alpha: 0.9),
-                  child: Icon(Icons.edit_note_rounded, color: HexaColors.primaryMid, size: 26),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('New Entry', style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Preview → Confirm to save',
-                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
-                      ),
-                    ],
-                  ),
-                ),
-                ActionChip(
-                  avatar: Icon(Icons.calendar_today_rounded, size: 18, color: HexaColors.primaryMid),
-                  label: Text(_entryDateChipLabel(), style: const TextStyle(fontWeight: FontWeight.w600)),
-                  onPressed: _busy ? null : _pickDate,
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: _quickEntry,
-              enabled: !_busy,
-              decoration: InputDecoration(
-                labelText: 'Quick line',
-                hintText: 'rice 50kg 42 ravi  OR  ari 50kg 42 ravi',
-                prefixIcon: Icon(Icons.bolt_rounded, color: HexaColors.primaryMid),
-                suffixIcon: IconButton(
-                  tooltip: 'Parse into line 1',
-                  onPressed: _busy ? null : _parseQuickEntry,
-                  icon: const Icon(Icons.arrow_downward_rounded),
-                ),
-              ),
-              onSubmitted: (_) => _parseQuickEntry(),
-              onChanged: (_) => setState(() {}),
-            ),
-            _quickLineParseChips(),
-            const SizedBox(height: 16),
-            Text('Supplier & Broker', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-            const SizedBox(height: 8),
-            suppliersAsync.when(
-              loading: () => const LinearProgressIndicator(),
-              error: (_, __) => const Text('Could not load suppliers'),
-              data: (list) {
-                final suppliers = list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-                if (suppliers.isEmpty) {
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Material(
-                      color: HexaColors.primaryLight.withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(10),
-                      child: const ListTile(
-                        dense: true,
-                        leading: Icon(Icons.info_outline_rounded),
-                        title: Text('No suppliers yet — tap ＋ to add one'),
-                      ),
+                if (_landingPriceSpike) ...[
+                  Container(
+                    decoration: BoxDecoration(
+                      color: HexaColors.warning.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: HexaColors.warning),
                     ),
-                  );
-                }
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: DropdownButtonFormField<String?>(
-                        // ignore: deprecated_member_use
-                        value: _supplierId,
-                        decoration: const InputDecoration(labelText: 'Supplier (optional)'),
-                        items: [
-                          const DropdownMenuItem<String?>(value: null, child: Text('None')),
-                          ...suppliers.map(
-                            (s) => DropdownMenuItem<String?>(
-                              value: s['id']?.toString(),
-                              child: Text(s['name']?.toString() ?? ''),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.warning_amber_rounded,
+                              color: HexaColors.warning),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Landing price 15%+ above recent average — verify before saving.',
+                              style: tt.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: HexaColors.warning),
                             ),
                           ),
                         ],
-                        onChanged: _busy ? null : (v) => _onSupplierChanged(v, suppliers),
                       ),
                     ),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: TextButton(
-                        onPressed: _busy ? null : _addSupplierDialog,
-                        child: const Text('＋ New'),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-            brokersAsync.when(
-              loading: () => const SizedBox.shrink(),
-              error: (_, __) => const SizedBox.shrink(),
-              data: (list) {
-                return Row(
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    CircleAvatar(
+                      radius: 22,
+                      backgroundColor:
+                          HexaColors.primaryLight.withValues(alpha: 0.9),
+                      child: const Icon(Icons.edit_note_rounded,
+                          color: HexaColors.primaryMid, size: 26),
+                    ),
+                    const SizedBox(width: 12),
                     Expanded(
-                      child: DropdownButtonFormField<String?>(
-                        // ignore: deprecated_member_use
-                        value: _brokerId,
-                        decoration: const InputDecoration(
-                          labelText: 'Broker (from supplier or pick)',
-                          helperText: 'Updates when you choose a supplier',
-                        ),
-                        items: [
-                          const DropdownMenuItem<String?>(value: null, child: Text('None')),
-                          ...list.map(
-                            (b) => DropdownMenuItem<String?>(
-                              value: b['id']?.toString(),
-                              child: Text(b['name']?.toString() ?? ''),
-                            ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('New Entry',
+                              style: tt.titleLarge
+                                  ?.copyWith(fontWeight: FontWeight.w800)),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Preview → Confirm to save',
+                            style: tt.bodySmall?.copyWith(
+                                color: cs.onSurfaceVariant, height: 1.35),
                           ),
                         ],
-                        onChanged: _busy ? null : (v) => setState(() => _brokerId = v),
                       ),
                     ),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: TextButton(
-                        onPressed: _busy ? null : _addBrokerDialog,
-                        child: const Text('＋ New'),
-                      ),
+                    ActionChip(
+                      avatar: const Icon(Icons.calendar_today_rounded,
+                          size: 18, color: HexaColors.primaryMid),
+                      label: Text(_entryDateChipLabel(),
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      onPressed: _busy ? null : _pickDate,
                     ),
                   ],
-                );
-              },
-            ),
-            TextField(
-              controller: _place,
-              enabled: !_busy,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(
-                labelText: 'Purchase place / market (optional)',
-                hintText: 'e.g. Koyambedu, wholesale yard',
-                prefixIcon: Icon(Icons.place_outlined, color: HexaColors.primaryMid),
-              ),
-              onChanged: (_) => setState(() {}),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Text('Items', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-                const Spacer(),
-                TextButton(
-                  onPressed: _busy
-                      ? null
-                      : () {
-                          setState(() => _lines.add(_LineControllers()));
-                        },
-                  child: const Text('＋ Add line'),
                 ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            ...List.generate(_lines.length, (i) => _lineCard(context, lineIndex: i)),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: HexaColors.primaryMid,
-                      side: const BorderSide(color: HexaColors.primaryMid, width: 1.5),
-                      backgroundColor: HexaColors.surfaceElevated,
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _quickEntry,
+                  enabled: !_busy,
+                  decoration: InputDecoration(
+                    labelText: 'Quick line',
+                    hintText: 'rice 50kg 42 ravi  OR  ari 50kg 42 ravi',
+                    prefixIcon: const Icon(Icons.bolt_rounded,
+                        color: HexaColors.primaryMid),
+                    suffixIcon: IconButton(
+                      tooltip: 'Parse into line 1',
+                      onPressed: _busy ? null : _parseQuickEntry,
+                      icon: const Icon(Icons.arrow_downward_rounded),
                     ),
-                    onPressed: _busy ? null : _preview,
-                    child: _busy
-                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Text('Preview'),
                   ),
+                  onSubmitted: (_) => _parseQuickEntry(),
+                  onChanged: (_) => setState(() {}),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: HexaColors.primaryMid,
-                      foregroundColor: Colors.white,
-                      disabledBackgroundColor: HexaColors.primaryMid.withValues(alpha: 0.45),
-                      disabledForegroundColor: Colors.white70,
-                    ),
-                    onPressed: _busy
-                        ? null
-                        : (_previewToken != null && _previewToken!.isNotEmpty
-                            ? () => unawaited(_finalizeSaveAfterPreview())
-                            : null),
-                    child: const Text('Save'),
-                  ),
-                ),
-              ],
-            ),
-            if (_previewToken == null)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  'Preview once to enable Save — we double-check the same details before saving.',
-                  style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-                ),
-              ),
-            const SizedBox(height: 8),
-            ExpansionTile(
-              initiallyExpanded: false,
-              tilePadding: EdgeInsets.zero,
-              title: Text('Advanced costs & catalog tools', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-              subtitle: Text(
-                'Invoice, commission, transport, quick-create masters',
-                style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-              ),
-              children: [
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text('Advanced costs', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                  subtitle: Text(
-                    _advancedEntryOptions
-                        ? 'Invoice, commission splits, transport — for traders who need the full ledger.'
-                        : 'Simple: landed cost + selling only. Fastest path — add detail when you need it.',
-                    style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-                  ),
-                  value: _advancedEntryOptions,
-                  onChanged: _busy
-                      ? null
-                      : (v) {
-                          setState(() {
-                            _advancedEntryOptions = v;
-                            if (!v) {
-                              _commission.clear();
-                              _invoice.clear();
-                              _transport.clear();
-                            }
-                          });
-                        },
-                ),
+                _quickLineParseChips(),
+                const SizedBox(height: 16),
+                Text('Supplier & Broker',
+                    style:
+                        tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
                 const SizedBox(height: 8),
-                Material(
-                  color: HexaColors.primaryLight.withValues(alpha: 0.85),
-                  borderRadius: BorderRadius.circular(14),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                    child: Column(
+                suppliersAsync.when(
+                  loading: () => const LinearProgressIndicator(),
+                  error: (_, __) => FriendlyLoadError(
+                    message: 'Could not load suppliers',
+                    onRetry: () => ref.invalidate(suppliersListProvider),
+                  ),
+                  data: (list) {
+                    final suppliers = list
+                        .map((e) => Map<String, dynamic>.from(e as Map))
+                        .toList();
+                    if (suppliers.isEmpty) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Material(
+                          color: HexaColors.primaryLight.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(10),
+                          child: const ListTile(
+                            dense: true,
+                            leading: Icon(Icons.info_outline_rounded),
+                            title: Text('No suppliers yet — tap ＋ to add one'),
+                          ),
+                        ),
+                      );
+                    }
+                    final name = _selectedSupplierName(suppliers);
+                    return Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Create masters here or open the Contacts tab in the bottom navigation.',
-                          style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary, height: 1.35),
+                        Expanded(
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: _busy
+                                  ? null
+                                  : () => _openSupplierPicker(suppliers),
+                              borderRadius: BorderRadius.circular(14),
+                              child: InputDecorator(
+                                decoration: const InputDecoration(
+                                  labelText: 'Supplier (optional)',
+                                  suffixIcon:
+                                      Icon(Icons.keyboard_arrow_up_rounded),
+                                ),
+                                child: Text(
+                                  name ?? 'Tap to search or choose',
+                                  style: tt.bodyLarge?.copyWith(
+                                    color: name != null
+                                        ? null
+                                        : Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant,
+                                    fontWeight: name != null
+                                        ? FontWeight.w600
+                                        : FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: TextButton(
+                            onPressed: _busy ? null : _addSupplierDialog,
+                            child: const Text('＋ New'),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+                brokersAsync.when(
+                  loading: () => const SizedBox.shrink(),
+                  error: (_, __) => FriendlyLoadError(
+                    message: 'Could not load brokers',
+                    onRetry: () => ref.invalidate(brokersListProvider),
+                  ),
+                  data: (list) {
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<String?>(
+                            key: ValueKey(_brokerId ?? '∅'),
+                            initialValue: _brokerId,
+                            decoration: const InputDecoration(
+                              labelText: 'Broker (from supplier or pick)',
+                              helperText: 'Updates when you choose a supplier',
+                            ),
+                            items: [
+                              const DropdownMenuItem<String?>(
+                                  value: null, child: Text('None')),
+                              ...list.map(
+                                (b) => DropdownMenuItem<String?>(
+                                  value: b['id']?.toString(),
+                                  child: Text(b['name']?.toString() ?? ''),
+                                ),
+                              ),
+                            ],
+                            onChanged: _busy
+                                ? null
+                                : (v) => setState(() => _brokerId = v),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: TextButton(
+                            onPressed: _busy ? null : _addBrokerDialog,
+                            child: const Text('＋ New'),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+                if (_supplierId == null || selectedSupplierLocation == null)
+                  TextField(
+                    controller: _place,
+                    enabled: !_busy,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: const InputDecoration(
+                      labelText: 'Purchase place / market (optional)',
+                      hintText: 'e.g. Koyambedu, wholesale yard',
+                      prefixIcon: Icon(Icons.place_outlined,
+                          color: HexaColors.primaryMid),
+                    ),
+                    onChanged: (_) => setState(() {}),
+                  )
+                else
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      'Place from supplier: $selectedSupplierLocation',
+                      style: tt.bodySmall
+                          ?.copyWith(color: HexaColors.textSecondary),
+                    ),
+                  ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Text('Items',
+                        style: tt.titleSmall
+                            ?.copyWith(fontWeight: FontWeight.w800)),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: _busy
+                          ? null
+                          : () {
+                              setState(() => _lines.add(_LineControllers()));
+                            },
+                      child: const Text('＋ Add line'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                ...List.generate(
+                    _lines.length, (i) => _lineCard(context, lineIndex: i)),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: HexaColors.primaryMid,
+                          side: const BorderSide(
+                              color: HexaColors.primaryMid, width: 1.5),
+                          backgroundColor: HexaColors.surfaceElevated,
+                        ),
+                        onPressed: _busy ? null : _preview,
+                        child: _busy
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2))
+                            : const Text('Preview'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: HexaColors.primaryMid,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor:
+                              HexaColors.primaryMid.withValues(alpha: 0.45),
+                          disabledForegroundColor: Colors.white70,
+                        ),
+                        onPressed: _busy
+                            ? null
+                            : (_previewToken != null &&
+                                    _previewToken!.isNotEmpty
+                                ? () => unawaited(_finalizeSaveAfterPreview())
+                                : null),
+                        child: const Text('Save'),
+                      ),
+                    ),
+                  ],
+                ),
+                if (_previewToken == null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      'Preview once to enable Save — we double-check the same details before saving.',
+                      style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                    ),
+                  ),
+                const SizedBox(height: 8),
+                ExpansionTile(
+                  initiallyExpanded: false,
+                  tilePadding: EdgeInsets.zero,
+                  title: Text('Advanced costs & catalog tools',
+                      style:
+                          tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                  subtitle: Text(
+                    'Invoice, commission, transport, quick-create masters',
+                    style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                  ),
+                  children: [
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('Advanced costs',
+                          style: tt.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w700)),
+                      subtitle: Text(
+                        _advancedEntryOptions
+                            ? 'Invoice, commission splits, transport — for traders who need the full ledger.'
+                            : 'Simple: landed cost + selling only. Fastest path — add detail when you need it.',
+                        style:
+                            tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                      ),
+                      value: _advancedEntryOptions,
+                      onChanged: _busy
+                          ? null
+                          : (v) {
+                              setState(() {
+                                _advancedEntryOptions = v;
+                                if (!v) {
+                                  _commission.clear();
+                                  _invoice.clear();
+                                  _transport.clear();
+                                }
+                              });
+                            },
+                    ),
+                    const SizedBox(height: 8),
+                    Material(
+                      color: HexaColors.primaryLight.withValues(alpha: 0.85),
+                      borderRadius: BorderRadius.circular(14),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            ActionChip(
-                              avatar: Icon(Icons.storefront_outlined, size: 18, color: HexaColors.primaryMid),
-                              label: const Text('Supplier'),
-                              onPressed: _busy ? null : _addSupplierDialog,
+                            Text(
+                              'Create masters here or open the Contacts tab in the bottom navigation.',
+                              style: tt.bodySmall?.copyWith(
+                                  color: HexaColors.textSecondary,
+                                  height: 1.35),
                             ),
-                            ActionChip(
-                              avatar: Icon(Icons.handshake_outlined, size: 18, color: HexaColors.primaryMid),
-                              label: const Text('Broker'),
-                              onPressed: _busy ? null : _addBrokerDialog,
-                            ),
-                            ActionChip(
-                              avatar: Icon(Icons.folder_outlined, size: 18, color: HexaColors.primaryMid),
-                              label: const Text('Category'),
-                              onPressed: _busy ? null : _addCategoryFromEntry,
-                            ),
-                            ActionChip(
-                              avatar: Icon(Icons.inventory_2_outlined, size: 18, color: HexaColors.primaryMid),
-                              label: const Text('Item'),
-                              onPressed: _busy ? null : _addItemFromEntry,
-                            ),
-                            ActionChip(
-                              avatar: Icon(Icons.subdirectory_arrow_right_rounded, size: 18, color: HexaColors.primaryMid),
-                              label: const Text('Variant'),
-                              onPressed: _busy ? null : _addVariantFromEntry,
-                            ),
-                            ActionChip(
-                              avatar: Icon(Icons.people_outline, size: 18, color: HexaColors.primaryMid),
-                              label: const Text('Contacts hub'),
-                              onPressed: _busy ? null : _goToContactsForMaps,
+                            const SizedBox(height: 10),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: [
+                                ActionChip(
+                                  avatar: const Icon(Icons.storefront_outlined,
+                                      size: 18, color: HexaColors.primaryMid),
+                                  label: const Text('Supplier'),
+                                  onPressed: _busy ? null : _addSupplierDialog,
+                                ),
+                                ActionChip(
+                                  avatar: const Icon(Icons.handshake_outlined,
+                                      size: 18, color: HexaColors.primaryMid),
+                                  label: const Text('Broker'),
+                                  onPressed: _busy ? null : _addBrokerDialog,
+                                ),
+                                ActionChip(
+                                  avatar: const Icon(Icons.folder_outlined,
+                                      size: 18, color: HexaColors.primaryMid),
+                                  label: const Text('Category'),
+                                  onPressed:
+                                      _busy ? null : _addCategoryFromEntry,
+                                ),
+                                ActionChip(
+                                  avatar: const Icon(Icons.inventory_2_outlined,
+                                      size: 18, color: HexaColors.primaryMid),
+                                  label: const Text('Item'),
+                                  onPressed: _busy ? null : _addItemFromEntry,
+                                ),
+                                ActionChip(
+                                  avatar: const Icon(
+                                      Icons.subdirectory_arrow_right_rounded,
+                                      size: 18,
+                                      color: HexaColors.primaryMid),
+                                  label: const Text('Variant'),
+                                  onPressed:
+                                      _busy ? null : _addVariantFromEntry,
+                                ),
+                                ActionChip(
+                                  avatar: const Icon(Icons.people_outline,
+                                      size: 18, color: HexaColors.primaryMid),
+                                  label: const Text('Contacts hub'),
+                                  onPressed:
+                                      _busy ? null : _goToContactsForMaps,
+                                ),
+                              ],
                             ),
                           ],
                         ),
+                      ),
+                    ),
+                    if (_advancedEntryOptions) ...[
+                      TextField(
+                        controller: _invoice,
+                        decoration: const InputDecoration(
+                            labelText: 'Invoice no.',
+                            prefixIcon: Icon(Icons.receipt_long_outlined)),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _commission,
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        onChanged: (_) => setState(() {}),
+                        decoration: InputDecoration(
+                          labelText:
+                              _commMode == _CommissionMode.percentOfPurchase
+                                  ? 'Commission (% of purchase value)'
+                                  : _commMode == _CommissionMode.perUnitRupees
+                                      ? 'Commission (₹ / unit)'
+                                      : 'Commission (₹ total)',
+                          prefixIcon: const Icon(Icons.percent_outlined),
+                          helperText: _commMode ==
+                                  _CommissionMode.percentOfPurchase
+                              ? 'Percent of Σ(qty × purchase before commission). That amount is spread by quantity so each line’s landed cost includes its share.'
+                              : _commMode == _CommissionMode.perUnitRupees
+                                  ? 'Fixed ₹ per purchase unit on each line (same number you typed in Qty). Added to purchase → landed.'
+                                  : 'Total rupees for this entry, split evenly by total quantity across lines so landed cost per unit rises equally.',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SegmentedButton<_CommissionMode>(
+                        segments: const [
+                          ButtonSegment(
+                              value: _CommissionMode.totalRupees,
+                              label: Text('₹ Total'),
+                              icon: Icon(Icons.summarize_outlined)),
+                          ButtonSegment(
+                              value: _CommissionMode.percentOfPurchase,
+                              label: Text('%'),
+                              icon: Icon(Icons.percent_rounded)),
+                          ButtonSegment(
+                              value: _CommissionMode.perUnitRupees,
+                              label: Text('₹/u'),
+                              icon: Icon(Icons.straighten_rounded)),
+                        ],
+                        selected: {_commMode},
+                        onSelectionChanged: _busy
+                            ? null
+                            : (s) => setState(() => _commMode = s.first),
+                      ),
+                      if (_commissionSummaryLine() != null) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          _commissionSummaryLine()!,
+                          style: tt.bodySmall?.copyWith(
+                              color: HexaColors.textSecondary,
+                              fontWeight: FontWeight.w600),
+                        ),
                       ],
-                    ),
-                  ),
-                ),
-                if (_advancedEntryOptions) ...[
-                  TextField(
-                    controller: _invoice,
-                    decoration: const InputDecoration(labelText: 'Invoice no.', prefixIcon: Icon(Icons.receipt_long_outlined)),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _commission,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    onChanged: (_) => setState(() {}),
-                    decoration: InputDecoration(
-                      labelText: _commMode == _CommissionMode.percentOfPurchase
-                          ? 'Commission (% of purchase value)'
-                          : _commMode == _CommissionMode.perUnitRupees
-                              ? 'Commission (₹ / unit)'
-                              : 'Commission (₹ total)',
-                      prefixIcon: const Icon(Icons.percent_outlined),
-                      helperText: _commMode == _CommissionMode.percentOfPurchase
-                          ? 'Percent of Σ(qty × purchase before commission). That amount is spread by quantity so each line’s landed cost includes its share.'
-                          : _commMode == _CommissionMode.perUnitRupees
-                              ? 'Fixed ₹ per purchase unit on each line (same number you typed in Qty). Added to purchase → landed.'
-                              : 'Total rupees for this entry, split evenly by total quantity across lines so landed cost per unit rises equally.',
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SegmentedButton<_CommissionMode>(
-                    segments: const [
-                      ButtonSegment(value: _CommissionMode.totalRupees, label: Text('₹ Total'), icon: Icon(Icons.summarize_outlined)),
-                      ButtonSegment(value: _CommissionMode.percentOfPurchase, label: Text('%'), icon: Icon(Icons.percent_rounded)),
-                      ButtonSegment(value: _CommissionMode.perUnitRupees, label: Text('₹/u'), icon: Icon(Icons.straighten_rounded)),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _transport,
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        onChanged: (_) => setState(() {}),
+                        decoration: const InputDecoration(
+                          labelText: 'Transport (₹ total, optional)',
+                          prefixIcon: Icon(Icons.local_shipping_outlined),
+                          helperText:
+                              'Shared costs are split across lines by value when you save.',
+                        ),
+                      ),
                     ],
-                    selected: {_commMode},
-                    onSelectionChanged: _busy
-                        ? null
-                        : (s) => setState(() => _commMode = s.first),
-                  ),
-                  if (_commissionSummaryLine() != null) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      _commissionSummaryLine()!,
-                      style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary, fontWeight: FontWeight.w600),
-                    ),
                   ],
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _transport,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    onChanged: (_) => setState(() {}),
-                    decoration: const InputDecoration(
-                      labelText: 'Transport (₹ total, optional)',
-                      prefixIcon: Icon(Icons.local_shipping_outlined),
-                      helperText: 'Shared costs are split across lines by value when you save.',
-                    ),
-                  ),
-                ],
-              ],
-            ),
+                ),
               ],
             ),
             Positioned(
@@ -1558,9 +1838,13 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
-                    border: Border(top: BorderSide(color: HexaColors.border.withValues(alpha: 0.6), width: 1)),
+                    border: Border(
+                        top: BorderSide(
+                            color: HexaColors.border.withValues(alpha: 0.6),
+                            width: 1)),
                   ),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   child: _liveTotalsSummary(),
                 ),
               ),
@@ -1579,8 +1863,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     double profit,
     bool mixedUnits,
     double bagQty,
-  })
-  _rollupTotals() {
+  }) _rollupTotals() {
     var cost = 0.0;
     var kg = 0.0;
     var unitQty = 0.0;
@@ -1631,7 +1914,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
 
   Widget _liveTotalsSummary() {
     final t = _rollupTotals();
-    final nf = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+    final nf =
+        NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
     final tt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
     final String qtyTitle;
@@ -1654,10 +1938,12 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       qtyBody = _formatRollupQty(t.unitQty);
     } else if (t.kg > 0 && t.unitQty > 0) {
       qtyTitle = 'Weight / units';
-      qtyBody = '${t.kg.toStringAsFixed(1)} kg · ${_formatRollupQty(t.unitQty)} u';
+      qtyBody =
+          '${t.kg.toStringAsFixed(1)} kg · ${_formatRollupQty(t.unitQty)} u';
     } else if (t.bagQty > 0) {
       qtyTitle = 'Bags / weight';
-      qtyBody = '${_formatRollupQty(t.bagQty)} bags → ${t.kg.toStringAsFixed(1)} kg';
+      qtyBody =
+          '${_formatRollupQty(t.bagQty)} bags → ${t.kg.toStringAsFixed(1)} kg';
     } else {
       qtyTitle = 'Qty';
       qtyBody = '—';
@@ -1668,7 +1954,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
           child: Text(
             'Total cost\n${nf.format(t.cost)}',
             textAlign: TextAlign.center,
-            style: tt.labelSmall?.copyWith(color: HexaColors.costMuted, fontWeight: FontWeight.w600),
+            style: tt.labelSmall?.copyWith(
+                color: HexaColors.costMuted, fontWeight: FontWeight.w600),
           ),
         ),
         Expanded(
@@ -1704,7 +1991,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     if (raw.length < 3) return const SizedBox.shrink();
     final parsed = parseQuickLine(raw, supplierNamesLower: const []);
     if (parsed == null) return const SizedBox.shrink();
-    final nf = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+    final nf =
+        NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Wrap(
@@ -1712,31 +2000,45 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
         runSpacing: 8,
         children: [
           Chip(
-            avatar: Icon(Icons.inventory_2_outlined, size: 18, color: Colors.white.withValues(alpha: 0.95)),
-            label: Text(parsed.itemName, style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.white)),
+            avatar: Icon(Icons.inventory_2_outlined,
+                size: 18, color: Colors.white.withValues(alpha: 0.95)),
+            label: Text(parsed.itemName,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w700, color: Colors.white)),
             backgroundColor: HexaColors.primaryMid,
             side: BorderSide.none,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           ),
           Chip(
-            label: Text('${parsed.qty} ${parsed.unit}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+            label: Text('${parsed.qty} ${parsed.unit}',
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w600)),
             backgroundColor: HexaColors.primaryMid,
             side: BorderSide.none,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           ),
           Chip(
-            avatar: Icon(Icons.payments_outlined, size: 18, color: Colors.white.withValues(alpha: 0.95)),
-            label: Text('Buy ${nf.format(parsed.landing)}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+            avatar: Icon(Icons.payments_outlined,
+                size: 18, color: Colors.white.withValues(alpha: 0.95)),
+            label: Text('Buy ${nf.format(parsed.landing)}',
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w600)),
             backgroundColor: HexaColors.primaryMid,
             side: BorderSide.none,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           ),
           if (parsed.selling != null)
             Chip(
-              label: Text('Sell ${nf.format(parsed.selling!)}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+              label: Text('Sell ${nf.format(parsed.selling!)}',
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w600)),
               backgroundColor: HexaColors.primaryMid,
               side: BorderSide.none,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20)),
             ),
         ],
       ),
@@ -1751,8 +2053,11 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     final p = _parseDouble(l.purchase.text) ?? 0;
     final kgPb = l.unit == 'bag' ? (_parseDouble(l.kgPerBag.text) ?? 0) : 0.0;
     final perKg = (l.unit == 'bag' && kgPb > 0) ? land / kgPb : null;
-    final title = l.unit == 'bag' ? 'Landed cost (auto)' : 'Landed cost / unit (auto)';
-    final mainValue = perKg != null ? '₹${perKg.toStringAsFixed(2)}/kg' : '₹${land.toStringAsFixed(2)}';
+    final title =
+        l.unit == 'bag' ? 'Landed cost (auto)' : 'Landed cost / unit (auto)';
+    final mainValue = perKg != null
+        ? '₹${perKg.toStringAsFixed(2)}/kg'
+        : '₹${land.toStringAsFixed(2)}';
     final caption = perKg != null
         ? '₹${land.toStringAsFixed(2)} per bag (${kgPb.toStringAsFixed(0)} kg/bag). Margin uses cost/kg vs sell/kg. Tap for breakdown.'
         : 'Not editable — purchase ₹/unit + commission share. Tap for breakdown.';
@@ -1772,28 +2077,34 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Text('Purchase / unit: ₹${p.toStringAsFixed(2)}'),
-                        Text('Allocated commission / unit: ₹${cpu.toStringAsFixed(2)}'),
+                        Text(
+                            'Allocated commission / unit: ₹${cpu.toStringAsFixed(2)}'),
                         const Divider(),
                         if (perKg != null) ...[
                           Text('Landed / bag: ₹${land.toStringAsFixed(2)}'),
                           Text(
                             'Landed / kg: ₹${perKg.toStringAsFixed(2)} (${kgPb.toStringAsFixed(0)} kg/bag)',
-                            style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                            style: tt.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w800),
                           ),
                         ] else
                           Text(
                             'Landed / unit: ₹${land.toStringAsFixed(2)}',
-                            style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                            style: tt.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w800),
                           ),
                         const SizedBox(height: 8),
                         Text(
                           'Entry commission (field above) is divided by total quantity across all lines.',
-                          style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                          style: tt.bodySmall
+                              ?.copyWith(color: cs.onSurfaceVariant),
                         ),
                       ],
                     ),
                     actions: [
-                      TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+                      TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text('Close')),
                     ],
                   ),
                 );
@@ -1802,13 +2113,14 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: HexaColors.primaryMid.withValues(alpha: 0.35)),
+            border: Border.all(
+                color: HexaColors.primaryMid.withValues(alpha: 0.35)),
             boxShadow: HexaColors.cardShadow(context),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             children: [
-              Icon(Icons.balance_rounded, color: HexaColors.primaryMid),
+              const Icon(Icons.balance_rounded, color: HexaColors.primaryMid),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -1816,16 +2128,21 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                   children: [
                     Text(
                       title,
-                      style: tt.labelMedium?.copyWith(color: HexaColors.textSecondary, fontWeight: FontWeight.w700),
+                      style: tt.labelMedium?.copyWith(
+                          color: HexaColors.textSecondary,
+                          fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       mainValue,
-                      style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: HexaColors.textPrimary),
+                      style: tt.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: HexaColors.textPrimary),
                     ),
                     Text(
                       caption,
-                      style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary, fontSize: 11),
+                      style: tt.bodySmall?.copyWith(
+                          color: HexaColors.textSecondary, fontSize: 11),
                     ),
                   ],
                 ),
@@ -1863,7 +2180,9 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
           children: [
             Row(
               children: [
-                Text('Line ${lineIndex + 1}', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                Text('Line ${lineIndex + 1}',
+                    style:
+                        tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
                 const Spacer(),
                 if (_lines.length > 1)
                   IconButton(
@@ -1911,10 +2230,13 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
                       foregroundColor: HexaColors.primaryMid,
-                      side: const BorderSide(color: HexaColors.primaryMid, width: 1.2),
-                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+                      side: const BorderSide(
+                          color: HexaColors.primaryMid, width: 1.2),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 12, horizontal: 10),
                     ),
-                    onPressed: _busy ? null : () => _pickCatalogForLine(lineIndex),
+                    onPressed:
+                        _busy ? null : () => _pickCatalogForLine(lineIndex),
                     icon: const Icon(Icons.list_alt_outlined, size: 20),
                     label: const Text('📋 Pick from catalog'),
                   ),
@@ -1923,11 +2245,14 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                 Expanded(
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 12, horizontal: 10),
                       side: BorderSide(color: cs.outlineVariant),
                     ),
-                    onPressed: _busy ? null : () => _pickVariantForLine(lineIndex),
-                    icon: const Icon(Icons.subdirectory_arrow_right_rounded, size: 20),
+                    onPressed:
+                        _busy ? null : () => _pickVariantForLine(lineIndex),
+                    icon: const Icon(Icons.subdirectory_arrow_right_rounded,
+                        size: 20),
                     label: const Text('Variant'),
                   ),
                 ),
@@ -1940,7 +2265,9 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                 Expanded(
                   child: TextField(
                     controller: l.category,
-                    decoration: const InputDecoration(labelText: 'Category', prefixIcon: Icon(Icons.category_outlined)),
+                    decoration: const InputDecoration(
+                        labelText: 'Category',
+                        prefixIcon: Icon(Icons.category_outlined)),
                   ),
                 ),
                 Padding(
@@ -1953,7 +2280,10 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               ],
             ),
             const SizedBox(height: 8),
-            Text('Unit', style: tt.labelSmall?.copyWith(color: HexaColors.textSecondary, fontWeight: FontWeight.w700)),
+            Text('Unit',
+                style: tt.labelSmall?.copyWith(
+                    color: HexaColors.textSecondary,
+                    fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -2006,18 +2336,25 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               Wrap(
                 spacing: 6,
                 children: [
-                  ActionChip(label: const Text('25 kg'), onPressed: () => setState(() => l.kgPerBag.text = '25')),
-                  ActionChip(label: const Text('50 kg'), onPressed: () => setState(() => l.kgPerBag.text = '50')),
+                  ActionChip(
+                      label: const Text('25 kg'),
+                      onPressed: () => setState(() => l.kgPerBag.text = '25')),
+                  ActionChip(
+                      label: const Text('50 kg'),
+                      onPressed: () => setState(() => l.kgPerBag.text = '50')),
                 ],
               ),
             ],
             Theme(
-              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              data:
+                  Theme.of(context).copyWith(dividerColor: Colors.transparent),
               child: ExpansionTile(
                 tilePadding: EdgeInsets.zero,
                 title: Text(
                   'Stock notes (optional)',
-                  style: tt.labelMedium?.copyWith(fontWeight: FontWeight.w700, color: HexaColors.textSecondary),
+                  style: tt.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: HexaColors.textSecondary),
                 ),
                 children: [
                   TextField(
@@ -2042,8 +2379,12 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               onChanged: (_) => setState(() {}),
               decoration: InputDecoration(
                 labelText: _advancedEntryOptions
-                    ? (l.unit == 'bag' ? 'Purchase / bag (invoice) *' : 'Purchase price / unit *')
-                    : (l.unit == 'bag' ? 'Landed cost / bag (₹) *' : 'Landed cost / unit (₹) *'),
+                    ? (l.unit == 'bag'
+                        ? 'Purchase / bag (invoice) *'
+                        : 'Purchase price / unit *')
+                    : (l.unit == 'bag'
+                        ? 'Landed cost / bag (₹) *'
+                        : 'Landed cost / unit (₹) *'),
                 prefixIcon: const Icon(Icons.currency_rupee_rounded),
                 helperText: _advancedEntryOptions
                     ? (l.unit == 'bag'
@@ -2075,9 +2416,12 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               keyboardType: TextInputType.number,
               onChanged: (_) => setState(() {}),
               decoration: InputDecoration(
-                labelText: l.unit == 'bag' ? 'Selling price / kg' : 'Selling price / unit',
+                labelText: l.unit == 'bag'
+                    ? 'Selling price / kg'
+                    : 'Selling price / unit',
                 prefixIcon: const Icon(Icons.sell_outlined),
-                helperText: l.unit == 'bag' ? 'Revenue = kg × this price' : null,
+                helperText:
+                    l.unit == 'bag' ? 'Revenue = kg × this price' : null,
               ),
             ),
             SmartPricePanel(
@@ -2116,7 +2460,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       if (kgPb <= 0) {
         return Padding(
           padding: const EdgeInsets.only(top: 8),
-          child: Text('Set kg per bag to see profit', style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+          child: Text('Set kg per bag to see profit',
+              style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
         );
       }
       final qtyKg = qty * kgPb;
@@ -2125,7 +2470,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       profit = revenue - totalCost;
       marginPct = revenue > 0 ? (profit / revenue) * 100.0 : 0.0;
       final costPerKg = land / kgPb;
-      bagDetail = ' · Cost ₹${costPerKg.toStringAsFixed(0)}/kg vs sell ₹${sell.toStringAsFixed(0)}/kg';
+      bagDetail =
+          ' · Cost ₹${costPerKg.toStringAsFixed(0)}/kg vs sell ₹${sell.toStringAsFixed(0)}/kg';
     } else {
       profit = (sell - land) * qty;
       marginPct = sell > 0 ? ((sell - land) / sell) * 100.0 : 0.0;
@@ -2136,12 +2482,14 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: (good ? cs.primaryContainer : cs.errorContainer).withValues(alpha: 0.45),
+          color: (good ? cs.primaryContainer : cs.errorContainer)
+              .withValues(alpha: 0.45),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           children: [
-            Icon(Icons.show_chart_rounded, size: 18, color: good ? cs.primary : cs.error),
+            Icon(Icons.show_chart_rounded,
+                size: 18, color: good ? cs.primary : cs.error),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -2157,6 +2505,90 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _SupplierPickerSheet extends StatefulWidget {
+  const _SupplierPickerSheet({
+    required this.scrollController,
+    required this.suppliers,
+    required this.selectedId,
+    required this.onPick,
+  });
+
+  final ScrollController scrollController;
+  final List<Map<String, dynamic>> suppliers;
+  final String? selectedId;
+  final void Function(String?) onPick;
+
+  @override
+  State<_SupplierPickerSheet> createState() => _SupplierPickerSheetState();
+}
+
+class _SupplierPickerSheetState extends State<_SupplierPickerSheet> {
+  final _search = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final q = _query.trim().toLowerCase();
+    final filtered = q.isEmpty
+        ? widget.suppliers
+        : widget.suppliers
+            .where(
+                (s) => (s['name']?.toString() ?? '').toLowerCase().contains(q))
+            .toList();
+    final cs = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+          child: TextField(
+            controller: _search,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'Search suppliers',
+              prefixIcon: Icon(Icons.search_rounded),
+            ),
+            onChanged: (v) => setState(() => _query = v),
+          ),
+        ),
+        Expanded(
+          child: ListView(
+            controller: widget.scrollController,
+            padding: const EdgeInsets.only(bottom: 24),
+            children: [
+              ListTile(
+                leading: Icon(Icons.layers_clear_rounded,
+                    color: widget.selectedId == null
+                        ? cs.primary
+                        : cs.onSurfaceVariant),
+                title: const Text('None'),
+                selected: widget.selectedId == null,
+                onTap: () => widget.onPick(null),
+              ),
+              ...filtered.map((s) {
+                final id = s['id']?.toString();
+                final sel = id != null && id == widget.selectedId;
+                return ListTile(
+                  title: Text(s['name']?.toString() ?? '—'),
+                  selected: sel,
+                  onTap: () => widget.onPick(id),
+                );
+              }),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

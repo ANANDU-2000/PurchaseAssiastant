@@ -4,9 +4,13 @@ import 'package:intl/intl.dart';
 import '../auth/session_notifier.dart';
 
 /// Selected date range for the Analytics tab (inclusive).
-final analyticsDateRangeProvider = StateProvider<({DateTime from, DateTime to})>((ref) {
+final analyticsDateRangeProvider =
+    StateProvider<({DateTime from, DateTime to})>((ref) {
   final n = DateTime.now();
-  return (from: DateTime(n.year, n.month, 1), to: DateTime(n.year, n.month, n.day));
+  return (
+    from: DateTime(n.year, n.month, 1),
+    to: DateTime(n.year, n.month, n.day)
+  );
 });
 
 class AnalyticsKpi {
@@ -23,7 +27,8 @@ class AnalyticsKpi {
   final int purchaseCount;
 }
 
-final analyticsKpiProvider = FutureProvider.autoDispose<AnalyticsKpi>((ref) async {
+final analyticsKpiProvider =
+    FutureProvider.autoDispose<AnalyticsKpi>((ref) async {
   final session = ref.watch(sessionProvider);
   final range = ref.watch(analyticsDateRangeProvider);
   if (session == null) {

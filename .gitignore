@@ -17,6 +17,9 @@ backend/hexa_verify.db
 backend/_test_login.db
 backend/_verify_login.db
 
+# Uploaded workspace logos (POST /v1/me/branding-logo → served under /static/branding/)
+backend/static/branding/
+
 # Node
 admin_web/node_modules/
 admin_web/dist/
@@ -25,6 +28,8 @@ admin_web/dist/
 flutter_app/.dart_tool/
 flutter_app/build/
 flutter_app/.flutter-plugins-dependencies
+# Platform toolchains regenerate these (local plugins, intermediates)
+flutter_app/**/ephemeral/
 
 # IDE
 .idea/

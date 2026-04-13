@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../../core/providers/entries_list_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../shared/widgets/app_settings_action.dart';
+import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/hexa_empty_state.dart';
 import 'entry_create_sheet.dart';
 
@@ -22,7 +23,8 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
   @override
   void initState() {
     super.initState();
-    _searchCtrl = TextEditingController(text: ref.read(entrySearchQueryProvider));
+    _searchCtrl =
+        TextEditingController(text: ref.read(entrySearchQueryProvider));
     _searchCtrl.addListener(_onSearchChanged);
   }
 
@@ -81,7 +83,8 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
     }
     if (profit != 0) {
       if (buf.isNotEmpty) buf.write(' · ');
-      buf.write('P/L ${NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(profit)}');
+      buf.write(
+          'P/L ${NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(profit)}');
     }
     return buf.isEmpty ? '—' : buf.toString();
   }
@@ -107,11 +110,16 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('Filters', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                  Text('Filters',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w800)),
                   const SizedBox(height: 12),
                   ListTile(
                     title: const Text('From date'),
-                    subtitle: Text(nf == null ? 'Any' : DateFormat.yMMMd().format(nf!)),
+                    subtitle: Text(
+                        nf == null ? 'Any' : DateFormat.yMMMd().format(nf!)),
                     trailing: const Icon(Icons.calendar_today_rounded),
                     onTap: () async {
                       final picked = await showDatePicker(
@@ -125,7 +133,8 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
                   ),
                   ListTile(
                     title: const Text('To date'),
-                    subtitle: Text(nt == null ? 'Any' : DateFormat.yMMMd().format(nt!)),
+                    subtitle: Text(
+                        nt == null ? 'Any' : DateFormat.yMMMd().format(nt!)),
                     trailing: const Icon(Icons.calendar_today_rounded),
                     onTap: () async {
                       final picked = await showDatePicker(
@@ -138,11 +147,12 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
                     },
                   ),
                   DropdownButtonFormField<String?>(
-                    // ignore: deprecated_member_use
-                    value: ns,
+                    key: ValueKey(ns ?? '∅'),
+                    initialValue: ns,
                     decoration: const InputDecoration(labelText: 'Supplier'),
                     items: [
-                      const DropdownMenuItem<String?>(value: null, child: Text('Any supplier')),
+                      const DropdownMenuItem<String?>(
+                          value: null, child: Text('Any supplier')),
                       ...supplierList.map(
                         (s) => DropdownMenuItem<String?>(
                           value: s['id']?.toString(),
@@ -170,7 +180,8 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
                         onPressed: () {
                           ref.read(entryListFromProvider.notifier).state = nf;
                           ref.read(entryListToProvider.notifier).state = nt;
-                          ref.read(entryListSupplierIdProvider.notifier).state = ns;
+                          ref.read(entryListSupplierIdProvider.notifier).state =
+                              ns;
                           ref.invalidate(entriesListProvider);
                           Navigator.pop(ctx);
                         },
@@ -188,7 +199,8 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
   }
 
   void _showSearchDialog(BuildContext context, WidgetRef ref) {
-    final controller = TextEditingController(text: ref.read(entrySearchQueryProvider));
+    final controller =
+        TextEditingController(text: ref.read(entrySearchQueryProvider));
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -210,7 +222,8 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
           ),
           FilledButton(
             onPressed: () {
-              ref.read(entrySearchQueryProvider.notifier).state = controller.text;
+              ref.read(entrySearchQueryProvider.notifier).state =
+                  controller.text;
               ref.invalidate(entriesListProvider);
               Navigator.pop(ctx);
             },
@@ -228,7 +241,8 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
     final fFrom = ref.watch(entryListFromProvider);
     final fTo = ref.watch(entryListToProvider);
     final fSup = ref.watch(entryListSupplierIdProvider);
-    final hasFilters = fFrom != null || fTo != null || (fSup != null && fSup.isNotEmpty);
+    final hasFilters =
+        fFrom != null || fTo != null || (fSup != null && fSup.isNotEmpty);
 
     return Scaffold(
       appBar: AppBar(
@@ -281,7 +295,8 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
                         icon: const Icon(Icons.close_rounded),
                         onPressed: () {
                           _searchCtrl.clear();
-                          ref.read(entrySearchQueryProvider.notifier).state = '';
+                          ref.read(entrySearchQueryProvider.notifier).state =
+                              '';
                           ref.invalidate(entriesListProvider);
                           setState(() {});
                         },
@@ -295,30 +310,17 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
           Expanded(
             child: async.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text('Could not load entries', style: Theme.of(context).textTheme.titleMedium),
-                      const SizedBox(height: 8),
-                      Text(e.toString(), textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                      const SizedBox(height: 16),
-                      FilledButton(
-                        onPressed: () => ref.invalidate(entriesListProvider),
-                        child: const Text('Retry'),
-                      ),
-                    ],
-                  ),
-                ),
+              error: (_, __) => FriendlyLoadError(
+                message: 'Could not load entries',
+                onRetry: () => ref.invalidate(entriesListProvider),
               ),
               data: (items) {
                 if (items.isEmpty) {
                   return HexaEmptyState(
                     icon: Icons.receipt_long_rounded,
                     title: 'No entries yet',
-                    subtitle: 'Add a purchase to see it here. Entries sync when you are online and signed in.',
+                    subtitle:
+                        'Add a purchase to see it here. Entries sync when you are online and signed in.',
                     action: FilledButton.icon(
                       onPressed: () => showEntryCreateSheet(context),
                       icon: const Icon(Icons.add_rounded),
@@ -340,15 +342,25 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
                       final id = e['id']?.toString();
                       return Card(
                         child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 4),
                           leading: CircleAvatar(
-                            backgroundColor: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.6),
-                            child: Icon(Icons.receipt_long_rounded, color: Theme.of(context).colorScheme.primary, size: 22),
+                            backgroundColor: Theme.of(context)
+                                .colorScheme
+                                .primaryContainer
+                                .withValues(alpha: 0.6),
+                            child: Icon(Icons.receipt_long_rounded,
+                                color: Theme.of(context).colorScheme.primary,
+                                size: 22),
                           ),
-                          title: Text(_titleLine(e), style: const TextStyle(fontWeight: FontWeight.w700)),
+                          title: Text(_titleLine(e),
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w700)),
                           subtitle: Text(_subtitle(e)),
                           trailing: const Icon(Icons.chevron_right_rounded),
-                          onTap: id == null ? null : () => context.push('/entry/$id'),
+                          onTap: id == null
+                              ? null
+                              : () => context.push('/entry/$id'),
                         ),
                       );
                     },

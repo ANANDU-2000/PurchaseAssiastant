@@ -8,11 +8,14 @@ import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/widgets/friendly_load_error.dart';
 
-final _supplierProvider = FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, supplierId) async {
+final _supplierProvider = FutureProvider.autoDispose
+    .family<Map<String, dynamic>, String>((ref, supplierId) async {
   final session = ref.watch(sessionProvider);
   if (session == null) throw StateError('Not signed in');
   return ref.read(hexaApiProvider).getSupplier(
@@ -81,7 +84,9 @@ class _SupplierStatCard extends StatelessWidget {
                   const SizedBox(height: 6),
                   Text(
                     value,
-                    style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: HexaColors.textPrimary),
+                    style: tt.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: HexaColors.textPrimary),
                   ),
                 ],
               ),
@@ -129,11 +134,20 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
     final f = fmt.format(_from);
     final t = fmt.format(_to);
     try {
-      final m = await api.supplierMetrics(businessId: session.primaryBusiness.id, supplierId: widget.supplierId, from: f, to: t);
-      final e = await api.listEntries(businessId: session.primaryBusiness.id, from: f, to: t, supplierId: widget.supplierId);
+      final m = await api.supplierMetrics(
+          businessId: session.primaryBusiness.id,
+          supplierId: widget.supplierId,
+          from: f,
+          to: t);
+      final e = await api.listEntries(
+          businessId: session.primaryBusiness.id,
+          from: f,
+          to: t,
+          supplierId: widget.supplierId);
       List<Map<String, dynamic>>? rank;
       try {
-        rank = await api.analyticsSuppliers(businessId: session.primaryBusiness.id, from: f, to: t);
+        rank = await api.analyticsSuppliers(
+            businessId: session.primaryBusiness.id, from: f, to: t);
       } catch (_) {}
       if (mounted) {
         setState(() {
@@ -146,7 +160,8 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
     } catch (e) {
       if (mounted) {
         setState(() => _loading = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
       }
     }
   }
@@ -215,7 +230,9 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
     }
     if (avgs.length < 2) return 50;
     avgs.sort();
-    final mine = _metrics == null ? null : (_metrics!['avg_landing'] as num?)?.toDouble();
+    final mine = _metrics == null
+        ? null
+        : (_metrics!['avg_landing'] as num?)?.toDouble();
     if (mine == null || mine <= 0) return 50;
     var better = 0;
     for (final x in avgs) {
@@ -248,13 +265,16 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
         var s = 0.0;
         for (final ln in lines) {
           if (ln is! Map) continue;
-          s += (Map<String, dynamic>.from(ln)['landing_cost'] as num?)?.toDouble() ?? 0;
+          s += (Map<String, dynamic>.from(ln)['landing_cost'] as num?)
+                  ?.toDouble() ??
+              0;
         }
         avgL = s / lines.length;
       }
       buf.writeln('$d,"${names.join(';')}",$q,$avgL,$p');
     }
-    await Share.share(buf.toString(), subject: '${AppConfig.appName} supplier export');
+    await Share.share(buf.toString(),
+        subject: '${AppConfig.appName} supplier export');
   }
 
   @override
@@ -265,7 +285,9 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
 
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: () => context.pop()),
+        leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            onPressed: () => context.pop()),
         title: async.maybeWhen(
           data: (s) => Text(s['name']?.toString() ?? 'Supplier'),
           orElse: () => const Text('Supplier'),
@@ -274,13 +296,17 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
           IconButton(
             tooltip: 'Export CSV',
             icon: const Icon(Icons.ios_share_rounded),
-            onPressed: _entries == null || _entries!.isEmpty ? null : _exportCsv,
+            onPressed:
+                _entries == null || _entries!.isEmpty ? null : _exportCsv,
           ),
         ],
       ),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('$e')),
+        error: (_, __) => FriendlyLoadError(
+          message: 'Could not load supplier',
+          onRetry: () => ref.invalidate(_supplierProvider(widget.supplierId)),
+        ),
         data: (s) {
           final phone = s['phone']?.toString();
           final wa = s['whatsapp_number']?.toString();
@@ -309,25 +335,38 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                     children: [
                       Text(
                         name,
-                        style: tt.headlineSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 22),
+                        style: tt.headlineSmall?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 22),
                       ),
                       if (loc.isNotEmpty) ...[
                         const SizedBox(height: 8),
                         Row(
                           children: [
-                            Icon(Icons.place_outlined, size: 18, color: Colors.white.withValues(alpha: 0.85)),
+                            Icon(Icons.place_outlined,
+                                size: 18,
+                                color: Colors.white.withValues(alpha: 0.85)),
                             const SizedBox(width: 6),
-                            Expanded(child: Text(loc, style: tt.bodyMedium?.copyWith(color: Colors.white.withValues(alpha: 0.85)))),
+                            Expanded(
+                                child: Text(loc,
+                                    style: tt.bodyMedium?.copyWith(
+                                        color: Colors.white
+                                            .withValues(alpha: 0.85)))),
                           ],
                         ),
                       ],
                       if (phone != null && phone.isNotEmpty) ...[
                         const SizedBox(height: 8),
-                        Text(phone, style: tt.bodyMedium?.copyWith(color: Colors.white.withValues(alpha: 0.95))),
+                        Text(phone,
+                            style: tt.bodyMedium?.copyWith(
+                                color: Colors.white.withValues(alpha: 0.95))),
                       ],
                       if (wa != null && wa.isNotEmpty) ...[
                         const SizedBox(height: 6),
-                        Text('WhatsApp: $wa', style: tt.bodySmall?.copyWith(color: Colors.white.withValues(alpha: 0.88))),
+                        Text('WhatsApp: $wa',
+                            style: tt.bodySmall?.copyWith(
+                                color: Colors.white.withValues(alpha: 0.88))),
                       ],
                       const SizedBox(height: 14),
                       Wrap(
@@ -337,18 +376,24 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                           OutlinedButton.icon(
                             style: OutlinedButton.styleFrom(
                               foregroundColor: Colors.white,
-                              side: BorderSide(color: Colors.white.withValues(alpha: 0.85)),
+                              side: BorderSide(
+                                  color: Colors.white.withValues(alpha: 0.85)),
                             ),
-                            onPressed: phone == null || phone.isEmpty ? null : () => _dial(phone),
+                            onPressed: phone == null || phone.isEmpty
+                                ? null
+                                : () => _dial(phone),
                             icon: const Icon(Icons.call_rounded, size: 20),
                             label: const Text('Call'),
                           ),
                           OutlinedButton.icon(
                             style: OutlinedButton.styleFrom(
                               foregroundColor: Colors.white,
-                              side: BorderSide(color: Colors.white.withValues(alpha: 0.85)),
+                              side: BorderSide(
+                                  color: Colors.white.withValues(alpha: 0.85)),
                             ),
-                            onPressed: wa == null || wa.isEmpty ? null : () => _openWhatsApp(wa),
+                            onPressed: wa == null || wa.isEmpty
+                                ? null
+                                : () => _openWhatsApp(wa),
                             icon: const Icon(Icons.chat_rounded, size: 20),
                             label: const Text('WhatsApp'),
                           ),
@@ -359,9 +404,18 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                         scrollDirection: Axis.horizontal,
                         child: Row(
                           children: [
-                            _ChipPill(label: '7d', onTap: () => _preset(7), onGradient: true),
-                            _ChipPill(label: '30d', onTap: () => _preset(30), onGradient: true),
-                            _ChipPill(label: '90d', onTap: () => _preset(90), onGradient: true),
+                            _ChipPill(
+                                label: '7d',
+                                onTap: () => _preset(7),
+                                onGradient: true),
+                            _ChipPill(
+                                label: '30d',
+                                onTap: () => _preset(30),
+                                onGradient: true),
+                            _ChipPill(
+                                label: '90d',
+                                onTap: () => _preset(90),
+                                onGradient: true),
                             _ChipPill(
                               label: 'YTD',
                               onGradient: true,
@@ -374,14 +428,18 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                                 _reload();
                               },
                             ),
-                            _ChipPill(label: 'All', onTap: () => _preset(0), onGradient: true),
+                            _ChipPill(
+                                label: 'All',
+                                onTap: () => _preset(0),
+                                onGradient: true),
                           ],
                         ),
                       ),
                       const SizedBox(height: 10),
                       Text(
                         '${fmt.format(_from)} – ${fmt.format(_to)}',
-                        style: tt.labelMedium?.copyWith(color: Colors.white.withValues(alpha: 0.65)),
+                        style: tt.labelMedium?.copyWith(
+                            color: Colors.white.withValues(alpha: 0.65)),
                       ),
                     ],
                   ),
@@ -398,28 +456,41 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                 ],
                 const SizedBox(height: 8),
                 if (_loading)
-                  const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()))
+                  const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Center(child: CircularProgressIndicator()))
                 else if (_metrics != null) ...[
-                  Text('Metrics', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                  Text('Metrics',
+                      style:
+                          tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
                   const SizedBox(height: 10),
                   _metricsGrid(_metrics!, tt),
                   const SizedBox(height: 16),
-                  Text('Price vs other suppliers', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                  Text('Price vs other suppliers',
+                      style:
+                          tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
                   const SizedBox(height: 8),
                   _PerfBar(
                     pct: _performancePct(),
-                    hasSupplierData: ((_metrics!['deals'] as num?)?.toInt() ?? 0) > 0,
+                    hasSupplierData:
+                        ((_metrics!['deals'] as num?)?.toInt() ?? 0) > 0,
                   ),
                   const SizedBox(height: 16),
-                  Text('Avg landing trend', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                  Text('Avg landing trend',
+                      style:
+                          tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
                   const SizedBox(height: 8),
                   _LandingChart(spots: _chartSpots()),
                   const SizedBox(height: 16),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Purchase history', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-                      Text('${_entries?.length ?? 0} entries', style: tt.labelSmall?.copyWith(color: HexaColors.textSecondary)),
+                      Text('Purchase history',
+                          style: tt.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w800)),
+                      Text('${_entries?.length ?? 0} entries',
+                          style: tt.labelSmall
+                              ?.copyWith(color: HexaColors.textSecondary)),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -429,17 +500,23 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                       child: Center(
                         child: Column(
                           children: [
-                            Icon(Icons.receipt_long_outlined, size: 56, color: HexaColors.primaryMid.withValues(alpha: 0.5)),
+                            Icon(Icons.receipt_long_outlined,
+                                size: 56,
+                                color: HexaColors.primaryMid
+                                    .withValues(alpha: 0.5)),
                             const SizedBox(height: 12),
                             Text(
                               '0 entries in this period',
-                              style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700, color: HexaColors.textSecondary),
+                              style: tt.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: HexaColors.textSecondary),
                             ),
                             const SizedBox(height: 6),
                             Text(
                               'Add purchases from this supplier to see history here',
                               textAlign: TextAlign.center,
-                              style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary),
+                              style: tt.bodySmall
+                                  ?.copyWith(color: HexaColors.textSecondary),
                             ),
                           ],
                         ),
@@ -467,25 +544,55 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
       children: [
         Row(
           children: [
-            Expanded(child: _SupplierStatCard(icon: Icons.receipt_long_rounded, label: 'Deals', value: '$deals', accent: const Color(0xFF1A6B8A))),
+            Expanded(
+                child: _SupplierStatCard(
+                    icon: Icons.receipt_long_rounded,
+                    label: 'Deals',
+                    value: '$deals',
+                    accent: const Color(0xFF1A6B8A))),
             const SizedBox(width: 12),
-            Expanded(child: _SupplierStatCard(icon: Icons.shopping_cart_outlined, label: 'Purchase', value: '₹${pam.toStringAsFixed(0)}', accent: const Color(0xFF3949AB))),
+            Expanded(
+                child: _SupplierStatCard(
+                    icon: Icons.shopping_cart_outlined,
+                    label: 'Purchase',
+                    value: '₹${pam.toStringAsFixed(0)}',
+                    accent: const Color(0xFF3949AB))),
           ],
         ),
         const SizedBox(height: 12),
         Row(
           children: [
-            Expanded(child: _SupplierStatCard(icon: Icons.scale_rounded, label: 'Total qty', value: tq.toStringAsFixed(1), accent: const Color(0xFF6A1B9A))),
+            Expanded(
+                child: _SupplierStatCard(
+                    icon: Icons.scale_rounded,
+                    label: 'Total qty',
+                    value: tq.toStringAsFixed(1),
+                    accent: const Color(0xFF6A1B9A))),
             const SizedBox(width: 12),
-            Expanded(child: _SupplierStatCard(icon: Icons.price_change_outlined, label: 'Avg landing', value: '₹${al.toStringAsFixed(2)}', accent: const Color(0xFFFF9800))),
+            Expanded(
+                child: _SupplierStatCard(
+                    icon: Icons.price_change_outlined,
+                    label: 'Avg landing',
+                    value: '₹${al.toStringAsFixed(2)}',
+                    accent: const Color(0xFFFF9800))),
           ],
         ),
         const SizedBox(height: 12),
         Row(
           children: [
-            Expanded(child: _SupplierStatCard(icon: Icons.trending_up_rounded, label: 'Total profit', value: '₹${tp.toStringAsFixed(0)}', accent: HexaColors.profit)),
+            Expanded(
+                child: _SupplierStatCard(
+                    icon: Icons.trending_up_rounded,
+                    label: 'Total profit',
+                    value: '₹${tp.toStringAsFixed(0)}',
+                    accent: HexaColors.profit)),
             const SizedBox(width: 12),
-            Expanded(child: _SupplierStatCard(icon: Icons.percent_rounded, label: 'Avg margin', value: '${margin.toStringAsFixed(1)}%', accent: HexaColors.accentAmber)),
+            Expanded(
+                child: _SupplierStatCard(
+                    icon: Icons.percent_rounded,
+                    label: 'Avg margin',
+                    value: '${margin.toStringAsFixed(1)}%',
+                    accent: HexaColors.accentAmber)),
           ],
         ),
       ],
@@ -494,7 +601,8 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
 }
 
 class _ChipPill extends StatelessWidget {
-  const _ChipPill({required this.label, required this.onTap, this.onGradient = false});
+  const _ChipPill(
+      {required this.label, required this.onTap, this.onGradient = false});
 
   final String label;
   final VoidCallback onTap;
@@ -504,7 +612,9 @@ class _ChipPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final child = onGradient
         ? ActionChip(
-            label: Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+            label: Text(label,
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w700)),
             backgroundColor: Colors.white.withValues(alpha: 0.15),
             side: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
             onPressed: onTap,
@@ -526,7 +636,9 @@ class _PerfBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final good = pct >= 60;
-    final col = good ? HexaColors.profit : (pct >= 40 ? HexaColors.accentAmber : HexaColors.loss);
+    final col = good
+        ? HexaColors.profit
+        : (pct >= 40 ? HexaColors.accentAmber : HexaColors.loss);
     final caption = !hasSupplierData
         ? '${pct.toStringAsFixed(0)}% — No data yet. Add purchases from this supplier'
         : '${pct.toStringAsFixed(0)}% — ${good ? 'Better than many on price' : 'Negotiate harder on landing'}';
@@ -538,14 +650,18 @@ class _PerfBar extends StatelessWidget {
           child: LinearProgressIndicator(
             value: hasSupplierData ? (pct / 100).clamp(0.0, 1.0) : 0,
             minHeight: 10,
-            backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+            backgroundColor:
+                Theme.of(context).colorScheme.surfaceContainerHighest,
             color: col,
           ),
         ),
         const SizedBox(height: 6),
         Text(
           caption,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: HexaColors.textSecondary),
+          style: Theme.of(context)
+              .textTheme
+              .labelSmall
+              ?.copyWith(color: HexaColors.textSecondary),
         ),
       ],
     );
@@ -563,7 +679,8 @@ class _LandingChart extends StatelessWidget {
     if (spots.length < 2) {
       return Padding(
         padding: const EdgeInsets.all(16),
-        child: Text('Not enough dated points — add more purchases.', style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary)),
+        child: Text('Not enough dated points — add more purchases.',
+            style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary)),
       );
     }
     final ys = spots.map((s) => s.y).toList();
@@ -575,22 +692,26 @@ class _LandingChart extends StatelessWidget {
         LineChartData(
           minY: minY,
           maxY: maxY,
-          gridData: FlGridData(show: true, drawVerticalLine: false),
+          gridData: const FlGridData(show: true, drawVerticalLine: false),
           titlesData: FlTitlesData(
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles:
+                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles:
+                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
             bottomTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
                 reservedSize: 22,
-                getTitlesWidget: (v, _) => Text(v.toInt().toString(), style: tt.labelSmall),
+                getTitlesWidget: (v, _) =>
+                    Text(v.toInt().toString(), style: tt.labelSmall),
               ),
             ),
             leftTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
                 reservedSize: 36,
-                getTitlesWidget: (v, _) => Text(v.toStringAsFixed(0), style: tt.labelSmall),
+                getTitlesWidget: (v, _) =>
+                    Text(v.toStringAsFixed(0), style: tt.labelSmall),
               ),
             ),
           ),
@@ -632,14 +753,16 @@ class _EntryTable extends StatelessWidget {
           ],
           rows: [
             for (final raw in entries)
-              if (raw is Map) _buildRow(context, Map<String, dynamic>.from(raw), tt),
+              if (raw is Map)
+                _buildRow(context, Map<String, dynamic>.from(raw), tt),
           ],
         ),
       ),
     );
   }
 
-  DataRow _buildRow(BuildContext context, Map<String, dynamic> e, TextTheme tt) {
+  DataRow _buildRow(
+      BuildContext context, Map<String, dynamic> e, TextTheme tt) {
     final d = e['entry_date']?.toString().split('T').first ?? '';
     final lines = e['lines'];
     double q = 0, profit = 0;
@@ -658,7 +781,9 @@ class _EntryTable extends StatelessWidget {
       var s = 0.0;
       for (final ln in lines) {
         if (ln is! Map) continue;
-        s += (Map<String, dynamic>.from(ln)['landing_cost'] as num?)?.toDouble() ?? 0;
+        s += (Map<String, dynamic>.from(ln)['landing_cost'] as num?)
+                ?.toDouble() ??
+            0;
       }
       avgL = s / lines.length;
     }
@@ -671,7 +796,10 @@ class _EntryTable extends StatelessWidget {
             },
       cells: [
         DataCell(Text(d, style: tt.labelMedium)),
-        DataCell(SizedBox(width: 140, child: Text(names.take(3).join(', '), overflow: TextOverflow.ellipsis))),
+        DataCell(SizedBox(
+            width: 140,
+            child: Text(names.take(3).join(', '),
+                overflow: TextOverflow.ellipsis))),
         DataCell(Text(q.toStringAsFixed(1))),
         DataCell(Text(avgL.toStringAsFixed(1))),
         DataCell(Text(profit.toStringAsFixed(0))),

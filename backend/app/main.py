@@ -166,13 +166,17 @@ elif settings.app_env.lower() == "development":
         if _o not in _seen:
             _origins.append(_o)
             _seen.add(_o)
-app.add_middleware(
-    CORSMiddleware,
+_cors_kwargs = dict(
     allow_origins=_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Flutter web `flutter run -d chrome` often picks a random port; listing every port in CORS_ORIGINS is impractical.
+# In development only, allow any http(s) localhost / 127.0.0.1 origin. Production must set explicit CORS_ORIGINS.
+if settings.app_env.lower() == "development":
+    _cors_kwargs["allow_origin_regex"] = r"https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+app.add_middleware(CORSMiddleware, **_cors_kwargs)
 
 if settings.trusted_hosts:
     hosts = [h.strip() for h in settings.trusted_hosts.split(",") if h.strip()]

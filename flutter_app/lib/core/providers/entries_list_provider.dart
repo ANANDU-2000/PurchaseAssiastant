@@ -13,7 +13,8 @@ final entryListToProvider = StateProvider<DateTime?>((ref) => null);
 /// Optional supplier filter (entries.supplier_id).
 final entryListSupplierIdProvider = StateProvider<String?>((ref) => null);
 
-final entriesListProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+final entriesListProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   final q = ref.watch(entrySearchQueryProvider);

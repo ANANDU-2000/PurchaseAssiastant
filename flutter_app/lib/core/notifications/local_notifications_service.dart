@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../config/app_config.dart';
@@ -8,7 +9,8 @@ import 'package:timezone/timezone.dart' as tz;
 /// Daily summary at 09:00 (Asia/Kolkata when available). No-op on web.
 class LocalNotificationsService {
   LocalNotificationsService._();
-  static final LocalNotificationsService instance = LocalNotificationsService._();
+  static final LocalNotificationsService instance =
+      LocalNotificationsService._();
 
   static const _dailyId = 91001;
   final FlutterLocalNotificationsPlugin _p = FlutterLocalNotificationsPlugin();
@@ -18,9 +20,9 @@ class LocalNotificationsService {
     if (kIsWeb) return;
     if (_inited) return;
     await _p.initialize(
-      settings: InitializationSettings(
-        android: const AndroidInitializationSettings('@mipmap/ic_launcher'),
-        iOS: const DarwinInitializationSettings(),
+      settings: const InitializationSettings(
+        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        iOS: DarwinInitializationSettings(),
         windows: WindowsInitializationSettings(
           appName: AppConfig.appName,
           appUserModelId: 'MyPurchases.PurchaseAssistant.App',
@@ -35,7 +37,8 @@ class LocalNotificationsService {
       tz.setLocalLocation(tz.UTC);
     }
     if (defaultTargetPlatform == TargetPlatform.android) {
-      final androidImpl = _p.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      final androidImpl = _p.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
       await androidImpl?.requestNotificationsPermission();
     }
     _inited = true;

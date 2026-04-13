@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
-import { adminGet, userSafePageError } from '../../lib/api'
+import { useCallback, useEffect, useState } from 'react'
+import { AdminErrorBanner } from '../../components/AdminErrorBanner'
+import { adminGet, devErrorDetail, userSafePageError } from '../../lib/api'
 
 type UserRow = {
   id: string
@@ -14,63 +15,117 @@ type UserRow = {
   total_entries?: number
 }
 
+function formatCreated(iso: string | null): string {
+  if (!iso) return '—'
+  try {
+    return new Date(iso).toLocaleString()
+  } catch {
+    return iso
+  }
+}
+
 export default function UsersPage() {
   const [data, setData] = useState<{ items: UserRow[]; total: number } | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [errDev, setErrDev] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+
+  const load = useCallback(async () => {
+    const d = await adminGet<{ items: UserRow[]; total: number }>('/v1/admin/users')
+    setData({ items: d.items ?? [], total: d.total ?? 0 })
+  }, [])
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
+      setLoading(true)
+      setErr(null)
+      setErrDev(null)
       try {
-        const d = await adminGet<{ items: UserRow[]; total: number }>('/v1/admin/users')
-        if (!cancelled) setData({ items: d.items ?? [], total: d.total ?? 0 })
+        await load()
       } catch (e: unknown) {
-        if (!cancelled) setErr(userSafePageError(e))
+        if (!cancelled) {
+          setErr(userSafePageError(e))
+          setErrDev(devErrorDetail(e))
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
       }
     })()
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [load])
+
+  async function refresh() {
+    setRefreshing(true)
+    setErr(null)
+    setErrDev(null)
+    try {
+      await load()
+    } catch (e: unknown) {
+      setErr(userSafePageError(e))
+      setErrDev(devErrorDetail(e))
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   return (
-    <section className="stub-page">
-      <h1>Users</h1>
-      <p className="stub-page__hint" style={{ marginBottom: 12 }}>
+    <section className="admin-data-page users-page">
+      <div className="admin-page-head">
+        <h1>Users</h1>
+        <button type="button" className="pk-btn pk-btn--primary" disabled={loading || refreshing} onClick={() => void refresh()}>
+          {refreshing ? 'Refreshing…' : 'Refresh'}
+        </button>
+      </div>
+      <p className="admin-data-intro">
         Customer accounts ({data?.total ?? '—'} total). Password and Google sign-in are shown per row.
       </p>
-      {err && <p className="stub-page__error">{err}</p>}
-      {data && (
-        <table style={{ borderCollapse: 'collapse', width: '100%', maxWidth: 960 }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc', padding: '8px 4px' }}>Email</th>
-              <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Username</th>
-              <th style={{ textAlign: 'right', borderBottom: '1px solid #ccc' }}>Entries</th>
-              <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Admin</th>
-              <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Auth</th>
-              <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Created</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.items.map((u) => (
-              <tr key={u.id}>
-                <td style={{ padding: '8px 4px' }}>{u.email}</td>
-                <td style={{ fontFamily: 'monospace', fontSize: 13 }}>{u.username}</td>
-                <td style={{ textAlign: 'right' }}>{u.total_entries ?? '—'}</td>
-                <td>{u.is_super_admin ? 'yes' : '—'}</td>
-                <td style={{ fontSize: 13 }}>
-                  {u.has_password && 'password '}
-                  {u.google_linked && 'google '}
-                  {!u.has_password && !u.google_linked && '—'}
-                </td>
-                <td style={{ fontSize: 13 }}>{u.created_at ?? '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+
+      {err && <AdminErrorBanner message={err} devDetail={errDev} />}
+
+      {loading && <p className="admin-data-empty">Loading…</p>}
+
+      {data && !loading && (
+        <>
+          {data.items.length === 0 ? (
+            <p className="admin-data-empty">No users.</p>
+          ) : (
+            <div className="admin-table-wrap">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Email</th>
+                    <th>Username</th>
+                    <th className="admin-table-num">Entries</th>
+                    <th>Admin</th>
+                    <th>Auth</th>
+                    <th>Created</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.items.map((u) => (
+                    <tr key={u.id}>
+                      <td>{u.email}</td>
+                      <td className="admin-table-mono">{u.username}</td>
+                      <td className="admin-table-num">{u.total_entries ?? '—'}</td>
+                      <td>{u.is_super_admin ? 'yes' : '—'}</td>
+                      <td className="admin-table-muted">
+                        {u.has_password && 'password '}
+                        {u.google_linked && 'google '}
+                        {!u.has_password && !u.google_linked && '—'}
+                      </td>
+                      <td className="admin-table-muted">{formatCreated(u.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
-      {data && data.items.length === 0 && !err && <p>No users.</p>}
     </section>
   )
 }

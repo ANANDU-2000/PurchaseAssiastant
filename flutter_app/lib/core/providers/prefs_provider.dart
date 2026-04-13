@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -7,10 +8,12 @@ import '../notifications/local_notifications_service.dart';
 const kNotificationsOptInKey = 'pref_notifications_opt_in';
 
 final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
-  throw UnimplementedError('sharedPreferencesProvider must be overridden in ProviderScope');
+  throw UnimplementedError(
+      'sharedPreferencesProvider must be overridden in ProviderScope');
 });
 
-final smartAutofillEnabledProvider = NotifierProvider<SmartAutofillNotifier, bool>(SmartAutofillNotifier.new);
+final smartAutofillEnabledProvider =
+    NotifierProvider<SmartAutofillNotifier, bool>(SmartAutofillNotifier.new);
 
 class SmartAutofillNotifier extends Notifier<bool> {
   static const _k = 'pref_smart_autofill';
@@ -27,7 +30,32 @@ class SmartAutofillNotifier extends Notifier<bool> {
   }
 }
 
-final localNotificationsOptInProvider = NotifierProvider<LocalNotificationsNotifier, bool>(LocalNotificationsNotifier.new);
+final localNotificationsOptInProvider =
+    NotifierProvider<LocalNotificationsNotifier, bool>(
+        LocalNotificationsNotifier.new);
+
+const kThemeModeKey = 'pref_theme_mode';
+
+final themeModeProvider =
+    NotifierProvider<ThemeModeNotifier, ThemeMode>(ThemeModeNotifier.new);
+
+class ThemeModeNotifier extends Notifier<ThemeMode> {
+  @override
+  ThemeMode build() {
+    final p = ref.watch(sharedPreferencesProvider);
+    final v = p.getString(kThemeModeKey);
+    if (v == 'light') return ThemeMode.light;
+    return ThemeMode.dark;
+  }
+
+  Future<void> setMode(ThemeMode mode) async {
+    await ref.read(sharedPreferencesProvider).setString(
+          kThemeModeKey,
+          mode == ThemeMode.light ? 'light' : 'dark',
+        );
+    state = mode;
+  }
+}
 
 class LocalNotificationsNotifier extends Notifier<bool> {
   @override
@@ -37,7 +65,9 @@ class LocalNotificationsNotifier extends Notifier<bool> {
   }
 
   Future<void> setValue(bool v) async {
-    await ref.read(sharedPreferencesProvider).setBool(kNotificationsOptInKey, v);
+    await ref
+        .read(sharedPreferencesProvider)
+        .setBool(kNotificationsOptInKey, v);
     state = v;
     await LocalNotificationsService.instance.setOptIn(v);
   }

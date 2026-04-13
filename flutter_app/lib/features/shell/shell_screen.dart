@@ -25,7 +25,8 @@ class ShellScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final idx = navigationShell.currentIndex;
     final conn = ref.watch(connectivityResultsProvider);
-    final offline = conn.valueOrNull != null && isOfflineResult(conn.valueOrNull!);
+    final offline =
+        conn.valueOrNull != null && isOfflineResult(conn.valueOrNull!);
 
     void go(int branch) {
       navigationShell.goBranch(branch);
@@ -46,7 +47,8 @@ class ShellScreen extends ConsumerWidget {
                   ],
                 ),
                 border: Border(
-                  bottom: BorderSide(color: HexaColors.warning.withValues(alpha: 0.35)),
+                  bottom: BorderSide(
+                      color: HexaColors.warning.withValues(alpha: 0.35)),
                 ),
                 boxShadow: [
                   BoxShadow(
@@ -57,19 +59,23 @@ class ShellScreen extends ConsumerWidget {
                 ],
               ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 child: Row(
                   children: [
-                    Icon(Icons.wifi_off_rounded, size: 20, color: HexaColors.warning.withValues(alpha: 0.95)),
+                    Icon(Icons.wifi_off_rounded,
+                        size: 20,
+                        color: HexaColors.warning.withValues(alpha: 0.95)),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         "You're offline. Reports and smart features need internet—entries may show last saved data.",
-                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                              color: HexaColors.textPrimary,
-                              fontWeight: FontWeight.w600,
-                              height: 1.25,
-                            ),
+                        style:
+                            Theme.of(context).textTheme.labelMedium?.copyWith(
+                                  color: HexaColors.textPrimary,
+                                  fontWeight: FontWeight.w600,
+                                  height: 1.25,
+                                ),
                       ),
                     ),
                   ],
@@ -79,28 +85,33 @@ class ShellScreen extends ConsumerWidget {
           Expanded(child: navigationShell),
         ],
       ),
-      floatingActionButton: Container(
-        key: const ValueKey('shell_fab'),
-        width: 56,
-        height: 56,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          gradient: HexaColors.ctaGradient,
-          boxShadow: [
-            ...HexaColors.glowShadow(HexaColors.accentPurple, blur: 22),
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.35),
-              blurRadius: 16,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
+      floatingActionButton: Tooltip(
+        message: 'New entry · long-press for AI',
+        child: Container(
+          key: const ValueKey('shell_fab'),
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
-            onTap: () => showEntryCreateSheet(context),
-            child: const Icon(Icons.add_rounded, color: Colors.white, size: 26),
+            gradient: HexaColors.ctaGradient,
+            boxShadow: [
+              ...HexaColors.glowShadow(HexaColors.accentPurple, blur: 22),
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.35),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: () => showEntryCreateSheet(context),
+              onLongPress: () => context.push('/ai'),
+              child:
+                  const Icon(Icons.add_rounded, color: Colors.white, size: 26),
+            ),
           ),
         ),
       ),
@@ -116,7 +127,7 @@ class ShellScreen extends ConsumerWidget {
         notchMargin: 10,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            border: Border(top: BorderSide(color: HexaColors.border)),
+            border: const Border(top: BorderSide(color: HexaColors.border)),
             boxShadow: [
               BoxShadow(
                 color: HexaColors.accentPurple.withValues(alpha: 0.06),
@@ -210,12 +221,35 @@ class _ShellTab extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  selected ? selectedIcon : icon,
-                  size: 24,
-                  color: selected ? HexaColors.accentBlue : ShellScreen._unselected,
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: selected
+                        ? HexaColors.primaryMid.withValues(alpha: 0.2)
+                        : Colors.transparent,
+                    boxShadow: selected
+                        ? [
+                            BoxShadow(
+                              color:
+                                  HexaColors.primaryMid.withValues(alpha: 0.35),
+                              blurRadius: 12,
+                              spreadRadius: 0,
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Icon(
+                    selected ? selectedIcon : icon,
+                    size: 24,
+                    color: selected
+                        ? HexaColors.primaryMid
+                        : ShellScreen._unselected,
+                  ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 4),
                 Text(
                   label,
                   maxLines: 1,
@@ -223,25 +257,9 @@ class _ShellTab extends StatelessWidget {
                   style: tt.labelSmall?.copyWith(
                     fontSize: 12,
                     fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
-                    color: selected ? HexaColors.accentBlue : ShellScreen._unselected,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  height: 3,
-                  width: selected ? 18 : 3,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(99),
-                    gradient: selected
-                        ? LinearGradient(
-                            colors: [
-                              HexaColors.accentBlue,
-                              HexaColors.accentPurple,
-                            ],
-                          )
-                        : null,
-                    color: selected ? null : Colors.transparent,
+                    color: selected
+                        ? HexaColors.primaryMid
+                        : ShellScreen._unselected,
                   ),
                 ),
               ],

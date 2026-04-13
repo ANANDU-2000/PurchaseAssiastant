@@ -24,7 +24,8 @@ class SessionCache {
     try {
       final list = jsonDecode(s) as List<dynamic>;
       return list
-          .map((e) => BusinessBrief.fromJson(Map<String, dynamic>.from(e as Map)))
+          .map((e) =>
+              BusinessBrief.fromJson(Map<String, dynamic>.from(e as Map)))
           .toList();
     } catch (_) {
       return null;

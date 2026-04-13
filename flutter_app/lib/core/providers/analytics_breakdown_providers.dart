@@ -8,7 +8,8 @@ import 'analytics_kpi_provider.dart';
 typedef AnalyticsDailyProfitPoint = ({DateTime day, double profit});
 
 /// Last 30 calendar days ending on [analyticsDateRangeProvider].to (inclusive).
-final analyticsDailyProfitProvider = FutureProvider.autoDispose<List<AnalyticsDailyProfitPoint>>((ref) async {
+final analyticsDailyProfitProvider =
+    FutureProvider.autoDispose<List<AnalyticsDailyProfitPoint>>((ref) async {
   final session = ref.watch(sessionProvider);
   final range = ref.watch(analyticsDateRangeProvider);
   if (session == null) return [];
@@ -46,7 +47,8 @@ final analyticsDailyProfitProvider = FutureProvider.autoDispose<List<AnalyticsDa
 });
 
 /// Last 7 calendar days ending today (local), for Home mini trend chart (independent of analytics date range).
-final homeSevenDayProfitProvider = FutureProvider.autoDispose<List<AnalyticsDailyProfitPoint>>((ref) async {
+final homeSevenDayProfitProvider =
+    FutureProvider.autoDispose<List<AnalyticsDailyProfitPoint>>((ref) async {
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   final now = DateTime.now();
@@ -83,7 +85,8 @@ final homeSevenDayProfitProvider = FutureProvider.autoDispose<List<AnalyticsDail
   return out;
 });
 
-final analyticsItemsTableProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+final analyticsItemsTableProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final session = ref.watch(sessionProvider);
   final range = ref.watch(analyticsDateRangeProvider);
   if (session == null) return [];
@@ -95,7 +98,8 @@ final analyticsItemsTableProvider = FutureProvider.autoDispose<List<Map<String, 
       );
 });
 
-final analyticsCategoriesTableProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+final analyticsCategoriesTableProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final session = ref.watch(sessionProvider);
   final range = ref.watch(analyticsDateRangeProvider);
   if (session == null) return [];
@@ -107,7 +111,8 @@ final analyticsCategoriesTableProvider = FutureProvider.autoDispose<List<Map<Str
       );
 });
 
-final analyticsSuppliersTableProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+final analyticsSuppliersTableProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final session = ref.watch(sessionProvider);
   final range = ref.watch(analyticsDateRangeProvider);
   if (session == null) return [];
@@ -119,7 +124,8 @@ final analyticsSuppliersTableProvider = FutureProvider.autoDispose<List<Map<Stri
       );
 });
 
-final analyticsBrokersTableProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+final analyticsBrokersTableProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final session = ref.watch(sessionProvider);
   final range = ref.watch(analyticsDateRangeProvider);
   if (session == null) return [];
@@ -132,7 +138,8 @@ final analyticsBrokersTableProvider = FutureProvider.autoDispose<List<Map<String
 });
 
 /// Heuristic insight: highest estimated purchase-volume item × supplier with lowest avg landing vs peer average.
-final analyticsBestSupplierInsightProvider = FutureProvider.autoDispose<String?>((ref) async {
+final analyticsBestSupplierInsightProvider =
+    FutureProvider.autoDispose<String?>((ref) async {
   final items = await ref.watch(analyticsItemsTableProvider.future);
   final suppliers = await ref.watch(analyticsSuppliersTableProvider.future);
   if (items.isEmpty || suppliers.isEmpty) return null;
@@ -150,7 +157,8 @@ final analyticsBestSupplierInsightProvider = FutureProvider.autoDispose<String?>
   final itemName = topByVol?['item_name']?.toString() ?? '';
   if (itemName.isEmpty) return null;
   final supList = List<Map<String, dynamic>>.from(suppliers);
-  supList.sort((a, b) => ((a['avg_landing'] as num?) ?? 1e18).compareTo((b['avg_landing'] as num?) ?? 1e18));
+  supList.sort((a, b) => ((a['avg_landing'] as num?) ?? 1e18)
+      .compareTo((b['avg_landing'] as num?) ?? 1e18));
   final best = supList.first;
   final sname = best['supplier_name']?.toString() ?? '';
   final savg = (best['avg_landing'] as num?)?.toDouble() ?? 0;
@@ -160,7 +168,8 @@ final analyticsBestSupplierInsightProvider = FutureProvider.autoDispose<String?>
   }
   final overall = supList.isEmpty ? savg : sum / supList.length;
   final delta = overall - savg;
-  final fmt = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+  final fmt =
+      NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
   if (delta.abs() < 0.01) {
     return 'High-volume item: $itemName — $sname has best avg landing (${fmt.format(savg)}) vs peers.';
   }

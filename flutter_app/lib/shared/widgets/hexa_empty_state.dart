@@ -30,12 +30,15 @@ class HexaEmptyState extends StatelessWidget {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: cs.primaryContainer.withValues(alpha: 0.45),
-                border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.6)),
+                border:
+                    Border.all(color: cs.outlineVariant.withValues(alpha: 0.6)),
               ),
               child: Icon(icon, size: 40, color: cs.primary),
             ),
             const SizedBox(height: 20),
-            Text(title, style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700), textAlign: TextAlign.center),
+            Text(title,
+                style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                textAlign: TextAlign.center),
             if (subtitle != null) ...[
               const SizedBox(height: 8),
               Text(

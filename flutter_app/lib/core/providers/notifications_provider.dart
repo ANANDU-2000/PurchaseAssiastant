@@ -32,7 +32,8 @@ class NotificationsNotifier extends StateNotifier<List<NotificationItem>> {
       id: 'welcome',
       type: NotificationType.system,
       title: 'Welcome to ${AppConfig.appName}',
-      subtitle: 'Alerts for price spikes, low margins, and reminders will appear here.',
+      subtitle:
+          'Alerts for price spikes, low margins, and reminders will appear here.',
       createdAt: DateTime.now().subtract(const Duration(minutes: 2)),
       actionRoute: '/home',
     ),
@@ -43,15 +44,18 @@ class NotificationsNotifier extends StateNotifier<List<NotificationItem>> {
   void markRead(String id) {
     state = [
       for (final n in state)
-        if (n.id == id) NotificationItem(
-              id: n.id,
-              type: n.type,
-              title: n.title,
-              subtitle: n.subtitle,
-              createdAt: n.createdAt,
-              isRead: true,
-              actionRoute: n.actionRoute,
-            ) else n,
+        if (n.id == id)
+          NotificationItem(
+            id: n.id,
+            type: n.type,
+            title: n.title,
+            subtitle: n.subtitle,
+            createdAt: n.createdAt,
+            isRead: true,
+            actionRoute: n.actionRoute,
+          )
+        else
+          n,
     ];
   }
 
@@ -66,7 +70,8 @@ class NotificationsNotifier extends StateNotifier<List<NotificationItem>> {
         id: id,
         type: NotificationType.priceAlert,
         title: 'Price spike',
-        subtitle: '$itemSample — landing 15%+ above recent average. Verify before next buy.',
+        subtitle:
+            '$itemSample — landing 15%+ above recent average. Verify before next buy.',
         createdAt: DateTime.now(),
         actionRoute: '/entries',
       ),
@@ -75,7 +80,8 @@ class NotificationsNotifier extends StateNotifier<List<NotificationItem>> {
   }
 }
 
-final notificationsProvider = StateNotifierProvider<NotificationsNotifier, List<NotificationItem>>((ref) {
+final notificationsProvider =
+    StateNotifierProvider<NotificationsNotifier, List<NotificationItem>>((ref) {
   return NotificationsNotifier();
 });
 

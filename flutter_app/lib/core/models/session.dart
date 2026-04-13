@@ -10,6 +10,7 @@ class BusinessBrief {
   final String id;
   final String name;
   final String role;
+
   /// Shown in-app instead of [name] when set (per-workspace white-label).
   final String? brandingTitle;
   final String? brandingLogoUrl;

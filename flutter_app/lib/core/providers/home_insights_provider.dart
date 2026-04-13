@@ -30,7 +30,8 @@ class HomeInsightsData {
   final List<Map<String, dynamic>> alerts;
 }
 
-final homeInsightsProvider = FutureProvider.autoDispose<HomeInsightsData>((ref) async {
+final homeInsightsProvider =
+    FutureProvider.autoDispose<HomeInsightsData>((ref) async {
   final session = ref.watch(sessionProvider);
   if (session == null) {
     throw StateError('Not signed in');
@@ -44,7 +45,10 @@ final homeInsightsProvider = FutureProvider.autoDispose<HomeInsightsData>((ref) 
     from: fmt.format(range.$1),
     to: fmt.format(range.$2),
   );
-  final alerts = (m['alerts'] as List<dynamic>?)?.map((e) => Map<String, dynamic>.from(e as Map)).toList() ?? [];
+  final alerts = (m['alerts'] as List<dynamic>?)
+          ?.map((e) => Map<String, dynamic>.from(e as Map))
+          .toList() ??
+      [];
   final topProfit = m['top_item_profit'];
   final worstProfit = m['worst_item_profit'];
   final bestSupProfit = m['best_supplier_profit'];

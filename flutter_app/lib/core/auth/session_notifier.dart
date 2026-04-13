@@ -23,7 +23,9 @@ final hexaApiProvider = Provider<HexaApi>((ref) {
         final pair = await api.refreshTokens(refreshToken: t.refresh!);
         await store.write(access: pair.access, refresh: pair.refresh);
         api.setAuthToken(pair.access);
-        await ref.read(sessionProvider.notifier).applyRefreshedTokens(pair.access, pair.refresh);
+        await ref
+            .read(sessionProvider.notifier)
+            .applyRefreshedTokens(pair.access, pair.refresh);
         return true;
       } catch (_) {
         // Refresh token invalid (wrong server DB, rotated JWT secret, revoked). Clear storage
@@ -40,7 +42,8 @@ final tokenStoreProvider = Provider<SecureTokenStore>((ref) {
   return SecureTokenStore(ref.watch(sharedPreferencesProvider));
 });
 
-final sessionProvider = NotifierProvider<SessionNotifier, Session?>(SessionNotifier.new);
+final sessionProvider =
+    NotifierProvider<SessionNotifier, Session?>(SessionNotifier.new);
 
 class SessionNotifier extends Notifier<Session?> {
   @override
@@ -49,7 +52,8 @@ class SessionNotifier extends Notifier<Session?> {
   Future<void> applyRefreshedTokens(String access, String refresh) async {
     final cur = state;
     if (cur == null) return;
-    state = Session(accessToken: access, refreshToken: refresh, businesses: cur.businesses);
+    state = Session(
+        accessToken: access, refreshToken: refresh, businesses: cur.businesses);
   }
 
   Future<void> _persistSession(Session session) async {
@@ -85,7 +89,10 @@ class SessionNotifier extends Notifier<Session?> {
         authRefresh.value++;
         return;
       }
-      final session = Session(accessToken: t.access!, refreshToken: t.refresh!, businesses: businesses);
+      final session = Session(
+          accessToken: t.access!,
+          refreshToken: t.refresh!,
+          businesses: businesses);
       state = session;
       await _persistSession(session);
       authRefresh.value++;
@@ -118,7 +125,10 @@ class SessionNotifier extends Notifier<Session?> {
             authRefresh.value++;
             return;
           }
-          final session = Session(accessToken: pair.access, refreshToken: pair.refresh, businesses: businesses);
+          final session = Session(
+              accessToken: pair.access,
+              refreshToken: pair.refresh,
+              businesses: businesses);
           state = session;
           await _persistSession(session);
           authRefresh.value++;
@@ -135,7 +145,10 @@ class SessionNotifier extends Notifier<Session?> {
       if (_isRecoverableNetworkError(e)) {
         final cached = cache.loadBusinesses();
         if (cached != null && cached.isNotEmpty) {
-          state = Session(accessToken: t.access!, refreshToken: t.refresh!, businesses: cached);
+          state = Session(
+              accessToken: t.access!,
+              refreshToken: t.refresh!,
+              businesses: cached);
           authRefresh.value++;
           return;
         }
@@ -145,7 +158,10 @@ class SessionNotifier extends Notifier<Session?> {
       }
       final cached = cache.loadBusinesses();
       if (cached != null && cached.isNotEmpty) {
-        state = Session(accessToken: t.access!, refreshToken: t.refresh!, businesses: cached);
+        state = Session(
+            accessToken: t.access!,
+            refreshToken: t.refresh!,
+            businesses: cached);
         authRefresh.value++;
         return;
       }
@@ -154,7 +170,10 @@ class SessionNotifier extends Notifier<Session?> {
     } catch (_) {
       final cached = cache.loadBusinesses();
       if (cached != null && cached.isNotEmpty) {
-        state = Session(accessToken: t.access!, refreshToken: t.refresh!, businesses: cached);
+        state = Session(
+            accessToken: t.access!,
+            refreshToken: t.refresh!,
+            businesses: cached);
         authRefresh.value++;
         return;
       }
@@ -180,20 +199,30 @@ class SessionNotifier extends Notifier<Session?> {
     await store.write(access: tokens.access, refresh: tokens.refresh);
     api.setAuthToken(tokens.access);
     final businesses = await api.meBusinesses();
-    final session = Session(accessToken: tokens.access, refreshToken: tokens.refresh, businesses: businesses);
+    final session = Session(
+        accessToken: tokens.access,
+        refreshToken: tokens.refresh,
+        businesses: businesses);
     state = session;
     await _persistSession(session);
     authRefresh.value++;
   }
 
-  Future<void> register({required String username, required String email, required String password}) async {
+  Future<void> register(
+      {required String username,
+      required String email,
+      required String password}) async {
     final api = ref.read(hexaApiProvider);
     final store = ref.read(tokenStoreProvider);
-    final tokens = await api.register(username: username, email: email, password: password);
+    final tokens = await api.register(
+        username: username, email: email, password: password);
     await store.write(access: tokens.access, refresh: tokens.refresh);
     api.setAuthToken(tokens.access);
     final businesses = await api.meBusinesses();
-    final session = Session(accessToken: tokens.access, refreshToken: tokens.refresh, businesses: businesses);
+    final session = Session(
+        accessToken: tokens.access,
+        refreshToken: tokens.refresh,
+        businesses: businesses);
     state = session;
     await _persistSession(session);
     authRefresh.value++;
@@ -206,7 +235,10 @@ class SessionNotifier extends Notifier<Session?> {
     await store.write(access: tokens.access, refresh: tokens.refresh);
     api.setAuthToken(tokens.access);
     final businesses = await api.meBusinesses();
-    final session = Session(accessToken: tokens.access, refreshToken: tokens.refresh, businesses: businesses);
+    final session = Session(
+        accessToken: tokens.access,
+        refreshToken: tokens.refresh,
+        businesses: businesses);
     state = session;
     await _persistSession(session);
     authRefresh.value++;

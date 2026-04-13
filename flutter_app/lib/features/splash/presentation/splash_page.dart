@@ -15,7 +15,8 @@ class SplashPage extends ConsumerStatefulWidget {
   ConsumerState<SplashPage> createState() => _SplashPageState();
 }
 
-class _SplashPageState extends ConsumerState<SplashPage> with SingleTickerProviderStateMixin {
+class _SplashPageState extends ConsumerState<SplashPage>
+    with SingleTickerProviderStateMixin {
   bool _busy = true;
   String? _error;
 
@@ -25,7 +26,8 @@ class _SplashPageState extends ConsumerState<SplashPage> with SingleTickerProvid
   @override
   void initState() {
     super.initState();
-    _anim = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+    _anim = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 600));
     _fade = CurvedAnimation(parent: _anim, curve: Curves.easeOut);
     _anim.forward();
     WidgetsBinding.instance.addPostFrameCallback((_) => _boot());
@@ -105,8 +107,10 @@ class _SplashPageState extends ConsumerState<SplashPage> with SingleTickerProvid
                     decoration: BoxDecoration(
                       color: HexaColors.primaryLight,
                       shape: BoxShape.circle,
-                      border: Border.all(color: HexaColors.accentBlue.withValues(alpha: 0.4)),
-                      boxShadow: HexaColors.glowShadow(HexaColors.accentPurple, blur: 18),
+                      border: Border.all(
+                          color: HexaColors.accentBlue.withValues(alpha: 0.4)),
+                      boxShadow: HexaColors.glowShadow(HexaColors.accentPurple,
+                          blur: 18),
                     ),
                     alignment: Alignment.center,
                     child: Text(
@@ -138,7 +142,11 @@ class _SplashPageState extends ConsumerState<SplashPage> with SingleTickerProvid
                     ),
                   ),
                   const SizedBox(height: 28),
-                  if (_busy) const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 2.5)),
+                  if (_busy)
+                    const SizedBox(
+                        width: 28,
+                        height: 28,
+                        child: CircularProgressIndicator(strokeWidth: 2.5)),
                   if (_error != null) ...[
                     const SizedBox(height: 20),
                     Text(

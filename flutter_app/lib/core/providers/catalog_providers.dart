@@ -11,21 +11,27 @@ import '../auth/session_notifier.dart';
   return (from: iso(from), to: iso(to));
 }
 
-final itemCategoriesListProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+final itemCategoriesListProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
-  return ref.read(hexaApiProvider).listItemCategories(businessId: session.primaryBusiness.id);
+  return ref
+      .read(hexaApiProvider)
+      .listItemCategories(businessId: session.primaryBusiness.id);
 });
 
-final catalogItemsListProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+final catalogItemsListProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
-  return ref.read(hexaApiProvider).listCatalogItems(businessId: session.primaryBusiness.id);
+  return ref
+      .read(hexaApiProvider)
+      .listCatalogItems(businessId: session.primaryBusiness.id);
 });
 
 /// Params: `itemId|from|to` for stable family identity.
-final catalogItemInsightsProvider =
-    FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, key) async {
+final catalogItemInsightsProvider = FutureProvider.autoDispose
+    .family<Map<String, dynamic>, String>((ref, key) async {
   final parts = key.split('|');
   if (parts.length != 3) return {};
   final itemId = parts[0];
@@ -41,7 +47,8 @@ final catalogItemInsightsProvider =
       );
 });
 
-final categoryInsightsProvider = FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, key) async {
+final categoryInsightsProvider = FutureProvider.autoDispose
+    .family<Map<String, dynamic>, String>((ref, key) async {
   final parts = key.split('|');
   if (parts.length != 3) return {};
   final categoryId = parts[0];
@@ -57,7 +64,8 @@ final categoryInsightsProvider = FutureProvider.autoDispose.family<Map<String, d
       );
 });
 
-final catalogItemLinesProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, key) async {
+final catalogItemLinesProvider = FutureProvider.autoDispose
+    .family<List<Map<String, dynamic>>, String>((ref, key) async {
   final parts = key.split('|');
   if (parts.length != 3) return [];
   final itemId = parts[0];
@@ -73,8 +81,8 @@ final catalogItemLinesProvider = FutureProvider.autoDispose.family<List<Map<Stri
       );
 });
 
-final catalogVariantsProvider =
-    FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, itemId) async {
+final catalogVariantsProvider = FutureProvider.autoDispose
+    .family<List<Map<String, dynamic>>, String>((ref, itemId) async {
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   return ref.read(hexaApiProvider).listCatalogVariants(
@@ -83,8 +91,8 @@ final catalogVariantsProvider =
       );
 });
 
-final catalogItemDetailProvider =
-    FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, itemId) async {
+final catalogItemDetailProvider = FutureProvider.autoDispose
+    .family<Map<String, dynamic>, String>((ref, itemId) async {
   final session = ref.watch(sessionProvider);
   if (session == null) return {};
   return ref.read(hexaApiProvider).getCatalogItem(

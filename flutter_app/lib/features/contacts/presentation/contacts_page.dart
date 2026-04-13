@@ -6,7 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/widgets/friendly_load_error.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/catalog_providers.dart';
@@ -31,7 +33,8 @@ Color _avatarColor(String seed) {
 }
 
 String _initials(String name) {
-  final parts = name.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
+  final parts =
+      name.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
   if (parts.isEmpty) return '?';
   if (parts.length == 1) {
     final p = parts.first;
@@ -66,7 +69,10 @@ class _StatPill extends StatelessWidget {
                 text,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600),
+                style: Theme.of(context)
+                    .textTheme
+                    .labelSmall
+                    ?.copyWith(fontWeight: FontWeight.w600),
               ),
             ),
           ],
@@ -111,7 +117,9 @@ class _SupplierCard extends StatelessWidget {
     var marginStr = '—';
     if (m != null && tq > 0 && avg != null && avg > 0) {
       final cost = avg * tq;
-      if (cost > 0) marginStr = '${((profit ?? 0) / cost * 100).toStringAsFixed(0)}%';
+      if (cost > 0) {
+        marginStr = '${((profit ?? 0) / cost * 100).toStringAsFixed(0)}%';
+      }
     }
     final phone = data['phone']?.toString();
     final wa = data['whatsapp_number']?.toString();
@@ -139,7 +147,10 @@ class _SupplierCard extends StatelessWidget {
                     backgroundColor: _avatarColor(nm.isEmpty ? 'x' : nm),
                     child: Text(
                       _initials(nm.isEmpty ? '?' : nm),
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -147,15 +158,21 @@ class _SupplierCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(nm, style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                        Text(nm,
+                            style: tt.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w800)),
                         if (loc.isNotEmpty)
                           Padding(
                             padding: const EdgeInsets.only(top: 4),
                             child: Row(
                               children: [
-                                Icon(Icons.place_outlined, size: 16, color: HexaColors.textSecondary),
+                                const Icon(Icons.place_outlined,
+                                    size: 16, color: HexaColors.textSecondary),
                                 const SizedBox(width: 4),
-                                Expanded(child: Text(loc, style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary))),
+                                Expanded(
+                                    child: Text(loc,
+                                        style: tt.bodySmall?.copyWith(
+                                            color: HexaColors.textSecondary))),
                               ],
                             ),
                           ),
@@ -166,11 +183,14 @@ class _SupplierCard extends StatelessWidget {
                               onTap: () => onDial(phone),
                               child: Row(
                                 children: [
-                                  Icon(Icons.phone_outlined, size: 16, color: HexaColors.primaryMid),
+                                  const Icon(Icons.phone_outlined,
+                                      size: 16, color: HexaColors.primaryMid),
                                   const SizedBox(width: 6),
                                   Text(
                                     'Tap to call',
-                                    style: tt.labelLarge?.copyWith(color: HexaColors.primaryMid, fontWeight: FontWeight.w700),
+                                    style: tt.labelLarge?.copyWith(
+                                        color: HexaColors.primaryMid,
+                                        fontWeight: FontWeight.w700),
                                   ),
                                   const SizedBox(width: 6),
                                   Text(phone, style: tt.bodySmall),
@@ -185,7 +205,8 @@ class _SupplierCard extends StatelessWidget {
                               onTap: () => onWhatsApp(wa),
                               child: Row(
                                 children: [
-                                  Icon(Icons.chat_rounded, size: 16, color: const Color(0xFF25D366)),
+                                  const Icon(Icons.chat_rounded,
+                                      size: 16, color: Color(0xFF25D366)),
                                   const SizedBox(width: 6),
                                   Text(
                                     'WhatsApp',
@@ -211,9 +232,12 @@ class _SupplierCard extends StatelessWidget {
                       if (v == 'delete') onDelete();
                     },
                     itemBuilder: (ctx) => [
-                      const PopupMenuItem(value: 'detail', child: Text('View detail')),
+                      const PopupMenuItem(
+                          value: 'detail', child: Text('View detail')),
                       const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                      if (isOwner) const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                      if (isOwner)
+                        const PopupMenuItem(
+                            value: 'delete', child: Text('Delete')),
                     ],
                   ),
                 ],
@@ -224,14 +248,19 @@ class _SupplierCard extends StatelessWidget {
               ),
               Row(
                 children: [
-                  _StatPill(icon: Icons.local_shipping_outlined, text: 'Deals: ${deals ?? 0}'),
+                  _StatPill(
+                      icon: Icons.local_shipping_outlined,
+                      text: 'Deals: ${deals ?? 0}'),
                   const SizedBox(width: 8),
                   _StatPill(
                     icon: Icons.currency_rupee_rounded,
-                    text: avg != null ? 'Avg: ₹${avg.toStringAsFixed(0)}' : 'Avg: —',
+                    text: avg != null
+                        ? 'Avg: ₹${avg.toStringAsFixed(0)}'
+                        : 'Avg: —',
                   ),
                   const SizedBox(width: 8),
-                  _StatPill(icon: Icons.percent_rounded, text: 'Margin: $marginStr'),
+                  _StatPill(
+                      icon: Icons.percent_rounded, text: 'Margin: $marginStr'),
                 ],
               ),
             ],
@@ -289,21 +318,32 @@ class _BrokerCard extends StatelessWidget {
               Row(
                 children: [
                   CircleAvatar(
-                    backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
-                    child: Icon(isPct ? Icons.percent_rounded : Icons.currency_rupee_rounded),
+                    backgroundColor:
+                        Theme.of(context).colorScheme.secondaryContainer,
+                    child: Icon(isPct
+                        ? Icons.percent_rounded
+                        : Icons.currency_rupee_rounded),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(nm, style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                        Text(nm,
+                            style: tt.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w800)),
                         const SizedBox(height: 4),
                         Text(
-                          isPct ? 'Commission: Per cent' : 'Commission: Fixed ₹',
-                          style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary),
+                          isPct
+                              ? 'Commission: Per cent'
+                              : 'Commission: Fixed ₹',
+                          style: tt.bodySmall
+                              ?.copyWith(color: HexaColors.textSecondary),
                         ),
-                        if (cv != null) Text('$cv', style: tt.labelLarge?.copyWith(fontWeight: FontWeight.w600)),
+                        if (cv != null)
+                          Text('$cv',
+                              style: tt.labelLarge
+                                  ?.copyWith(fontWeight: FontWeight.w600)),
                       ],
                     ),
                   ),
@@ -315,9 +355,12 @@ class _BrokerCard extends StatelessWidget {
                       if (v == 'delete') onDelete();
                     },
                     itemBuilder: (ctx) => [
-                      const PopupMenuItem(value: 'detail', child: Text('View detail')),
+                      const PopupMenuItem(
+                          value: 'detail', child: Text('View detail')),
                       const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                      if (isOwner) const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                      if (isOwner)
+                        const PopupMenuItem(
+                            value: 'delete', child: Text('Delete')),
                     ],
                   ),
                 ],
@@ -328,16 +371,22 @@ class _BrokerCard extends StatelessWidget {
               ),
               Row(
                 children: [
-                  _StatPill(icon: Icons.receipt_long_outlined, text: 'Deals: ${deals ?? 0}'),
+                  _StatPill(
+                      icon: Icons.receipt_long_outlined,
+                      text: 'Deals: ${deals ?? 0}'),
                   const SizedBox(width: 8),
                   _StatPill(
                     icon: Icons.payments_outlined,
-                    text: comm != null ? 'Commission: ₹${comm.toStringAsFixed(0)}' : 'Commission: —',
+                    text: comm != null
+                        ? 'Commission: ₹${comm.toStringAsFixed(0)}'
+                        : 'Commission: —',
                   ),
                   const SizedBox(width: 8),
                   _StatPill(
                     icon: Icons.trending_up_rounded,
-                    text: profit != null ? 'Impact: ₹${profit.toStringAsFixed(0)}' : 'Impact: —',
+                    text: profit != null
+                        ? 'Impact: ₹${profit.toStringAsFixed(0)}'
+                        : 'Impact: —',
                   ),
                 ],
               ),
@@ -356,7 +405,8 @@ class ContactsPage extends ConsumerStatefulWidget {
   ConsumerState<ContactsPage> createState() => _ContactsPageState();
 }
 
-class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerProviderStateMixin {
+class _ContactsPageState extends ConsumerState<ContactsPage>
+    with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   final _searchCtrl = TextEditingController();
   Timer? _debounce;
@@ -413,7 +463,10 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
       } catch (e) {
         if (!mounted) return;
         setState(() => _searchLoading = false);
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+        }
       }
     });
   }
@@ -458,43 +511,74 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
     final phone = TextEditingController();
     final wa = TextEditingController();
     final loc = TextEditingController();
-    final brokerId = TextEditingController();
+    String? selectedBrokerId;
+    List<Map<String, dynamic>> brokers = [];
+    try {
+      brokers = await ref.read(brokersListProvider.future);
+    } catch (_) {
+      brokers = [];
+    }
+    if (!mounted) return;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('New supplier'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: name, decoration: const InputDecoration(labelText: 'Name *')),
-              TextField(controller: phone, decoration: const InputDecoration(labelText: 'Phone')),
-              TextField(
-                controller: wa,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(
-                  labelText: 'WhatsApp number',
-                  helperText: 'Optional — can differ from phone',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSt) => AlertDialog(
+          title: const Text('New supplier'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                    controller: name,
+                    decoration: const InputDecoration(labelText: 'Name *')),
+                TextField(
+                    controller: phone,
+                    decoration: const InputDecoration(labelText: 'Phone')),
+                TextField(
+                  controller: wa,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    labelText: 'WhatsApp number',
+                    helperText: 'Optional — can differ from phone',
+                  ),
                 ),
-              ),
-              TextField(controller: loc, decoration: const InputDecoration(labelText: 'Location')),
-              TextField(
-                controller: brokerId,
-                decoration: const InputDecoration(labelText: 'Broker ID (optional)', helperText: 'Paste UUID from Brokers tab'),
-              ),
-            ],
+                TextField(
+                    controller: loc,
+                    decoration: const InputDecoration(labelText: 'Location')),
+                DropdownButtonFormField<String?>(
+                  key: ValueKey(selectedBrokerId ?? '∅'),
+                  initialValue: selectedBrokerId,
+                  decoration:
+                      const InputDecoration(labelText: 'Broker (optional)'),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                        value: null, child: Text('None')),
+                    ...brokers.map(
+                      (b) => DropdownMenuItem<String?>(
+                        value: b['id']?.toString(),
+                        child: Text(b['name']?.toString() ?? ''),
+                      ),
+                    ),
+                  ],
+                  onChanged: (v) => setSt(() => selectedBrokerId = v),
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Save')),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
-        ],
       ),
     );
     if (ok != true || name.text.trim().isEmpty) return;
     final session = ref.read(sessionProvider);
     if (session == null) return;
-    final bid = brokerId.text.trim();
     try {
       await ref.read(hexaApiProvider).createSupplier(
             businessId: session.primaryBusiness.id,
@@ -502,13 +586,19 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
             phone: phone.text.trim().isEmpty ? null : phone.text.trim(),
             whatsappNumber: wa.text.trim().isEmpty ? null : wa.text.trim(),
             location: loc.text.trim().isEmpty ? null : loc.text.trim(),
-            brokerId: bid.isEmpty ? null : bid,
+            brokerId: selectedBrokerId,
           );
       ref.invalidate(suppliersListProvider);
       ref.invalidate(contactsSuppliersEnrichedProvider);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Supplier created')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Supplier created')));
+      }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+      }
     }
   }
 
@@ -522,17 +612,24 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: name, decoration: const InputDecoration(labelText: 'Name *')),
+            TextField(
+                controller: name,
+                decoration: const InputDecoration(labelText: 'Name *')),
             TextField(
               controller: comm,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Commission value (optional)'),
+              decoration: const InputDecoration(
+                  labelText: 'Commission value (optional)'),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Save')),
         ],
       ),
     );
@@ -548,9 +645,15 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
           );
       ref.invalidate(brokersListProvider);
       ref.invalidate(contactsBrokersEnrichedProvider);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Broker created')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Broker created')));
+      }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+      }
     }
   }
 
@@ -573,7 +676,11 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('New category', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+              Text('New category',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(fontWeight: FontWeight.w800)),
               const SizedBox(height: 16),
               TextField(
                 controller: emojiCtrl,
@@ -625,13 +732,20 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
           );
       ref.invalidate(itemCategoriesListProvider);
       ref.invalidate(catalogItemsListProvider);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Category created')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Category created')));
+      }
     } on DioException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.response?.data?.toString() ?? '$e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+      }
     }
   }
 
@@ -643,7 +757,8 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
     if (!mounted) return;
     if (cats.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Create a category first (Categories tab).')),
+        const SnackBar(
+            content: Text('Create a category first (Categories tab).')),
       );
       return;
     }
@@ -668,7 +783,11 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('New item', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                  Text('New item',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleLarge
+                          ?.copyWith(fontWeight: FontWeight.w800)),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
                     key: ValueKey(selectedCat),
@@ -695,7 +814,8 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
                   DropdownButtonFormField<String?>(
                     key: ValueKey(unit),
                     initialValue: unit,
-                    decoration: const InputDecoration(labelText: 'Default unit (optional)'),
+                    decoration: const InputDecoration(
+                        labelText: 'Default unit (optional)'),
                     items: const [
                       DropdownMenuItem(value: null, child: Text('—')),
                       DropdownMenuItem(value: 'kg', child: Text('kg')),
@@ -736,13 +856,20 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
           );
       ref.invalidate(catalogItemsListProvider);
       ref.invalidate(itemCategoriesListProvider);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Item created')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Item created')));
+      }
     } on DioException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.response?.data?.toString() ?? '$e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+      }
     }
     nameCtrl.dispose();
   }
@@ -752,7 +879,8 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
     if (id == null) return;
     final name = TextEditingController(text: s['name']?.toString() ?? '');
     final phone = TextEditingController(text: s['phone']?.toString() ?? '');
-    final wa = TextEditingController(text: s['whatsapp_number']?.toString() ?? '');
+    final wa =
+        TextEditingController(text: s['whatsapp_number']?.toString() ?? '');
     final loc = TextEditingController(text: s['location']?.toString() ?? '');
     final ok = await showDialog<bool>(
       context: context,
@@ -762,20 +890,30 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(controller: name, decoration: const InputDecoration(labelText: 'Name *')),
-              TextField(controller: phone, decoration: const InputDecoration(labelText: 'Phone')),
+              TextField(
+                  controller: name,
+                  decoration: const InputDecoration(labelText: 'Name *')),
+              TextField(
+                  controller: phone,
+                  decoration: const InputDecoration(labelText: 'Phone')),
               TextField(
                 controller: wa,
                 keyboardType: TextInputType.phone,
                 decoration: const InputDecoration(labelText: 'WhatsApp number'),
               ),
-              TextField(controller: loc, decoration: const InputDecoration(labelText: 'Location')),
+              TextField(
+                  controller: loc,
+                  decoration: const InputDecoration(labelText: 'Location')),
             ],
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Save')),
         ],
       ),
     );
@@ -793,9 +931,15 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
           );
       ref.invalidate(suppliersListProvider);
       ref.invalidate(contactsSuppliersEnrichedProvider);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Saved')));
+      }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+      }
     }
   }
 
@@ -805,28 +949,41 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
     final session = ref.read(sessionProvider);
     if (session == null) return;
     if (session.primaryBusiness.role != 'owner') {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Only the workspace owner can delete.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Only the workspace owner can delete.')));
       return;
     }
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete supplier?'),
-        content: const Text('This cannot be undone. No purchase entries must reference this supplier.'),
+        content: const Text(
+            'This cannot be undone. No purchase entries must reference this supplier.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Delete')),
         ],
       ),
     );
     if (ok != true) return;
     try {
-      await ref.read(hexaApiProvider).deleteSupplier(businessId: session.primaryBusiness.id, supplierId: id);
+      await ref.read(hexaApiProvider).deleteSupplier(
+          businessId: session.primaryBusiness.id, supplierId: id);
       ref.invalidate(suppliersListProvider);
       ref.invalidate(contactsSuppliersEnrichedProvider);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Deleted')));
+      }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+      }
     }
   }
 
@@ -834,7 +991,8 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
     final id = b['id']?.toString();
     if (id == null) return;
     final name = TextEditingController(text: b['name']?.toString() ?? '');
-    final comm = TextEditingController(text: b['commission_value']?.toString() ?? '');
+    final comm =
+        TextEditingController(text: b['commission_value']?.toString() ?? '');
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -842,7 +1000,9 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: name, decoration: const InputDecoration(labelText: 'Name *')),
+            TextField(
+                controller: name,
+                decoration: const InputDecoration(labelText: 'Name *')),
             TextField(
               controller: comm,
               keyboardType: TextInputType.number,
@@ -851,8 +1011,12 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Save')),
         ],
       ),
     );
@@ -868,9 +1032,15 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
           );
       ref.invalidate(brokersListProvider);
       ref.invalidate(contactsBrokersEnrichedProvider);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Saved')));
+      }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+      }
     }
   }
 
@@ -880,28 +1050,42 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
     final session = ref.read(sessionProvider);
     if (session == null) return;
     if (session.primaryBusiness.role != 'owner') {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Only the workspace owner can delete.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Only the workspace owner can delete.')));
       return;
     }
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete broker?'),
-        content: const Text('Removes broker only if no entries or suppliers reference them.'),
+        content: const Text(
+            'Removes broker only if no entries or suppliers reference them.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Delete')),
         ],
       ),
     );
     if (ok != true) return;
     try {
-      await ref.read(hexaApiProvider).deleteBroker(businessId: session.primaryBusiness.id, brokerId: id);
+      await ref
+          .read(hexaApiProvider)
+          .deleteBroker(businessId: session.primaryBusiness.id, brokerId: id);
       ref.invalidate(brokersListProvider);
       ref.invalidate(contactsBrokersEnrichedProvider);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Deleted')));
+      }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+      }
     }
   }
 
@@ -910,7 +1094,8 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
     return Tab(
       child: Badge(
         isLabelVisible: c != null,
-        label: Text(c == null ? '' : '$c', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+        label: Text(c == null ? '' : '$c',
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
         child: Padding(
           padding: const EdgeInsets.only(top: 10),
           child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -926,7 +1111,10 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
       case 0:
         final suppliers = (d['suppliers'] as List?) ?? [];
         if (suppliers.isEmpty) {
-          return Center(child: Text('No supplier matches.', style: tt.bodyMedium?.copyWith(color: HexaColors.textSecondary)));
+          return Center(
+              child: Text('No supplier matches.',
+                  style: tt.bodyMedium
+                      ?.copyWith(color: HexaColors.textSecondary)));
         }
         return ListView.separated(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -950,7 +1138,10 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
       case 1:
         final brokers = (d['brokers'] as List?) ?? [];
         if (brokers.isEmpty) {
-          return Center(child: Text('No broker matches.', style: tt.bodyMedium?.copyWith(color: HexaColors.textSecondary)));
+          return Center(
+              child: Text('No broker matches.',
+                  style: tt.bodyMedium
+                      ?.copyWith(color: HexaColors.textSecondary)));
         }
         return ListView.separated(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -972,7 +1163,10 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
       case 2:
         final cats = (d['categories'] as List?) ?? [];
         if (cats.isEmpty) {
-          return Center(child: Text('No category matches.', style: tt.bodyMedium?.copyWith(color: HexaColors.textSecondary)));
+          return Center(
+              child: Text('No category matches.',
+                  style: tt.bodyMedium
+                      ?.copyWith(color: HexaColors.textSecondary)));
         }
         return ListView.separated(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -981,13 +1175,18 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
           itemBuilder: (context, i) {
             final name = cats[i].toString();
             return Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: const BorderSide(color: HexaColors.border)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  side: const BorderSide(color: HexaColors.border)),
               child: ListTile(
-                leading: const Icon(Icons.folder_outlined, color: HexaColors.primaryMid),
-                title: Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                leading: const Icon(Icons.folder_outlined,
+                    color: HexaColors.primaryMid),
+                title: Text(name,
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
                 subtitle: const Text('Open items in this category'),
                 trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => context.push('/contacts/category?name=${Uri.encodeComponent(name)}'),
+                onTap: () => context.push(
+                    '/contacts/category?name=${Uri.encodeComponent(name)}'),
               ),
             );
           },
@@ -995,7 +1194,10 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
       default:
         final items = (d['item_names'] as List?) ?? [];
         if (items.isEmpty) {
-          return Center(child: Text('No item name matches.', style: tt.bodyMedium?.copyWith(color: HexaColors.textSecondary)));
+          return Center(
+              child: Text('No item name matches.',
+                  style: tt.bodyMedium
+                      ?.copyWith(color: HexaColors.textSecondary)));
         }
         return ListView.separated(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -1004,13 +1206,18 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
           itemBuilder: (context, i) {
             final n = items[i].toString();
             return Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: const BorderSide(color: HexaColors.border)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  side: const BorderSide(color: HexaColors.border)),
               child: ListTile(
-                leading: const Icon(Icons.inventory_2_outlined, color: HexaColors.primaryMid),
-                title: Text(n, style: const TextStyle(fontWeight: FontWeight.w700)),
+                leading: const Icon(Icons.inventory_2_outlined,
+                    color: HexaColors.primaryMid),
+                title: Text(n,
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
                 subtitle: const Text('Item analytics'),
                 trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => context.push('/item-analytics/${Uri.encodeComponent(n)}'),
+                onTap: () =>
+                    context.push('/item-analytics/${Uri.encodeComponent(n)}'),
               ),
             );
           },
@@ -1062,7 +1269,8 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Contacts', style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+            Text('Contacts',
+                style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
             const SizedBox(height: 2),
             Text(
               'Category → items · suppliers & brokers used on purchase lines',
@@ -1085,7 +1293,8 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
             color: cs.surface,
             child: DecoratedBox(
               decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: HexaColors.borderSubtle)),
+                border:
+                    Border(bottom: BorderSide(color: HexaColors.borderSubtle)),
               ),
               child: TabBar(
                 controller: _tabController,
@@ -1122,7 +1331,8 @@ class _ContactsPageState extends ConsumerState<ContactsPage> with SingleTickerPr
                         },
                       )
                     : null,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
               ),
             ),
@@ -1184,7 +1394,9 @@ class _SuppliersTab extends ConsumerWidget {
     final isOwner = session?.primaryBusiness.role == 'owner';
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
+      error: (_, __) => FriendlyLoadError(
+        onRetry: () => ref.invalidate(contactsSuppliersEnrichedProvider),
+      ),
       data: (list) {
         if (list.isEmpty) {
           return RefreshIndicator(
@@ -1194,7 +1406,10 @@ class _SuppliersTab extends ConsumerWidget {
             },
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              children: const [SizedBox(height: 120, child: Center(child: Text('No suppliers yet')))],
+              children: const [
+                SizedBox(
+                    height: 120, child: Center(child: Text('No suppliers yet')))
+              ],
             ),
           );
         }
@@ -1204,26 +1419,27 @@ class _SuppliersTab extends ConsumerWidget {
             await ref.read(contactsSuppliersEnrichedProvider.future);
           },
           child: ListView.separated(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-          itemCount: list.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 8),
-          itemBuilder: (context, i) {
-            final s = list[i];
-            final id = s['id']?.toString();
-            final m = s['_metrics'] as Map<String, dynamic>?;
-            return _SupplierCard(
-              data: Map<String, dynamic>.from(s),
-              metrics: m,
-              isOwner: isOwner,
-              onOpen: id == null ? () {} : () => context.push('/supplier/$id'),
-              onDial: onDial,
-              onWhatsApp: onWhatsApp,
-              onEdit: () => onEdit(s),
-              onDelete: () => onDelete(s),
-            );
-          },
-        ),
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            itemCount: list.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            itemBuilder: (context, i) {
+              final s = list[i];
+              final id = s['id']?.toString();
+              final m = s['_metrics'] as Map<String, dynamic>?;
+              return _SupplierCard(
+                data: Map<String, dynamic>.from(s),
+                metrics: m,
+                isOwner: isOwner,
+                onOpen:
+                    id == null ? () {} : () => context.push('/supplier/$id'),
+                onDial: onDial,
+                onWhatsApp: onWhatsApp,
+                onEdit: () => onEdit(s),
+                onDelete: () => onDelete(s),
+              );
+            },
+          ),
         );
       },
     );
@@ -1243,7 +1459,9 @@ class _BrokersTab extends ConsumerWidget {
     final isOwner = session?.primaryBusiness.role == 'owner';
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
+      error: (_, __) => FriendlyLoadError(
+        onRetry: () => ref.invalidate(contactsBrokersEnrichedProvider),
+      ),
       data: (list) {
         if (list.isEmpty) return const Center(child: Text('No brokers yet'));
         return ListView.separated(
@@ -1276,11 +1494,21 @@ class _CategoriesTab extends ConsumerWidget {
     final itemsAsync = ref.watch(catalogItemsListProvider);
     return catsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
+      error: (_, __) => FriendlyLoadError(
+        onRetry: () {
+          ref.invalidate(itemCategoriesListProvider);
+          ref.invalidate(catalogItemsListProvider);
+        },
+      ),
       data: (cats) {
         return itemsAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('$e')),
+          error: (_, __) => FriendlyLoadError(
+            onRetry: () {
+              ref.invalidate(itemCategoriesListProvider);
+              ref.invalidate(catalogItemsListProvider);
+            },
+          ),
           data: (items) {
             if (cats.isEmpty) {
               return Center(
@@ -1289,7 +1517,10 @@ class _CategoriesTab extends ConsumerWidget {
                   child: Text(
                     'No categories yet. Use ＋ Category to add one — same list as Settings → Item catalog.',
                     textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: HexaColors.textSecondary),
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodyMedium
+                        ?.copyWith(color: HexaColors.textSecondary),
                   ),
                 ),
               );
@@ -1302,7 +1533,9 @@ class _CategoriesTab extends ConsumerWidget {
                 final c = cats[i];
                 final id = c['id']?.toString() ?? '';
                 final name = c['name']?.toString() ?? '—';
-                final nItems = items.where((it) => it['category_id']?.toString() == id).length;
+                final nItems = items
+                    .where((it) => it['category_id']?.toString() == id)
+                    .length;
                 return Card(
                   elevation: 0,
                   shape: RoundedRectangleBorder(
@@ -1310,17 +1543,24 @@ class _CategoriesTab extends ConsumerWidget {
                     side: const BorderSide(color: HexaColors.border),
                   ),
                   child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    leading: CircleAvatar(
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                    leading: const CircleAvatar(
                       backgroundColor: HexaColors.primaryLight,
-                      child: Icon(Icons.grass_outlined, color: HexaColors.primaryMid),
+                      child: Icon(Icons.grass_outlined,
+                          color: HexaColors.primaryMid),
                     ),
-                    title: Text(name, style: const TextStyle(fontWeight: FontWeight.w800)),
+                    title: Text(name,
+                        style: const TextStyle(fontWeight: FontWeight.w800)),
                     subtitle: Text(
                       '$nItems items · tap to see items',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: HexaColors.textSecondary),
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: HexaColors.textSecondary),
                     ),
-                    trailing: const Icon(Icons.chevron_right_rounded, color: HexaColors.textSecondary),
+                    trailing: const Icon(Icons.chevron_right_rounded,
+                        color: HexaColors.textSecondary),
                     onTap: () => context.push('/catalog/category/$id'),
                   ),
                 );
@@ -1340,14 +1580,24 @@ class _ItemsTab extends ConsumerWidget {
     final itemsAsync = ref.watch(catalogItemsListProvider);
     return catsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
+      error: (_, __) => FriendlyLoadError(
+        onRetry: () {
+          ref.invalidate(itemCategoriesListProvider);
+          ref.invalidate(catalogItemsListProvider);
+        },
+      ),
       data: (cats) {
         final catName = <String, String>{
           for (final x in cats) x['id'].toString(): x['name'].toString(),
         };
         return itemsAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('$e')),
+          error: (_, __) => FriendlyLoadError(
+            onRetry: () {
+              ref.invalidate(itemCategoriesListProvider);
+              ref.invalidate(catalogItemsListProvider);
+            },
+          ),
           data: (items) {
             if (items.isEmpty) {
               return Center(
@@ -1356,7 +1606,10 @@ class _ItemsTab extends ConsumerWidget {
                   child: Text(
                     'No catalog items yet. Use ＋ Item or Settings → Item catalog.',
                     textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: HexaColors.textSecondary),
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodyMedium
+                        ?.copyWith(color: HexaColors.textSecondary),
                   ),
                 ),
               );
@@ -1371,7 +1624,8 @@ class _ItemsTab extends ConsumerWidget {
                 final name = it['name']?.toString() ?? '—';
                 final cid = it['category_id']?.toString() ?? '';
                 final du = it['default_unit']?.toString();
-                final sub = '${catName[cid] ?? '—'}${du != null && du.isNotEmpty ? ' · default: $du' : ''}';
+                final sub =
+                    '${catName[cid] ?? '—'}${du != null && du.isNotEmpty ? ' · default: $du' : ''}';
                 return Card(
                   elevation: 0,
                   shape: RoundedRectangleBorder(
@@ -1379,17 +1633,24 @@ class _ItemsTab extends ConsumerWidget {
                     side: const BorderSide(color: HexaColors.border),
                   ),
                   child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    leading: CircleAvatar(
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                    leading: const CircleAvatar(
                       backgroundColor: HexaColors.primaryLight,
-                      child: Icon(Icons.inventory_2_outlined, color: HexaColors.primaryMid),
+                      child: Icon(Icons.inventory_2_outlined,
+                          color: HexaColors.primaryMid),
                     ),
-                    title: Text(name, style: const TextStyle(fontWeight: FontWeight.w800)),
+                    title: Text(name,
+                        style: const TextStyle(fontWeight: FontWeight.w800)),
                     subtitle: Text(
                       sub,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: HexaColors.textSecondary),
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: HexaColors.textSecondary),
                     ),
-                    trailing: const Icon(Icons.chevron_right_rounded, color: HexaColors.textSecondary),
+                    trailing: const Icon(Icons.chevron_right_rounded,
+                        color: HexaColors.textSecondary),
                     onTap: () => context.push('/catalog/item/$id'),
                   ),
                 );

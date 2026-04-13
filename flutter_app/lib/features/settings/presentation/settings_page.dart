@@ -1,12 +1,18 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
+import 'package:razorpay_flutter/razorpay_flutter.dart';
 
+import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/config/app_config.dart';
 import '../../../core/models/session.dart';
 import '../../../core/providers/prefs_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
@@ -26,10 +32,34 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   String _pendingLogoFilename = 'logo.jpg';
   bool _brandingSaving = false;
 
+  Razorpay? _razorpay;
+  String _billingPlanCode = 'basic';
+  bool _billingWa = false;
+  bool _billingAi = false;
+  Map<String, dynamic>? _billingQuote;
+  bool _billingQuoteLoading = false;
+  bool _checkoutBusy = false;
+
   @override
   void initState() {
     super.initState();
     _brandingTitleCtrl = TextEditingController();
+    if (!kIsWeb) {
+      _razorpay = Razorpay();
+      _razorpay!.on(Razorpay.EVENT_PAYMENT_SUCCESS, (dynamic response) {
+        if (response is PaymentSuccessResponse) {
+          unawaited(_onRazorpaySuccess(response));
+        }
+      });
+      _razorpay!.on(Razorpay.EVENT_PAYMENT_ERROR, (dynamic response) {
+        if (!mounted) return;
+        final msg = response is PaymentFailureResponse
+            ? (response.message ?? 'Payment did not complete')
+            : 'Payment did not complete';
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(msg)));
+      });
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refreshBilling();
       final s = ref.read(sessionProvider);
@@ -44,18 +74,123 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   @override
   void dispose() {
+    _razorpay?.clear();
     _brandingTitleCtrl.dispose();
     super.dispose();
   }
 
+  Future<void> _fetchBillingQuote() async {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    setState(() => _billingQuoteLoading = true);
+    try {
+      final q = await ref.read(hexaApiProvider).billingQuote(
+            businessId: session.primaryBusiness.id,
+            planCode: _billingPlanCode,
+            whatsappAddon: _billingWa,
+            aiAddon: _billingAi,
+          );
+      if (mounted) {
+        setState(() {
+          _billingQuote = q;
+          _billingQuoteLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _billingQuote = null;
+          _billingQuoteLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _onRazorpaySuccess(PaymentSuccessResponse r) async {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    final pid = r.paymentId;
+    final oid = r.orderId;
+    final sig = r.signature;
+    if (pid == null || oid == null || sig == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text(
+                  'Missing payment details — try again or contact support.')),
+        );
+      }
+      return;
+    }
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(hexaApiProvider).billingVerify(
+            businessId: session.primaryBusiness.id,
+            razorpayOrderId: oid,
+            razorpayPaymentId: pid,
+            razorpaySignature: sig,
+          );
+      await _refreshBilling();
+      if (mounted) {
+        messenger.showSnackBar(const SnackBar(
+            content: Text('Payment confirmed. Your plan is updated.')));
+      }
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+      }
+    }
+  }
+
+  Future<void> _payWithRazorpay() async {
+    if (kIsWeb || _razorpay == null) return;
+    final session = ref.read(sessionProvider);
+    if (session == null || session.primaryBusiness.role != 'owner') return;
+    setState(() => _checkoutBusy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final order = await ref.read(hexaApiProvider).billingCreateOrder(
+            businessId: session.primaryBusiness.id,
+            planCode: _billingPlanCode,
+            whatsappAddon: _billingWa,
+            aiAddon: _billingAi,
+          );
+      final key = order['key_id']?.toString();
+      final oid = order['order_id']?.toString();
+      final rawAmt = order['amount_paise'];
+      final amount =
+          rawAmt is int ? rawAmt : int.tryParse(rawAmt?.toString() ?? '') ?? 0;
+      if (key == null || oid == null || amount <= 0) {
+        throw StateError('Invalid order from server');
+      }
+      _razorpay!.open({
+        'key': key,
+        'amount': amount,
+        'currency': order['currency']?.toString() ?? 'INR',
+        'name': AppConfig.appName,
+        'description': 'Workspace subscription',
+        'order_id': oid,
+        'prefill': <String, String>{},
+      });
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+      }
+    } finally {
+      if (mounted) setState(() => _checkoutBusy = false);
+    }
+  }
+
   Future<void> _pickLogo() async {
-    final x = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 1024, imageQuality: 85);
+    final x = await ImagePicker().pickImage(
+        source: ImageSource.gallery, maxWidth: 1024, imageQuality: 85);
     if (x == null || !mounted) return;
     final bytes = await x.readAsBytes();
     if (!mounted) return;
     setState(() {
       _pendingLogoBytes = bytes;
-      _pendingLogoFilename = x.name.trim().isNotEmpty ? x.name.trim() : 'logo.jpg';
+      _pendingLogoFilename =
+          x.name.trim().isNotEmpty ? x.name.trim() : 'logo.jpg';
     });
   }
 
@@ -88,7 +223,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       setState(() => _pendingLogoBytes = null);
       messenger.showSnackBar(const SnackBar(content: Text('Branding saved')));
     } catch (e) {
-      if (mounted) messenger.showSnackBar(SnackBar(content: Text('Could not save: $e')));
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+      }
     } finally {
       if (mounted) setState(() => _brandingSaving = false);
     }
@@ -110,7 +247,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         messenger.showSnackBar(const SnackBar(content: Text('Logo removed')));
       }
     } catch (e) {
-      if (mounted) messenger.showSnackBar(SnackBar(content: Text('Could not remove logo: $e')));
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+      }
     } finally {
       if (mounted) setState(() => _brandingSaving = false);
     }
@@ -124,10 +263,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     try {
       final m = await api.billingStatus(businessId: bid);
       if (mounted) {
+        final sub = m['subscription'] as Map<String, dynamic>?;
         setState(() {
           _billing = m;
           _billingErr = null;
+          if (sub != null) {
+            var pc = sub['plan_code']?.toString().toLowerCase() ?? 'basic';
+            if (!const {'basic', 'pro', 'premium'}.contains(pc)) pc = 'basic';
+            _billingPlanCode = pc;
+            _billingWa = sub['whatsapp_addon'] == true;
+            _billingAi = sub['ai_addon'] == true;
+          }
         });
+        await _fetchBillingQuote();
       }
     } on DioException catch (e) {
       if (mounted) {
@@ -155,6 +303,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     });
     final autofill = ref.watch(smartAutofillEnabledProvider);
     final notif = ref.watch(localNotificationsOptInProvider);
+    final themeMode = ref.watch(themeModeProvider);
     final isOwner = session?.primaryBusiness.role == 'owner';
     final pb = session?.primaryBusiness;
 
@@ -163,10 +312,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       appBar: AppBar(
         backgroundColor: HexaColors.canvas,
         surfaceTintColor: Colors.transparent,
-        title: Text('Settings', style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: HexaColors.textPrimary)),
+        title: Text('Settings',
+            style: tt.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800, color: HexaColors.textPrimary)),
         leading: IconButton(
           tooltip: 'Back',
-          icon: const Icon(Icons.arrow_back_rounded, color: HexaColors.textPrimary),
+          icon: const Icon(Icons.arrow_back_rounded,
+              color: HexaColors.textPrimary),
           onPressed: () {
             if (context.canPop()) {
               context.pop();
@@ -179,18 +331,26 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
         children: [
-          Text('Account', style: tt.titleSmall?.copyWith(color: HexaColors.textSecondary, fontWeight: FontWeight.w800)),
+          Text('Account',
+              style: tt.titleSmall?.copyWith(
+                  color: HexaColors.textSecondary,
+                  fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           Card(
             color: HexaColors.surfaceCard,
             child: ListTile(
               leading: Icon(Icons.person_outline_rounded, color: cs.primary),
               title: const Text('Session'),
-              subtitle: Text(session != null ? 'Signed in · ${session.primaryBusiness.name}' : 'Not signed in'),
+              subtitle: Text(session != null
+                  ? 'Signed in · ${session.primaryBusiness.name}'
+                  : 'Not signed in'),
             ),
           ),
           const SizedBox(height: 20),
-          Text('Business', style: tt.titleSmall?.copyWith(color: HexaColors.textSecondary, fontWeight: FontWeight.w800)),
+          Text('Business',
+              style: tt.titleSmall?.copyWith(
+                  color: HexaColors.textSecondary,
+                  fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           Card(
             color: HexaColors.surfaceCard,
@@ -206,7 +366,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       Expanded(
                         child: Text(
                           pb?.name ?? '—',
-                          style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                          style: tt.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w800),
                         ),
                       ),
                     ],
@@ -214,11 +375,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   if (session != null)
                     Text(
                       'Role: ${pb!.role} · Shown in app: ${pb.effectiveDisplayTitle}',
-                      style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary),
+                      style: tt.bodySmall
+                          ?.copyWith(color: HexaColors.textSecondary),
                     ),
                   if (isOwner && pb != null) ...[
                     const SizedBox(height: 16),
-                    Text('Workspace branding', style: tt.labelLarge?.copyWith(fontWeight: FontWeight.w800)),
+                    Text('Workspace branding',
+                        style: tt.labelLarge
+                            ?.copyWith(fontWeight: FontWeight.w800)),
                     const SizedBox(height: 8),
                     TextField(
                       controller: _brandingTitleCtrl,
@@ -249,27 +413,36 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                               ),
                               const SizedBox(height: 8),
                               FilledButton(
-                                onPressed: _brandingSaving ? null : _saveBranding,
+                                onPressed:
+                                    _brandingSaving ? null : _saveBranding,
                                 child: _brandingSaving
                                     ? const SizedBox(
                                         height: 20,
                                         width: 20,
-                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2),
                                       )
                                     : const Text('Save branding'),
                               ),
                               TextButton(
                                 onPressed: _brandingSaving ||
-                                        (_pendingLogoBytes == null && (pb.brandingLogoUrl?.trim().isEmpty ?? true))
+                                        (_pendingLogoBytes == null &&
+                                            (pb.brandingLogoUrl
+                                                    ?.trim()
+                                                    .isEmpty ??
+                                                true))
                                     ? null
                                     : () {
                                         if (_pendingLogoBytes != null) {
-                                          setState(() => _pendingLogoBytes = null);
+                                          setState(
+                                              () => _pendingLogoBytes = null);
                                         } else {
                                           _clearLogo();
                                         }
                                       },
-                                child: Text(_pendingLogoBytes != null ? 'Discard image' : 'Remove logo'),
+                                child: Text(_pendingLogoBytes != null
+                                    ? 'Discard image'
+                                    : 'Remove logo'),
                               ),
                             ],
                           ),
@@ -280,7 +453,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     const SizedBox(height: 8),
                     Text(
                       'Only owners can change the in-app title and logo.',
-                      style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary),
+                      style: tt.bodySmall
+                          ?.copyWith(color: HexaColors.textSecondary),
                     ),
                   ],
                 ],
@@ -288,22 +462,41 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ),
           const SizedBox(height: 20),
-          Text('Preferences', style: tt.titleSmall?.copyWith(color: HexaColors.textSecondary, fontWeight: FontWeight.w800)),
+          Text('Preferences',
+              style: tt.titleSmall?.copyWith(
+                  color: HexaColors.textSecondary,
+                  fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           Card(
             color: HexaColors.surfaceCard,
             child: Column(
               children: [
                 SwitchListTile(
-                  secondary: Icon(Icons.auto_awesome_rounded, color: cs.primary),
-                  title: const Text('Smart autofill'),
-                  subtitle: const Text('Stored on this device only. Future: suggest fields from history.'),
-                  value: autofill,
-                  onChanged: (v) => ref.read(smartAutofillEnabledProvider.notifier).setValue(v),
+                  secondary: Icon(Icons.dark_mode_outlined, color: cs.primary),
+                  title: const Text('Dark mode'),
+                  subtitle: const Text(
+                      'Match system is not used — pick light or dark here.'),
+                  value: themeMode == ThemeMode.dark,
+                  onChanged: (v) => ref
+                      .read(themeModeProvider.notifier)
+                      .setMode(v ? ThemeMode.dark : ThemeMode.light),
                 ),
                 const Divider(height: 1),
                 SwitchListTile(
-                  secondary: Icon(Icons.notifications_active_outlined, color: cs.primary),
+                  secondary:
+                      Icon(Icons.auto_awesome_rounded, color: cs.primary),
+                  title: const Text('Smart autofill'),
+                  subtitle: const Text(
+                      'Stored on this device only. Future: suggest fields from history.'),
+                  value: autofill,
+                  onChanged: (v) => ref
+                      .read(smartAutofillEnabledProvider.notifier)
+                      .setValue(v),
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  secondary: Icon(Icons.notifications_active_outlined,
+                      color: cs.primary),
                   title: const Text('Local notifications'),
                   subtitle: Text(
                     notif
@@ -311,13 +504,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         : 'Enable for a gentle daily reminder to review purchases.',
                   ),
                   value: notif,
-                  onChanged: (v) => ref.read(localNotificationsOptInProvider.notifier).setValue(v),
+                  onChanged: (v) => ref
+                      .read(localNotificationsOptInProvider.notifier)
+                      .setValue(v),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 20),
-          Text('Voice & AI', style: tt.titleSmall?.copyWith(color: HexaColors.textSecondary, fontWeight: FontWeight.w800)),
+          Text('Voice & AI',
+              style: tt.titleSmall?.copyWith(
+                  color: HexaColors.textSecondary,
+                  fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           Card(
             color: HexaColors.surfaceCard,
@@ -332,7 +530,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ),
                 const Divider(height: 1),
                 ListTile(
-                  leading: Icon(Icons.verified_user_outlined, color: cs.primary),
+                  leading:
+                      Icon(Icons.verified_user_outlined, color: cs.primary),
                   title: const Text('Confirm before save'),
                   subtitle: const Text(
                     'Purchase lines are never auto-saved from AI. Use Preview → Save in Entries.',
@@ -342,7 +541,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ),
           const SizedBox(height: 20),
-          Text('Integrations', style: tt.titleSmall?.copyWith(color: HexaColors.textSecondary, fontWeight: FontWeight.w800)),
+          Text('Integrations',
+              style: tt.titleSmall?.copyWith(
+                  color: HexaColors.textSecondary,
+                  fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           Card(
             color: HexaColors.surfaceCard,
@@ -355,7 +557,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ),
           const SizedBox(height: 20),
-          Text('Data', style: tt.titleSmall?.copyWith(color: HexaColors.textSecondary, fontWeight: FontWeight.w800)),
+          Text('Data',
+              style: tt.titleSmall?.copyWith(
+                  color: HexaColors.textSecondary,
+                  fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           Card(
             color: HexaColors.surfaceCard,
@@ -364,7 +569,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ListTile(
                   leading: Icon(Icons.groups_outlined, color: cs.primary),
                   title: const Text('Suppliers & brokers'),
-                  subtitle: const Text('Contacts hub — categories, items, people.'),
+                  subtitle:
+                      const Text('Contacts hub — categories, items, people.'),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => context.go('/contacts'),
                 ),
@@ -372,7 +578,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ListTile(
                   leading: Icon(Icons.inventory_2_outlined, color: cs.primary),
                   title: const Text('Item catalog'),
-                  subtitle: const Text('Categories and items for faster entry lines.'),
+                  subtitle: const Text(
+                      'Categories and items for faster entry lines.'),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => context.push('/catalog'),
                 ),
@@ -380,13 +587,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ListTile(
                   leading: Icon(Icons.straighten_rounded, color: cs.primary),
                   title: const Text('Units'),
-                  subtitle: const Text('Bag, kg, piece — enforced on entry lines.'),
+                  subtitle:
+                      const Text('Bag, kg, piece — enforced on entry lines.'),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 20),
-          Text('Subscription', style: tt.titleSmall?.copyWith(color: HexaColors.textSecondary, fontWeight: FontWeight.w800)),
+          Text('Subscription',
+              style: tt.titleSmall?.copyWith(
+                  color: HexaColors.textSecondary,
+                  fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           Card(
             color: HexaColors.surfaceCard,
@@ -399,32 +610,130 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     children: [
                       Icon(Icons.workspace_premium_outlined, color: cs.primary),
                       const SizedBox(width: 8),
-                      Text('Plan & add-ons', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                      Text('Plan & add-ons',
+                          style: tt.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w800)),
                       const Spacer(),
-                      TextButton(onPressed: _refreshBilling, child: const Text('Refresh')),
+                      TextButton(
+                          onPressed: _refreshBilling,
+                          child: const Text('Refresh')),
                     ],
                   ),
                   if (_billingErr != null)
-                    Text(_billingErr!, style: tt.bodySmall?.copyWith(color: Colors.redAccent))
+                    Text(_billingErr!,
+                        style: tt.bodySmall?.copyWith(color: Colors.redAccent))
                   else if (_billing == null)
-                    Text('Loading…', style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary))
+                    Text('Loading…',
+                        style: tt.bodySmall
+                            ?.copyWith(color: HexaColors.textSecondary))
                   else ...[
                     Text(
                       _billing!['subscription'] == null
                           ? 'No subscription row yet — defaults apply until you pay.'
                           : 'Status: ${_billing!['subscription']['status']} · WhatsApp: ${_billing!['subscription']['whatsapp_addon']} · AI: ${_billing!['subscription']['ai_addon']}',
-                      style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary),
+                      style: tt.bodySmall
+                          ?.copyWith(color: HexaColors.textSecondary),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       'Payments: ${(_billing!['razorpay_configured'] == true) ? 'ready' : 'not configured'} · plan enforcement: ${_billing!['billing_enforce']}',
-                      style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary),
+                      style: tt.bodySmall
+                          ?.copyWith(color: HexaColors.textSecondary),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       'Checkout is completed securely; your payment is confirmed before your plan updates.',
-                      style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary),
+                      style: tt.bodySmall
+                          ?.copyWith(color: HexaColors.textSecondary),
                     ),
+                    if (isOwner) ...[
+                      const SizedBox(height: 16),
+                      if (_billing!['razorpay_configured'] != true)
+                        Text(
+                          'In-app payment needs Razorpay keys on the server (environment or admin platform integration).',
+                          style: tt.bodySmall?.copyWith(
+                              color: HexaColors.textSecondary, height: 1.35),
+                        )
+                      else if (kIsWeb)
+                        Text(
+                          'Razorpay checkout runs in the Android or iOS app — not in this web build.',
+                          style: tt.bodySmall?.copyWith(
+                              color: HexaColors.textSecondary, height: 1.35),
+                        )
+                      else ...[
+                        Text('Renew or change plan',
+                            style: tt.labelLarge
+                                ?.copyWith(fontWeight: FontWeight.w800)),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String>(
+                          key: ValueKey(_billingPlanCode),
+                          initialValue: _billingPlanCode,
+                          decoration: const InputDecoration(
+                            labelText: 'Plan',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                                value: 'basic', child: Text('Basic')),
+                            DropdownMenuItem(value: 'pro', child: Text('Pro')),
+                            DropdownMenuItem(
+                                value: 'premium', child: Text('Premium')),
+                          ],
+                          onChanged: (v) {
+                            if (v == null) return;
+                            setState(() => _billingPlanCode = v);
+                            unawaited(_fetchBillingQuote());
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('WhatsApp add-on'),
+                          subtitle: const Text(
+                              'Bundled with AI add-on in pricing when either is on.'),
+                          value: _billingWa,
+                          onChanged: (v) {
+                            setState(() => _billingWa = v);
+                            unawaited(_fetchBillingQuote());
+                          },
+                        ),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('AI add-on'),
+                          value: _billingAi,
+                          onChanged: (v) {
+                            setState(() => _billingAi = v);
+                            unawaited(_fetchBillingQuote());
+                          },
+                        ),
+                        if (_billingQuoteLoading)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 8),
+                            child: LinearProgressIndicator(),
+                          )
+                        else if (_billingQuote != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4, bottom: 8),
+                            child: Text(
+                              '${NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format((_billingQuote!['amount_inr'] as num?) ?? 0)} / month',
+                              style: tt.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  color: HexaColors.textPrimary),
+                            ),
+                          ),
+                        FilledButton.icon(
+                          onPressed: (_checkoutBusy ||
+                                  _billingQuoteLoading ||
+                                  _billingQuote == null)
+                              ? null
+                              : () => unawaited(_payWithRazorpay()),
+                          icon: const Icon(Icons.payment_rounded),
+                          label: Text(_checkoutBusy
+                              ? 'Opening checkout…'
+                              : 'Pay with Razorpay'),
+                        ),
+                      ],
+                    ],
                   ],
                 ],
               ),
@@ -492,7 +801,8 @@ class _LogoPreview extends StatelessWidget {
         border: Border.all(color: HexaColors.borderSubtle),
       ),
       alignment: Alignment.center,
-      child: Icon(Icons.storefront_outlined, color: HexaColors.textSecondary.withValues(alpha: 0.6)),
+      child: Icon(Icons.storefront_outlined,
+          color: HexaColors.textSecondary.withValues(alpha: 0.6)),
     );
   }
 }

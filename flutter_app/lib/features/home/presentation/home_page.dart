@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/tenant_branding_provider.dart';
 import '../../../core/providers/analytics_breakdown_providers.dart';
@@ -15,6 +16,7 @@ import '../../../core/providers/dashboard_period_provider.dart';
 import '../../../core/providers/dashboard_provider.dart';
 import '../../../core/providers/home_insights_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/widgets/friendly_load_error.dart';
 import '../../entries/presentation/entry_create_sheet.dart';
 import '../../../shared/widgets/app_settings_action.dart';
 
@@ -25,7 +27,8 @@ class HomePage extends ConsumerStatefulWidget {
   ConsumerState<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver {
+class _HomePageState extends ConsumerState<HomePage>
+    with WidgetsBindingObserver {
   Timer? _poll;
 
   @override
@@ -66,7 +69,9 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
     ]);
   }
 
-  String _inr(num n) => NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(n);
+  String _inr(num n) =>
+      NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
+          .format(n);
 
   String _rangeCaption(DashboardPeriod period) {
     final r = dashboardDateRange(period);
@@ -75,24 +80,27 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
     return '$a – $b, ${r.$2.year}';
   }
 
-  static Future<void> _mediaOcrSnack(BuildContext context, WidgetRef ref) async {
+  static Future<void> _mediaOcrSnack(
+      BuildContext context, WidgetRef ref) async {
     final session = ref.read(sessionProvider);
     if (session == null) return;
     try {
-      final r = await ref.read(hexaApiProvider).mediaOcrPreview(businessId: session.primaryBusiness.id);
+      final r = await ref
+          .read(hexaApiProvider)
+          .mediaOcrPreview(businessId: session.primaryBusiness.id);
       if (!context.mounted) return;
       final note = r['note']?.toString() ?? 'OCR preview';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(note)));
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('OCR preview: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
     final period = ref.watch(dashboardPeriodProvider);
     final dash = ref.watch(dashboardProvider);
@@ -162,7 +170,9 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
                     IconButton(
                       tooltip: 'Alerts',
                       onPressed: () => context.push('/notifications'),
-                      icon: Icon(unread > 0 ? Icons.notifications_rounded : Icons.notifications_outlined),
+                      icon: Icon(unread > 0
+                          ? Icons.notifications_rounded
+                          : Icons.notifications_outlined),
                     ),
                     if (unread > 0)
                       const Positioned(
@@ -172,7 +182,9 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
                           width: 8,
                           height: 8,
                           child: DecoratedBox(
-                            decoration: BoxDecoration(color: Color(0xFFEF4444), shape: BoxShape.circle),
+                            decoration: BoxDecoration(
+                                color: Color(0xFFEF4444),
+                                shape: BoxShape.circle),
                           ),
                         ),
                       ),
@@ -193,7 +205,8 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
         onRefresh: _refresh,
         edgeOffset: 80,
         child: CustomScrollView(
-          physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+          physics: const BouncingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics()),
           slivers: [
             SliverToBoxAdapter(
               child: Padding(
@@ -207,7 +220,8 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
                           label: dashboardPeriodLabel(p),
                           selected: period == p,
                           onTap: () {
-                            ref.read(dashboardPeriodProvider.notifier).state = p;
+                            ref.read(dashboardPeriodProvider.notifier).state =
+                                p;
                             ref.invalidate(dashboardProvider);
                             ref.invalidate(homeInsightsProvider);
                           },
@@ -224,7 +238,9 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
                 padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
                 child: Text(
                   _rangeCaption(period),
-                  style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary, fontWeight: FontWeight.w500),
+                  style: tt.bodySmall?.copyWith(
+                      color: HexaColors.textSecondary,
+                      fontWeight: FontWeight.w500),
                 ),
               ),
             ),
@@ -240,29 +256,22 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
                       _StatsGridSkeleton(),
                     ],
                   ),
-                  error: (e, _) => Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Could not load dashboard', style: tt.titleSmall),
-                          const SizedBox(height: 8),
-                          Text(e.toString(), style: tt.bodySmall?.copyWith(color: cs.error)),
-                          const SizedBox(height: 12),
-                          FilledButton(
-                            onPressed: () => ref.invalidate(dashboardProvider),
-                            child: const Text('Retry'),
-                          ),
-                        ],
-                      ),
+                  error: (_, __) => Card(
+                    clipBehavior: Clip.antiAlias,
+                    child: FriendlyLoadError(
+                      message: 'Could not load dashboard',
+                      onRetry: () => unawaited(_refresh()),
                     ),
                   ),
                   data: (d) {
-                    final marginPct = d.totalPurchase > 0 ? (d.totalProfit / d.totalPurchase) * 100.0 : null;
+                    final marginPct = d.totalPurchase > 0
+                        ? (d.totalProfit / d.totalPurchase) * 100.0
+                        : null;
                     final mom = hi?.profitChangePctPriorMtd;
                     final empty = d.purchaseCount == 0 && d.totalPurchase <= 0;
-                    final avgPurchase = d.purchaseCount > 0 ? d.totalPurchase / d.purchaseCount : null;
+                    final avgPurchase = d.purchaseCount > 0
+                        ? d.totalPurchase / d.purchaseCount
+                        : null;
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -285,7 +294,8 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
                         const SizedBox(height: 20),
                         Row(
                           children: [
-                            Icon(Icons.notifications_active_rounded, size: 20, color: HexaColors.primaryMid),
+                            const Icon(Icons.notifications_active_rounded,
+                                size: 20, color: HexaColors.primaryMid),
                             const SizedBox(width: 8),
                             Text(
                               'Signals',
@@ -299,15 +309,21 @@ class _HomePageState extends ConsumerState<HomePage> with WidgetsBindingObserver
                         ),
                         const SizedBox(height: 10),
                         if (empty)
-                          _SignalsEmptyState(onAdd: () => showEntryCreateSheet(context))
+                          _SignalsEmptyState(
+                              onAdd: () => showEntryCreateSheet(context))
                         else
                           insights.when(
                             loading: () => const Padding(
                               padding: EdgeInsets.symmetric(vertical: 24),
                               child: Center(child: CircularProgressIndicator()),
                             ),
-                            error: (_, __) => const SizedBox.shrink(),
-                            data: (ins) => _SignalsContent(insights: ins, inr: _inr),
+                            error: (_, __) => FriendlyLoadError(
+                              message: 'Could not load signals',
+                              onRetry: () =>
+                                  ref.invalidate(homeInsightsProvider),
+                            ),
+                            data: (ins) =>
+                                _SignalsContent(insights: ins, inr: _inr),
                           ),
                         const SizedBox(height: 24),
                         Text(
@@ -375,8 +391,25 @@ class _SevenDayProfitChartRow extends ConsumerWidget {
           height: 80,
           width: double.infinity,
           child: series.when(
-            loading: () => const Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))),
-            error: (_, __) => const SizedBox.shrink(),
+            loading: () => const Center(
+                child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2))),
+            error: (_, __) => Center(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.wifi_off_rounded,
+                      size: 18, color: HexaColors.textSecondary),
+                  const SizedBox(width: 8),
+                  TextButton(
+                    onPressed: () => ref.invalidate(homeSevenDayProfitProvider),
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
             data: (pts) {
               if (pts.isEmpty) return const SizedBox.shrink();
               final spots = <FlSpot>[];
@@ -416,7 +449,8 @@ class _SevenDayProfitChartRow extends ConsumerWidget {
         const SizedBox(height: 6),
         Text(
           '7-day profit trend',
-          style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary, fontWeight: FontWeight.w500),
+          style: tt.bodySmall?.copyWith(
+              color: HexaColors.textSecondary, fontWeight: FontWeight.w500),
         ),
       ],
     );
@@ -459,7 +493,8 @@ class _DatePeriodPill extends StatelessWidget {
             style: tt.labelLarge?.copyWith(
               fontSize: 13,
               fontWeight: FontWeight.w800,
-              color: selected ? const Color(0xFF04201C) : HexaColors.textSecondary,
+              color:
+                  selected ? const Color(0xFF04201C) : HexaColors.textSecondary,
             ),
           ),
         ),
@@ -475,13 +510,16 @@ class _HeroProfitLoading extends StatefulWidget {
   State<_HeroProfitLoading> createState() => _HeroProfitLoadingState();
 }
 
-class _HeroProfitLoadingState extends State<_HeroProfitLoading> with SingleTickerProviderStateMixin {
+class _HeroProfitLoadingState extends State<_HeroProfitLoading>
+    with SingleTickerProviderStateMixin {
   late AnimationController _c;
 
   @override
   void initState() {
     super.initState();
-    _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600))..repeat();
+    _c = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1600))
+      ..repeat();
   }
 
   @override
@@ -549,7 +587,10 @@ class _StatsGridSkeleton extends StatelessWidget {
     return Container(
       height: 88,
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: HexaColors.border.withValues(alpha: 0.5)),
       ),
@@ -609,7 +650,9 @@ class _StatsGrid extends StatelessWidget {
             Expanded(
               child: _StatCard(
                 label: 'Margin %',
-                value: marginPct != null ? '${marginPct!.toStringAsFixed(1)}%' : '—',
+                value: marginPct != null
+                    ? '${marginPct!.toStringAsFixed(1)}%'
+                    : '—',
                 stripe: HexaColors.accentAmber,
                 icon: Icons.percent_rounded,
                 iconTint: HexaColors.accentAmber,
@@ -761,17 +804,22 @@ class _SignalsEmptyState extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Icon(Icons.receipt_long_rounded, size: 48, color: HexaColors.primaryMid.withValues(alpha: 0.4)),
+          Icon(Icons.receipt_long_rounded,
+              size: 48, color: HexaColors.primaryMid.withValues(alpha: 0.4)),
           const SizedBox(height: 14),
           Text(
             'No purchases yet',
-            style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700, color: HexaColors.textPrimary, fontSize: 15),
+            style: tt.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: HexaColors.textPrimary,
+                fontSize: 15),
           ),
           const SizedBox(height: 6),
           Text(
             'Add your first entry to see profit signals',
             textAlign: TextAlign.center,
-            style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary, fontSize: 12),
+            style: tt.bodySmall
+                ?.copyWith(color: HexaColors.textSecondary, fontSize: 12),
           ),
           const SizedBox(height: 16),
           SizedBox(
@@ -780,7 +828,8 @@ class _SignalsEmptyState extends StatelessWidget {
             child: DecoratedBox(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
-                gradient: const LinearGradient(colors: [HexaColors.primaryMid, HexaColors.primaryDeep]),
+                gradient: const LinearGradient(
+                    colors: [HexaColors.primaryMid, HexaColors.primaryDeep]),
               ),
               child: Material(
                 color: Colors.transparent,
@@ -790,11 +839,15 @@ class _SignalsEmptyState extends StatelessWidget {
                   child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.add_rounded, color: Color(0xFF04201C), size: 20),
+                      Icon(Icons.add_rounded,
+                          color: Color(0xFF04201C), size: 20),
                       SizedBox(width: 6),
                       Text(
                         '+ Add Purchase',
-                        style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF04201C), fontSize: 15),
+                        style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF04201C),
+                            fontSize: 15),
                       ),
                     ],
                   ),
@@ -865,7 +918,8 @@ class _SignalsContent extends StatelessWidget {
           icon: Icons.storefront_rounded,
           iconColor: HexaColors.primaryMid,
           title: 'Best supplier',
-          subtitle: '${hi.bestSupplierName!} · ${inr(hi.bestSupplierProfit ?? 0)}',
+          subtitle:
+              '${hi.bestSupplierName!} · ${inr(hi.bestSupplierProfit ?? 0)}',
         ),
       );
     }
@@ -874,8 +928,12 @@ class _SignalsContent extends StatelessWidget {
       final warn = sev == 'warning';
       chips.add(
         _SignalChip(
-          color: warn ? HexaColors.loss.withValues(alpha: 0.08) : HexaColors.primaryLight,
-          border: warn ? HexaColors.loss.withValues(alpha: 0.25) : HexaColors.primaryMid.withValues(alpha: 0.2),
+          color: warn
+              ? HexaColors.loss.withValues(alpha: 0.08)
+              : HexaColors.primaryLight,
+          border: warn
+              ? HexaColors.loss.withValues(alpha: 0.25)
+              : HexaColors.primaryMid.withValues(alpha: 0.2),
           icon: warn ? Icons.error_outline_rounded : Icons.info_outline_rounded,
           iconColor: warn ? HexaColors.loss : HexaColors.primaryMid,
           title: 'Alert',
@@ -887,7 +945,10 @@ class _SignalsContent extends StatelessWidget {
     if (chips.isEmpty) {
       return Text(
         'Signals will appear after you record purchases in this period.',
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: HexaColors.textSecondary),
+        style: Theme.of(context)
+            .textTheme
+            .bodySmall
+            ?.copyWith(color: HexaColors.textSecondary),
       );
     }
 
@@ -933,11 +994,14 @@ class _SignalChip extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(title, style: tt.labelSmall?.copyWith(fontWeight: FontWeight.w800)),
+                Text(title,
+                    style:
+                        tt.labelSmall?.copyWith(fontWeight: FontWeight.w800)),
                 if (subtitle.isNotEmpty)
                   Text(
                     subtitle,
-                    style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary),
+                    style:
+                        tt.bodySmall?.copyWith(color: HexaColors.textSecondary),
                   ),
               ],
             ),
@@ -970,7 +1034,8 @@ class _QuickActionCards extends StatelessWidget {
           child: DecoratedBox(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(14),
-              gradient: const LinearGradient(colors: [HexaColors.primaryMid, HexaColors.primaryDeep]),
+              gradient: const LinearGradient(
+                  colors: [HexaColors.primaryMid, HexaColors.primaryDeep]),
             ),
             child: Material(
               color: Colors.transparent,
@@ -982,11 +1047,15 @@ class _QuickActionCards extends StatelessWidget {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(Icons.add_rounded, size: 24, color: Colors.white),
+                      const Icon(Icons.add_rounded,
+                          size: 24, color: Colors.white),
                       const SizedBox(width: 6),
                       Text(
                         'New Entry',
-                        style: tt.labelLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13),
+                        style: tt.labelLarge?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13),
                       ),
                     ],
                   ),
@@ -1004,7 +1073,8 @@ class _QuickActionCards extends StatelessWidget {
               borderRadius: BorderRadius.circular(14),
               onTap: onScan,
               child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: HexaColors.border),
@@ -1013,12 +1083,16 @@ class _QuickActionCards extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.document_scanner_outlined, size: 22, color: Colors.white),
+                    const Icon(Icons.document_scanner_outlined,
+                        size: 22, color: Colors.white),
                     const SizedBox(height: 4),
                     Text(
                       'Scan',
                       textAlign: TextAlign.center,
-                      style: tt.labelSmall?.copyWith(fontWeight: FontWeight.w600, color: HexaColors.textSecondary, fontSize: 12),
+                      style: tt.labelSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: HexaColors.textSecondary,
+                          fontSize: 12),
                     ),
                   ],
                 ),
@@ -1035,7 +1109,8 @@ class _QuickActionCards extends StatelessWidget {
               borderRadius: BorderRadius.circular(14),
               onTap: onReports,
               child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: HexaColors.border),
@@ -1044,12 +1119,16 @@ class _QuickActionCards extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.bar_chart_rounded, size: 22, color: Colors.white),
+                    const Icon(Icons.bar_chart_rounded,
+                        size: 22, color: Colors.white),
                     const SizedBox(height: 4),
                     Text(
                       'Reports',
                       textAlign: TextAlign.center,
-                      style: tt.labelSmall?.copyWith(fontWeight: FontWeight.w600, color: HexaColors.textSecondary, fontSize: 12),
+                      style: tt.labelSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: HexaColors.textSecondary,
+                          fontSize: 12),
                     ),
                   ],
                 ),
@@ -1063,7 +1142,8 @@ class _QuickActionCards extends StatelessWidget {
 }
 
 class _SecondaryChip extends StatelessWidget {
-  const _SecondaryChip({required this.icon, required this.label, required this.onTap});
+  const _SecondaryChip(
+      {required this.icon, required this.label, required this.onTap});
 
   final IconData icon;
   final String label;
@@ -1089,7 +1169,10 @@ class _SecondaryChip extends StatelessWidget {
             children: [
               Icon(icon, size: 20, color: HexaColors.primaryMid),
               const SizedBox(width: 8),
-              Text(label, style: tt.labelLarge?.copyWith(fontWeight: FontWeight.w700, color: HexaColors.textSecondary)),
+              Text(label,
+                  style: tt.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: HexaColors.textSecondary)),
             ],
           ),
         ),
@@ -1122,7 +1205,8 @@ class _HeroProfitCard extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: HexaColors.primaryMid.withValues(alpha: 0.4)),
+          border:
+              Border.all(color: HexaColors.primaryMid.withValues(alpha: 0.4)),
           gradient: const LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -1145,7 +1229,9 @@ class _HeroProfitCard extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.trending_up_rounded, color: Colors.white.withValues(alpha: 0.7), size: 18),
+                        Icon(Icons.trending_up_rounded,
+                            color: Colors.white.withValues(alpha: 0.7),
+                            size: 18),
                         const SizedBox(width: 6),
                         Text(
                           'Total Profit',
@@ -1173,7 +1259,9 @@ class _HeroProfitCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       '$periodLabel · $rangeCaption',
-                      style: tt.bodySmall?.copyWith(color: Colors.white.withValues(alpha: 0.6), fontSize: 12),
+                      style: tt.bodySmall?.copyWith(
+                          color: Colors.white.withValues(alpha: 0.6),
+                          fontSize: 12),
                     ),
                   ],
                 ),
@@ -1184,7 +1272,8 @@ class _HeroProfitCard extends StatelessWidget {
                 top: 12,
                 right: 12,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: badgeColor.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(20),
@@ -1192,7 +1281,10 @@ class _HeroProfitCard extends StatelessWidget {
                   ),
                   child: Text(
                     '${up ? '+' : ''}${changePct!.toStringAsFixed(1)}%',
-                    style: tt.labelSmall?.copyWith(color: badgeColor, fontWeight: FontWeight.w800, fontSize: 12),
+                    style: tt.labelSmall?.copyWith(
+                        color: badgeColor,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12),
                   ),
                 ),
               ),

@@ -8,7 +8,19 @@ import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/google_sign_in_helper.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/config/app_config.dart';
-import '../../../core/theme/hexa_colors.dart';
+
+/// Light, iOS-style palette for this screen only (main shell stays on dark theme).
+abstract final class _AuthLight {
+  static const bg = Color(0xFFF2F2F7);
+  static const surface = Color(0xFFFFFFFF);
+  static const input = Color(0xFFF2F2F7);
+  static const label = Color(0xFF8E8E93);
+  static const title = Color(0xFF000000);
+  static const iosBlue = Color(0xFF007AFF);
+  static const segmentTrack = Color(0xFFE5E5EA);
+  static const error = Color(0xFFFF3B30);
+  static const divider = Color(0xFFC6C6C8);
+}
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
@@ -17,7 +29,8 @@ class LoginPage extends ConsumerStatefulWidget {
   ConsumerState<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends ConsumerState<LoginPage> with SingleTickerProviderStateMixin {
+class _LoginPageState extends ConsumerState<LoginPage>
+    with SingleTickerProviderStateMixin {
   late final TabController _tab;
 
   final _loginEmail = TextEditingController();
@@ -30,6 +43,13 @@ class _LoginPageState extends ConsumerState<LoginPage> with SingleTickerProvider
 
   bool _loading = false;
   String? _error;
+
+  TextStyle get _bodyStyle => GoogleFonts.inter(
+        fontSize: 17,
+        fontWeight: FontWeight.w400,
+        color: _AuthLight.title,
+        height: 1.25,
+      );
 
   @override
   void initState() {
@@ -85,7 +105,8 @@ class _LoginPageState extends ConsumerState<LoginPage> with SingleTickerProvider
       if (mounted) context.go('/home');
     } catch (e) {
       if (mounted) {
-        setState(() => _error = friendlyAuthError(e, context: AuthErrorContext.login));
+        setState(() =>
+            _error = friendlyAuthError(e, context: AuthErrorContext.login));
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -145,7 +166,8 @@ class _LoginPageState extends ConsumerState<LoginPage> with SingleTickerProvider
       if (mounted) context.go('/home');
     } catch (e) {
       if (mounted) {
-        setState(() => _error = friendlyAuthError(e, context: AuthErrorContext.register));
+        setState(() =>
+            _error = friendlyAuthError(e, context: AuthErrorContext.register));
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -158,234 +180,246 @@ class _LoginPageState extends ConsumerState<LoginPage> with SingleTickerProvider
     Widget? prefix,
     Widget? suffix,
   }) {
+    const radius = BorderRadius.all(Radius.circular(12));
     return InputDecoration(
       labelText: label,
       helperText: helper,
       prefixIcon: prefix,
       suffixIcon: suffix,
       filled: true,
-      fillColor: HexaColors.canvas,
-      labelStyle: TextStyle(color: HexaColors.textSecondary),
-      helperStyle: TextStyle(color: HexaColors.textSecondary.withValues(alpha: 0.9)),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: HexaColors.border),
+      fillColor: _AuthLight.input,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      labelStyle: GoogleFonts.inter(
+        fontSize: 15,
+        fontWeight: FontWeight.w500,
+        color: _AuthLight.title,
+      ),
+      helperStyle: GoogleFonts.inter(
+        fontSize: 12,
+        height: 1.3,
+        color: _AuthLight.label,
+      ),
+      floatingLabelBehavior: FloatingLabelBehavior.auto,
+      border: const OutlineInputBorder(
+        borderRadius: radius,
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: const OutlineInputBorder(
+        borderRadius: radius,
+        borderSide: BorderSide.none,
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: HexaColors.accentBlue.withValues(alpha: 0.65), width: 1.5),
+        borderRadius: radius,
+        borderSide:
+            BorderSide(color: _AuthLight.iosBlue.withValues(alpha: 0.55), width: 1.2),
+      ),
+      errorBorder: const OutlineInputBorder(
+        borderRadius: radius,
+        borderSide: BorderSide(color: _AuthLight.error, width: 0.8),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
     final showGoogle = AppConfig.googleOAuthClientId.isNotEmpty;
 
     return Scaffold(
-      backgroundColor: HexaColors.canvas,
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: HexaColors.canvas,
-                gradient: RadialGradient(
-                  center: const Alignment(-0.3, -0.8),
-                  radius: 1.2,
-                  colors: [
-                    HexaColors.accentPurple.withValues(alpha: 0.14),
-                    HexaColors.accentBlue.withValues(alpha: 0.06),
-                    HexaColors.canvas,
-                  ],
-                  stops: const [0.0, 0.45, 1.0],
-                ),
-              ),
-            ),
-          ),
-          SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 32),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        color: HexaColors.primaryLight,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: HexaColors.accentBlue.withValues(alpha: 0.35)),
-                        boxShadow: HexaColors.glowShadow(HexaColors.accentPurple, blur: 22),
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        'H',
-                        style: GoogleFonts.spaceGrotesk(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w700,
-                          color: HexaColors.accentBlue,
-                        ),
+      backgroundColor: _AuthLight.bg,
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 28),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 28),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: _AuthLight.iosBlue,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      'H',
+                      style: GoogleFonts.inter(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
                       ),
                     ),
-                    const SizedBox(width: 14),
-                    Column(
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           AppConfig.appName,
-                          style: GoogleFonts.spaceGrotesk(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w700,
-                            color: HexaColors.textPrimary,
-                            height: 1.05,
+                          style: GoogleFonts.inter(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w600,
+                            color: _AuthLight.title,
+                            height: 1.1,
                           ),
                         ),
+                        const SizedBox(height: 4),
                         Text(
                           'Purchase Intelligence',
-                          style: tt.titleSmall?.copyWith(
-                            color: HexaColors.textSecondary,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
+                          style: GoogleFonts.inter(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w400,
+                            color: _AuthLight.label,
                           ),
                         ),
                       ],
                     ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 28),
+            Expanded(
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: _AuthLight.surface,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Color(0x14000000),
+                      blurRadius: 20,
+                      offset: Offset(0, -2),
+                    ),
                   ],
                 ),
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.bottomCenter,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: HexaColors.surfaceCard,
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-                        border: Border(
-                          top: BorderSide(color: HexaColors.accentPurple.withValues(alpha: 0.25)),
-                        ),
-                        boxShadow: HexaColors.cardShadow(context),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 22, 24, 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _IosSegmentedControl(
+                        tab: _tab,
+                        labels: const ['Sign In', 'Create Account'],
                       ),
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(28, 20, 28, 24),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                      const SizedBox(height: 22),
+                      Expanded(
+                        child: TabBarView(
+                          controller: _tab,
                           children: [
-                            AnimatedBuilder(
-                              animation: _tab,
-                              builder: (context, _) {
-                                return Row(
-                                  children: [
-                                    Expanded(
-                                      child: _PillTab(
-                                        label: 'Sign In',
-                                        selected: _tab.index == 0,
-                                        onTap: () => _tab.animateTo(0),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: _PillTab(
-                                        label: 'Create Account',
-                                        selected: _tab.index == 1,
-                                        onTap: () => _tab.animateTo(1),
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              },
+                            _SignInForm(
+                              bodyStyle: _bodyStyle,
+                              emailCtrl: _loginEmail,
+                              passCtrl: _loginPass,
+                              loading: _loading,
+                              error: _error,
+                              onSubmit: _signIn,
+                              fieldDecoration: _fieldDecoration,
+                              primaryLabel: 'Sign In',
                             ),
-                            const SizedBox(height: 16),
-                            Expanded(
-                              child: TabBarView(
-                                controller: _tab,
-                                children: [
-                                  _SignInForm(
-                                    tt: tt,
-                                    emailCtrl: _loginEmail,
-                                    passCtrl: _loginPass,
-                                    loading: _loading,
-                                    error: _error,
-                                    onSubmit: _signIn,
-                                    fieldDecoration: _fieldDecoration,
-                                    gradientButtonLabel: 'Sign In',
-                                  ),
-                                  _SignUpForm(
-                                    tt: tt,
-                                    userCtrl: _regUser,
-                                    emailCtrl: _regEmail,
-                                    passCtrl: _regPass,
-                                    pass2Ctrl: _regPass2,
-                                    loading: _loading,
-                                    error: _error,
-                                    onSubmit: _signUp,
-                                    fieldDecoration: _fieldDecoration,
-                                  ),
-                                ],
-                              ),
+                            _SignUpForm(
+                              bodyStyle: _bodyStyle,
+                              userCtrl: _regUser,
+                              emailCtrl: _regEmail,
+                              passCtrl: _regPass,
+                              pass2Ctrl: _regPass2,
+                              loading: _loading,
+                              error: _error,
+                              onSubmit: _signUp,
+                              fieldDecoration: _fieldDecoration,
                             ),
-                            if (showGoogle) ...[
-                          Row(
-                            children: [
-                              Expanded(child: Divider(color: HexaColors.border)),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 12),
-                                child: Text(
-                                  '— or —',
-                                  style: tt.labelMedium?.copyWith(color: HexaColors.textSecondary),
-                                ),
-                              ),
-                              Expanded(child: Divider(color: HexaColors.border)),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 48,
-                            child: OutlinedButton.icon(
-                              onPressed: _loading ? null : _googleSignIn,
-                              style: OutlinedButton.styleFrom(
-                                backgroundColor: HexaColors.surfaceElevated,
-                                foregroundColor: HexaColors.textPrimary,
-                                side: BorderSide(color: HexaColors.border),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                              ),
-                              icon: const Text('G', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-                              label: const Text('Continue with Google'),
-                            ),
-                          ),
-                            ],
                           ],
                         ),
                       ),
-                    ),
+                      if (showGoogle) ...[
+                        Row(
+                          children: [
+                            const Expanded(
+                                child: Divider(color: _AuthLight.divider)),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 14),
+                              child: Text(
+                                'or',
+                                style: GoogleFonts.inter(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  color: _AuthLight.label,
+                                ),
+                              ),
+                            ),
+                            const Expanded(
+                                child: Divider(color: _AuthLight.divider)),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: OutlinedButton.icon(
+                            onPressed: _loading ? null : _googleSignIn,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: _AuthLight.title,
+                              backgroundColor: _AuthLight.surface,
+                              side: const BorderSide(color: _AuthLight.divider),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            icon: Text(
+                              'G',
+                              style: GoogleFonts.inter(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 18,
+                                color: _AuthLight.title,
+                              ),
+                            ),
+                            label: Text(
+                              'Continue with Google',
+                              style: GoogleFonts.inter(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-              ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.only(bottom: 10),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 '${AppConfig.appName} © 2026',
                 textAlign: TextAlign.center,
-                style: tt.labelMedium?.copyWith(color: HexaColors.textSecondary.withValues(alpha: 0.7)),
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w400,
+                  color: _AuthLight.label,
+                ),
               ),
               if (kDebugMode) ...[
                 const SizedBox(height: 6),
                 Text(
                   AppConfig.apiBaseUrl,
                   textAlign: TextAlign.center,
-                  style: tt.labelSmall?.copyWith(color: HexaColors.textSecondary.withValues(alpha: 0.35)),
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    color: _AuthLight.label.withValues(alpha: 0.65),
+                  ),
                 ),
               ],
             ],
@@ -396,8 +430,54 @@ class _LoginPageState extends ConsumerState<LoginPage> with SingleTickerProvider
   }
 }
 
-class _PillTab extends StatelessWidget {
-  const _PillTab({required this.label, required this.selected, required this.onTap});
+class _IosSegmentedControl extends StatelessWidget {
+  const _IosSegmentedControl({
+    required this.tab,
+    required this.labels,
+  });
+
+  final TabController tab;
+  final List<String> labels;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: tab,
+      builder: (context, _) {
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            color: _AuthLight.segmentTrack,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(3),
+            child: Row(
+              children: [
+                for (var i = 0; i < labels.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 3),
+                  Expanded(
+                    child: _SegmentChip(
+                      label: labels[i],
+                      selected: tab.index == i,
+                      onTap: () => tab.animateTo(i),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SegmentChip extends StatelessWidget {
+  const _SegmentChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
   final String label;
   final bool selected;
@@ -405,31 +485,35 @@ class _PillTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    final cs = Theme.of(context).colorScheme;
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(22),
-        splashColor: HexaColors.accentPurple.withValues(alpha: 0.12),
-        highlightColor: HexaColors.accentPurple.withValues(alpha: 0.06),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
+        borderRadius: BorderRadius.circular(8),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.symmetric(vertical: 11),
           decoration: BoxDecoration(
-            color: selected ? cs.primary : Colors.transparent,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: selected ? cs.primary : HexaColors.border,
-            ),
-            boxShadow: selected ? HexaColors.glowShadow(cs.primary, blur: 14) : null,
+            color: selected ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.07),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ]
+                : null,
           ),
           alignment: Alignment.center,
           child: Text(
             label,
-            style: tt.labelLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: selected ? cs.onPrimary : HexaColors.textSecondary,
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+              color: selected ? _AuthLight.title : _AuthLight.label,
             ),
           ),
         ),
@@ -447,24 +531,24 @@ typedef _FieldDeco = InputDecoration Function({
 
 class _SignInForm extends StatefulWidget {
   const _SignInForm({
-    required this.tt,
+    required this.bodyStyle,
     required this.emailCtrl,
     required this.passCtrl,
     required this.loading,
     required this.error,
     required this.onSubmit,
     required this.fieldDecoration,
-    required this.gradientButtonLabel,
+    required this.primaryLabel,
   });
 
-  final TextTheme tt;
+  final TextStyle bodyStyle;
   final TextEditingController emailCtrl;
   final TextEditingController passCtrl;
   final bool loading;
   final String? error;
   final VoidCallback onSubmit;
   final _FieldDeco fieldDecoration;
-  final String gradientButtonLabel;
+  final String primaryLabel;
 
   @override
   State<_SignInForm> createState() => _SignInFormState();
@@ -475,7 +559,6 @@ class _SignInFormState extends State<_SignInForm> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final fd = widget.fieldDecoration;
     return ListView(
       padding: EdgeInsets.zero,
@@ -485,40 +568,44 @@ class _SignInFormState extends State<_SignInForm> {
           keyboardType: TextInputType.emailAddress,
           textInputAction: TextInputAction.next,
           autocorrect: false,
-          style: widget.tt.bodyLarge?.copyWith(color: HexaColors.textPrimary),
+          style: widget.bodyStyle,
           decoration: fd(
             label: 'Email',
-            prefix: const Icon(Icons.mail_outline_rounded, color: HexaColors.accentBlue),
+            prefix: const Icon(Icons.mail_outline_rounded,
+                color: _AuthLight.label, size: 22),
           ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 16),
         TextField(
           controller: widget.passCtrl,
           obscureText: _obscure,
-          style: widget.tt.bodyLarge?.copyWith(color: HexaColors.textPrimary),
+          style: widget.bodyStyle,
           decoration: fd(
             label: 'Password',
-            prefix: const Icon(Icons.key_rounded, color: HexaColors.accentBlue),
+            prefix: const Icon(Icons.key_rounded,
+                color: _AuthLight.label, size: 22),
             suffix: IconButton(
               tooltip: _obscure ? 'Show password' : 'Hide password',
               onPressed: () => setState(() => _obscure = !_obscure),
               icon: Icon(
-                _obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                color: HexaColors.textSecondary,
+                _obscure
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+                color: _AuthLight.label,
               ),
             ),
           ),
           onSubmitted: (_) => widget.onSubmit(),
         ),
-        const SizedBox(height: 22),
-        _GradientCta(
-          label: widget.gradientButtonLabel,
+        const SizedBox(height: 24),
+        _IosPrimaryButton(
+          label: widget.primaryLabel,
           loading: widget.loading,
           onPressed: widget.onSubmit,
         ),
         if (widget.error != null) ...[
-          const SizedBox(height: 14),
-          Text(widget.error!, style: widget.tt.bodySmall?.copyWith(color: cs.error, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 16),
+          _AuthInlineError(message: widget.error!),
         ],
       ],
     );
@@ -527,7 +614,7 @@ class _SignInFormState extends State<_SignInForm> {
 
 class _SignUpForm extends StatefulWidget {
   const _SignUpForm({
-    required this.tt,
+    required this.bodyStyle,
     required this.userCtrl,
     required this.emailCtrl,
     required this.passCtrl,
@@ -538,7 +625,7 @@ class _SignUpForm extends StatefulWidget {
     required this.fieldDecoration,
   });
 
-  final TextTheme tt;
+  final TextStyle bodyStyle;
   final TextEditingController userCtrl;
   final TextEditingController emailCtrl;
   final TextEditingController passCtrl;
@@ -558,7 +645,6 @@ class _SignUpFormState extends State<_SignUpForm> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final fd = widget.fieldDecoration;
     return ListView(
       padding: EdgeInsets.zero,
@@ -566,77 +652,105 @@ class _SignUpFormState extends State<_SignUpForm> {
         TextField(
           controller: widget.userCtrl,
           autocorrect: false,
-          style: widget.tt.bodyLarge?.copyWith(color: HexaColors.textPrimary),
+          style: widget.bodyStyle,
           decoration: fd(
             label: 'Username',
             helper: '3–64 chars: letters, numbers, underscore',
-            prefix: const Icon(Icons.badge_outlined, color: HexaColors.accentBlue),
+            prefix: const Icon(Icons.badge_outlined,
+                color: _AuthLight.label, size: 22),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         TextField(
           controller: widget.emailCtrl,
           keyboardType: TextInputType.emailAddress,
           autocorrect: false,
-          style: widget.tt.bodyLarge?.copyWith(color: HexaColors.textPrimary),
+          style: widget.bodyStyle,
           decoration: fd(
             label: 'Email',
-            prefix: const Icon(Icons.mail_outline_rounded, color: HexaColors.accentBlue),
+            prefix: const Icon(Icons.mail_outline_rounded,
+                color: _AuthLight.label, size: 22),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         TextField(
           controller: widget.passCtrl,
           obscureText: _obscure1,
-          style: widget.tt.bodyLarge?.copyWith(color: HexaColors.textPrimary),
+          style: widget.bodyStyle,
           decoration: fd(
             label: 'Password',
             helper: 'At least 8 characters',
-            prefix: const Icon(Icons.key_rounded, color: HexaColors.accentBlue),
+            prefix: const Icon(Icons.key_rounded,
+                color: _AuthLight.label, size: 22),
             suffix: IconButton(
               onPressed: () => setState(() => _obscure1 = !_obscure1),
               icon: Icon(
-                _obscure1 ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                color: HexaColors.textSecondary,
+                _obscure1
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+                color: _AuthLight.label,
               ),
             ),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         TextField(
           controller: widget.pass2Ctrl,
           obscureText: _obscure2,
-          style: widget.tt.bodyLarge?.copyWith(color: HexaColors.textPrimary),
+          style: widget.bodyStyle,
           decoration: fd(
             label: 'Confirm password',
-            prefix: const Icon(Icons.key_off_outlined, color: HexaColors.accentBlue),
+            prefix: const Icon(Icons.key_off_outlined,
+                color: _AuthLight.label, size: 22),
             suffix: IconButton(
               onPressed: () => setState(() => _obscure2 = !_obscure2),
               icon: Icon(
-                _obscure2 ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                color: HexaColors.textSecondary,
+                _obscure2
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+                color: _AuthLight.label,
               ),
             ),
           ),
           onSubmitted: (_) => widget.onSubmit(),
         ),
-        const SizedBox(height: 20),
-        _GradientCta(
+        const SizedBox(height: 22),
+        _IosPrimaryButton(
           label: 'Create account',
           loading: widget.loading,
           onPressed: widget.onSubmit,
         ),
         if (widget.error != null) ...[
-          const SizedBox(height: 14),
-          Text(widget.error!, style: widget.tt.bodySmall?.copyWith(color: cs.error, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 16),
+          _AuthInlineError(message: widget.error!),
         ],
       ],
     );
   }
 }
 
-class _GradientCta extends StatelessWidget {
-  const _GradientCta({
+class _AuthInlineError extends StatelessWidget {
+  const _AuthInlineError({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      message,
+      textAlign: TextAlign.center,
+      style: GoogleFonts.inter(
+        fontSize: 13,
+        height: 1.45,
+        fontWeight: FontWeight.w400,
+        color: _AuthLight.error.withValues(alpha: 0.92),
+      ),
+    );
+  }
+}
+
+class _IosPrimaryButton extends StatelessWidget {
+  const _IosPrimaryButton({
     required this.label,
     required this.loading,
     required this.onPressed,
@@ -651,36 +765,37 @@ class _GradientCta extends StatelessWidget {
     return SizedBox(
       width: double.infinity,
       height: 52,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: HexaColors.ctaGradient,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: HexaColors.glowShadow(HexaColors.accentPurple, blur: 20),
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: loading ? null : onPressed,
+      child: FilledButton(
+        onPressed: loading ? null : onPressed,
+        style: FilledButton.styleFrom(
+          backgroundColor: _AuthLight.iosBlue,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: _AuthLight.iosBlue.withValues(alpha: 0.45),
+          disabledForegroundColor: Colors.white.withValues(alpha: 0.85),
+          elevation: 0,
+          shadowColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
-            child: Center(
-              child: loading
-                  ? const SizedBox(
-                      height: 22,
-                      width: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : Text(
-                      label,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 16,
-                        color: Colors.white,
-                        shadows: [Shadow(color: Color(0x66000000), blurRadius: 8, offset: Offset(0, 1))],
-                      ),
-                    ),
-            ),
           ),
+          padding: const EdgeInsets.symmetric(vertical: 14),
         ),
+        child: loading
+            ? const SizedBox(
+                height: 22,
+                width: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            : Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 17,
+                  color: Colors.white,
+                ),
+              ),
       ),
     );
   }

@@ -14,7 +14,8 @@ const int contactsLookbackDays = 90;
 }
 
 /// Suppliers merged with last-90d analytics rows (key `_metrics` when present).
-final contactsSuppliersEnrichedProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+final contactsSuppliersEnrichedProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   final api = ref.read(hexaApiProvider);
@@ -22,7 +23,8 @@ final contactsSuppliersEnrichedProvider = FutureProvider.autoDispose<List<Map<St
   final list = await api.listSuppliers(businessId: session.primaryBusiness.id);
   List<Map<String, dynamic>> metrics = [];
   try {
-    metrics = await api.analyticsSuppliers(businessId: session.primaryBusiness.id, from: r.from, to: r.to);
+    metrics = await api.analyticsSuppliers(
+        businessId: session.primaryBusiness.id, from: r.from, to: r.to);
   } catch (_) {}
   final byId = <String, Map<String, dynamic>>{};
   for (final m in metrics) {
@@ -35,7 +37,8 @@ final contactsSuppliersEnrichedProvider = FutureProvider.autoDispose<List<Map<St
   }).toList();
 });
 
-final contactsBrokersEnrichedProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+final contactsBrokersEnrichedProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   final api = ref.read(hexaApiProvider);
@@ -43,7 +46,8 @@ final contactsBrokersEnrichedProvider = FutureProvider.autoDispose<List<Map<Stri
   final list = await api.listBrokers(businessId: session.primaryBusiness.id);
   List<Map<String, dynamic>> metrics = [];
   try {
-    metrics = await api.analyticsBrokers(businessId: session.primaryBusiness.id, from: r.from, to: r.to);
+    metrics = await api.analyticsBrokers(
+        businessId: session.primaryBusiness.id, from: r.from, to: r.to);
   } catch (_) {}
   final byId = <String, Map<String, dynamic>>{};
   for (final m in metrics) {
@@ -56,18 +60,22 @@ final contactsBrokersEnrichedProvider = FutureProvider.autoDispose<List<Map<Stri
   }).toList();
 });
 
-final contactsCategoriesProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+final contactsCategoriesProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   final api = ref.read(hexaApiProvider);
   final r = contactsDefaultRange();
-  return api.analyticsCategories(businessId: session.primaryBusiness.id, from: r.from, to: r.to);
+  return api.analyticsCategories(
+      businessId: session.primaryBusiness.id, from: r.from, to: r.to);
 });
 
-final contactsItemsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+final contactsItemsProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   final api = ref.read(hexaApiProvider);
   final r = contactsDefaultRange();
-  return api.analyticsItems(businessId: session.primaryBusiness.id, from: r.from, to: r.to);
+  return api.analyticsItems(
+      businessId: session.primaryBusiness.id, from: r.from, to: r.to);
 });

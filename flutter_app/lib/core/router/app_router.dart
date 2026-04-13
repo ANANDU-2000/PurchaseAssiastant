@@ -62,7 +62,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(path: '/splash', builder: (context, state) => const SplashPage()),
       GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
-      GoRoute(path: '/catalog', builder: (context, state) => const CatalogPage()),
+      GoRoute(
+          path: '/catalog', builder: (context, state) => const CatalogPage()),
       GoRoute(
         path: '/catalog/item/:itemId',
         builder: (context, state) {
@@ -135,22 +136,34 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         branches: [
           StatefulShellBranch(
             routes: [
-              GoRoute(path: '/home', name: 'home', builder: (context, state) => const HomePage()),
+              GoRoute(
+                  path: '/home',
+                  name: 'home',
+                  builder: (context, state) => const HomePage()),
             ],
           ),
           StatefulShellBranch(
             routes: [
-              GoRoute(path: '/entries', name: 'entries', builder: (context, state) => const EntriesPage()),
+              GoRoute(
+                  path: '/entries',
+                  name: 'entries',
+                  builder: (context, state) => const EntriesPage()),
             ],
           ),
           StatefulShellBranch(
             routes: [
-              GoRoute(path: '/contacts', name: 'contacts', builder: (context, state) => const ContactsPage()),
+              GoRoute(
+                  path: '/contacts',
+                  name: 'contacts',
+                  builder: (context, state) => const ContactsPage()),
             ],
           ),
           StatefulShellBranch(
             routes: [
-              GoRoute(path: '/analytics', name: 'analytics', builder: (context, state) => const AnalyticsPage()),
+              GoRoute(
+                  path: '/analytics',
+                  name: 'analytics',
+                  builder: (context, state) => const AnalyticsPage()),
             ],
           ),
         ],

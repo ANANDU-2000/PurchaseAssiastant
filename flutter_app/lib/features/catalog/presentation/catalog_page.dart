@@ -4,9 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/widgets/friendly_load_error.dart';
 
 /// Master categories + catalog items (per business).
 class CatalogPage extends ConsumerStatefulWidget {
@@ -16,7 +18,8 @@ class CatalogPage extends ConsumerStatefulWidget {
   ConsumerState<CatalogPage> createState() => _CatalogPageState();
 }
 
-class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProviderStateMixin {
+class _CatalogPageState extends ConsumerState<CatalogPage>
+    with SingleTickerProviderStateMixin {
   late final TabController _tabs;
   String _searchQuery = '';
 
@@ -41,13 +44,40 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
 
   String _inr(num? n) {
     if (n == null) return '—';
-    return NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(n);
+    return NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
+        .format(n);
   }
 
   num? _num(dynamic v) {
     if (v == null) return null;
     if (v is num) return v;
     return num.tryParse(v.toString());
+  }
+
+  /// Per-row insights sit in a list — use a compact retry instead of hiding failures.
+  Widget _insightLoadErrorButton(VoidCallback onRetry) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton(
+          onPressed: onRetry,
+          style: TextButton.styleFrom(
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: Text(
+            'Insights unavailable · Retry',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: HexaColors.primaryMid,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+        ),
+      ),
+    );
   }
 
   String? _existingItemIdFrom409(DioException e) {
@@ -84,7 +114,8 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
               decoration: InputDecoration(
                 hintText: 'Search by name',
                 prefixIcon: const Icon(Icons.search_rounded),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 isDense: true,
               ),
               onChanged: (v) => setState(() => _searchQuery = v),
@@ -122,10 +153,17 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
     final range = catalogInsightsDefaultRange();
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
+      error: (_, __) => FriendlyLoadError(
+        onRetry: () {
+          ref.invalidate(itemCategoriesListProvider);
+          ref.invalidate(catalogItemsListProvider);
+        },
+      ),
       data: (list) {
-        final items = itemsAsync.maybeWhen(data: (x) => x, orElse: () => <Map<String, dynamic>>[]);
-        final filtered = list.where((c) => _matches(c['name']?.toString())).toList();
+        final items = itemsAsync.maybeWhen(
+            data: (x) => x, orElse: () => <Map<String, dynamic>>[]);
+        final filtered =
+            list.where((c) => _matches(c['name']?.toString())).toList();
         return RefreshIndicator(
           onRefresh: () async {
             ref.invalidate(itemCategoriesListProvider);
@@ -138,12 +176,16 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(24, 48, 24, 88),
                   children: [
-                    Icon(Icons.folder_outlined, size: 48, color: Theme.of(context).colorScheme.primary),
+                    Icon(Icons.folder_outlined,
+                        size: 48, color: Theme.of(context).colorScheme.primary),
                     const SizedBox(height: 16),
                     Text(
                       list.isEmpty ? 'No categories yet' : 'No matches',
                       textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w800),
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -151,7 +193,10 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
                           ? 'Add a category to organize items, or create categories while recording a purchase.'
                           : 'Try a different search.',
                       textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: HexaColors.textSecondary),
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: HexaColors.textSecondary),
                     ),
                   ],
                 )
@@ -162,7 +207,9 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
                     final c = filtered[i];
                     final id = c['id']?.toString() ?? '';
                     final name = c['name']?.toString() ?? '';
-                    final itemCount = items.where((it) => it['category_id']?.toString() == id).length;
+                    final itemCount = items
+                        .where((it) => it['category_id']?.toString() == id)
+                        .length;
                     final insKey = '$id|${range.from}|${range.to}';
                     final ins = ref.watch(categoryInsightsProvider(insKey));
                     return Card(
@@ -179,28 +226,46 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                                    Text(name,
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 16)),
                                     const SizedBox(height: 6),
                                     Text(
                                       'Items in catalog: $itemCount',
-                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: HexaColors.textSecondary),
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                              color: HexaColors.textSecondary),
                                     ),
                                     ins.when(
                                       loading: () => const Padding(
                                         padding: EdgeInsets.only(top: 8),
                                         child: LinearProgressIndicator(),
                                       ),
-                                      error: (_, __) => const SizedBox.shrink(),
+                                      error: (_, __) => _insightLoadErrorButton(
+                                          () => ref.invalidate(
+                                              categoryInsightsProvider(
+                                                  insKey))),
                                       data: (m) {
                                         final tp = m['total_profit'];
-                                        final top = m['top_item_name']?.toString();
-                                        final lines = m['linked_line_count'] ?? 0;
+                                        final top =
+                                            m['top_item_name']?.toString();
+                                        final lines =
+                                            m['linked_line_count'] ?? 0;
                                         return Padding(
-                                          padding: const EdgeInsets.only(top: 8),
+                                          padding:
+                                              const EdgeInsets.only(top: 8),
                                           child: Text(
                                             'Last 90d: ${_inr(_num(tp))} profit · $lines lines${top != null ? ' · top: $top' : ''}',
-                                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodySmall
+                                                ?.copyWith(
+                                                  color: Theme.of(context)
+                                                      .colorScheme
+                                                      .onSurfaceVariant,
                                                   height: 1.35,
                                                 ),
                                           ),
@@ -212,12 +277,18 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
                               ),
                               PopupMenuButton<String>(
                                 onSelected: (v) {
-                                  if (v == 'edit') _editCategory(context, id, name);
-                                  if (v == 'del') _deleteCategory(context, id, name);
+                                  if (v == 'edit') {
+                                    _editCategory(context, id, name);
+                                  }
+                                  if (v == 'del') {
+                                    _deleteCategory(context, id, name);
+                                  }
                                 },
                                 itemBuilder: (ctx) => const [
-                                  PopupMenuItem(value: 'edit', child: Text('Rename')),
-                                  PopupMenuItem(value: 'del', child: Text('Delete')),
+                                  PopupMenuItem(
+                                      value: 'edit', child: Text('Rename')),
+                                  PopupMenuItem(
+                                      value: 'del', child: Text('Delete')),
                                 ],
                               ),
                             ],
@@ -238,16 +309,27 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
     final range = catalogInsightsDefaultRange();
     return catsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('$e')),
+      error: (_, __) => FriendlyLoadError(
+        onRetry: () {
+          ref.invalidate(itemCategoriesListProvider);
+          ref.invalidate(catalogItemsListProvider);
+        },
+      ),
       data: (cats) {
         return itemsAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('$e')),
+          error: (_, __) => FriendlyLoadError(
+            onRetry: () {
+              ref.invalidate(itemCategoriesListProvider);
+              ref.invalidate(catalogItemsListProvider);
+            },
+          ),
           data: (items) {
             final catName = <String, String>{
               for (final c in cats) c['id'].toString(): c['name'].toString(),
             };
-            final filtered = items.where((it) => _matches(it['name']?.toString())).toList();
+            final filtered =
+                items.where((it) => _matches(it['name']?.toString())).toList();
             return RefreshIndicator(
               onRefresh: () async {
                 ref.invalidate(itemCategoriesListProvider);
@@ -259,12 +341,17 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.fromLTRB(24, 48, 24, 88),
                       children: [
-                        Icon(Icons.inventory_2_outlined, size: 48, color: Theme.of(context).colorScheme.primary),
+                        Icon(Icons.inventory_2_outlined,
+                            size: 48,
+                            color: Theme.of(context).colorScheme.primary),
                         const SizedBox(height: 16),
                         Text(
                           items.isEmpty ? 'No catalog items yet' : 'No matches',
                           textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w800),
                         ),
                         const SizedBox(height: 8),
                         Text(
@@ -272,7 +359,10 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
                               ? 'Add items here to get profit and usage on this screen — or create them from a purchase entry.'
                               : 'Try a different search.',
                           textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: HexaColors.textSecondary),
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: HexaColors.textSecondary),
                         ),
                       ],
                     )
@@ -288,7 +378,8 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
                         final catLine =
                             '${catName[cid] ?? cid}${du != null && du.isNotEmpty ? ' · default $du' : ''}';
                         final insKey = '$id|${range.from}|${range.to}';
-                        final ins = ref.watch(catalogItemInsightsProvider(insKey));
+                        final ins =
+                            ref.watch(catalogItemInsightsProvider(insKey));
                         return Card(
                           margin: const EdgeInsets.only(bottom: 10),
                           child: InkWell(
@@ -301,33 +392,53 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
                                 children: [
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                                        Text(name,
+                                            style: const TextStyle(
+                                                fontWeight: FontWeight.w800,
+                                                fontSize: 16)),
                                         const SizedBox(height: 4),
                                         Text(
                                           catLine,
-                                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: HexaColors.textSecondary),
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(
+                                                  color:
+                                                      HexaColors.textSecondary),
                                         ),
                                         ins.when(
                                           loading: () => const Padding(
                                             padding: EdgeInsets.only(top: 8),
                                             child: LinearProgressIndicator(),
                                           ),
-                                          error: (_, __) => const SizedBox.shrink(),
+                                          error: (_, __) =>
+                                              _insightLoadErrorButton(() =>
+                                                  ref.invalidate(
+                                                      catalogItemInsightsProvider(
+                                                          insKey))),
                                           data: (m) {
                                             final lines = m['line_count'] ?? 0;
                                             final profit = m['total_profit'];
                                             final al = m['avg_landing'];
                                             final ase = m['avg_selling'];
-                                            final last = m['last_entry_date']?.toString();
+                                            final last = m['last_entry_date']
+                                                ?.toString();
                                             return Padding(
-                                              padding: const EdgeInsets.only(top: 8),
+                                              padding:
+                                                  const EdgeInsets.only(top: 8),
                                               child: Text(
                                                 'Last 90d: $lines lines · ${_inr(_num(profit))} profit · avg ${_inr(_num(al))} → ${_inr(_num(ase))}'
                                                 '${last != null ? ' · last $last' : ''}',
-                                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .bodySmall
+                                                    ?.copyWith(
+                                                      color: Theme.of(context)
+                                                          .colorScheme
+                                                          .onSurfaceVariant,
                                                       height: 1.35,
                                                     ),
                                               ),
@@ -339,12 +450,18 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
                                   ),
                                   PopupMenuButton<String>(
                                     onSelected: (v) {
-                                      if (v == 'edit') _editItem(context, cats, it);
-                                      if (v == 'del') _deleteItem(context, id, name);
+                                      if (v == 'edit') {
+                                        _editItem(context, cats, it);
+                                      }
+                                      if (v == 'del') {
+                                        _deleteItem(context, id, name);
+                                      }
                                     },
                                     itemBuilder: (ctx) => const [
-                                      PopupMenuItem(value: 'edit', child: Text('Edit')),
-                                      PopupMenuItem(value: 'del', child: Text('Delete')),
+                                      PopupMenuItem(
+                                          value: 'edit', child: Text('Edit')),
+                                      PopupMenuItem(
+                                          value: 'del', child: Text('Delete')),
                                     ],
                                   ),
                                 ],
@@ -373,8 +490,12 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
           decoration: const InputDecoration(labelText: 'Name'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Create')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Create')),
         ],
       ),
     );
@@ -389,25 +510,34 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
       ref.invalidate(itemCategoriesListProvider);
       ref.invalidate(catalogItemsListProvider);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Category created')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Category created')));
       }
     } on DioException catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.response?.data?.toString() ?? '$e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
       }
     }
   }
 
-  Future<void> _editCategory(BuildContext context, String id, String current) async {
+  Future<void> _editCategory(
+      BuildContext context, String id, String current) async {
     final ctrl = TextEditingController(text: current);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Rename category'),
-        content: TextField(controller: ctrl, decoration: const InputDecoration(labelText: 'Name')),
+        content: TextField(
+            controller: ctrl,
+            decoration: const InputDecoration(labelText: 'Name')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Save')),
         ],
       ),
     );
@@ -423,24 +553,31 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
       ref.invalidate(itemCategoriesListProvider);
       ref.invalidate(catalogItemsListProvider);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Saved')));
       }
     } on DioException catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
       }
     }
   }
 
-  Future<void> _deleteCategory(BuildContext context, String id, String name) async {
+  Future<void> _deleteCategory(
+      BuildContext context, String id, String name) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete category?'),
         content: Text('Delete “$name”? It must have no items.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Delete')),
         ],
       ),
     );
@@ -448,15 +585,18 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
     final session = ref.read(sessionProvider);
     if (session == null) return;
     try {
-      await ref.read(hexaApiProvider).deleteItemCategory(businessId: session.primaryBusiness.id, categoryId: id);
+      await ref.read(hexaApiProvider).deleteItemCategory(
+          businessId: session.primaryBusiness.id, categoryId: id);
       ref.invalidate(itemCategoriesListProvider);
       ref.invalidate(catalogItemsListProvider);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Category deleted')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Category deleted')));
       }
     } on DioException catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
       }
     }
   }
@@ -483,6 +623,7 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
               mainAxisSize: MainAxisSize.min,
               children: [
                 DropdownButtonFormField<String>(
+                  key: ValueKey(selectedCat),
                   initialValue: selectedCat,
                   decoration: const InputDecoration(labelText: 'Category'),
                   items: cats
@@ -495,10 +636,14 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
                       .toList(),
                   onChanged: (v) => setSt(() => selectedCat = v),
                 ),
-                TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Name')),
+                TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(labelText: 'Name')),
                 DropdownButtonFormField<String?>(
+                  key: ValueKey(unit),
                   initialValue: unit,
-                  decoration: const InputDecoration(labelText: 'Default unit (optional)'),
+                  decoration: const InputDecoration(
+                      labelText: 'Default unit (optional)'),
                   items: const [
                     DropdownMenuItem(value: null, child: Text('—')),
                     DropdownMenuItem(value: 'kg', child: Text('kg')),
@@ -511,8 +656,12 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Create')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Create')),
           ],
         ),
       ),
@@ -531,7 +680,8 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
           );
       ref.invalidate(catalogItemsListProvider);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Item created')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Item created')));
       }
     } on DioException catch (e) {
       final existing = _existingItemIdFrom409(e);
@@ -542,16 +692,23 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
             title: const Text('Item already exists'),
             content: const Text('Open the existing catalog item?'),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Open')),
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel')),
+              FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Open')),
             ],
           ),
         );
-        if (go == true && context.mounted) context.push('/catalog/item/$existing');
+        if (go == true && context.mounted) {
+          context.push('/catalog/item/$existing');
+        }
         return;
       }
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
       }
     }
   }
@@ -576,6 +733,7 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
               mainAxisSize: MainAxisSize.min,
               children: [
                 DropdownButtonFormField<String>(
+                  key: ValueKey(selectedCat),
                   initialValue: selectedCat,
                   decoration: const InputDecoration(labelText: 'Category'),
                   items: cats
@@ -588,10 +746,14 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
                       .toList(),
                   onChanged: (v) => setSt(() => selectedCat = v),
                 ),
-                TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Name')),
+                TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(labelText: 'Name')),
                 DropdownButtonFormField<String?>(
+                  key: ValueKey(unit),
                   initialValue: unit,
-                  decoration: const InputDecoration(labelText: 'Default unit (optional)'),
+                  decoration: const InputDecoration(
+                      labelText: 'Default unit (optional)'),
                   items: const [
                     DropdownMenuItem(value: null, child: Text('—')),
                     DropdownMenuItem(value: 'kg', child: Text('kg')),
@@ -604,13 +766,19 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Save')),
           ],
         ),
       ),
     );
-    if (ok != true || nameCtrl.text.trim().isEmpty || selectedCat == null) return;
+    if (ok != true || nameCtrl.text.trim().isEmpty || selectedCat == null) {
+      return;
+    }
     final session = ref.read(sessionProvider);
     if (session == null) return;
     try {
@@ -623,7 +791,8 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
           );
       ref.invalidate(catalogItemsListProvider);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Saved')));
       }
     } on DioException catch (e) {
       final existing = _existingItemIdFrom409(e);
@@ -632,18 +801,26 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('Name already used'),
-            content: const Text('Another item in that category has this name. Open it?'),
+            content: const Text(
+                'Another item in that category has this name. Open it?'),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Open')),
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel')),
+              FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Open')),
             ],
           ),
         );
-        if (go == true && context.mounted) context.push('/catalog/item/$existing');
+        if (go == true && context.mounted) {
+          context.push('/catalog/item/$existing');
+        }
         return;
       }
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
       }
     }
   }
@@ -655,8 +832,12 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
         title: const Text('Delete item?'),
         content: Text('Delete “$name” from the catalog?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Delete')),
         ],
       ),
     );
@@ -664,14 +845,17 @@ class _CatalogPageState extends ConsumerState<CatalogPage> with SingleTickerProv
     final session = ref.read(sessionProvider);
     if (session == null) return;
     try {
-      await ref.read(hexaApiProvider).deleteCatalogItem(businessId: session.primaryBusiness.id, itemId: id);
+      await ref.read(hexaApiProvider).deleteCatalogItem(
+          businessId: session.primaryBusiness.id, itemId: id);
       ref.invalidate(catalogItemsListProvider);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Item removed')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Item removed')));
       }
     } on DioException catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
       }
     }
   }
