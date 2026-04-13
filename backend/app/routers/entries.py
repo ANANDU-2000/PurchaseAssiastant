@@ -12,8 +12,6 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.deps import get_current_user, require_ai_parse_enabled, require_membership
 from app.models import Entry, EntryLineItem, Membership, User
-from app.services.entry_preview_token import consume_preview_token, issue_preview_token, verify_preview_token
-from app.services.entry_write import persist_confirmed_entry
 from app.schemas.entries import (
     DuplicateCheckRequest,
     DuplicateCheckResponse,
@@ -22,8 +20,8 @@ from app.schemas.entries import (
     EntryOut,
     ParseDraftResponse,
 )
-from app.services.catalog_resolution import resolve_catalog_items_on_entry
-from app.services.entry_logic import apply_computed_landings, enrich_line_quantities, entry_line_profit, entry_price_warnings, find_duplicates
+from app.services.entry_create_pipeline import commit_create_entry_confirmed, prepare_create_entry_preview
+from app.services.entry_logic import find_duplicates
 
 router = APIRouter(prefix="/v1/businesses/{business_id}/entries", tags=["entries"])
 
@@ -150,91 +148,13 @@ async def create_entry(
     body: EntryCreateRequest,
 ):
     del _m
-    try:
-        body = await resolve_catalog_items_on_entry(db, business_id, body)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
-    body = apply_computed_landings(body)
-    enriched = [enrich_line_quantities(li) for li in body.lines]
-    body = body.model_copy(update={"lines": enriched})
-
-    preview_lines: list[EntryLineOut] = []
-    for li in body.lines:
-        prof = entry_line_profit(li)
-        preview_lines.append(
-            EntryLineOut(
-                id=None,
-                catalog_item_id=li.catalog_item_id,
-                catalog_variant_id=li.catalog_variant_id,
-                item_name=li.item_name,
-                category=li.category,
-                qty=float(li.qty),
-                unit=li.unit,
-                bags=li.bags,
-                kg_per_bag=li.kg_per_bag,
-                qty_kg=li.qty_kg,
-                buy_price=float(li.buy_price),
-                landing_cost=float(li.landing_cost),
-                selling_price=float(li.selling_price) if li.selling_price is not None else None,
-                profit=float(prof) if prof is not None else None,
-                stock_note=li.stock_note.strip() if li.stock_note else None,
-            )
-        )
-
     if not body.confirm:
-        token = issue_preview_token(body, user_id=user.id, business_id=business_id)
-        warnings = await entry_price_warnings(db, business_id, body)
-        return JSONResponse(
-            status_code=status.HTTP_200_OK,
-            content={
-                "preview": True,
-                "preview_token": token,
-                "entry_date": body.entry_date.isoformat(),
-                "lines": [p.model_dump(mode="json") for p in preview_lines],
-                "warnings": warnings,
-            },
-        )
+        content, _ = await prepare_create_entry_preview(db, business_id, user.id, body)
+        return JSONResponse(status_code=status.HTTP_200_OK, content=content)
 
-    ok, err = verify_preview_token(
-        body.preview_token,
-        body,
-        user_id=user.id,
-        business_id=business_id,
+    out = await commit_create_entry_confirmed(
+        db, business_id, user.id, body, source="app"
     )
-    if not ok:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=err)
-
-    dup_ids: list[uuid.UUID] = []
-    for li in body.lines:
-        dup_ids.extend(
-            await find_duplicates(
-                db,
-                business_id,
-                li.item_name,
-                li.qty,
-                body.entry_date,
-                supplier_id=body.supplier_id,
-                catalog_variant_id=li.catalog_variant_id,
-            )
-        )
-    matching_entry_ids = list(dict.fromkeys(dup_ids))
-    if matching_entry_ids and not body.force_duplicate:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "message": "Possible duplicate entries for this date.",
-                "matching_entry_ids": [str(x) for x in matching_entry_ids],
-            },
-        )
-
-    out = await persist_confirmed_entry(
-        db,
-        business_id=business_id,
-        user_id=user.id,
-        body=body,
-        source="app",
-    )
-    consume_preview_token(body.preview_token)
     return JSONResponse(
         status_code=status.HTTP_201_CREATED,
         content=out.model_dump(mode="json"),
