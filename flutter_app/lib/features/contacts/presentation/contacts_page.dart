@@ -1273,11 +1273,11 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
       floatingActionButton: AnimatedBuilder(
         animation: _tabController,
         builder: (context, _) {
-          final labels = ['＋ Supplier', '＋ Broker', '＋ Category', '＋ Item'];
+          const labels = ['Supplier', 'Broker', 'Category', 'Item'];
           return FloatingActionButton.extended(
             onPressed: _addForCurrentTab,
             icon: const Icon(Icons.add_rounded),
-            label: Text(labels[_tabController.index.clamp(0, 3)]),
+            label: Text('Add ${labels[_tabController.index.clamp(0, 3)]}'),
             backgroundColor: HexaColors.primaryMid,
             foregroundColor: Colors.white,
           );

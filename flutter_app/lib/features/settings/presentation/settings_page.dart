@@ -19,6 +19,17 @@ import '../../../core/providers/prefs_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/theme/theme_context_ext.dart';
 
+/// Authkey dashboard often shows a hex app id — not dialable. Block obvious mistakes.
+bool _looksLikeAuthkeyAppId(String raw) {
+  final t = raw.trim();
+  if (t.isEmpty) return false;
+  if (t.contains('+')) return false;
+  if (RegExp(r'^[\d\s\-()]+$').hasMatch(t) && RegExp(r'\d').hasMatch(t)) {
+    return false;
+  }
+  return t.length >= 8 && RegExp(r'^[0-9a-fA-F]+$').hasMatch(t);
+}
+
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
 
@@ -267,25 +278,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     if (session == null) return;
     final prefs = ref.read(sharedPreferencesProvider);
     final local = prefs.getString(kWhatsappAssistantOverrideKey)?.trim() ?? '';
+    _waOverrideCtrl.text = local;
     try {
       final m = await ref.read(hexaApiProvider).getWhatsappAssistantInfo();
       if (mounted) {
         setState(() {
           _whatsappAssistant = m;
-          final apiRaw =
-              m['assistant_e164']?.toString().trim() ?? '';
-          if (apiRaw.isEmpty && _waOverrideCtrl.text.isEmpty) {
-            _waOverrideCtrl.text = local;
-          }
         });
       }
     } catch (_) {
       if (mounted) {
         setState(() {
           _whatsappAssistant = null;
-          if (_waOverrideCtrl.text.isEmpty) {
-            _waOverrideCtrl.text = local;
-          }
         });
       }
     }
@@ -294,22 +298,39 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Future<void> _saveWhatsappOverride() async {
     final prefs = ref.read(sharedPreferencesProvider);
     final t = _waOverrideCtrl.text.trim();
+    if (t.isNotEmpty && _looksLikeAuthkeyAppId(t)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Use your WhatsApp Business phone in E.164 (e.g. +15559276064). '
+            'Do not paste the Authkey app id from the dashboard.',
+          ),
+        ),
+      );
+      return;
+    }
     if (t.isEmpty) {
       await prefs.remove(kWhatsappAssistantOverrideKey);
     } else {
       await prefs.setString(kWhatsappAssistantOverrideKey, t);
     }
     if (mounted) {
+      setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Saved on this device')),
       );
     }
   }
 
+  /// Draft in field → saved on device → API (so Copy/Open match what you typed).
   String _effectiveAssistantE164() {
-    final api = _whatsappAssistant?['assistant_e164']?.toString().trim() ?? '';
-    if (api.isNotEmpty) return api;
-    return _waOverrideCtrl.text.trim();
+    final draft = _waOverrideCtrl.text.trim();
+    if (draft.isNotEmpty) return draft;
+    final prefs = ref.read(sharedPreferencesProvider);
+    final saved = prefs.getString(kWhatsappAssistantOverrideKey)?.trim() ?? '';
+    if (saved.isNotEmpty) return saved;
+    return _whatsappAssistant?['assistant_e164']?.toString().trim() ?? '';
   }
 
   Future<void> _refreshBilling() async {
@@ -419,8 +440,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       const SizedBox(width: 8),
                       Text(
                         'WhatsApp assistant',
-                        style: tt.titleSmall
-                            ?.copyWith(fontWeight: FontWeight.w800),
+                        style: tt.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: cs.onSurface,
+                        ),
                       ),
                     ],
                   ),
@@ -430,47 +453,59 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         'Save the assistant number in your contacts. Message from the phone you use to sign in. Purchases need a preview and YES — never auto-saved from chat alone.',
                     style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                   ),
-                  if (_whatsappAssistant?['assistant_e164'] == null ||
-                      _whatsappAssistant!['assistant_e164']
-                          .toString()
-                          .trim()
-                          .isEmpty) ...[
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: _waOverrideCtrl,
-                      keyboardType: TextInputType.phone,
-                      decoration: InputDecoration(
-                        labelText: 'Assistant number (paste from Authkey)',
-                        hintText: '+91…',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        isDense: true,
-                      ),
-                      onSubmitted: (_) => unawaited(_saveWhatsappOverride()),
-                    ),
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: OutlinedButton(
-                        onPressed: _saveWhatsappOverride,
-                        child: const Text('Save on this device'),
-                      ),
-                    ),
-                  ],
                   if ((_whatsappAssistant?['assistant_e164']?.toString() ?? '')
                       .trim()
                       .isNotEmpty) ...[
                     const SizedBox(height: 10),
+                    Text(
+                      'Server',
+                      style: tt.labelSmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
                     SelectableText(
                       _whatsappAssistant!['assistant_e164'].toString().trim(),
                       style: tt.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0.2,
+                        color: cs.onSurface,
                       ),
                     ),
                     const SizedBox(height: 10),
                   ],
+                  Text(
+                    'On this device',
+                    style: tt.labelSmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: _waOverrideCtrl,
+                    keyboardType: TextInputType.phone,
+                    decoration: InputDecoration(
+                      labelText: 'WhatsApp Business number (E.164)',
+                      hintText: '+15559276064',
+                      helperText:
+                          'Use the phone number assigned to WhatsApp — not the Authkey app id.',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      isDense: true,
+                    ),
+                    onSubmitted: (_) => unawaited(_saveWhatsappOverride()),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OutlinedButton(
+                      onPressed: () => unawaited(_saveWhatsappOverride()),
+                      child: const Text('Save on this device'),
+                    ),
+                  ),
                   if (_effectiveAssistantE164().isNotEmpty) ...[
                     Wrap(
                       spacing: 8,

@@ -219,14 +219,14 @@ class ShellScreen extends ConsumerWidget {
 Future<void> _openWhatsappAssistant(BuildContext context, WidgetRef ref) async {
   try {
     final m = await ref.read(hexaApiProvider).getWhatsappAssistantInfo();
-    var raw = m['assistant_e164']?.toString().trim();
-    if (raw == null || raw.isEmpty) {
-      raw = ref
-          .read(sharedPreferencesProvider)
-          .getString(kWhatsappAssistantOverrideKey)
-          ?.trim();
-    }
-    if (raw == null || raw.isEmpty) {
+    // Device-saved number wins over API (matches Settings "Save on this device").
+    final prefs = ref.read(sharedPreferencesProvider);
+    final local =
+        prefs.getString(kWhatsappAssistantOverrideKey)?.trim() ?? '';
+    var raw = local.isNotEmpty
+        ? local
+        : (m['assistant_e164']?.toString().trim() ?? '');
+    if (raw.isEmpty) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
