@@ -42,20 +42,25 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
     ),
     redirect: (context, state) {
+      final loc = state.matchedLocation;
+      final public = loc == '/splash' || loc == '/login';
+
       ProviderContainer container;
       try {
         container = ProviderScope.containerOf(context);
       } catch (_) {
-        // First frame / wrong ancestor — don't block navigation.
+        // Rare: router runs before ProviderScope is available. Never land on a protected shell route.
+        if (!public) return '/splash';
         return null;
       }
+
       final session = container.read(sessionProvider);
-      final loc = state.matchedLocation;
-      final public = loc == '/splash' || loc == '/login';
+      // No session → only splash/login. (JWT may still be restoring in main(); splash handles that.)
       if (session == null) {
         if (public) return null;
         return '/login';
       }
+      // Signed in → skip auth screens.
       if (public) return '/home';
       return null;
     },
