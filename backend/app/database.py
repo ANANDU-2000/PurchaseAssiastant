@@ -25,6 +25,19 @@ def _normalize_postgres_async_url(url: str) -> str:
 
 _sqlite = settings.database_url.startswith("sqlite")
 _pooler = (settings.database_pooler_url or "").strip()
+if _pooler:
+    _pl = _pooler.lower()
+    if "[your-password]" in _pl or "your-password" in _pl:
+        logger.error(
+            "DATABASE_POOLER_URL still contains the Supabase placeholder [YOUR-PASSWORD]. "
+            "Set DATABASE_POOLER_PASSWORD to your real DB password and use a URI with no password in the string "
+            "(postgresql+asyncpg://postgres.PROJECT_REF@HOST:6543/postgres)."
+        )
+    if "postgres.[" in _pooler or "postgres:[" in _pooler:
+        logger.error(
+            "Invalid URI: do not wrap the password in square brackets. "
+            "Use postgres.PROJECT_REF@host (see DATABASE_POOLER_PASSWORD)."
+        )
 _effective_url = _pooler if _pooler else settings.database_url
 if not _sqlite:
     _effective_url = _normalize_postgres_async_url(_effective_url)
