@@ -2,6 +2,15 @@ import logging
 import ssl
 from collections.abc import AsyncGenerator
 
+# Use OS trust store (Ubuntu on Render) + certifi; fixes SSLCertVerificationError to Supabase/ AWS
+# when certifi alone sees "self-signed certificate in certificate chain".
+try:
+    import truststore
+
+    truststore.inject_into_ssl()
+except ImportError:
+    pass
+
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -86,12 +95,14 @@ if not _sqlite and (
         _ctx.verify_mode = ssl.CERT_NONE
         _connect_args["ssl"] = _ctx
     else:
-        # Render/minimal images sometimes lack a full system CA store; certifi fixes
-        # SSLCertVerificationError to Supabase (pooler) on Python 3.14+.
         try:
             import certifi
 
-            _connect_args["ssl"] = ssl.create_default_context(cafile=certifi.where())
+            _ctx = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)
+            _ctx.load_verify_locations(cafile=certifi.where())
+            if hasattr(ssl, "VERIFY_X509_PARTIAL_CHAIN"):
+                _ctx.verify_flags |= ssl.VERIFY_X509_PARTIAL_CHAIN  # type: ignore[attr-defined]
+            _connect_args["ssl"] = _ctx
         except Exception:  # noqa: BLE001
             _connect_args["ssl"] = True
     _connect_args.setdefault("timeout", 120)
