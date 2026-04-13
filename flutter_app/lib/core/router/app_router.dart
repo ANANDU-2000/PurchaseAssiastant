@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../auth/session_notifier.dart';
+import 'page_transitions.dart';
 import '../../features/analytics/presentation/analytics_page.dart';
 import '../../features/analytics/presentation/item_analytics_detail_page.dart';
 import '../../features/catalog/presentation/catalog_category_detail_page.dart';
@@ -20,8 +21,6 @@ import '../../features/notifications/presentation/notifications_page.dart';
 import '../../features/settings/presentation/settings_page.dart';
 import '../../features/shell/shell_screen.dart';
 import '../../features/splash/presentation/splash_page.dart';
-import '../../features/voice/presentation/voice_page.dart';
-
 final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -60,75 +59,119 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
-      GoRoute(path: '/splash', builder: (context, state) => const SplashPage()),
-      GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
       GoRoute(
-          path: '/catalog', builder: (context, state) => const CatalogPage()),
+        path: '/splash',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const SplashPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/login',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const LoginPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/catalog',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const CatalogPage(),
+        ),
+      ),
       GoRoute(
         path: '/catalog/item/:itemId',
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final id = state.pathParameters['itemId']!;
-          return CatalogItemDetailPage(itemId: id);
+          return iosPushPage(
+            key: state.pageKey,
+            child: CatalogItemDetailPage(itemId: id),
+          );
         },
       ),
       GoRoute(
         path: '/catalog/category/:categoryId',
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final id = state.pathParameters['categoryId']!;
-          return CatalogCategoryDetailPage(categoryId: id);
+          return iosPushPage(
+            key: state.pageKey,
+            child: CatalogCategoryDetailPage(categoryId: id),
+          );
         },
       ),
       GoRoute(
         path: '/entry/:entryId',
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final id = state.pathParameters['entryId']!;
-          return EntryDetailPage(entryId: id);
+          return iosPushPage(
+            key: state.pageKey,
+            child: EntryDetailPage(entryId: id),
+          );
         },
       ),
       GoRoute(
         path: '/supplier/:supplierId',
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final id = state.pathParameters['supplierId']!;
-          return SupplierDetailPage(supplierId: id);
+          return iosPushPage(
+            key: state.pageKey,
+            child: SupplierDetailPage(supplierId: id),
+          );
         },
       ),
       GoRoute(
         path: '/broker/:brokerId',
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final id = state.pathParameters['brokerId']!;
-          return BrokerDetailPage(brokerId: id);
+          return iosPushPage(
+            key: state.pageKey,
+            child: BrokerDetailPage(brokerId: id),
+          );
         },
       ),
       GoRoute(
         path: '/contacts/category',
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final raw = state.uri.queryParameters['name'] ?? '';
-          return CategoryItemsPage(category: Uri.decodeComponent(raw));
+          return iosPushPage(
+            key: state.pageKey,
+            child: CategoryItemsPage(category: Uri.decodeComponent(raw)),
+          );
         },
       ),
       GoRoute(
         path: '/item-analytics/:itemKey',
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final enc = state.pathParameters['itemKey']!;
           final name = Uri.decodeComponent(enc);
-          return ItemAnalyticsDetailPage(itemName: name);
+          return iosPushPage(
+            key: state.pageKey,
+            child: ItemAnalyticsDetailPage(itemName: name),
+          );
         },
       ),
-      // Full-screen: Settings, AI assistant (opened from Home quick actions — not in bottom nav)
       GoRoute(
         path: '/settings',
         name: 'settings',
-        builder: (context, state) => const SettingsPage(),
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const SettingsPage(),
+        ),
       ),
+      // In-app AI chat hidden for end users (WhatsApp bot is primary). Route kept for future flag.
       GoRoute(
         path: '/ai',
         name: 'ai',
-        builder: (context, state) => const VoicePage(),
+        redirect: (context, state) => '/home',
       ),
       GoRoute(
         path: '/notifications',
         name: 'notifications',
-        builder: (context, state) => const NotificationsPage(),
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const NotificationsPage(),
+        ),
       ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>

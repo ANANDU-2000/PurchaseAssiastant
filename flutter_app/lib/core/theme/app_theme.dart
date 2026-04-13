@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'hexa_colors.dart';
 
@@ -8,26 +7,54 @@ ThemeData buildHexaTheme(Brightness brightness) {
   final isDark = brightness == Brightness.dark;
 
   final baseScheme = isDark ? _darkScheme() : _lightScheme();
-
-  final baseText = GoogleFonts.dmSansTextTheme(
-    isDark ? ThemeData.dark().textTheme : ThemeData.light().textTheme,
-  ).apply(
+  final baseText =
+      (isDark ? ThemeData.dark().textTheme : ThemeData.light().textTheme).apply(
     bodyColor: baseScheme.onSurface,
     displayColor: baseScheme.onSurface,
   );
-  final serif = GoogleFonts.dmSerifDisplayTextTheme(baseText);
   final textTheme = baseText.copyWith(
-    displaySmall: serif.displaySmall,
-    headlineLarge: serif.headlineLarge,
-    headlineMedium: serif.headlineMedium,
+    displayLarge: baseText.displayLarge?.copyWith(
+      fontWeight: FontWeight.w700,
+      letterSpacing: -0.9,
+    ),
+    displayMedium: baseText.displayMedium?.copyWith(
+      fontWeight: FontWeight.w700,
+      letterSpacing: -0.8,
+    ),
+    displaySmall: baseText.displaySmall?.copyWith(
+      fontWeight: FontWeight.w700,
+      letterSpacing: -0.7,
+    ),
+    headlineLarge: baseText.headlineLarge?.copyWith(
+      fontWeight: FontWeight.w700,
+      letterSpacing: -0.6,
+    ),
+    headlineMedium: baseText.headlineMedium?.copyWith(
+      fontWeight: FontWeight.w700,
+      letterSpacing: -0.5,
+    ),
+    headlineSmall: baseText.headlineSmall?.copyWith(
+      fontWeight: FontWeight.w700,
+      letterSpacing: -0.4,
+    ),
   );
 
   return ThemeData(
     useMaterial3: true,
     brightness: brightness,
     colorScheme: baseScheme,
+    splashFactory: NoSplash.splashFactory,
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {
+        TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.windows: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.linux: CupertinoPageTransitionsBuilder(),
+      },
+    ),
     scaffoldBackgroundColor:
-        isDark ? HexaColors.canvas : const Color(0xFFF4F7FB),
+        isDark ? HexaColors.canvas : const Color(0xFFF2F2F7), // iOS grouped bg
     textTheme: textTheme.copyWith(
       titleLarge: textTheme.titleLarge
           ?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.2),
@@ -41,7 +68,7 @@ ThemeData buildHexaTheme(Brightness brightness) {
     appBarTheme: AppBarTheme(
       elevation: 0,
       scrolledUnderElevation: 0.5,
-      surfaceTintColor: HexaColors.accentPurple.withValues(alpha: 0.06),
+      surfaceTintColor: Colors.transparent,
       centerTitle: false,
       backgroundColor: isDark ? HexaColors.canvas : Colors.white,
       foregroundColor: baseScheme.onSurface,
@@ -67,7 +94,7 @@ ThemeData buildHexaTheme(Brightness brightness) {
     ),
     cardTheme: CardThemeData(
       color: isDark ? HexaColors.surfaceCard : Colors.white,
-      elevation: isDark ? 0 : 1.5,
+      elevation: isDark ? 0 : 0,
       shadowColor: isDark
           ? Colors.transparent
           : HexaColors.primaryDeep.withValues(alpha: 0.07),
@@ -81,12 +108,14 @@ ThemeData buildHexaTheme(Brightness brightness) {
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: ButtonStyle(
+        minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
+        tapTargetSize: MaterialTapTargetSize.padded,
         elevation: WidgetStateProperty.resolveWith((s) {
           if (s.contains(WidgetState.pressed)) return 0.0;
-          return 1.0;
+          return 0.0;
         }),
         padding: const WidgetStatePropertyAll(
-            EdgeInsets.symmetric(horizontal: 22, vertical: 14)),
+            EdgeInsets.symmetric(horizontal: 20, vertical: 14)),
         shape: WidgetStatePropertyAll(
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
         textStyle: WidgetStatePropertyAll(textTheme.labelLarge),
@@ -109,8 +138,10 @@ ThemeData buildHexaTheme(Brightness brightness) {
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: ButtonStyle(
+        minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
+        tapTargetSize: MaterialTapTargetSize.padded,
         padding: const WidgetStatePropertyAll(
-            EdgeInsets.symmetric(horizontal: 18, vertical: 14)),
+            EdgeInsets.symmetric(horizontal: 16, vertical: 14)),
         shape: WidgetStatePropertyAll(
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
         side: WidgetStateProperty.resolveWith((s) {
@@ -170,19 +201,54 @@ ThemeData buildHexaTheme(Brightness brightness) {
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: isDark ? HexaColors.surfaceElevated : HexaColors.canvas,
+      fillColor: isDark
+          ? HexaColors.surfaceElevated
+          : const Color(0xFFF2F2F7), // iOS-style field on light grouped bg
       border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+          borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         borderSide:
             BorderSide(color: baseScheme.outlineVariant.withValues(alpha: 0.8)),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide(color: baseScheme.primary, width: 1.5),
       ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      labelStyle: textTheme.bodyMedium?.copyWith(
+        color: baseScheme.onSurfaceVariant,
+        fontWeight: FontWeight.w500,
+      ),
+      floatingLabelStyle: textTheme.bodySmall?.copyWith(
+        color: baseScheme.primary,
+        fontWeight: FontWeight.w600,
+      ),
+      hintStyle: textTheme.bodyMedium?.copyWith(
+        color: baseScheme.onSurfaceVariant.withValues(alpha: 0.92),
+      ),
+    ),
+    searchBarTheme: SearchBarThemeData(
+      backgroundColor:
+          WidgetStatePropertyAll(isDark ? HexaColors.surfaceElevated : const Color(0xFFF2F2F7)),
+      surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+      elevation: const WidgetStatePropertyAll(0),
+      shadowColor: const WidgetStatePropertyAll(Colors.transparent),
+      side: WidgetStatePropertyAll(
+        BorderSide(color: baseScheme.outlineVariant.withValues(alpha: 0.75)),
+      ),
+      shape: WidgetStatePropertyAll(
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      hintStyle: WidgetStatePropertyAll(
+        textTheme.bodyMedium?.copyWith(color: baseScheme.onSurfaceVariant),
+      ),
+      textStyle: WidgetStatePropertyAll(
+        textTheme.bodyMedium?.copyWith(color: baseScheme.onSurface),
+      ),
+      padding: const WidgetStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      ),
     ),
     listTileTheme: ListTileThemeData(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -191,13 +257,62 @@ ThemeData buildHexaTheme(Brightness brightness) {
     dividerTheme: DividerThemeData(
         color: baseScheme.outlineVariant.withValues(alpha: 0.45)),
     floatingActionButtonTheme: FloatingActionButtonThemeData(
-      elevation: 2,
-      highlightElevation: 4,
+      elevation: 0,
+      highlightElevation: 0,
       backgroundColor: baseScheme.primary,
       foregroundColor: baseScheme.onPrimary,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     ),
-    visualDensity: VisualDensity.adaptivePlatformDensity,
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: isDark ? HexaColors.surfaceCard : Colors.white,
+      surfaceTintColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      showDragHandle: true,
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: isDark ? HexaColors.surfaceCard : Colors.white,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+    ),
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: isDark ? HexaColors.surfaceElevated : Colors.white,
+      contentTextStyle: textTheme.bodyMedium?.copyWith(color: baseScheme.onSurface),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 0,
+    ),
+    chipTheme: ChipThemeData(
+      backgroundColor: isDark ? HexaColors.surfaceElevated : const Color(0xFFF2F2F7),
+      selectedColor: baseScheme.primaryContainer,
+      secondarySelectedColor: baseScheme.primaryContainer,
+      disabledColor: baseScheme.surfaceContainer,
+      side: BorderSide(color: baseScheme.outlineVariant.withValues(alpha: 0.75)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      labelStyle: textTheme.labelMedium?.copyWith(color: baseScheme.onSurface),
+      secondaryLabelStyle:
+          textTheme.labelMedium?.copyWith(color: baseScheme.onPrimaryContainer),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      brightness: brightness,
+    ),
+    iconButtonTheme: const IconButtonThemeData(
+      style: ButtonStyle(
+        minimumSize: WidgetStatePropertyAll(Size(48, 48)),
+        padding: WidgetStatePropertyAll(EdgeInsets.all(12)),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+    ),
+    textButtonTheme: const TextButtonThemeData(
+      style: ButtonStyle(
+        minimumSize: WidgetStatePropertyAll(Size(48, 40)),
+        padding: WidgetStatePropertyAll(
+            EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+        tapTargetSize: MaterialTapTargetSize.padded,
+      ),
+    ),
+    // Slightly roomier than compact; still dense enough for business UIs.
+    visualDensity: VisualDensity.standard,
   );
 }
 

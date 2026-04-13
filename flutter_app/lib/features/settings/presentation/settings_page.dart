@@ -16,6 +16,7 @@ import '../../../core/config/app_config.dart';
 import '../../../core/models/session.dart';
 import '../../../core/providers/prefs_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/theme/theme_context_ext.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -306,19 +307,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final themeMode = ref.watch(themeModeProvider);
     final isOwner = session?.primaryBusiness.role == 'owner';
     final pb = session?.primaryBusiness;
+    final onSurf = cs.onSurface;
 
     return Scaffold(
-      backgroundColor: HexaColors.canvas,
+      backgroundColor: context.adaptiveScaffold,
       appBar: AppBar(
-        backgroundColor: HexaColors.canvas,
+        backgroundColor: context.adaptiveAppBarBg,
         surfaceTintColor: Colors.transparent,
         title: Text('Settings',
             style: tt.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800, color: HexaColors.textPrimary)),
+                fontWeight: FontWeight.w800, color: onSurf)),
         leading: IconButton(
           tooltip: 'Back',
-          icon: const Icon(Icons.arrow_back_rounded,
-              color: HexaColors.textPrimary),
+          icon: Icon(Icons.arrow_back_rounded, color: onSurf),
           onPressed: () {
             if (context.canPop()) {
               context.pop();
@@ -333,11 +334,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         children: [
           Text('Account',
               style: tt.titleSmall?.copyWith(
-                  color: HexaColors.textSecondary,
+                  color: cs.onSurfaceVariant,
                   fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           Card(
-            color: HexaColors.surfaceCard,
+            color: context.adaptiveCard,
             child: ListTile(
               leading: Icon(Icons.person_outline_rounded, color: cs.primary),
               title: const Text('Session'),
@@ -349,11 +350,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           const SizedBox(height: 20),
           Text('Business',
               style: tt.titleSmall?.copyWith(
-                  color: HexaColors.textSecondary,
+                  color: cs.onSurfaceVariant,
                   fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           Card(
-            color: HexaColors.surfaceCard,
+            color: context.adaptiveCard,
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -376,7 +377,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     Text(
                       'Role: ${pb!.role} · Shown in app: ${pb.effectiveDisplayTitle}',
                       style: tt.bodySmall
-                          ?.copyWith(color: HexaColors.textSecondary),
+                          ?.copyWith(color: cs.onSurfaceVariant),
                     ),
                   if (isOwner && pb != null) ...[
                     const SizedBox(height: 16),
@@ -454,7 +455,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     Text(
                       'Only owners can change the in-app title and logo.',
                       style: tt.bodySmall
-                          ?.copyWith(color: HexaColors.textSecondary),
+                          ?.copyWith(color: cs.onSurfaceVariant),
                     ),
                   ],
                 ],
@@ -464,11 +465,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           const SizedBox(height: 20),
           Text('Preferences',
               style: tt.titleSmall?.copyWith(
-                  color: HexaColors.textSecondary,
+                  color: cs.onSurfaceVariant,
                   fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           Card(
-            color: HexaColors.surfaceCard,
+            color: context.adaptiveCard,
             child: Column(
               children: [
                 SwitchListTile(
@@ -514,11 +515,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           const SizedBox(height: 20),
           Text('Voice & AI',
               style: tt.titleSmall?.copyWith(
-                  color: HexaColors.textSecondary,
+                  color: cs.onSurfaceVariant,
                   fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           Card(
-            color: HexaColors.surfaceCard,
+            color: context.adaptiveCard,
             child: Column(
               children: [
                 ListTile(
@@ -543,11 +544,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           const SizedBox(height: 20),
           Text('Integrations',
               style: tt.titleSmall?.copyWith(
-                  color: HexaColors.textSecondary,
+                  color: cs.onSurfaceVariant,
                   fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           Card(
-            color: HexaColors.surfaceCard,
+            color: context.adaptiveCard,
             child: ListTile(
               leading: Icon(Icons.chat_outlined, color: cs.primary),
               title: const Text('WhatsApp'),
@@ -559,11 +560,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           const SizedBox(height: 20),
           Text('Data',
               style: tt.titleSmall?.copyWith(
-                  color: HexaColors.textSecondary,
+                  color: cs.onSurfaceVariant,
                   fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           Card(
-            color: HexaColors.surfaceCard,
+            color: context.adaptiveCard,
             child: Column(
               children: [
                 ListTile(
@@ -596,11 +597,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           const SizedBox(height: 20),
           Text('Subscription',
               style: tt.titleSmall?.copyWith(
-                  color: HexaColors.textSecondary,
+                  color: cs.onSurfaceVariant,
                   fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           Card(
-            color: HexaColors.surfaceCard,
+            color: context.adaptiveCard,
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -625,26 +626,26 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   else if (_billing == null)
                     Text('Loading…',
                         style: tt.bodySmall
-                            ?.copyWith(color: HexaColors.textSecondary))
+                            ?.copyWith(color: cs.onSurfaceVariant))
                   else ...[
                     Text(
                       _billing!['subscription'] == null
                           ? 'No subscription row yet — defaults apply until you pay.'
                           : 'Status: ${_billing!['subscription']['status']} · WhatsApp: ${_billing!['subscription']['whatsapp_addon']} · AI: ${_billing!['subscription']['ai_addon']}',
                       style: tt.bodySmall
-                          ?.copyWith(color: HexaColors.textSecondary),
+                          ?.copyWith(color: cs.onSurfaceVariant),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       'Payments: ${(_billing!['razorpay_configured'] == true) ? 'ready' : 'not configured'} · plan enforcement: ${_billing!['billing_enforce']}',
                       style: tt.bodySmall
-                          ?.copyWith(color: HexaColors.textSecondary),
+                          ?.copyWith(color: cs.onSurfaceVariant),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       'Checkout is completed securely; your payment is confirmed before your plan updates.',
                       style: tt.bodySmall
-                          ?.copyWith(color: HexaColors.textSecondary),
+                          ?.copyWith(color: cs.onSurfaceVariant),
                     ),
                     if (isOwner) ...[
                       const SizedBox(height: 16),
@@ -652,13 +653,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         Text(
                           'In-app payment needs Razorpay keys on the server (environment or admin platform integration).',
                           style: tt.bodySmall?.copyWith(
-                              color: HexaColors.textSecondary, height: 1.35),
+                              color: cs.onSurfaceVariant, height: 1.35),
                         )
                       else if (kIsWeb)
                         Text(
                           'Razorpay checkout runs in the Android or iOS app — not in this web build.',
                           style: tt.bodySmall?.copyWith(
-                              color: HexaColors.textSecondary, height: 1.35),
+                              color: cs.onSurfaceVariant, height: 1.35),
                         )
                       else ...[
                         Text('Renew or change plan',
@@ -718,7 +719,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                               '${NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format((_billingQuote!['amount_inr'] as num?) ?? 0)} / month',
                               style: tt.titleSmall?.copyWith(
                                   fontWeight: FontWeight.w800,
-                                  color: HexaColors.textPrimary),
+                                  color: onSurf),
                             ),
                           ),
                         FilledButton.icon(
@@ -792,17 +793,22 @@ class _LogoPreview extends StatelessWidget {
   }
 
   Widget _placeholder(double w, double h) {
-    return Container(
-      width: w,
-      height: h,
-      decoration: BoxDecoration(
-        color: HexaColors.surfaceMuted,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: HexaColors.borderSubtle),
-      ),
-      alignment: Alignment.center,
-      child: Icon(Icons.storefront_outlined,
-          color: HexaColors.textSecondary.withValues(alpha: 0.6)),
+    return Builder(
+      builder: (context) {
+        final o = Theme.of(context).colorScheme.onSurfaceVariant;
+        return Container(
+          width: w,
+          height: h,
+          decoration: BoxDecoration(
+            color: HexaColors.surfaceMuted,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: HexaColors.borderSubtle),
+          ),
+          alignment: Alignment.center,
+          child: Icon(Icons.storefront_outlined,
+              color: o.withValues(alpha: 0.6)),
+        );
+      },
     );
   }
 }

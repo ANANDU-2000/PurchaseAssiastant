@@ -21,7 +21,10 @@ def main() -> None:
         r = c.post(f"{base}/v1/auth/login", json={"email": EMAIL, "password": PASSWORD})
         if r.status_code != 200:
             print("LOGIN_FAIL", r.status_code, r.text[:300])
-            print("Hint: run scripts/seed_demo_fake.py against this base URL first.")
+            print(
+                "Hint: register a user (POST /v1/auth/register) or sign in with an "
+                "existing account; DATABASE_URL must point at your Supabase/Postgres."
+            )
             sys.exit(1)
         tok = r.json()["access_token"]
         h = {"Authorization": f"Bearer {tok}"}

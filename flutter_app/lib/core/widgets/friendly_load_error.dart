@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../theme/hexa_colors.dart';
-
 /// Default [FriendlyLoadError.subtitle] for typical network / connectivity failures.
 const String kFriendlyLoadNetworkSubtitle =
     'Check your connection and try again.';
@@ -23,39 +21,88 @@ class FriendlyLoadError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.cloud_off_rounded,
-                size: 40,
-                color: HexaColors.textSecondary.withValues(alpha: 0.9)),
-            const SizedBox(height: 12),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: tt.bodyLarge?.copyWith(
-                  color: HexaColors.textPrimary, fontWeight: FontWeight.w600),
-            ),
-            if (subtitle != null) ...[
-              const SizedBox(height: 6),
-              Text(
-                subtitle!,
-                textAlign: TextAlign.center,
-                style: tt.bodySmall
-                    ?.copyWith(color: HexaColors.textSecondary, height: 1.35),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withValues(alpha: 0.65),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: cs.outlineVariant.withValues(alpha: 0.5),
               ),
-            ],
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh_rounded, size: 20),
-              label: const Text('Retry'),
+              boxShadow: [
+                BoxShadow(
+                  color: cs.shadow.withValues(alpha: 0.06),
+                  blurRadius: 24,
+                  offset: const Offset(0, 8),
+                ),
+              ],
             ),
-          ],
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: cs.primaryContainer.withValues(alpha: 0.55),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Icon(
+                        Icons.cloud_off_rounded,
+                        size: 32,
+                        color: cs.onPrimaryContainer,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    message,
+                    textAlign: TextAlign.center,
+                    style: tt.titleMedium?.copyWith(
+                      color: cs.onSurface,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      subtitle!,
+                      textAlign: TextAlign.center,
+                      style: tt.bodySmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: onRetry,
+                      icon: const Icon(Icons.refresh_rounded, size: 20),
+                      label: const Text('Retry'),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );

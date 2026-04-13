@@ -8,6 +8,7 @@ import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/google_sign_in_helper.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/config/app_config.dart';
+import '../../../core/theme/hexa_colors.dart';
 
 /// Light, iOS-style palette for this screen only (main shell stays on dark theme).
 abstract final class _AuthLight {
@@ -16,7 +17,7 @@ abstract final class _AuthLight {
   static const input = Color(0xFFF2F2F7);
   static const label = Color(0xFF8E8E93);
   static const title = Color(0xFF000000);
-  static const iosBlue = Color(0xFF007AFF);
+  static const iosBlue = HexaColors.primaryDeep;
   static const segmentTrack = Color(0xFFE5E5EA);
   static const error = Color(0xFFFF3B30);
   static const divider = Color(0xFFC6C6C8);
@@ -284,111 +285,118 @@ class _LoginPageState extends ConsumerState<LoginPage>
             ),
             const SizedBox(height: 28),
             Expanded(
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: _AuthLight.surface,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Color(0x14000000),
-                      blurRadius: 20,
-                      offset: Offset(0, -2),
-                    ),
-                  ],
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 22, 24, 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _IosSegmentedControl(
-                        tab: _tab,
-                        labels: const ['Sign In', 'Create Account'],
-                      ),
-                      const SizedBox(height: 22),
-                      Expanded(
-                        child: TabBarView(
-                          controller: _tab,
-                          children: [
-                            _SignInForm(
-                              bodyStyle: _bodyStyle,
-                              emailCtrl: _loginEmail,
-                              passCtrl: _loginPass,
-                              loading: _loading,
-                              error: _error,
-                              onSubmit: _signIn,
-                              fieldDecoration: _fieldDecoration,
-                              primaryLabel: 'Sign In',
-                            ),
-                            _SignUpForm(
-                              bodyStyle: _bodyStyle,
-                              userCtrl: _regUser,
-                              emailCtrl: _regEmail,
-                              passCtrl: _regPass,
-                              pass2Ctrl: _regPass2,
-                              loading: _loading,
-                              error: _error,
-                              onSubmit: _signUp,
-                              fieldDecoration: _fieldDecoration,
-                            ),
-                          ],
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 460),
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      color: _AuthLight.surface,
+                      borderRadius:
+                          BorderRadius.vertical(top: Radius.circular(28)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Color(0x14000000),
+                          blurRadius: 28,
+                          offset: Offset(0, -4),
                         ),
-                      ),
-                      if (showGoogle) ...[
-                        Row(
-                          children: [
-                            const Expanded(
-                                child: Divider(color: _AuthLight.divider)),
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 14),
-                              child: Text(
-                                'or',
-                                style: GoogleFonts.inter(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                  color: _AuthLight.label,
+                      ],
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 22, 24, 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _IosSegmentedControl(
+                            tab: _tab,
+                            labels: const ['Sign In', 'Create Account'],
+                          ),
+                          const SizedBox(height: 22),
+                          Expanded(
+                            child: TabBarView(
+                              controller: _tab,
+                              children: [
+                                _SignInForm(
+                                  bodyStyle: _bodyStyle,
+                                  emailCtrl: _loginEmail,
+                                  passCtrl: _loginPass,
+                                  loading: _loading,
+                                  error: _error,
+                                  onSubmit: _signIn,
+                                  fieldDecoration: _fieldDecoration,
+                                  primaryLabel: 'Sign In',
+                                ),
+                                _SignUpForm(
+                                  bodyStyle: _bodyStyle,
+                                  userCtrl: _regUser,
+                                  emailCtrl: _regEmail,
+                                  passCtrl: _regPass,
+                                  pass2Ctrl: _regPass2,
+                                  loading: _loading,
+                                  error: _error,
+                                  onSubmit: _signUp,
+                                  fieldDecoration: _fieldDecoration,
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (showGoogle) ...[
+                            Row(
+                              children: [
+                                const Expanded(
+                                    child: Divider(color: _AuthLight.divider)),
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 14),
+                                  child: Text(
+                                    'or',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                      color: _AuthLight.label,
+                                    ),
+                                  ),
+                                ),
+                                const Expanded(
+                                    child: Divider(color: _AuthLight.divider)),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                            SizedBox(
+                              width: double.infinity,
+                              height: 50,
+                              child: OutlinedButton.icon(
+                                onPressed: _loading ? null : _googleSignIn,
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: _AuthLight.title,
+                                  backgroundColor: _AuthLight.surface,
+                                  side: const BorderSide(color: _AuthLight.divider),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
+                                ),
+                                icon: Text(
+                                  'G',
+                                  style: GoogleFonts.inter(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 18,
+                                    color: _AuthLight.title,
+                                  ),
+                                ),
+                                label: Text(
+                                  'Continue with Google',
+                                  style: GoogleFonts.inter(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 16,
+                                  ),
                                 ),
                               ),
                             ),
-                            const Expanded(
-                                child: Divider(color: _AuthLight.divider)),
                           ],
-                        ),
-                        const SizedBox(height: 14),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 50,
-                          child: OutlinedButton.icon(
-                            onPressed: _loading ? null : _googleSignIn,
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: _AuthLight.title,
-                              backgroundColor: _AuthLight.surface,
-                              side: const BorderSide(color: _AuthLight.divider),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                            ),
-                            icon: Text(
-                              'G',
-                              style: GoogleFonts.inter(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 18,
-                                color: _AuthLight.title,
-                              ),
-                            ),
-                            label: Text(
-                              'Continue with Google',
-                              style: GoogleFonts.inter(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -411,17 +419,6 @@ class _LoginPageState extends ConsumerState<LoginPage>
                   color: _AuthLight.label,
                 ),
               ),
-              if (kDebugMode) ...[
-                const SizedBox(height: 6),
-                Text(
-                  AppConfig.apiBaseUrl,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(
-                    fontSize: 11,
-                    color: _AuthLight.label.withValues(alpha: 0.65),
-                  ),
-                ),
-              ],
             ],
           ),
         ),
@@ -736,14 +733,39 @@ class _AuthInlineError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      message,
-      textAlign: TextAlign.center,
-      style: GoogleFonts.inter(
-        fontSize: 13,
-        height: 1.45,
-        fontWeight: FontWeight.w400,
-        color: _AuthLight.error.withValues(alpha: 0.92),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: _AuthLight.error.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _AuthLight.error.withValues(alpha: 0.22),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.info_outline_rounded,
+              size: 20,
+              color: _AuthLight.error.withValues(alpha: 0.88),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                textAlign: TextAlign.start,
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  height: 1.45,
+                  fontWeight: FontWeight.w400,
+                  color: _AuthLight.error.withValues(alpha: 0.92),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -775,7 +797,7 @@ class _IosPrimaryButton extends StatelessWidget {
           elevation: 0,
           shadowColor: Colors.transparent,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(16),
           ),
           padding: const EdgeInsets.symmetric(vertical: 14),
         ),

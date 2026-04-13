@@ -4,7 +4,6 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
@@ -35,7 +34,7 @@ class _HomePageState extends ConsumerState<HomePage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _poll = Timer.periodic(const Duration(minutes: 3), (_) {
+    _poll = Timer.periodic(const Duration(minutes: 10), (_) {
       if (!mounted) return;
       ref.invalidate(dashboardProvider);
       ref.invalidate(homeInsightsProvider);
@@ -106,22 +105,29 @@ class _HomePageState extends ConsumerState<HomePage>
     final dash = ref.watch(dashboardProvider);
     final insights = ref.watch(homeInsightsProvider);
     final hi = insights.valueOrNull;
-    final unread = ref.watch(notificationsUnreadCountProvider);
-    final tenantTitle = ref.watch(tenantAppTitleProvider);
-    final logoUrl = ref.watch(tenantLogoUrlProvider);
+    final branding = ref.watch(tenantBrandingProvider);
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cs = Theme.of(context).colorScheme;
+    final appBarIconColor =
+        isDark ? HexaColors.textSecondary : cs.onSurfaceVariant;
+    final titleColor = isDark ? HexaColors.primaryMid : cs.primary;
     return Scaffold(
-      backgroundColor: HexaColors.canvas,
+      backgroundColor: isDark
+          ? HexaColors.canvas
+          : Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: HexaColors.canvas,
+        backgroundColor: isDark
+            ? HexaColors.canvas
+            : Theme.of(context).appBarTheme.backgroundColor,
         surfaceTintColor: Colors.transparent,
         title: Row(
           children: [
-            if (logoUrl != null && logoUrl.isNotEmpty) ...[
+            if (branding.logoUrl != null && branding.logoUrl!.isNotEmpty) ...[
               ClipRRect(
                 borderRadius: BorderRadius.circular(6),
                 child: Image.network(
-                  logoUrl,
+                  branding.logoUrl!,
                   width: 28,
                   height: 28,
                   fit: BoxFit.cover,
@@ -132,13 +138,13 @@ class _HomePageState extends ConsumerState<HomePage>
             ],
             Expanded(
               child: Text(
-                tenantTitle,
+                branding.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.spaceGrotesk(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: HexaColors.primaryMid,
+                style: tt.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: titleColor,
+                  letterSpacing: -0.3,
                 ),
               ),
             ),
@@ -147,7 +153,7 @@ class _HomePageState extends ConsumerState<HomePage>
         leading: ModalRoute.of(context)?.canPop == true
             ? IconButton(
                 icon: const Icon(Icons.arrow_back_rounded),
-                color: HexaColors.textSecondary,
+                color: appBarIconColor,
                 onPressed: () => context.pop(),
               )
             : null,
@@ -155,7 +161,7 @@ class _HomePageState extends ConsumerState<HomePage>
         elevation: 0,
         actions: [
           IconTheme(
-            data: const IconThemeData(color: HexaColors.textSecondary),
+            data: IconThemeData(color: appBarIconColor),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -164,32 +170,7 @@ class _HomePageState extends ConsumerState<HomePage>
                   onPressed: _refresh,
                   icon: const Icon(Icons.refresh_rounded),
                 ),
-                Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    IconButton(
-                      tooltip: 'Alerts',
-                      onPressed: () => context.push('/notifications'),
-                      icon: Icon(unread > 0
-                          ? Icons.notifications_rounded
-                          : Icons.notifications_outlined),
-                    ),
-                    if (unread > 0)
-                      const Positioned(
-                        right: 10,
-                        top: 10,
-                        child: SizedBox(
-                          width: 8,
-                          height: 8,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                                color: Color(0xFFEF4444),
-                                shape: BoxShape.circle),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
+                const _HomeNotificationsButton(),
                 IconButton(
                   tooltip: 'Contacts',
                   onPressed: () => context.go('/contacts'),
@@ -239,7 +220,9 @@ class _HomePageState extends ConsumerState<HomePage>
                 child: Text(
                   _rangeCaption(period),
                   style: tt.bodySmall?.copyWith(
-                      color: HexaColors.textSecondary,
+                      color: isDark
+                          ? HexaColors.textSecondary
+                          : cs.onSurfaceVariant,
                       fontWeight: FontWeight.w500),
                 ),
               ),
@@ -294,14 +277,16 @@ class _HomePageState extends ConsumerState<HomePage>
                         const SizedBox(height: 20),
                         Row(
                           children: [
-                            const Icon(Icons.notifications_active_rounded,
-                                size: 20, color: HexaColors.primaryMid),
+                            Icon(Icons.notifications_active_rounded,
+                                size: 20, color: cs.primary),
                             const SizedBox(width: 8),
                             Text(
                               'Signals',
                               style: tt.titleMedium?.copyWith(
                                 fontWeight: FontWeight.w800,
-                                color: HexaColors.textPrimary,
+                                color: isDark
+                                    ? HexaColors.textPrimary
+                                    : cs.onSurface,
                                 fontSize: 15,
                               ),
                             ),
@@ -330,7 +315,9 @@ class _HomePageState extends ConsumerState<HomePage>
                           'Quick actions',
                           style: tt.titleMedium?.copyWith(
                             fontWeight: FontWeight.w800,
-                            color: HexaColors.textPrimary,
+                            color: isDark
+                                ? HexaColors.textPrimary
+                                : cs.onSurface,
                             fontSize: 15,
                           ),
                         ),
@@ -345,11 +332,6 @@ class _HomePageState extends ConsumerState<HomePage>
                           spacing: 8,
                           runSpacing: 8,
                           children: [
-                            _SecondaryChip(
-                              icon: Icons.chat_rounded,
-                              label: 'AI Chat',
-                              onTap: () => context.push('/ai'),
-                            ),
                             _SecondaryChip(
                               icon: Icons.receipt_long_outlined,
                               label: 'History',
@@ -383,64 +365,85 @@ class _SevenDayProfitChartRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final series = ref.watch(homeSevenDayProfitProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(
-          height: 80,
-          width: double.infinity,
-          child: series.when(
-            loading: () => const Center(
-                child: SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2))),
-            error: (_, __) => Center(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.wifi_off_rounded,
-                      size: 18, color: HexaColors.textSecondary),
-                  const SizedBox(width: 8),
-                  TextButton(
-                    onPressed: () => ref.invalidate(homeSevenDayProfitProvider),
-                    child: const Text('Retry'),
-                  ),
-                ],
-              ),
-            ),
-            data: (pts) {
-              if (pts.isEmpty) return const SizedBox.shrink();
-              final spots = <FlSpot>[];
-              var maxY = 1.0;
-              for (var i = 0; i < pts.length; i++) {
-                final y = pts[i].profit;
-                if (y > maxY) maxY = y;
-                spots.add(FlSpot(i.toDouble(), y));
+        RepaintBoundary(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final maxW = constraints.maxWidth;
+              if (maxW <= 0 || !maxW.isFinite) {
+                return const SizedBox(height: 80);
               }
-              if (maxY <= 0) maxY = 1;
-              return LineChart(
-                LineChartData(
-                  minY: 0,
-                  maxY: maxY * 1.05,
-                  gridData: const FlGridData(show: false),
-                  titlesData: const FlTitlesData(show: false),
-                  borderData: FlBorderData(show: false),
-                  lineTouchData: const LineTouchData(enabled: false),
-                  lineBarsData: [
-                    LineChartBarData(
-                      spots: spots,
-                      isCurved: true,
-                      color: HexaColors.primaryMid,
-                      barWidth: 2.5,
-                      dotData: const FlDotData(show: false),
-                      belowBarData: BarAreaData(
-                        show: true,
-                        color: HexaColors.primaryMid.withValues(alpha: 0.1),
-                      ),
+              return SizedBox(
+                height: 80,
+                width: maxW,
+                child: series.when(
+                  loading: () => const Center(
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
                     ),
-                  ],
+                  ),
+                  error: (_, __) => Center(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.wifi_off_rounded,
+                            size: 18,
+                            color: isDark
+                                ? HexaColors.textSecondary
+                                : cs.onSurfaceVariant),
+                        const SizedBox(width: 8),
+                        TextButton(
+                          onPressed: () =>
+                              ref.invalidate(homeSevenDayProfitProvider),
+                          child: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  ),
+                  data: (pts) {
+                    if (pts.isEmpty ||
+                        pts.every((p) => p.profit == 0)) {
+                      return const SizedBox(height: 80);
+                    }
+                    final spots = <FlSpot>[];
+                    var maxY = 1.0;
+                    for (var i = 0; i < pts.length; i++) {
+                      final y = pts[i].profit;
+                      if (y > maxY) maxY = y;
+                      spots.add(FlSpot(i.toDouble(), y));
+                    }
+                    if (maxY <= 0) maxY = 1;
+                    return LineChart(
+                      LineChartData(
+                        minY: 0,
+                        maxY: maxY * 1.05,
+                        gridData: const FlGridData(show: false),
+                        titlesData: const FlTitlesData(show: false),
+                        borderData: FlBorderData(show: false),
+                        lineTouchData: const LineTouchData(enabled: false),
+                        lineBarsData: [
+                          LineChartBarData(
+                            spots: spots,
+                            isCurved: true,
+                            color: HexaColors.primaryMid,
+                            barWidth: 2.5,
+                            dotData: const FlDotData(show: false),
+                            belowBarData: BarAreaData(
+                              show: true,
+                              color: HexaColors.primaryMid.withValues(alpha: 0.1),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
               );
             },
@@ -450,8 +453,45 @@ class _SevenDayProfitChartRow extends ConsumerWidget {
         Text(
           '7-day profit trend',
           style: tt.bodySmall?.copyWith(
-              color: HexaColors.textSecondary, fontWeight: FontWeight.w500),
+              color: isDark ? HexaColors.textSecondary : cs.onSurfaceVariant,
+              fontWeight: FontWeight.w500),
         ),
+      ],
+    );
+  }
+}
+
+class _HomeNotificationsButton extends ConsumerWidget {
+  const _HomeNotificationsButton();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final unread = ref.watch(notificationsUnreadCountProvider);
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        IconButton(
+          tooltip: 'Alerts',
+          onPressed: () => context.push('/notifications'),
+          icon: Icon(unread > 0
+              ? Icons.notifications_rounded
+              : Icons.notifications_outlined),
+        ),
+        if (unread > 0)
+          const Positioned(
+            right: 10,
+            top: 10,
+            child: SizedBox(
+              width: 8,
+              height: 8,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Color(0xFFEF4444),
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -471,11 +511,20 @@ class _DatePeriodPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final borderColor = selected
+        ? HexaColors.primaryMid
+        : (isDark
+            ? const Color(0x20FFFFFF)
+            : cs.outline.withValues(alpha: 0.45));
+    final unselectedLabel =
+        isDark ? HexaColors.textSecondary : cs.onSurfaceVariant;
     return Material(
       color: Colors.transparent,
-      child: InkWell(
+      child: GestureDetector(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
+        behavior: HitTestBehavior.opaque,
         child: Container(
           height: 32,
           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -484,7 +533,7 @@ class _DatePeriodPill extends StatelessWidget {
             color: selected ? HexaColors.primaryMid : Colors.transparent,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: selected ? HexaColors.primaryMid : const Color(0x20FFFFFF),
+              color: borderColor,
               width: 1,
             ),
           ),
@@ -494,7 +543,7 @@ class _DatePeriodPill extends StatelessWidget {
               fontSize: 13,
               fontWeight: FontWeight.w800,
               color:
-                  selected ? const Color(0xFF04201C) : HexaColors.textSecondary,
+                  selected ? const Color(0xFF04201C) : unselectedLabel,
             ),
           ),
         ),
@@ -717,14 +766,22 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final labelColor =
+        isDark ? HexaColors.textSecondary : cs.onSurfaceVariant;
+    final valueColor = isDark ? HexaColors.textPrimary : cs.onSurface;
     return Material(
-      color: HexaColors.surfaceCard,
+      color: isDark ? HexaColors.surfaceCard : Colors.white,
       elevation: 0,
       borderRadius: BorderRadius.circular(16),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: HexaColors.border),
+          border: Border.all(
+              color: isDark
+                  ? HexaColors.border
+                  : cs.outlineVariant.withValues(alpha: 0.85)),
           boxShadow: HexaColors.cardShadow(context),
         ),
         padding: const EdgeInsets.all(14),
@@ -761,7 +818,7 @@ class _StatCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: tt.labelSmall?.copyWith(
                       fontSize: 10,
-                      color: HexaColors.textSecondary,
+                      color: labelColor,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 0.5,
                     ),
@@ -769,10 +826,10 @@ class _StatCard extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     value,
-                    style: GoogleFonts.spaceGrotesk(
-                      fontSize: 18,
+                    style: tt.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,
-                      color: HexaColors.textPrimary,
+                      color: valueColor,
+                      letterSpacing: -0.3,
                     ),
                   ),
                 ],
@@ -793,13 +850,18 @@ class _SignalsEmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
       decoration: BoxDecoration(
-        color: HexaColors.surfaceCard,
+        color: isDark ? HexaColors.surfaceCard : Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: HexaColors.border),
+        border: Border.all(
+            color: isDark
+                ? HexaColors.border
+                : cs.outlineVariant.withValues(alpha: 0.85)),
         boxShadow: HexaColors.cardShadow(context),
       ),
       child: Column(
@@ -811,15 +873,17 @@ class _SignalsEmptyState extends StatelessWidget {
             'No purchases yet',
             style: tt.titleSmall?.copyWith(
                 fontWeight: FontWeight.w700,
-                color: HexaColors.textPrimary,
+                color: isDark ? HexaColors.textPrimary : cs.onSurface,
                 fontSize: 15),
           ),
           const SizedBox(height: 6),
           Text(
             'Add your first entry to see profit signals',
             textAlign: TextAlign.center,
-            style: tt.bodySmall
-                ?.copyWith(color: HexaColors.textSecondary, fontSize: 12),
+            style: tt.bodySmall?.copyWith(
+                color:
+                    isDark ? HexaColors.textSecondary : cs.onSurfaceVariant,
+                fontSize: 12),
           ),
           const SizedBox(height: 16),
           SizedBox(
@@ -833,8 +897,8 @@ class _SignalsEmptyState extends StatelessWidget {
               ),
               child: Material(
                 color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(12),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
                   onTap: onAdd,
                   child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -943,12 +1007,13 @@ class _SignalsContent extends StatelessWidget {
     }
 
     if (chips.isEmpty) {
+      final cs = Theme.of(context).colorScheme;
+      final isDark = Theme.of(context).brightness == Brightness.dark;
       return Text(
         'Signals will appear after you record purchases in this period.',
-        style: Theme.of(context)
-            .textTheme
-            .bodySmall
-            ?.copyWith(color: HexaColors.textSecondary),
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: isDark ? HexaColors.textSecondary : cs.onSurfaceVariant,
+            ),
       );
     }
 
@@ -976,6 +1041,8 @@ class _SignalChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       constraints: const BoxConstraints(maxWidth: 520),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1000,8 +1067,11 @@ class _SignalChip extends StatelessWidget {
                 if (subtitle.isNotEmpty)
                   Text(
                     subtitle,
-                    style:
-                        tt.bodySmall?.copyWith(color: HexaColors.textSecondary),
+                    style: tt.bodySmall?.copyWith(
+                      color: isDark
+                          ? HexaColors.textSecondary
+                          : cs.onSurfaceVariant,
+                    ),
                   ),
               ],
             ),
@@ -1026,6 +1096,15 @@ class _QuickActionCards extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final sideCardBg = isDark ? HexaColors.surfaceCard : Colors.white;
+    final sideBorder = isDark
+        ? HexaColors.border
+        : cs.outlineVariant.withValues(alpha: 0.85);
+    final sideIcon = isDark ? Colors.white : cs.primary;
+    final sideLabel =
+        isDark ? HexaColors.textSecondary : cs.onSurfaceVariant;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1039,8 +1118,8 @@ class _QuickActionCards extends StatelessWidget {
             ),
             child: Material(
               color: Colors.transparent,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(14),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onTap: onAddEntry,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 14),
@@ -1067,31 +1146,31 @@ class _QuickActionCards extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: Material(
-            color: HexaColors.surfaceCard,
+            color: sideCardBg,
             borderRadius: BorderRadius.circular(14),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(14),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
               onTap: onScan,
               child: Container(
                 padding:
                     const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: HexaColors.border),
+                  border: Border.all(color: sideBorder),
                 ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.document_scanner_outlined,
-                        size: 22, color: Colors.white),
+                    Icon(Icons.document_scanner_outlined,
+                        size: 22, color: sideIcon),
                     const SizedBox(height: 4),
                     Text(
                       'Scan',
                       textAlign: TextAlign.center,
                       style: tt.labelSmall?.copyWith(
                           fontWeight: FontWeight.w600,
-                          color: HexaColors.textSecondary,
+                          color: sideLabel,
                           fontSize: 12),
                     ),
                   ],
@@ -1103,31 +1182,31 @@ class _QuickActionCards extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: Material(
-            color: HexaColors.surfaceCard,
+            color: sideCardBg,
             borderRadius: BorderRadius.circular(14),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(14),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
               onTap: onReports,
               child: Container(
                 padding:
                     const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: HexaColors.border),
+                  border: Border.all(color: sideBorder),
                 ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.bar_chart_rounded,
-                        size: 22, color: Colors.white),
+                    Icon(Icons.bar_chart_rounded,
+                        size: 22, color: sideIcon),
                     const SizedBox(height: 4),
                     Text(
                       'Reports',
                       textAlign: TextAlign.center,
                       style: tt.labelSmall?.copyWith(
                           fontWeight: FontWeight.w600,
-                          color: HexaColors.textSecondary,
+                          color: sideLabel,
                           fontSize: 12),
                     ),
                   ],
@@ -1152,27 +1231,33 @@ class _SecondaryChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Material(
-      color: HexaColors.surfaceElevated,
+      color: isDark ? HexaColors.surfaceElevated : cs.surfaceContainerHighest,
       borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: HexaColors.border),
+            border: Border.all(
+                color: isDark
+                    ? HexaColors.border
+                    : cs.outlineVariant.withValues(alpha: 0.85)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 20, color: HexaColors.primaryMid),
+              Icon(icon, size: 20, color: cs.primary),
               const SizedBox(width: 8),
               Text(label,
                   style: tt.labelLarge?.copyWith(
                       fontWeight: FontWeight.w700,
-                      color: HexaColors.textSecondary)),
+                      color:
+                          isDark ? HexaColors.textSecondary : cs.onSurface)),
             ],
           ),
         ),
@@ -1248,8 +1333,7 @@ class _HeroProfitCard extends StatelessWidget {
                       profitText,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.spaceGrotesk(
-                        fontSize: 42,
+                      style: tt.headlineMedium?.copyWith(
                         height: 1.0,
                         color: Colors.white,
                         fontWeight: FontWeight.w700,

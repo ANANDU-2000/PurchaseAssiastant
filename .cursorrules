@@ -1,0 +1,26 @@
+# HARISREE / My Purchases — Cursor rules
+
+CRITICAL: Prefer simplicity over new abstraction. Do not add complexity unless the owner asked for it.
+CRITICAL: Do not break business logic in `entry_create_sheet.dart` — refactor UI around existing validation and save flows.
+CRITICAL: Monetary values: use `NumberFormat.currency(locale: 'en_IN', symbol: '₹')` (or existing project helpers).
+CRITICAL: Never show raw exceptions to users — use `friendlyApiError` / `FriendlyLoadError` with retry.
+CRITICAL: In-app `/ai` route is redirected to home for end users; WhatsApp bot is the primary AI surface.
+
+When adding features:
+1. Ask whether it can be done in a few lines without new dependencies.
+2. Ask whether it adds API calls on every page load — batch, cache, or defer.
+3. `fl_chart` on web: wrap charts in `LayoutBuilder` + `RepaintBoundary`; keep `LineTouchData(enabled: false)` unless touch is required.
+
+WhatsApp (compliance):
+- No unsolicited bulk sends; respect provider rate limits and user-initiated conversation rules.
+
+Offline:
+- Use `OfflineStore` (Hive) for dashboard cache and future entry queue; keep TTLs reasonable.
+
+Performance:
+- Prefer `ref.keepAlive()` with a bounded lifetime for expensive providers when tab-switching would refetch unnecessarily.
+
+iOS feel (when touching UI):
+- Prefer `BouncingScrollPhysics`, light haptics on shell nav and primary actions, avoid gradient-heavy CTAs on auth.
+- Default theme is **light** (`ThemeMode.light` when pref unset). Full-screen routes use iOS-like slide transitions (`page_transitions.dart`).
+- Shell/home scaffolds respect theme brightness — avoid hardcoding `HexaColors.canvas` on new screens when in light mode.

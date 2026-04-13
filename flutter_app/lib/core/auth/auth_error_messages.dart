@@ -8,8 +8,30 @@ String? _connectionUnreachableHint(DioException e) {
   if (lower.contains('connection refused') ||
       lower.contains('err_connection_refused') ||
       lower.contains('failed to connect') ||
-      lower.contains('network is unreachable')) {
+      lower.contains('network is unreachable') ||
+      lower.contains('connection reset') ||
+      lower.contains('connection timed out') ||
+      lower.contains('timed out')) {
     return "Can't reach the sign-in server. Start the API on your machine (or point this app to the right address), then try again.";
+  }
+  return null;
+}
+
+/// Web-only: Dio often reports CORS / fetch failures as unknown + empty body.
+String? _webBrowserNetworkHint(DioException e) {
+  final blob = '${e.message} ${e.error}'.toLowerCase();
+  if (blob.contains('failed to fetch') ||
+      blob.contains('xmlhttprequest') ||
+      blob.contains('networkerror') ||
+      blob.contains('clientexception') ||
+      blob.contains('load failed') ||
+      blob.contains('err_network') ||
+      blob.contains('cors')) {
+    return "The browser couldn't reach the sign-in API. "
+        "Start the backend (uvicorn from the backend folder), wait until it is listening, "
+        "then refresh this page. "
+        "For Flutter web, use http://127.0.0.1 or http://localhost for both the app and API_BASE_URL — they must match the host style. "
+        "Production: set CORS_ORIGINS to your deployed web origin.";
   }
   return null;
 }
@@ -44,7 +66,10 @@ String friendlyAuthError(
       final hint = _connectionUnreachableHint(error);
       if (hint != null) return hint;
       if (kIsWeb) {
-        return "Sign-in couldn't load from this page. Check your connection. In production, the API must list this site's URL in CORS (CORS_ORIGINS).";
+        final web = _webBrowserNetworkHint(error);
+        if (web != null) return web;
+        return "Sign-in couldn't reach the API from this browser. "
+            "Confirm the backend is running and that CORS allows this site's origin (see CORS_ORIGINS on the server).";
       }
       return "Can't connect right now. Check your internet and try again.";
     }
@@ -68,7 +93,9 @@ String friendlyGoogleSignInError(Object error) {
       final hint = _connectionUnreachableHint(error);
       if (hint != null) return '$hint You can try email sign-in instead.';
       if (kIsWeb) {
-        return "Google sign-in couldn't reach the server from this page. Try email sign-in, or ask your admin to allow this site in API CORS settings.";
+        final web = _webBrowserNetworkHint(error);
+        if (web != null) return '$web You can try email sign-in instead.';
+        return "Google sign-in couldn't reach the server from this page. Try email sign-in after the API is running.";
       }
       return "Can't connect right now. Check your internet and try again.";
     }

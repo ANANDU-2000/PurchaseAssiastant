@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -6,7 +8,8 @@ import 'package:intl/intl.dart';
 import '../../../core/providers/entries_list_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../shared/widgets/app_settings_action.dart';
-import '../../../core/widgets/friendly_load_error.dart';
+import '../../../core/widgets/friendly_load_error.dart'
+    show FriendlyLoadError, kFriendlyLoadNetworkSubtitle;
 import '../../../shared/widgets/hexa_empty_state.dart';
 import 'entry_create_sheet.dart';
 
@@ -32,6 +35,14 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
     ref.read(entrySearchQueryProvider.notifier).state = _searchCtrl.text;
     ref.invalidate(entriesListProvider);
     setState(() {});
+  }
+
+  /// Extra hint in debug so local web devs know why XHR fails (connection refused).
+  String _entriesLoadErrorSubtitle() {
+    if (!kDebugMode) return kFriendlyLoadNetworkSubtitle;
+    return '${kFriendlyLoadNetworkSubtitle}\n\n'
+        'Local dev: start the API (uvicorn on port 8000) or set API_BASE_URL '
+        'to match where the backend listens.';
   }
 
   @override
@@ -312,6 +323,7 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (_, __) => FriendlyLoadError(
                 message: 'Could not load entries',
+                subtitle: _entriesLoadErrorSubtitle(),
                 onRetry: () => ref.invalidate(entriesListProvider),
               ),
               data: (items) {
@@ -334,7 +346,7 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
                     await ref.read(entriesListProvider.future);
                   },
                   child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 88),
                     itemCount: items.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 8),
                     itemBuilder: (context, i) {
@@ -360,7 +372,10 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
                           trailing: const Icon(Icons.chevron_right_rounded),
                           onTap: id == null
                               ? null
-                              : () => context.push('/entry/$id'),
+                              : () {
+                                  HapticFeedback.selectionClick();
+                                  context.push('/entry/$id');
+                                },
                         ),
                       );
                     },

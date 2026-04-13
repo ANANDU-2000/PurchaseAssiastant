@@ -56,6 +56,10 @@ class Settings(BaseSettings):
 
     # Local dev without Postgres: sqlite+aiosqlite:///./hexa_dev.db (file created next to cwd when running uvicorn from backend/)
     database_url: str = "postgresql+asyncpg://user:password@localhost:5432/hexa"
+    # Optional: Supabase pooler (Session or Transaction) from Dashboard → Connect → pooler URI, port 6543.
+    # On some hosts (e.g. Render) direct db.<ref>.supabase.co:5432 can fail with "Network is unreachable";
+    # set this to the pooler URL and keep DATABASE_URL as fallback or duplicate — engine uses this when set.
+    database_pooler_url: str | None = None
     # Dev-only: if TLS fails with CERTIFICATE_VERIFY_FAILED (AV/corporate proxy MITM), set true. Forbidden in production.
     database_ssl_insecure: bool = False
     redis_url: str | None = "redis://localhost:6379/0"
@@ -84,6 +88,11 @@ class Settings(BaseSettings):
     dialog360_phone_number_id: str | None = None
     dialog360_webhook_secret: str | None = None
     dialog360_template_namespace: str | None = None
+
+    # Optional: Authkey.io WhatsApp (outbound). If set, outbound text may route here instead of 360dialog.
+    authkey_api_key: str | None = None
+    authkey_base_url: str = "https://manage.authkey.io"
+    authkey_sender_label: str = "HARISREE"
 
     openai_api_key: str | None = None
     openai_model_parse: str = "gpt-4.1-mini"

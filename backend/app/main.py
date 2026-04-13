@@ -175,7 +175,10 @@ _cors_kwargs = dict(
 # Flutter web `flutter run -d chrome` often picks a random port; listing every port in CORS_ORIGINS is impractical.
 # In development only, allow any http(s) localhost / 127.0.0.1 origin. Production must set explicit CORS_ORIGINS.
 if settings.app_env.lower() == "development":
-    _cors_kwargs["allow_origin_regex"] = r"https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+    # Flutter web may be served as http://[::1]:PORT on some systems — include IPv6 loopback.
+    _cors_kwargs["allow_origin_regex"] = (
+        r"https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$"
+    )
 app.add_middleware(CORSMiddleware, **_cors_kwargs)
 
 if settings.trusted_hosts:

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings, get_settings
 from app.database import get_db
 from app.services.platform_credentials import effective_dialog360
+from app.services.webhook_rate_limit import allow as webhook_rate_allow
 from app.services.whatsapp_flow import handle_inbound_text
 from app.services.whatsapp_state import idempotent_message
 
@@ -96,3 +97,49 @@ async def whatsapp_webhook(
             results.append({"ok": False, "error": str(e)})
 
     return {"ok": True, "processed": len(results), "results": results}
+
+
+@router.post("/whatsapp/authkey")
+async def whatsapp_authkey_webhook(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Authkey.io (or compatible) inbound JSON. Expected keys: `mobile`, `message` (text).
+    Optional: `id` for idempotency. Rate-limited per phone (in-process; use Redis in multi-worker).
+    """
+    try:
+        payload = await request.json()
+    except Exception:  # noqa: BLE001
+        payload = {}
+    if not isinstance(payload, dict):
+        return {"ok": False, "error": "invalid_json"}
+
+    phone = str(payload.get("mobile") or payload.get("from") or "").strip()
+    body = payload.get("message") or payload.get("text") or payload.get("body")
+    mid = payload.get("id") or payload.get("message_id")
+
+    if not phone:
+        return {"ok": False, "error": "missing_mobile"}
+
+    if not webhook_rate_allow(f"authkey:{phone}", max_per_hour=120):
+        return {"ok": False, "error": "rate_limited"}
+
+    if mid:
+        first = await idempotent_message(settings, str(mid))
+        if not first:
+            return {"ok": True, "duplicate": True}
+
+    try:
+        res = await handle_inbound_text(
+            settings=settings,
+            db=db,
+            phone_from=phone,
+            text=str(body) if body is not None else None,
+            message_id=str(mid) if mid else None,
+        )
+        return {"ok": True, "result": res}
+    except Exception as e:  # noqa: BLE001
+        logger.exception("Authkey webhook handle failed: %s", e)
+        return {"ok": False, "error": str(e)}

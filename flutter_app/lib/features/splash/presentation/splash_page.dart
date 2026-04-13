@@ -2,11 +2,11 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/theme/theme_context_ext.dart';
 
 class SplashPage extends ConsumerStatefulWidget {
   const SplashPage({super.key});
@@ -78,8 +78,10 @@ class _SplashPageState extends ConsumerState<SplashPage>
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: HexaColors.canvas,
+      backgroundColor: context.adaptiveScaffold,
       body: FadeTransition(
         opacity: _fade,
         child: DecoratedBox(
@@ -87,11 +89,17 @@ class _SplashPageState extends ConsumerState<SplashPage>
             gradient: RadialGradient(
               center: const Alignment(0, -0.65),
               radius: 1.15,
-              colors: [
-                HexaColors.accentPurple.withValues(alpha: 0.12),
-                HexaColors.accentBlue.withValues(alpha: 0.05),
-                HexaColors.canvas,
-              ],
+              colors: isDark
+                  ? [
+                      HexaColors.accentPurple.withValues(alpha: 0.12),
+                      HexaColors.accentBlue.withValues(alpha: 0.05),
+                      HexaColors.canvas,
+                    ]
+                  : [
+                      Colors.white,
+                      const Color(0xFFE8ECF2),
+                      cs.surface,
+                    ],
               stops: const [0.0, 0.4, 1.0],
             ),
           ),
@@ -115,8 +123,7 @@ class _SplashPageState extends ConsumerState<SplashPage>
                     alignment: Alignment.center,
                     child: Text(
                       'H',
-                      style: GoogleFonts.spaceGrotesk(
-                        fontSize: 28,
+                      style: tt.headlineMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                         color: HexaColors.accentBlue,
                       ),
@@ -125,10 +132,9 @@ class _SplashPageState extends ConsumerState<SplashPage>
                   const SizedBox(height: 20),
                   Text(
                     AppConfig.appName,
-                    style: GoogleFonts.spaceGrotesk(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w700,
-                      color: HexaColors.textPrimary,
+                    style: tt.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: cs.onSurface,
                       letterSpacing: -0.5,
                     ),
                   ),
@@ -136,7 +142,7 @@ class _SplashPageState extends ConsumerState<SplashPage>
                   Text(
                     'Purchase Intelligence',
                     style: tt.bodyMedium?.copyWith(
-                      color: HexaColors.textSecondary,
+                      color: cs.onSurfaceVariant,
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
                     ),
@@ -153,7 +159,7 @@ class _SplashPageState extends ConsumerState<SplashPage>
                       _error!,
                       textAlign: TextAlign.center,
                       style: tt.bodyMedium?.copyWith(
-                        color: HexaColors.textSecondary,
+                        color: cs.onSurfaceVariant,
                         height: 1.4,
                       ),
                     ),

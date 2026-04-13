@@ -44,8 +44,9 @@ class ThemeModeNotifier extends Notifier<ThemeMode> {
   ThemeMode build() {
     final p = ref.watch(sharedPreferencesProvider);
     final v = p.getString(kThemeModeKey);
-    if (v == 'light') return ThemeMode.light;
-    return ThemeMode.dark;
+    if (v == 'dark') return ThemeMode.dark;
+    // Default: light (iOS-like surfaces); users can switch to dark in Settings.
+    return ThemeMode.light;
   }
 
   Future<void> setMode(ThemeMode mode) async {

@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../auth/session_notifier.dart';
+import '../services/offline_store.dart';
 import 'dashboard_period_provider.dart';
 
 class DashboardData {
@@ -20,6 +23,8 @@ class DashboardData {
 
 final dashboardProvider =
     FutureProvider.autoDispose<DashboardData>((ref) async {
+  final link = ref.keepAlive();
+  Timer(const Duration(minutes: 5), link.close);
   final session = ref.watch(sessionProvider);
   if (session == null) {
     throw StateError('No session');
@@ -28,15 +33,30 @@ final dashboardProvider =
   final api = ref.read(hexaApiProvider);
   final range = dashboardDateRange(period);
   final fmt = DateFormat('yyyy-MM-dd');
-  final m = await api.analyticsSummary(
-    businessId: session.primaryBusiness.id,
-    from: fmt.format(range.$1),
-    to: fmt.format(range.$2),
-  );
-  return DashboardData(
-    totalPurchase: (m['total_purchase'] as num?)?.toDouble() ?? 0,
-    totalQtyBase: (m['total_qty_base'] as num?)?.toDouble() ?? 0,
-    totalProfit: (m['total_profit'] as num?)?.toDouble() ?? 0,
-    purchaseCount: (m['purchase_count'] as num?)?.toInt() ?? 0,
-  );
+  try {
+    final m = await api.analyticsSummary(
+      businessId: session.primaryBusiness.id,
+      from: fmt.format(range.$1),
+      to: fmt.format(range.$2),
+    );
+    final map = Map<String, dynamic>.from(m);
+    await OfflineStore.cacheDashboardMap(map);
+    return DashboardData(
+      totalPurchase: (m['total_purchase'] as num?)?.toDouble() ?? 0,
+      totalQtyBase: (m['total_qty_base'] as num?)?.toDouble() ?? 0,
+      totalProfit: (m['total_profit'] as num?)?.toDouble() ?? 0,
+      purchaseCount: (m['purchase_count'] as num?)?.toInt() ?? 0,
+    );
+  } catch (_) {
+    final cached = OfflineStore.getCachedDashboardSummary();
+    if (cached != null) {
+      return DashboardData(
+        totalPurchase: (cached['total_purchase'] as num?)?.toDouble() ?? 0,
+        totalQtyBase: (cached['total_qty_base'] as num?)?.toDouble() ?? 0,
+        totalProfit: (cached['total_profit'] as num?)?.toDouble() ?? 0,
+        purchaseCount: (cached['purchase_count'] as num?)?.toInt() ?? 0,
+      );
+    }
+    rethrow;
+  }
 });

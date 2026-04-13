@@ -4,7 +4,6 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -13,17 +12,19 @@ import '../../../core/providers/analytics_breakdown_providers.dart';
 import '../../../core/providers/analytics_kpi_provider.dart'
     show analyticsDateRangeProvider, analyticsKpiProvider;
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/theme/theme_context_ext.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/app_settings_action.dart';
 
 /// KPI can succeed while a dependent chart request fails — show a compact retry.
-Widget _overviewSliceError(VoidCallback onRetry) {
+Widget _overviewSliceError(BuildContext context, VoidCallback onRetry) {
   return Padding(
     padding: const EdgeInsets.only(top: 4, bottom: 12),
     child: Row(
       children: [
-        const Icon(Icons.wifi_off_rounded,
-            size: 18, color: HexaColors.textSecondary),
+        Icon(Icons.wifi_off_rounded,
+            size: 18,
+            color: Theme.of(context).colorScheme.onSurfaceVariant),
         const SizedBox(width: 8),
         TextButton(
           onPressed: onRetry,
@@ -304,6 +305,7 @@ class AnalyticsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final range = ref.watch(analyticsDateRangeProvider);
     final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     final fmt = DateFormat.yMMMd();
 
     final now = DateTime.now();
@@ -315,25 +317,25 @@ class AnalyticsPage extends ConsumerWidget {
     return DefaultTabController(
       length: 5,
       child: Scaffold(
-        backgroundColor: HexaColors.canvas,
+        backgroundColor: context.adaptiveScaffold,
         appBar: AppBar(
-          backgroundColor: HexaColors.canvas,
+          backgroundColor: context.adaptiveAppBarBg,
           surfaceTintColor: Colors.transparent,
           title: Text(
             'Analytics',
-            style: GoogleFonts.spaceGrotesk(
-              fontWeight: FontWeight.w700,
-              fontSize: 20,
-              color: HexaColors.textPrimary,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: cs.onSurface,
+              letterSpacing: -0.3,
             ),
           ),
           actions: const [AppSettingsAction()],
-          bottom: const TabBar(
+          bottom: TabBar(
             isScrollable: true,
-            labelColor: HexaColors.primaryMid,
-            unselectedLabelColor: HexaColors.textSecondary,
-            indicatorColor: HexaColors.primaryMid,
-            tabs: [
+            labelColor: cs.primary,
+            unselectedLabelColor: cs.onSurfaceVariant,
+            indicatorColor: cs.primary,
+            tabs: const [
               Tab(text: 'Overview'),
               Tab(text: 'Items'),
               Tab(text: 'Categories'),
@@ -356,7 +358,7 @@ class AnalyticsPage extends ConsumerWidget {
                         child: Text(
                           '${fmt.format(range.from)} – ${fmt.format(range.to)}',
                           style: tt.bodySmall?.copyWith(
-                              color: HexaColors.textSecondary,
+                              color: cs.onSurfaceVariant,
                               fontWeight: FontWeight.w600),
                         ),
                       ),
@@ -433,7 +435,7 @@ class AnalyticsPage extends ConsumerWidget {
                 ],
               ),
             ),
-            const Divider(height: 1, color: HexaColors.border),
+            Divider(height: 1, color: cs.outlineVariant),
             Expanded(
               child: TabBarView(
                 children: [
@@ -463,6 +465,7 @@ class _OverviewTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final onSurf = Theme.of(context).colorScheme.onSurface;
     final kpi = ref.watch(analyticsKpiProvider);
     final daily = ref.watch(analyticsDailyProfitProvider);
     final items = ref.watch(analyticsItemsTableProvider);
@@ -497,7 +500,7 @@ class _OverviewTab extends ConsumerWidget {
               Text('Overview',
                   style: tt.titleMedium?.copyWith(
                       fontWeight: FontWeight.w800,
-                      color: HexaColors.textPrimary)),
+                      color: onSurf)),
               const SizedBox(height: 12),
               SizedBox(
                 height: 112,
@@ -554,6 +557,7 @@ class _OverviewTab extends ConsumerWidget {
               daily.when(
                 loading: () => const SizedBox.shrink(),
                 error: (_, __) => _overviewSliceError(
+                    context,
                     () => ref.invalidate(analyticsDailyProfitProvider)),
                 data: (points) =>
                     _ProfitTrendCard(points: points, tt: tt, inr: inr),
@@ -562,6 +566,7 @@ class _OverviewTab extends ConsumerWidget {
               items.when(
                 loading: () => const SizedBox.shrink(),
                 error: (_, __) => _overviewSliceError(
+                    context,
                     () => ref.invalidate(analyticsItemsTableProvider)),
                 data: (rows) =>
                     _ItemCostRevenueBars(rows: rows, tt: tt, inr: inr),
@@ -570,6 +575,7 @@ class _OverviewTab extends ConsumerWidget {
               cats.when(
                 loading: () => const SizedBox.shrink(),
                 error: (_, __) => _overviewSliceError(
+                    context,
                     () => ref.invalidate(analyticsCategoriesTableProvider)),
                 data: (rows) =>
                     _CategoryProfitDonut(rows: rows, tt: tt, inr: inr),
@@ -578,6 +584,7 @@ class _OverviewTab extends ConsumerWidget {
               sup.when(
                 loading: () => const SizedBox.shrink(),
                 error: (_, __) => _overviewSliceError(
+                    context,
                     () => ref.invalidate(analyticsSuppliersTableProvider)),
                 data: (rows) => _SupplierMarginPerformers(rows: rows, tt: tt),
               ),
@@ -2037,6 +2044,7 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
               error: (_, __) => Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: _overviewSliceError(
+                  context,
                   () => ref.invalidate(analyticsBestSupplierInsightProvider),
                 ),
               ),

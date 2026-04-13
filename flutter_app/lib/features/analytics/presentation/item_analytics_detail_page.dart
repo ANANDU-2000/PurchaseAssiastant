@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/theme/theme_context_ext.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 
 final _pipProvider = FutureProvider.autoDispose
@@ -54,25 +54,25 @@ class _ItemAnalyticsDetailPageState
   Widget build(BuildContext context) {
     final async = ref.watch(_pipProvider(widget.itemName));
     final tt = Theme.of(context).textTheme;
+    final onSurf = Theme.of(context).colorScheme.onSurface;
 
     return Scaffold(
-      backgroundColor: HexaColors.canvas,
+      backgroundColor: context.adaptiveScaffold,
       appBar: AppBar(
-        backgroundColor: HexaColors.canvas,
+        backgroundColor: context.adaptiveAppBarBg,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded,
-              color: HexaColors.textPrimary),
+          icon: Icon(Icons.arrow_back_rounded, color: onSurf),
           onPressed: () => context.pop(),
         ),
         title: Text(
           widget.itemName,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: GoogleFonts.spaceGrotesk(
-            fontWeight: FontWeight.w700,
-            fontSize: 18,
-            color: HexaColors.textPrimary,
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w800,
+            color: onSurf,
+            letterSpacing: -0.3,
           ),
         ),
       ),
@@ -172,13 +172,13 @@ class _ItemAnalyticsDetailPageState
                 Text('Price position (landing)',
                     style: tt.titleSmall?.copyWith(
                         fontWeight: FontWeight.w800,
-                        color: HexaColors.textPrimary)),
+                        color: onSurf)),
                 const SizedBox(height: 8),
                 if (low != null && high != null && last != null)
                   Text(
                     '${_inr(low)} min · ${_inr(high)} max · last ${_inr(last)}',
-                    style: tt.labelMedium
-                        ?.copyWith(color: HexaColors.textSecondary),
+                    style: tt.labelMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant),
                   ),
                 const SizedBox(height: 10),
                 ClipRRect(
@@ -186,7 +186,7 @@ class _ItemAnalyticsDetailPageState
                   child: LinearProgressIndicator(
                     value: pos / 100,
                     minHeight: 14,
-                    backgroundColor: HexaColors.surfaceElevated,
+                    backgroundColor: context.adaptiveElevated,
                     color: pos > 66
                         ? HexaColors.warning
                         : (pos < 33
@@ -198,14 +198,14 @@ class _ItemAnalyticsDetailPageState
                 Text(
                   '${pos.toStringAsFixed(0)}% in range · Avg ${_inr(avg)}',
                   style: tt.labelSmall?.copyWith(
-                      color: HexaColors.textSecondary,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 20),
                 Text('Snapshot',
                     style: tt.titleSmall?.copyWith(
                         fontWeight: FontWeight.w800,
-                        color: HexaColors.textPrimary)),
+                        color: onSurf)),
                 const SizedBox(height: 10),
                 Wrap(
                   spacing: 10,
@@ -242,7 +242,7 @@ class _ItemAnalyticsDetailPageState
                   Text('Verdicts',
                       style: tt.titleSmall?.copyWith(
                           fontWeight: FontWeight.w800,
-                          color: HexaColors.textPrimary)),
+                          color: onSurf)),
                   const SizedBox(height: 8),
                   ...hints.map(
                     (h) => Padding(
@@ -266,7 +266,7 @@ class _ItemAnalyticsDetailPageState
                             Expanded(
                                 child: Text(h.toString(),
                                     style: tt.bodySmall?.copyWith(
-                                        color: HexaColors.textPrimary,
+                                        color: onSurf,
                                         height: 1.35))),
                           ],
                         ),
@@ -280,7 +280,7 @@ class _ItemAnalyticsDetailPageState
                     Text('Suppliers',
                         style: tt.titleSmall?.copyWith(
                             fontWeight: FontWeight.w800,
-                            color: HexaColors.textPrimary)),
+                            color: onSurf)),
                     const Spacer(),
                     FilterChip(
                       label: const Text('Name'),
@@ -318,8 +318,10 @@ class _ItemAnalyticsDetailPageState
                   Padding(
                     padding: const EdgeInsets.all(16),
                     child: Text('No supplier breakdown for this item yet.',
-                        style: tt.bodyMedium
-                            ?.copyWith(color: HexaColors.textSecondary)),
+                        style: tt.bodyMedium?.copyWith(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant)),
                   )
                 else
                   ...rows.asMap().entries.map((e) {
@@ -333,12 +335,14 @@ class _ItemAnalyticsDetailPageState
                       padding: const EdgeInsets.only(bottom: 10),
                       child: Container(
                         decoration: BoxDecoration(
-                          color: HexaColors.surfaceCard,
+                          color: context.adaptiveCard,
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
                               color: isBest
                                   ? HexaColors.primaryMid
-                                  : HexaColors.border),
+                                  : Theme.of(context)
+                                      .colorScheme
+                                      .outlineVariant),
                           boxShadow: HexaColors.cardShadow(context),
                         ),
                         padding: const EdgeInsets.all(14),
@@ -352,7 +356,7 @@ class _ItemAnalyticsDetailPageState
                                 name.isNotEmpty ? name[0].toUpperCase() : '?',
                                 style: tt.titleSmall?.copyWith(
                                     fontWeight: FontWeight.w900,
-                                    color: HexaColors.textPrimary),
+                                    color: onSurf),
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -366,7 +370,7 @@ class _ItemAnalyticsDetailPageState
                                         child: Text(name,
                                             style: tt.titleSmall?.copyWith(
                                                 fontWeight: FontWeight.w800,
-                                                color: HexaColors.textPrimary)),
+                                                color: onSurf)),
                                       ),
                                       if (isBest)
                                         Container(
@@ -391,7 +395,9 @@ class _ItemAnalyticsDetailPageState
                                   Text(
                                     'Avg landing ${_inr(v)}',
                                     style: tt.bodySmall?.copyWith(
-                                        color: HexaColors.textSecondary,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant,
                                         fontWeight: FontWeight.w600),
                                   ),
                                 ],
@@ -422,13 +428,14 @@ class _StatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     return Container(
       width: 148,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: HexaColors.surfaceCard,
+        color: context.adaptiveCard,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: HexaColors.border),
+        border: Border.all(color: cs.outlineVariant),
         boxShadow: HexaColors.cardShadow(context),
       ),
       child: Column(
@@ -445,7 +452,7 @@ class _StatTile extends StatelessWidget {
               Text(
                 label.toUpperCase(),
                 style: tt.labelSmall?.copyWith(
-                    color: HexaColors.textSecondary,
+                    color: cs.onSurfaceVariant,
                     fontWeight: FontWeight.w800,
                     fontSize: 10,
                     letterSpacing: 0.4),
@@ -455,7 +462,7 @@ class _StatTile extends StatelessWidget {
           const SizedBox(height: 6),
           Text(value,
               style: tt.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w900, color: HexaColors.textPrimary)),
+                  fontWeight: FontWeight.w900, color: cs.onSurface)),
         ],
       ),
     );

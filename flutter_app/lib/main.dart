@@ -7,12 +7,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
 import 'core/auth/session_notifier.dart' show sessionProvider;
+import 'core/services/offline_store.dart';
 import 'core/notifications/local_notifications_service.dart';
 import 'core/providers/prefs_provider.dart'
     show kNotificationsOptInKey, sharedPreferencesProvider;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await OfflineStore.init();
   final prefs = await SharedPreferences.getInstance();
   await LocalNotificationsService.instance.init();
   final notifOptIn = prefs.getBool(kNotificationsOptInKey) ?? false;

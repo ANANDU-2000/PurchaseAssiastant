@@ -9,6 +9,7 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
+from app.services.authkey_send import send_whatsapp_authkey
 from app.services.platform_credentials import effective_dialog360
 
 logger = logging.getLogger(__name__)
@@ -24,8 +25,14 @@ async def send_text_message(
     """
     Send a plain text message. `to_e164` should be digits only (e.g. 9198...).
     Credentials: database row `platform_integration` overrides process env — no redeploy.
+    If Authkey is configured, it takes precedence for outbound text.
     If 360dialog is not configured, logs and returns None (dev mode).
     """
+    if (settings.authkey_api_key or "").strip():
+        return await send_whatsapp_authkey(
+            settings, to_e164_digits=to_e164, body=body
+        )
+
     api_key, phone_id, base_url, _ = await effective_dialog360(settings, db)
     if not api_key or not phone_id:
         logger.info("360dialog not configured; outbound WA: %s", body[:500])

@@ -48,7 +48,7 @@ void main() {
 
   /// Uses [ProviderContainer] instead of pumping [HexaApp]: splash schedules a long
   /// `restore()` timeout that leaves pending timers in widget tests.
-  test('themeModeProvider defaults to dark when prefs unset', () async {
+  test('themeModeProvider defaults to light when prefs unset', () async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
     final container = ProviderContainer(
@@ -57,7 +57,7 @@ void main() {
       ],
     );
     addTearDown(container.dispose);
-    expect(container.read(themeModeProvider), ThemeMode.dark);
+    expect(container.read(themeModeProvider), ThemeMode.light);
   });
 
   test('themeModeProvider is light when pref set', () async {

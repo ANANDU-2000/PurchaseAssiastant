@@ -1601,10 +1601,16 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                     Expanded(
                       child: OutlinedButton(
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: HexaColors.primaryMid,
-                          side: const BorderSide(
-                              color: HexaColors.primaryMid, width: 1.5),
-                          backgroundColor: HexaColors.surfaceElevated,
+                          foregroundColor: Theme.of(context).colorScheme.primary,
+                          side: BorderSide(
+                              color: Theme.of(context).colorScheme.primary,
+                              width: 1.5),
+                          backgroundColor:
+                              Theme.of(context).brightness == Brightness.dark
+                                  ? HexaColors.surfaceElevated
+                                  : Theme.of(context)
+                                      .colorScheme
+                                      .surfaceContainerHighest,
                         ),
                         onPressed: _busy ? null : _preview,
                         child: _busy
@@ -1620,10 +1626,14 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                     Expanded(
                       child: FilledButton(
                         style: FilledButton.styleFrom(
-                          backgroundColor: HexaColors.primaryMid,
-                          foregroundColor: Colors.white,
-                          disabledBackgroundColor:
-                              HexaColors.primaryMid.withValues(alpha: 0.45),
+                          backgroundColor:
+                              Theme.of(context).colorScheme.primary,
+                          foregroundColor:
+                              Theme.of(context).colorScheme.onPrimary,
+                          disabledBackgroundColor: Theme.of(context)
+                              .colorScheme
+                              .primary
+                              .withValues(alpha: 0.45),
                           disabledForegroundColor: Colors.white70,
                         ),
                         onPressed: _busy
@@ -2048,6 +2058,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
   Widget _landedCostReadout(_LineControllers l) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final land = _effectiveLanding(l);
     final cpu = _commissionPerUnit();
     final p = _parseDouble(l.purchase.text) ?? 0;
@@ -2055,14 +2066,24 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     final perKg = (l.unit == 'bag' && kgPb > 0) ? land / kgPb : null;
     final title =
         l.unit == 'bag' ? 'Landed cost (auto)' : 'Landed cost / unit (auto)';
-    final mainValue = perKg != null
-        ? '₹${perKg.toStringAsFixed(2)}/kg'
+    // Bag purchases are quoted per bag — primary readout is always /bag; /kg line appears when kg/bag is set.
+    final mainValue = l.unit == 'bag'
+        ? '₹${land.toStringAsFixed(2)}/bag'
         : '₹${land.toStringAsFixed(2)}';
+    final perKgLine = (l.unit == 'bag' && perKg != null)
+        ? '₹${perKg.toStringAsFixed(2)}/kg · ${kgPb.toStringAsFixed(0)} kg/bag'
+        : null;
     final caption = perKg != null
-        ? '₹${land.toStringAsFixed(2)} per bag (${kgPb.toStringAsFixed(0)} kg/bag). Margin uses cost/kg vs sell/kg. Tap for breakdown.'
+        ? 'Matches landed cost / bag above. Selling price is entered per kg (retail); profit compares cost/kg to sell/kg. Tap for breakdown.'
         : 'Not editable — purchase ₹/unit + commission share. Tap for breakdown.';
+    final boxBg = isDark
+        ? HexaColors.primaryLight
+        : cs.primaryContainer.withValues(alpha: 0.55);
+    final titleCol = isDark ? HexaColors.textSecondary : cs.onSurfaceVariant;
+    final valueCol = isDark ? HexaColors.textPrimary : cs.onSurface;
+    final subCol = isDark ? HexaColors.textSecondary : cs.onSurfaceVariant;
     return Material(
-      color: HexaColors.primaryLight,
+      color: boxBg,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: _busy
@@ -2114,13 +2135,13 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-                color: HexaColors.primaryMid.withValues(alpha: 0.35)),
+                color: cs.primary.withValues(alpha: isDark ? 0.35 : 0.4)),
             boxShadow: HexaColors.cardShadow(context),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             children: [
-              const Icon(Icons.balance_rounded, color: HexaColors.primaryMid),
+              Icon(Icons.balance_rounded, color: cs.primary),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -2129,20 +2150,27 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                     Text(
                       title,
                       style: tt.labelMedium?.copyWith(
-                          color: HexaColors.textSecondary,
-                          fontWeight: FontWeight.w700),
+                          color: titleCol, fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       mainValue,
                       style: tt.titleLarge?.copyWith(
                           fontWeight: FontWeight.w800,
-                          color: HexaColors.textPrimary),
+                          color: valueCol),
                     ),
+                    if (perKgLine != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        perKgLine,
+                        style: tt.labelMedium?.copyWith(
+                            color: subCol, fontWeight: FontWeight.w600),
+                      ),
+                    ],
                     Text(
                       caption,
                       style: tt.bodySmall?.copyWith(
-                          color: HexaColors.textSecondary, fontSize: 11),
+                          color: subCol, fontSize: 11),
                     ),
                   ],
                 ),
@@ -2167,11 +2195,17 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     }
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      elevation: 1,
+      elevation: Theme.of(context).brightness == Brightness.dark ? 1 : 0,
       shadowColor: HexaColors.primaryDeep.withValues(alpha: 0.12),
+      color: Theme.of(context).brightness == Brightness.dark
+          ? null
+          : Theme.of(context).colorScheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: HexaColors.border),
+        side: BorderSide(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? HexaColors.border
+                : Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -2420,8 +2454,9 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                     ? 'Selling price / kg'
                     : 'Selling price / unit',
                 prefixIcon: const Icon(Icons.sell_outlined),
-                helperText:
-                    l.unit == 'bag' ? 'Revenue = kg × this price' : null,
+                helperText: l.unit == 'bag'
+                    ? 'Per kg (retail). Revenue = bags × kg/bag × this ₹/kg — same basis as margin below.'
+                    : null,
               ),
             ),
             SmartPricePanel(

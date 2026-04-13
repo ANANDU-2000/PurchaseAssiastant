@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -15,11 +16,21 @@ class HexaApp extends ConsumerWidget {
     final title = ref.watch(tenantAppTitleProvider);
     final themeMode = ref.watch(themeModeProvider);
     return MaterialApp.router(
+      debugShowCheckedModeBanner: false,
       title: title,
       theme: buildHexaTheme(Brightness.light),
       darkTheme: buildHexaTheme(Brightness.dark),
       themeMode: themeMode,
       routerConfig: router,
+      scrollBehavior: const MaterialScrollBehavior().copyWith(
+        physics: const BouncingScrollPhysics(),
+        dragDevices: {
+          PointerDeviceKind.touch,
+          PointerDeviceKind.mouse,
+          PointerDeviceKind.trackpad,
+          PointerDeviceKind.stylus,
+        },
+      ),
     );
   }
 }

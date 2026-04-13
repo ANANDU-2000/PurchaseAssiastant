@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/providers/notifications_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/theme/theme_context_ext.dart';
 
 class NotificationsPage extends ConsumerStatefulWidget {
   const NotificationsPage({super.key});
@@ -38,28 +39,29 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
     final filtered = items.where(_matchesFilter).toList();
     final rel = DateFormat.Hm();
 
+    final onSurf = Theme.of(context).colorScheme.onSurface;
     return Scaffold(
-      backgroundColor: HexaColors.canvas,
+      backgroundColor: context.adaptiveScaffold,
       appBar: AppBar(
-        backgroundColor: HexaColors.canvas,
+        backgroundColor: context.adaptiveAppBarBg,
         surfaceTintColor: Colors.transparent,
         title: Text('Alerts & Reminders',
             style: tt.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800, color: HexaColors.textPrimary)),
+                fontWeight: FontWeight.w800, color: onSurf)),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded,
-              color: HexaColors.textSecondary),
+          icon: Icon(Icons.arrow_back_rounded,
+              color: Theme.of(context).colorScheme.onSurfaceVariant),
           onPressed: () => context.pop(),
         ),
         actions: [
           IconButton(
             tooltip: 'Notification settings',
-            icon:
-                const Icon(Icons.tune_rounded, color: HexaColors.textSecondary),
+            icon: Icon(Icons.tune_rounded,
+                color: Theme.of(context).colorScheme.onSurfaceVariant),
             onPressed: () {
               showModalBottomSheet<void>(
                 context: context,
-                backgroundColor: HexaColors.surfaceCard,
+                backgroundColor: context.adaptiveCard,
                 shape: const RoundedRectangleBorder(
                   borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
                 ),
@@ -76,7 +78,8 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                       Text(
                         'Price alerts, profit drop, daily summary, and WhatsApp status toggles will be available in a future update.',
                         style: tt.bodySmall?.copyWith(
-                            color: HexaColors.textSecondary, height: 1.4),
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            height: 1.4),
                       ),
                       const SizedBox(height: 16),
                     ],
@@ -118,8 +121,10 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
             child: filtered.isEmpty
                 ? Center(
                     child: Text('No notifications',
-                        style: tt.bodyMedium
-                            ?.copyWith(color: HexaColors.textSecondary)),
+                        style: tt.bodyMedium?.copyWith(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant)),
                   )
                 : ListView.builder(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
@@ -131,7 +136,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                         NotificationType.profitLow => HexaColors.loss,
                         NotificationType.reminder => HexaColors.primaryMid,
                         NotificationType.whatsapp => const Color(0xFF25D366),
-                        _ => HexaColors.textSecondary,
+                        _ => Theme.of(context).colorScheme.outline,
                       };
                       final icon = switch (n.type) {
                         NotificationType.priceAlert =>
@@ -145,7 +150,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 10),
                         child: Material(
-                          color: HexaColors.surfaceCard,
+                          color: context.adaptiveCard,
                           borderRadius: BorderRadius.circular(14),
                           child: InkWell(
                             borderRadius: BorderRadius.circular(14),
@@ -164,14 +169,24 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                                 border: Border(
                                   left: BorderSide(
                                       color:
-                                          n.isRead ? HexaColors.border : color,
+                                          n.isRead
+                                              ? Theme.of(context)
+                                                  .colorScheme
+                                                  .outlineVariant
+                                              : color,
                                       width: n.isRead ? 1 : 3),
-                                  top: const BorderSide(
-                                      color: HexaColors.border),
-                                  right: const BorderSide(
-                                      color: HexaColors.border),
-                                  bottom: const BorderSide(
-                                      color: HexaColors.border),
+                                  top: BorderSide(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .outlineVariant),
+                                  right: BorderSide(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .outlineVariant),
+                                  bottom: BorderSide(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .outlineVariant),
                                 ),
                               ),
                               padding: const EdgeInsets.all(14),
@@ -192,11 +207,13 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                                         Text(n.title,
                                             style: tt.titleSmall?.copyWith(
                                                 fontWeight: FontWeight.w800,
-                                                color: HexaColors.textPrimary)),
+                                                color: onSurf)),
                                         const SizedBox(height: 4),
                                         Text(n.subtitle,
                                             style: tt.bodySmall?.copyWith(
-                                                color: HexaColors.textSecondary,
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .onSurfaceVariant,
                                                 height: 1.35)),
                                       ],
                                     ),
@@ -206,11 +223,15 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                                     children: [
                                       Text(rel.format(n.createdAt),
                                           style: tt.labelSmall?.copyWith(
-                                              color: HexaColors.textSecondary)),
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurfaceVariant)),
                                       IconButton(
                                         icon: const Icon(Icons.close_rounded,
                                             size: 18),
-                                        color: HexaColors.textSecondary,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant,
                                         onPressed: () => ref
                                             .read(
                                                 notificationsProvider.notifier)
@@ -244,10 +265,13 @@ class _FilterChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: Material(
-        color: selected ? HexaColors.primaryMid : HexaColors.surfaceElevated,
+        color: selected
+            ? HexaColors.primaryMid
+            : cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(20),
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
@@ -260,7 +284,7 @@ class _FilterChip extends StatelessWidget {
                 fontWeight: FontWeight.w700,
                 color: selected
                     ? const Color(0xFF04201C)
-                    : HexaColors.textSecondary,
+                    : cs.onSurfaceVariant,
               ),
             ),
           ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -7,7 +8,6 @@ import '../../core/theme/hexa_colors.dart';
 import '../entries/presentation/entry_create_sheet.dart';
 
 /// Shell: [IndexedStack body] · [BottomAppBar] with center notch + FAB · Home | Entries | Contacts | Reports.
-/// AI/Voice opens from Home quick actions (`/ai`), not bottom nav.
 class ShellScreen extends ConsumerWidget {
   const ShellScreen({super.key, required this.navigationShell});
 
@@ -19,8 +19,6 @@ class ShellScreen extends ConsumerWidget {
   static const branchContacts = 2;
   static const branchAnalytics = 3;
 
-  static const _unselected = HexaColors.textSecondary;
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final idx = navigationShell.currentIndex;
@@ -29,53 +27,38 @@ class ShellScreen extends ConsumerWidget {
         conn.valueOrNull != null && isOfflineResult(conn.valueOrNull!);
 
     void go(int branch) {
+      HapticFeedback.selectionClick();
       navigationShell.goBranch(branch);
     }
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: HexaColors.canvas,
+      backgroundColor:
+          isDark ? HexaColors.canvas : Theme.of(context).scaffoldBackgroundColor,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (offline)
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [
-                    HexaColors.surfaceElevated,
-                    HexaColors.surfaceCard,
-                  ],
-                ),
-                border: Border(
-                  bottom: BorderSide(
-                      color: HexaColors.warning.withValues(alpha: 0.35)),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: HexaColors.accentPurple.withValues(alpha: 0.12),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
+            Material(
+              color: const Color(0xFFF59E0B),
               child: Padding(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 child: Row(
                   children: [
-                    Icon(Icons.wifi_off_rounded,
-                        size: 20,
-                        color: HexaColors.warning.withValues(alpha: 0.95)),
-                    const SizedBox(width: 10),
+                    const Icon(Icons.flash_on_rounded,
+                        size: 18, color: Color(0xFF1C1917)),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        "You're offline. Reports and smart features need internet—entries may show last saved data.",
-                        style:
-                            Theme.of(context).textTheme.labelMedium?.copyWith(
-                                  color: HexaColors.textPrimary,
-                                  fontWeight: FontWeight.w600,
-                                  height: 1.25,
-                                ),
+                        'Offline — showing cached data where available. New purchases need a connection.',
+                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                              color: const Color(0xFF1C1917),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                              height: 1.25,
+                            ),
                       ),
                     ),
                   ],
@@ -86,31 +69,37 @@ class ShellScreen extends ConsumerWidget {
         ],
       ),
       floatingActionButton: Tooltip(
-        message: 'New entry · long-press for AI',
+        message: 'New purchase entry',
         child: Container(
           key: const ValueKey('shell_fab'),
           width: 56,
           height: 56,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            gradient: HexaColors.ctaGradient,
+            borderRadius: BorderRadius.circular(16),
+            color: Theme.of(context).colorScheme.primary,
             boxShadow: [
-              ...HexaColors.glowShadow(HexaColors.accentPurple, blur: 22),
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.35),
-                blurRadius: 16,
-                offset: const Offset(0, 6),
+                color: Colors.black.withValues(alpha: 0.28),
+                blurRadius: 14,
+                offset: const Offset(0, 5),
               ),
             ],
           ),
           child: Material(
             color: Colors.transparent,
             child: InkWell(
-              borderRadius: BorderRadius.circular(18),
-              onTap: () => showEntryCreateSheet(context),
-              onLongPress: () => context.push('/ai'),
-              child:
-                  const Icon(Icons.add_rounded, color: Colors.white, size: 26),
+              borderRadius: BorderRadius.circular(16),
+              onTap: () {
+                HapticFeedback.mediumImpact();
+                showEntryCreateSheet(context);
+              },
+              splashColor: Colors.white.withValues(alpha: 0.2),
+              highlightColor: Colors.white.withValues(alpha: 0.1),
+              child: const SizedBox(
+                width: 56,
+                height: 56,
+                child: Icon(Icons.add_rounded, color: Colors.white, size: 26),
+              ),
             ),
           ),
         ),
@@ -118,16 +107,19 @@ class ShellScreen extends ConsumerWidget {
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       bottomNavigationBar: BottomAppBar(
         padding: EdgeInsets.zero,
-        height: 76,
+        // Room for icon row + label (avoids "BOTTOM OVERFLOWED" on narrow/web viewports).
+        height: 72,
         elevation: 0,
         shadowColor: Colors.transparent,
-        color: HexaColors.surfaceCard,
+        color: isDark ? HexaColors.surfaceCard : cs.surface,
         surfaceTintColor: Colors.transparent,
         shape: const CircularNotchedRectangle(),
         notchMargin: 10,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            border: const Border(top: BorderSide(color: HexaColors.border)),
+            border: Border(
+                top: BorderSide(
+                    color: isDark ? HexaColors.border : cs.outlineVariant)),
             boxShadow: [
               BoxShadow(
                 color: HexaColors.accentPurple.withValues(alpha: 0.06),
@@ -162,8 +154,8 @@ class ShellScreen extends ConsumerWidget {
                 Expanded(
                   child: _ShellTab(
                     selected: idx == ShellScreen.branchContacts,
-                    icon: Icons.people_outlined,
-                    selectedIcon: Icons.people_rounded,
+                    icon: Icons.people_alt_outlined,
+                    selectedIcon: Icons.people_alt_rounded,
                     label: 'Contacts',
                     onTap: () => go(ShellScreen.branchContacts),
                   ),
@@ -204,6 +196,7 @@ class _ShellTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
     return Semantics(
       button: true,
       selected: selected,
@@ -212,57 +205,49 @@ class _ShellTab extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          splashColor: HexaColors.accentPurple.withValues(alpha: 0.12),
-          highlightColor: HexaColors.accentPurple.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(12),
+          splashColor: HexaColors.primaryMid.withValues(alpha: 0.12),
+          highlightColor: HexaColors.primaryMid.withValues(alpha: 0.06),
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+            padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeOutCubic,
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: selected
-                        ? HexaColors.primaryMid.withValues(alpha: 0.2)
-                        : Colors.transparent,
-                    boxShadow: selected
-                        ? [
-                            BoxShadow(
-                              color:
-                                  HexaColors.primaryMid.withValues(alpha: 0.35),
-                              blurRadius: 12,
-                              spreadRadius: 0,
-                            ),
-                          ]
-                        : null,
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeOutCubic,
+                    width: selected ? 40 : 32,
+                    height: selected ? 40 : 32,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: selected
+                          ? HexaColors.primaryMid.withValues(alpha: 0.18)
+                          : Colors.transparent,
+                    ),
+                    child: Icon(
+                      selected ? selectedIcon : icon,
+                      size: 22,
+                      color: selected
+                          ? HexaColors.primaryMid
+                          : muted.withValues(alpha: 0.72),
+                    ),
                   ),
-                  child: Icon(
-                    selected ? selectedIcon : icon,
-                    size: 24,
-                    color: selected
-                        ? HexaColors.primaryMid
-                        : ShellScreen._unselected,
+                  const SizedBox(height: 2),
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: tt.labelSmall?.copyWith(
+                      fontSize: 10,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      color: selected
+                          ? HexaColors.primaryMid
+                          : muted.withValues(alpha: 0.72),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: tt.labelSmall?.copyWith(
-                    fontSize: 12,
-                    fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
-                    color: selected
-                        ? HexaColors.primaryMid
-                        : ShellScreen._unselected,
-                  ),
-                ),
-              ],
+                ],
             ),
           ),
         ),
