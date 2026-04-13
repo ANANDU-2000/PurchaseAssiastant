@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Centered empty / placeholder with icon ring — use for lists before API data.
+/// Centered empty state — neutral chrome, optional primary CTA (always guide next step).
 class HexaEmptyState extends StatelessWidget {
   const HexaEmptyState({
     super.key,
@@ -8,12 +8,24 @@ class HexaEmptyState extends StatelessWidget {
     required this.title,
     this.subtitle,
     this.action,
-  });
+    this.primaryActionLabel,
+    this.onPrimaryAction,
+  }) : assert(
+          (primaryActionLabel == null && onPrimaryAction == null) ||
+              (primaryActionLabel != null && onPrimaryAction != null),
+          'Provide both primaryActionLabel and onPrimaryAction, or neither.',
+        );
 
   final IconData icon;
   final String title;
   final String? subtitle;
+
+  /// Custom trailing widget (e.g. row of buttons). Shown below subtitle.
   final Widget? action;
+
+  /// Shorthand for a single [FilledButton] — prefer this over bare [action] when possible.
+  final String? primaryActionLabel;
+  final VoidCallback? onPrimaryAction;
 
   @override
   Widget build(BuildContext context) {
@@ -29,22 +41,39 @@ class HexaEmptyState extends StatelessWidget {
               padding: const EdgeInsets.all(22),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: cs.primaryContainer.withValues(alpha: 0.45),
-                border:
-                    Border.all(color: cs.outlineVariant.withValues(alpha: 0.6)),
+                color: cs.surfaceContainerHighest.withValues(alpha: 0.9),
+                border: Border.all(
+                  color: cs.outlineVariant.withValues(alpha: 0.85),
+                ),
               ),
-              child: Icon(icon, size: 40, color: cs.primary),
+              child: Icon(icon, size: 40, color: cs.onSurfaceVariant),
             ),
             const SizedBox(height: 20),
-            Text(title,
-                style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                textAlign: TextAlign.center),
+            Text(
+              title,
+              style: tt.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: cs.onSurface,
+              ),
+              textAlign: TextAlign.center,
+            ),
             if (subtitle != null) ...[
               const SizedBox(height: 8),
               Text(
                 subtitle!,
-                style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+                style: tt.bodyMedium?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w500,
+                  height: 1.35,
+                ),
                 textAlign: TextAlign.center,
+              ),
+            ],
+            if (primaryActionLabel != null && onPrimaryAction != null) ...[
+              const SizedBox(height: 20),
+              FilledButton(
+                onPressed: onPrimaryAction,
+                child: Text(primaryActionLabel!),
               ),
             ],
             if (action != null) ...[const SizedBox(height: 20), action!],

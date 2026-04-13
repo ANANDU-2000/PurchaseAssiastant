@@ -100,3 +100,21 @@ final catalogItemDetailProvider = FutureProvider.autoDispose
         itemId: itemId,
       );
 });
+
+/// Key: `itemName|currentLanding` (landing may be empty). Name-based price intelligence.
+final catalogItemPriceIntelProvider =
+    FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, key) async {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return {};
+  final sep = key.indexOf('|');
+  final name = sep < 0 ? key : key.substring(0, sep);
+  final curStr = sep < 0 ? '' : key.substring(sep + 1);
+  final cur = curStr.isEmpty ? null : double.tryParse(curStr);
+  if (name.trim().length < 2) return {};
+  return ref.read(hexaApiProvider).priceIntelligence(
+        businessId: session.primaryBusiness.id,
+        item: name,
+        currentPrice: cur,
+        priceField: 'landing',
+      );
+});

@@ -333,11 +333,8 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
                     title: 'No entries yet',
                     subtitle:
                         'Add a purchase to see it here. Entries sync when you are online and signed in.',
-                    action: FilledButton.icon(
-                      onPressed: () => showEntryCreateSheet(context),
-                      icon: const Icon(Icons.add_rounded),
-                      label: const Text('Add entry'),
-                    ),
+                    primaryActionLabel: 'Add entry',
+                    onPrimaryAction: () => showEntryCreateSheet(context),
                   );
                 }
                 return RefreshIndicator(
@@ -346,6 +343,8 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
                     await ref.read(entriesListProvider.future);
                   },
                   child: ListView.separated(
+                    physics: const BouncingScrollPhysics(
+                        parent: AlwaysScrollableScrollPhysics()),
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 88),
                     itemCount: items.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 8),

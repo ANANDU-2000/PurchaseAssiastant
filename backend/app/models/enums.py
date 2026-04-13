@@ -10,6 +10,7 @@ class Unit(str, enum.Enum):
     kg = "kg"
     box = "box"
     piece = "piece"
+    bag = "bag"
 
 
 class EntrySource(str, enum.Enum):

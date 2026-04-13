@@ -9,6 +9,7 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
+import '../../../shared/widgets/bag_default_unit_hint.dart';
 
 /// Master categories + catalog items (per business).
 class CatalogPage extends ConsumerStatefulWidget {
@@ -173,7 +174,8 @@ class _CatalogPageState extends ConsumerState<CatalogPage>
           },
           child: filtered.isEmpty
               ? ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
+                  physics: const BouncingScrollPhysics(
+                      parent: AlwaysScrollableScrollPhysics()),
                   padding: const EdgeInsets.fromLTRB(24, 48, 24, 88),
                   children: [
                     Icon(Icons.folder_outlined,
@@ -196,7 +198,11 @@ class _CatalogPageState extends ConsumerState<CatalogPage>
                       style: Theme.of(context)
                           .textTheme
                           .bodySmall
-                          ?.copyWith(color: HexaColors.textSecondary),
+                          ?.copyWith(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant,
+                          ),
                     ),
                   ],
                 )
@@ -237,7 +243,10 @@ class _CatalogPageState extends ConsumerState<CatalogPage>
                                           .textTheme
                                           .bodySmall
                                           ?.copyWith(
-                                              color: HexaColors.textSecondary),
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                          ),
                                     ),
                                     ins.when(
                                       loading: () => const Padding(
@@ -338,7 +347,8 @@ class _CatalogPageState extends ConsumerState<CatalogPage>
               },
               child: filtered.isEmpty
                   ? ListView(
-                      physics: const AlwaysScrollableScrollPhysics(),
+                      physics: const BouncingScrollPhysics(
+                          parent: AlwaysScrollableScrollPhysics()),
                       padding: const EdgeInsets.fromLTRB(24, 48, 24, 88),
                       children: [
                         Icon(Icons.inventory_2_outlined,
@@ -362,7 +372,11 @@ class _CatalogPageState extends ConsumerState<CatalogPage>
                           style: Theme.of(context)
                               .textTheme
                               .bodySmall
-                              ?.copyWith(color: HexaColors.textSecondary),
+                              ?.copyWith(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                              ),
                         ),
                       ],
                     )
@@ -612,6 +626,7 @@ class _CatalogPageState extends ConsumerState<CatalogPage>
     }
     var selectedCat = cats.first['id']?.toString();
     final nameCtrl = TextEditingController();
+    final kgCtrl = TextEditingController();
     String? unit;
     final ok = await showDialog<bool>(
       context: context,
@@ -647,11 +662,26 @@ class _CatalogPageState extends ConsumerState<CatalogPage>
                   items: const [
                     DropdownMenuItem(value: null, child: Text('—')),
                     DropdownMenuItem(value: 'kg', child: Text('kg')),
+                    DropdownMenuItem(value: 'bag', child: Text('bag')),
                     DropdownMenuItem(value: 'box', child: Text('box')),
                     DropdownMenuItem(value: 'piece', child: Text('piece')),
                   ],
                   onChanged: (v) => setSt(() => unit = v),
                 ),
+                if (unit == 'bag') ...[
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: kgCtrl,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Default kg per bag (optional)',
+                      hintText: 'e.g. 50',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const BagDefaultUnitHint(),
+                ],
               ],
             ),
           ),
@@ -666,17 +696,19 @@ class _CatalogPageState extends ConsumerState<CatalogPage>
         ),
       ),
     );
-    if (ok != true || nameCtrl.text.trim().isEmpty) return;
-    final categoryId = selectedCat;
-    if (categoryId == null) return;
-    final session = ref.read(sessionProvider);
-    if (session == null) return;
     try {
+      if (ok != true || nameCtrl.text.trim().isEmpty) return;
+      final categoryId = selectedCat;
+      if (categoryId == null) return;
+      final session = ref.read(sessionProvider);
+      if (session == null) return;
       await ref.read(hexaApiProvider).createCatalogItem(
             businessId: session.primaryBusiness.id,
             categoryId: categoryId,
             name: nameCtrl.text.trim(),
             defaultUnit: unit,
+            defaultKgPerBag:
+                unit == 'bag' ? parseOptionalKgPerBag(kgCtrl.text) : null,
           );
       ref.invalidate(catalogItemsListProvider);
       if (context.mounted) {
@@ -710,6 +742,14 @@ class _CatalogPageState extends ConsumerState<CatalogPage>
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
       }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+      }
+    } finally {
+      nameCtrl.dispose();
+      kgCtrl.dispose();
     }
   }
 
@@ -723,6 +763,11 @@ class _CatalogPageState extends ConsumerState<CatalogPage>
     var selectedCat = it['category_id']?.toString();
     final nameCtrl = TextEditingController(text: it['name']?.toString() ?? '');
     var unit = it['default_unit']?.toString();
+    final kgCtrl = TextEditingController(
+      text: it['default_kg_per_bag'] != null
+          ? it['default_kg_per_bag'].toString()
+          : '',
+    );
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -757,11 +802,26 @@ class _CatalogPageState extends ConsumerState<CatalogPage>
                   items: const [
                     DropdownMenuItem(value: null, child: Text('—')),
                     DropdownMenuItem(value: 'kg', child: Text('kg')),
+                    DropdownMenuItem(value: 'bag', child: Text('bag')),
                     DropdownMenuItem(value: 'box', child: Text('box')),
                     DropdownMenuItem(value: 'piece', child: Text('piece')),
                   ],
                   onChanged: (v) => setSt(() => unit = v),
                 ),
+                if (unit == 'bag') ...[
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: kgCtrl,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Default kg per bag (optional)',
+                      hintText: 'e.g. 50',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const BagDefaultUnitHint(),
+                ],
               ],
             ),
           ),
@@ -776,18 +836,23 @@ class _CatalogPageState extends ConsumerState<CatalogPage>
         ),
       ),
     );
-    if (ok != true || nameCtrl.text.trim().isEmpty || selectedCat == null) {
-      return;
-    }
-    final session = ref.read(sessionProvider);
-    if (session == null) return;
     try {
+      if (ok != true || nameCtrl.text.trim().isEmpty || selectedCat == null) {
+        return;
+      }
+      final session = ref.read(sessionProvider);
+      if (session == null) return;
+      final kgParsed =
+          unit == 'bag' ? parseOptionalKgPerBag(kgCtrl.text) : null;
       await ref.read(hexaApiProvider).updateCatalogItem(
             businessId: session.primaryBusiness.id,
             itemId: id,
             categoryId: selectedCat,
             name: nameCtrl.text.trim(),
+            includeDefaultUnit: true,
             defaultUnit: unit,
+            patchDefaultKgPerBag: unit == 'bag',
+            defaultKgPerBag: kgParsed,
           );
       ref.invalidate(catalogItemsListProvider);
       if (context.mounted) {
@@ -822,6 +887,14 @@ class _CatalogPageState extends ConsumerState<CatalogPage>
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
       }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+      }
+    } finally {
+      nameCtrl.dispose();
+      kgCtrl.dispose();
     }
   }
 

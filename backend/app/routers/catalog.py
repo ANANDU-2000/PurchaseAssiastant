@@ -38,12 +38,14 @@ class CatalogItemCreate(BaseModel):
     category_id: uuid.UUID
     name: str = Field(min_length=1, max_length=512)
     default_unit: str | None = Field(default=None, pattern="^(kg|box|piece|bag)$")
+    default_kg_per_bag: float | None = Field(default=None, gt=0)
 
 
 class CatalogItemUpdate(BaseModel):
     category_id: uuid.UUID | None = None
     name: str | None = Field(default=None, min_length=1, max_length=512)
     default_unit: str | None = Field(default=None, pattern="^(kg|box|piece|bag)$")
+    default_kg_per_bag: float | None = Field(default=None, gt=0)
 
 
 class CatalogItemOut(BaseModel):
@@ -51,6 +53,7 @@ class CatalogItemOut(BaseModel):
     category_id: uuid.UUID
     name: str
     default_unit: str | None
+    default_kg_per_bag: float | None = None
 
     model_config = {"from_attributes": True}
 
@@ -297,6 +300,7 @@ async def list_catalog_items(
             category_id=i.category_id,
             name=i.name,
             default_unit=i.default_unit,
+            default_kg_per_bag=float(i.default_kg_per_bag) if i.default_kg_per_bag is not None else None,
         )
         for i in rows
     ]
@@ -334,11 +338,13 @@ async def create_catalog_item(
                 "existing_item_id": str(eid),
             },
         )
+    dkg = body.default_kg_per_bag if body.default_unit == "bag" else None
     i = CatalogItem(
         business_id=business_id,
         category_id=body.category_id,
         name=body.name.strip(),
         default_unit=body.default_unit,
+        default_kg_per_bag=dkg,
     )
     db.add(i)
     await db.commit()
@@ -348,6 +354,7 @@ async def create_catalog_item(
         category_id=i.category_id,
         name=i.name,
         default_unit=i.default_unit,
+        default_kg_per_bag=float(i.default_kg_per_bag) if i.default_kg_per_bag is not None else None,
     )
 
 
@@ -373,6 +380,7 @@ async def get_catalog_item(
         category_id=i.category_id,
         name=i.name,
         default_unit=i.default_unit,
+        default_kg_per_bag=float(i.default_kg_per_bag) if i.default_kg_per_bag is not None else None,
     )
 
 
@@ -645,6 +653,13 @@ async def update_catalog_item(
         i.name = data["name"].strip()
     if "default_unit" in data:
         i.default_unit = data["default_unit"]
+        if i.default_unit != "bag":
+            i.default_kg_per_bag = None
+    if "default_kg_per_bag" in data:
+        if i.default_unit == "bag":
+            i.default_kg_per_bag = data["default_kg_per_bag"]
+        else:
+            i.default_kg_per_bag = None
     await db.commit()
     await db.refresh(i)
     return CatalogItemOut(
@@ -652,6 +667,7 @@ async def update_catalog_item(
         category_id=i.category_id,
         name=i.name,
         default_unit=i.default_unit,
+        default_kg_per_bag=float(i.default_kg_per_bag) if i.default_kg_per_bag is not None else None,
     )
 
 

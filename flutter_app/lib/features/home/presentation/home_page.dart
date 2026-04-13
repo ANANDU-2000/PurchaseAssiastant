@@ -109,7 +109,6 @@ class _HomePageState extends ConsumerState<HomePage>
 
     final cs = Theme.of(context).colorScheme;
     final appBarIconColor = cs.onSurfaceVariant;
-    final titleColor = HexaColors.primaryMid;
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
@@ -138,7 +137,7 @@ class _HomePageState extends ConsumerState<HomePage>
                 overflow: TextOverflow.ellipsis,
                 style: tt.titleLarge?.copyWith(
                   fontWeight: FontWeight.w800,
-                  color: titleColor,
+                  color: cs.onSurface,
                   letterSpacing: -0.3,
                 ),
               ),
@@ -261,11 +260,28 @@ class _HomePageState extends ConsumerState<HomePage>
                           avgPurchase: avgPurchase,
                           inr: _inr,
                         ),
-                        const SizedBox(height: 20),
+                        if (!empty)
+                          insights.maybeWhen(
+                            data: (ins) {
+                              if (ins.topItem == null &&
+                                  ins.bestSupplierName == null) {
+                                return const SizedBox.shrink();
+                              }
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 4, bottom: 16),
+                                child: _HomeDecisionStrip(
+                                  insights: ins,
+                                  inr: _inr,
+                                ),
+                              );
+                            },
+                            orElse: () => const SizedBox.shrink(),
+                          ),
+                        const SizedBox(height: 4),
                         Row(
                           children: [
-                            Icon(Icons.notifications_active_rounded,
-                                size: 20, color: cs.primary),
+                            const Icon(Icons.notifications_active_rounded,
+                                size: 20, color: HexaColors.warning),
                             const SizedBox(width: 8),
                             Text(
                               'Signals',
@@ -327,8 +343,7 @@ class _HomePageState extends ConsumerState<HomePage>
                             ),
                           ],
                         ),
-                        const SizedBox(height: 20),
-                        const _SevenDayProfitChartRow(),
+                        const _WeekTrendExpansion(),
                       ],
                     );
                   },
@@ -344,7 +359,9 @@ class _HomePageState extends ConsumerState<HomePage>
 }
 
 class _SevenDayProfitChartRow extends ConsumerWidget {
-  const _SevenDayProfitChartRow();
+  const _SevenDayProfitChartRow({this.showFooterCaption = true});
+
+  final bool showFooterCaption;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -411,13 +428,13 @@ class _SevenDayProfitChartRow extends ConsumerWidget {
                             LineChartBarData(
                               spots: spots,
                               isCurved: true,
-                              color: HexaColors.primaryMid,
+                              color: HexaColors.accentInfo,
                               barWidth: 2.5,
                               dotData: const FlDotData(show: false),
                               belowBarData: BarAreaData(
                                 show: true,
-                                color: HexaColors.primaryMid
-                                    .withValues(alpha: 0.1),
+                                color: HexaColors.accentInfo
+                                    .withValues(alpha: 0.12),
                               ),
                             ),
                           ],
@@ -429,14 +446,178 @@ class _SevenDayProfitChartRow extends ConsumerWidget {
             },
           ),
         ),
-        const SizedBox(height: 6),
+        if (showFooterCaption) ...[
+          const SizedBox(height: 6),
+          Text(
+            '7-day profit trend',
+            style: tt.bodySmall?.copyWith(
+                color: isDark ? HexaColors.textSecondary : cs.onSurfaceVariant,
+                fontWeight: FontWeight.w500),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _HomeDecisionStrip extends StatelessWidget {
+  const _HomeDecisionStrip({
+    required this.insights,
+    required this.inr,
+  });
+
+  final HomeInsightsData insights;
+  final String Function(num) inr;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final top = insights.topItem;
+    final bs = insights.bestSupplierName;
+    if (top == null && bs == null) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
         Text(
-          '7-day profit trend',
-          style: tt.bodySmall?.copyWith(
-              color: isDark ? HexaColors.textSecondary : cs.onSurfaceVariant,
-              fontWeight: FontWeight.w500),
+          'Highlights',
+          style: tt.titleMedium?.copyWith(
+            fontWeight: FontWeight.w800,
+            color: cs.onSurface,
+            fontSize: 15,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (top != null)
+              Expanded(
+                child: _DecisionHighlightCard(
+                  icon: Icons.star_rounded,
+                  iconColor: HexaColors.warning,
+                  label: 'Top item',
+                  line1: top,
+                  line2: inr(insights.topItemProfit ?? 0),
+                ),
+              ),
+            if (top != null && bs != null) const SizedBox(width: 10),
+            if (bs != null)
+              Expanded(
+                child: _DecisionHighlightCard(
+                  icon: Icons.storefront_rounded,
+                  iconColor: HexaColors.profit,
+                  label: 'Best supplier',
+                  line1: bs,
+                  line2: inr(insights.bestSupplierProfit ?? 0),
+                ),
+              ),
+          ],
         ),
       ],
+    );
+  }
+}
+
+class _DecisionHighlightCard extends StatelessWidget {
+  const _DecisionHighlightCard({
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.line1,
+    required this.line2,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final String line1;
+  final String line2;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: cs.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.85)),
+        ),
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 18, color: iconColor),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    label.toUpperCase(),
+                    style: tt.labelSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: cs.onSurfaceVariant,
+                      letterSpacing: 0.4,
+                      fontSize: 10,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              line1,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            Text(
+              line2,
+              style: tt.bodySmall?.copyWith(
+                color: cs.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WeekTrendExpansion extends StatelessWidget {
+  const _WeekTrendExpansion();
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: cs.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          childrenPadding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+          title: Text(
+            'Week profit trend',
+            style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          subtitle: Text(
+            'Last 7 days · expand',
+            style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+          ),
+          initiallyExpanded: false,
+          children: const [
+            _SevenDayProfitChartRow(showFooterCaption: false),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -494,7 +675,7 @@ class _DatePeriodPill extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final borderColor = selected
-        ? HexaColors.primaryMid
+        ? HexaColors.primaryNavy
         : (isDark
             ? const Color(0x20FFFFFF)
             : cs.outline.withValues(alpha: 0.45));
@@ -510,7 +691,7 @@ class _DatePeriodPill extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: selected ? HexaColors.primaryMid : Colors.transparent,
+            color: selected ? HexaColors.primaryNavy : Colors.transparent,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: borderColor,
@@ -750,7 +931,7 @@ class _StatCard extends StatelessWidget {
         isDark ? HexaColors.textSecondary : cs.onSurfaceVariant;
     final valueColor = isDark ? HexaColors.textPrimary : cs.onSurface;
     return Material(
-      color: HexaColors.surfaceCard,
+      color: isDark ? HexaColors.surfaceCard : cs.surface,
       elevation: 0,
       borderRadius: BorderRadius.circular(16),
       child: Container(

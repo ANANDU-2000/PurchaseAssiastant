@@ -15,6 +15,8 @@ import '../../../core/theme/hexa_colors.dart';
 import '../../../core/theme/theme_context_ext.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/app_settings_action.dart';
+import '../../../shared/widgets/hexa_empty_state.dart';
+import '../../entries/presentation/entry_create_sheet.dart';
 
 /// KPI can succeed while a dependent chart request fails — one card per slice (clear label).
 Widget _overviewSliceError(
@@ -596,8 +598,12 @@ class _OverviewTab extends ConsumerWidget {
                     context,
                     'Daily profit trend',
                     () => ref.invalidate(analyticsDailyProfitProvider)),
-                data: (points) =>
-                    _ProfitTrendCard(points: points, tt: tt, inr: inr),
+                data: (points) => _ProfitTrendCard(
+                  points: points,
+                  tt: tt,
+                  inr: inr,
+                  onAddPurchase: () => showEntryCreateSheet(context),
+                ),
               ),
               const SizedBox(height: 12),
               items.when(
@@ -703,7 +709,7 @@ class _OverviewStatCard extends StatelessWidget {
                     style: tt.titleMedium?.copyWith(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
-                        color: HexaColors.textPrimary),
+                        color: HexaColors.primaryNavy),
                   ),
                 ],
               ),
@@ -720,11 +726,13 @@ class _ProfitTrendCard extends StatelessWidget {
     required this.points,
     required this.tt,
     required this.inr,
+    required this.onAddPurchase,
   });
 
   final List<AnalyticsDailyProfitPoint> points;
   final TextTheme tt;
   final String Function(num n) inr;
+  final VoidCallback onAddPurchase;
 
   @override
   Widget build(BuildContext context) {
@@ -743,11 +751,12 @@ class _ProfitTrendCard extends StatelessWidget {
       return '₹${v.toStringAsFixed(0)}';
     }
 
+    final cs = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        color: HexaColors.surfaceCard,
+        color: HexaColors.surfaceCardLight,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: HexaColors.border),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.85)),
         boxShadow: HexaColors.cardShadow(context),
       ),
       padding: const EdgeInsets.all(16),
@@ -756,16 +765,37 @@ class _ProfitTrendCard extends StatelessWidget {
         children: [
           Text('Profit trend (30 days)',
               style: tt.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800, color: HexaColors.textPrimary)),
+                  fontWeight: FontWeight.w800, color: HexaColors.primaryNavy)),
           const SizedBox(height: 12),
           SizedBox(
             height: 200,
             child: allZero
                 ? Center(
-                    child: Text(
-                      'Add purchases to see trend',
-                      style: tt.bodyMedium
-                          ?.copyWith(color: HexaColors.textSecondary),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'No profit in this range yet',
+                          textAlign: TextAlign.center,
+                          style: tt.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: HexaColors.primaryNavy,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Add a purchase or widen the date range.',
+                          textAlign: TextAlign.center,
+                          style: tt.bodySmall?.copyWith(
+                            color: HexaColors.neutral,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        FilledButton(
+                          onPressed: onAddPurchase,
+                          child: const Text('Add purchase'),
+                        ),
+                      ],
                     ),
                   )
                 : LineChart(
@@ -971,7 +1001,7 @@ class _ItemCostRevenueBars extends StatelessWidget {
         children: [
           Text('Landing vs selling (top 6 items)',
               style: tt.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800, color: HexaColors.textPrimary)),
+                  fontWeight: FontWeight.w800, color: HexaColors.primaryNavy)),
           const SizedBox(height: 4),
           Row(
             children: [
@@ -1119,7 +1149,7 @@ class _CategoryProfitDonut extends StatelessWidget {
         children: [
           Text('Category profit',
               style: tt.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800, color: HexaColors.textPrimary)),
+                  fontWeight: FontWeight.w800, color: HexaColors.primaryNavy)),
           const SizedBox(height: 12),
           SizedBox(
             height: 180,
@@ -1157,7 +1187,7 @@ class _CategoryProfitDonut extends StatelessWidget {
                       inr(sumProfit),
                       style: tt.titleMedium?.copyWith(
                           fontWeight: FontWeight.w800,
-                          color: HexaColors.textPrimary),
+                          color: HexaColors.primaryNavy),
                     ),
                   ],
                 ),
@@ -1179,7 +1209,7 @@ class _CategoryProfitDonut extends StatelessWidget {
                   label: Text(
                     rows[i]['category']?.toString() ?? '',
                     style:
-                        tt.labelSmall?.copyWith(color: HexaColors.textPrimary),
+                        tt.labelSmall?.copyWith(color: HexaColors.primaryNavy),
                   ),
                   backgroundColor: HexaColors.surfaceElevated,
                   side: const BorderSide(color: HexaColors.border),
@@ -1225,7 +1255,7 @@ class _SupplierMarginPerformers extends StatelessWidget {
               Text('Supplier margin',
                   style: tt.titleSmall?.copyWith(
                       fontWeight: FontWeight.w800,
-                      color: HexaColors.textPrimary)),
+                      color: HexaColors.primaryNavy)),
               const Spacer(),
               if (top.isNotEmpty)
                 Chip(
@@ -1256,7 +1286,7 @@ class _SupplierMarginPerformers extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: tt.labelSmall?.copyWith(
                               fontWeight: FontWeight.w600,
-                              color: HexaColors.textPrimary),
+                              color: HexaColors.primaryNavy),
                         ),
                       ),
                       Expanded(
@@ -1359,7 +1389,14 @@ class _ItemsTabState extends ConsumerState<_ItemsTab> {
       ),
       data: (rows) {
         if (rows.isEmpty) {
-          return const Center(child: Text('No data in this range'));
+          return HexaEmptyState(
+            icon: Icons.insert_chart_outlined,
+            title: 'No item data in this range',
+            subtitle:
+                'Try widening the date range, or add purchases so we can show rankings and trends.',
+            primaryActionLabel: 'Add purchase',
+            onPrimaryAction: () => showEntryCreateSheet(context),
+          );
         }
         final mode = _modes[_sortColumnIndex.clamp(0, _modes.length - 1)];
         final sorted = _sortedRows(
@@ -1378,7 +1415,7 @@ class _ItemsTabState extends ConsumerState<_ItemsTab> {
               child: TextField(
                 controller: _search,
                 onChanged: (_) => setState(() {}),
-                style: tt.bodyMedium?.copyWith(color: HexaColors.textPrimary),
+                style: tt.bodyMedium?.copyWith(color: HexaColors.primaryNavy),
                 decoration: InputDecoration(
                   isDense: true,
                   hintText: 'Search items…',
@@ -1480,7 +1517,8 @@ class _ItemsTabState extends ConsumerState<_ItemsTab> {
                 },
                 child: filtered.isEmpty
                     ? ListView(
-                        physics: const AlwaysScrollableScrollPhysics(),
+                        physics: const BouncingScrollPhysics(
+                            parent: AlwaysScrollableScrollPhysics()),
                         children: [
                           const SizedBox(height: 48),
                           Center(
@@ -1637,7 +1675,7 @@ class _ItemsTabState extends ConsumerState<_ItemsTab> {
                                               style: tt.labelSmall?.copyWith(
                                                   fontWeight: FontWeight.w700,
                                                   color:
-                                                      HexaColors.textPrimary)),
+                                                      HexaColors.primaryNavy)),
                                         ],
                                       ),
                                     ],
@@ -1716,7 +1754,7 @@ class _CategoriesTabState extends ConsumerState<_CategoriesTab> {
               child: TextField(
                 controller: _search,
                 onChanged: (_) => setState(() {}),
-                style: tt.bodyMedium?.copyWith(color: HexaColors.textPrimary),
+                style: tt.bodyMedium?.copyWith(color: HexaColors.primaryNavy),
                 decoration: InputDecoration(
                   isDense: true,
                   hintText: 'Search categories…',
@@ -1812,7 +1850,8 @@ class _CategoriesTabState extends ConsumerState<_CategoriesTab> {
                 },
                 child: filtered.isEmpty
                     ? ListView(
-                        physics: const AlwaysScrollableScrollPhysics(),
+                        physics: const BouncingScrollPhysics(
+                            parent: AlwaysScrollableScrollPhysics()),
                         children: [
                           const SizedBox(height: 48),
                           Center(
@@ -1866,7 +1905,7 @@ class _CategoriesTabState extends ConsumerState<_CategoriesTab> {
                                   title: Text(cat,
                                       style: tt.titleSmall?.copyWith(
                                           fontWeight: FontWeight.w800,
-                                          color: HexaColors.textPrimary)),
+                                          color: HexaColors.primaryNavy)),
                                   subtitle: Padding(
                                     padding: const EdgeInsets.only(top: 6),
                                     child: ClipRRect(
@@ -2038,7 +2077,7 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
                   Text('Supplier Intelligence',
                       style: tt.titleMedium?.copyWith(
                           fontWeight: FontWeight.w800,
-                          color: HexaColors.textPrimary)),
+                          color: HexaColors.primaryNavy)),
                   const SizedBox(height: 4),
                   Text(
                     'Which supplier gives best price for each item?',
@@ -2073,7 +2112,7 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
                     child: Text(
                       msg,
                       style: tt.bodySmall?.copyWith(
-                          color: HexaColors.textPrimary,
+                          color: HexaColors.primaryNavy,
                           fontWeight: FontWeight.w700,
                           height: 1.35),
                     ),
@@ -2095,7 +2134,7 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
               child: TextField(
                 controller: _search,
                 onChanged: (_) => setState(() {}),
-                style: tt.bodyMedium?.copyWith(color: HexaColors.textPrimary),
+                style: tt.bodyMedium?.copyWith(color: HexaColors.primaryNavy),
                 decoration: InputDecoration(
                   isDense: true,
                   hintText: 'Search suppliers…',
@@ -2193,7 +2232,8 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
                 },
                 child: filtered.isEmpty
                     ? ListView(
-                        physics: const AlwaysScrollableScrollPhysics(),
+                        physics: const BouncingScrollPhysics(
+                            parent: AlwaysScrollableScrollPhysics()),
                         children: [
                           const SizedBox(height: 48),
                           Center(
@@ -2455,7 +2495,7 @@ class _BrokersTabState extends ConsumerState<_BrokersTab> {
               child: Text(
                 'Commission vs profit (top 6)',
                 style: tt.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800, color: HexaColors.textPrimary),
+                    fontWeight: FontWeight.w800, color: HexaColors.primaryNavy),
               ),
             ),
             Padding(
@@ -2467,7 +2507,7 @@ class _BrokersTabState extends ConsumerState<_BrokersTab> {
               child: TextField(
                 controller: _search,
                 onChanged: (_) => setState(() {}),
-                style: tt.bodyMedium?.copyWith(color: HexaColors.textPrimary),
+                style: tt.bodyMedium?.copyWith(color: HexaColors.primaryNavy),
                 decoration: InputDecoration(
                   isDense: true,
                   hintText: 'Search brokers…',
@@ -2565,7 +2605,8 @@ class _BrokersTabState extends ConsumerState<_BrokersTab> {
                 },
                 child: filtered.isEmpty
                     ? ListView(
-                        physics: const AlwaysScrollableScrollPhysics(),
+                        physics: const BouncingScrollPhysics(
+                            parent: AlwaysScrollableScrollPhysics()),
                         children: [
                           const SizedBox(height: 48),
                           Center(

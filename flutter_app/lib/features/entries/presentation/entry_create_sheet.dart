@@ -21,6 +21,7 @@ import '../../../core/providers/notifications_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
+import '../../../shared/widgets/bag_default_unit_hint.dart';
 import '../domain/quick_entry_parser.dart';
 import 'smart_price_panel.dart';
 
@@ -970,13 +971,25 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     final session = ref.read(sessionProvider);
     if (session == null) return;
     try {
-      await ref.read(hexaApiProvider).createSupplier(
+      final created = await ref.read(hexaApiProvider).createSupplier(
             businessId: session.primaryBusiness.id,
             name: name.text.trim(),
             phone: phone.text.trim().isEmpty ? null : phone.text.trim(),
             location: loc.text.trim().isEmpty ? null : loc.text.trim(),
           );
+      final newId = created['id']?.toString();
       ref.invalidate(suppliersListProvider);
+      final fresh = await ref.read(suppliersListProvider.future);
+      if (!mounted) return;
+      final suppliers = fresh
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+      setState(() {
+        if (newId != null && newId.isNotEmpty) {
+          _supplierId = newId;
+          _brokerId = _brokerIdForSupplier(suppliers, newId);
+        }
+      });
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('Supplier added')));
@@ -1090,6 +1103,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     }
     var selectedCat = cats.first['id']?.toString();
     final nameCtrl = TextEditingController();
+    final kgCtrl = TextEditingController();
     String? unit;
     final saved = await showModalBottomSheet<bool>(
       context: context,
@@ -1145,12 +1159,26 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                     items: const [
                       DropdownMenuItem(value: null, child: Text('—')),
                       DropdownMenuItem(value: 'kg', child: Text('kg')),
+                      DropdownMenuItem(value: 'bag', child: Text('bag')),
                       DropdownMenuItem(value: 'box', child: Text('box')),
                       DropdownMenuItem(value: 'piece', child: Text('pc')),
-                      DropdownMenuItem(value: 'L', child: Text('L')),
                     ],
                     onChanged: (v) => setSt(() => unit = v),
                   ),
+                  if (unit == 'bag') ...[
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: kgCtrl,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: 'Default kg per bag (optional)',
+                        hintText: 'e.g. 50',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const BagDefaultUnitHint(),
+                  ],
                   const SizedBox(height: 20),
                   FilledButton(
                     onPressed: () => Navigator.pop(ctx, true),
@@ -1166,11 +1194,13 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     final categoryId = selectedCat;
     if (saved != true || nameCtrl.text.trim().isEmpty || categoryId == null) {
       nameCtrl.dispose();
+      kgCtrl.dispose();
       return;
     }
     final session = ref.read(sessionProvider);
     if (session == null) {
       nameCtrl.dispose();
+      kgCtrl.dispose();
       return;
     }
     try {
@@ -1179,6 +1209,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
             categoryId: categoryId,
             name: nameCtrl.text.trim(),
             defaultUnit: unit,
+            defaultKgPerBag:
+                unit == 'bag' ? parseOptionalKgPerBag(kgCtrl.text) : null,
           );
       ref.invalidate(catalogItemsListProvider);
       ref.invalidate(itemCategoriesListProvider);
@@ -1200,6 +1232,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       }
     }
     nameCtrl.dispose();
+    kgCtrl.dispose();
   }
 
   Future<void> _addVariantFromEntry() async {
@@ -1424,7 +1457,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               color: Colors.white,
               child: ListView(
               controller: scrollController,
-              physics: const ClampingScrollPhysics(),
+              physics: const BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics()),
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 100),
               children: [
                 if (_landingPriceSpike) ...[
@@ -2777,7 +2811,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               Text(
                 'Unit',
                 style: tt.labelSmall?.copyWith(
-                  color: HexaColors.textSecondary,
+                  color: cs.onSurfaceVariant,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -2788,8 +2822,9 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                   style: SegmentedButton.styleFrom(
                     selectedBackgroundColor: HexaColors.primaryMid,
                     selectedForegroundColor: Colors.white,
-                    foregroundColor: HexaColors.textSecondary,
-                    side: const BorderSide(color: HexaColors.border),
+                    foregroundColor: cs.onSurfaceVariant,
+                    side: BorderSide(
+                        color: cs.outlineVariant.withValues(alpha: 0.75)),
                   ),
                   showSelectedIcon: false,
                   segments: const [
@@ -3056,7 +3091,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                         ? 'Category from catalog (pick Item above)'
                         : 'Category: ${l.category.text.trim()} · from catalog',
                     style: tt.bodySmall?.copyWith(
-                      color: HexaColors.textSecondary,
+                      color: cs.onSurfaceVariant,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -3066,8 +3101,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
             const SizedBox(height: 8),
             Text('Unit',
                 style: tt.labelSmall?.copyWith(
-                    color: HexaColors.textSecondary,
-                    fontWeight: FontWeight.w700)),
+                    color: cs.onSurfaceVariant, fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -3075,8 +3109,9 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                 style: SegmentedButton.styleFrom(
                   selectedBackgroundColor: HexaColors.primaryMid,
                   selectedForegroundColor: Colors.white,
-                  foregroundColor: HexaColors.textSecondary,
-                  side: const BorderSide(color: HexaColors.border),
+                  foregroundColor: cs.onSurfaceVariant,
+                  side: BorderSide(
+                      color: cs.outlineVariant.withValues(alpha: 0.75)),
                 ),
                 showSelectedIcon: false,
                 segments: const [

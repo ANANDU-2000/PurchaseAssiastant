@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'hexa_colors.dart';
 
-/// Premium theme — navy surfaces, teal primary, purple accents.
+/// Premium theme — navy primary, semantic profit/loss, blue accent for info/links only.
 ThemeData buildHexaTheme(Brightness brightness) {
   final isDark = brightness == Brightness.dark;
 
@@ -54,23 +54,46 @@ ThemeData buildHexaTheme(Brightness brightness) {
       },
     ),
     scaffoldBackgroundColor:
-        isDark ? HexaColors.canvas : const Color(0xFFF2F2F7), // iOS grouped bg
+        isDark ? HexaColors.canvas : HexaColors.surfaceApp,
     textTheme: textTheme.copyWith(
-      titleLarge: textTheme.titleLarge
-          ?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.2),
-      titleMedium: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-      bodyLarge: textTheme.bodyLarge?.copyWith(height: 1.35),
-      bodyMedium: textTheme.bodyMedium
-          ?.copyWith(height: 1.35, color: baseScheme.onSurfaceVariant),
-      labelLarge: textTheme.labelLarge
-          ?.copyWith(fontWeight: FontWeight.w600, letterSpacing: 0.2),
+      titleLarge: textTheme.titleLarge?.copyWith(
+        fontWeight: FontWeight.w800,
+        letterSpacing: -0.3,
+        color: baseScheme.onSurface,
+      ),
+      titleMedium: textTheme.titleMedium?.copyWith(
+        fontWeight: FontWeight.w800,
+        color: baseScheme.onSurface,
+      ),
+      titleSmall: textTheme.titleSmall?.copyWith(
+        fontWeight: FontWeight.w700,
+        color: baseScheme.onSurface,
+      ),
+      bodyLarge: textTheme.bodyLarge?.copyWith(
+        height: 1.35,
+        fontWeight: FontWeight.w500,
+      ),
+      bodyMedium: textTheme.bodyMedium?.copyWith(
+        height: 1.35,
+        color: baseScheme.onSurfaceVariant,
+        fontWeight: FontWeight.w500,
+      ),
+      labelLarge: textTheme.labelLarge?.copyWith(
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.15,
+      ),
+      labelMedium: textTheme.labelMedium?.copyWith(
+        fontWeight: FontWeight.w500,
+        color: baseScheme.onSurfaceVariant,
+      ),
     ),
     appBarTheme: AppBarTheme(
       elevation: 0,
       scrolledUnderElevation: 0.5,
       surfaceTintColor: Colors.transparent,
       centerTitle: false,
-      backgroundColor: isDark ? HexaColors.canvas : Colors.white,
+      backgroundColor:
+          isDark ? HexaColors.canvas : HexaColors.surfaceApp,
       foregroundColor: baseScheme.onSurface,
       titleTextStyle: textTheme.titleLarge?.copyWith(
         fontWeight: FontWeight.w800,
@@ -82,7 +105,7 @@ ThemeData buildHexaTheme(Brightness brightness) {
       indicatorSize: TabBarIndicatorSize.tab,
       dividerColor: Colors.transparent,
       labelColor: baseScheme.primary,
-      unselectedLabelColor: HexaColors.textSecondary,
+      unselectedLabelColor: baseScheme.onSurfaceVariant,
       indicator: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
         color: baseScheme.primary.withValues(alpha: isDark ? 0.22 : 0.16),
@@ -93,11 +116,11 @@ ThemeData buildHexaTheme(Brightness brightness) {
           textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
     ),
     cardTheme: CardThemeData(
-      color: isDark ? HexaColors.surfaceCard : Colors.white,
+      color: isDark ? HexaColors.surfaceCard : HexaColors.surfaceCardLight,
       elevation: isDark ? 0 : 0,
       shadowColor: isDark
           ? Colors.transparent
-          : HexaColors.primaryDeep.withValues(alpha: 0.07),
+          : HexaColors.primaryNavy.withValues(alpha: 0.06),
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
@@ -123,8 +146,12 @@ ThemeData buildHexaTheme(Brightness brightness) {
           if (s.contains(WidgetState.disabled)) {
             return baseScheme.primary.withValues(alpha: 0.38);
           }
-          if (s.contains(WidgetState.pressed)) return HexaColors.brandHover;
-          if (s.contains(WidgetState.hovered)) return HexaColors.brandHover;
+          if (s.contains(WidgetState.pressed)) {
+            return HexaColors.brandHover;
+          }
+          if (s.contains(WidgetState.hovered)) {
+            return HexaColors.brandHover;
+          }
           return baseScheme.primary;
         }),
         foregroundColor: const WidgetStatePropertyAll(Colors.white),
@@ -203,7 +230,7 @@ ThemeData buildHexaTheme(Brightness brightness) {
       filled: true,
       fillColor: isDark
           ? HexaColors.surfaceElevated
-          : const Color(0xFFF2F2F7), // iOS-style field on light grouped bg
+          : HexaColors.surfaceCardLight,
       border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
       enabledBorder: OutlineInputBorder(
@@ -213,7 +240,7 @@ ThemeData buildHexaTheme(Brightness brightness) {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(color: baseScheme.primary, width: 1.5),
+        borderSide: BorderSide(color: baseScheme.tertiary, width: 1.5),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       labelStyle: textTheme.bodyMedium?.copyWith(
@@ -221,7 +248,7 @@ ThemeData buildHexaTheme(Brightness brightness) {
         fontWeight: FontWeight.w500,
       ),
       floatingLabelStyle: textTheme.bodySmall?.copyWith(
-        color: baseScheme.primary,
+        color: baseScheme.tertiary,
         fontWeight: FontWeight.w600,
       ),
       hintStyle: textTheme.bodyMedium?.copyWith(
@@ -229,8 +256,8 @@ ThemeData buildHexaTheme(Brightness brightness) {
       ),
     ),
     searchBarTheme: SearchBarThemeData(
-      backgroundColor:
-          WidgetStatePropertyAll(isDark ? HexaColors.surfaceElevated : const Color(0xFFF2F2F7)),
+      backgroundColor: WidgetStatePropertyAll(
+          isDark ? HexaColors.surfaceElevated : HexaColors.surfaceCardLight),
       surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
       elevation: const WidgetStatePropertyAll(0),
       shadowColor: const WidgetStatePropertyAll(Colors.transparent),
@@ -259,8 +286,8 @@ ThemeData buildHexaTheme(Brightness brightness) {
     floatingActionButtonTheme: FloatingActionButtonThemeData(
       elevation: 0,
       highlightElevation: 0,
-      backgroundColor: baseScheme.primary,
-      foregroundColor: baseScheme.onPrimary,
+      backgroundColor: baseScheme.tertiary,
+      foregroundColor: baseScheme.onTertiary,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     ),
     bottomSheetTheme: BottomSheetThemeData(
@@ -284,7 +311,8 @@ ThemeData buildHexaTheme(Brightness brightness) {
       elevation: 0,
     ),
     chipTheme: ChipThemeData(
-      backgroundColor: isDark ? HexaColors.surfaceElevated : const Color(0xFFF2F2F7),
+      backgroundColor:
+          isDark ? HexaColors.surfaceElevated : HexaColors.surfaceCardLight,
       selectedColor: baseScheme.primaryContainer,
       secondarySelectedColor: baseScheme.primaryContainer,
       disabledColor: baseScheme.surfaceContainer,
@@ -319,26 +347,28 @@ ThemeData buildHexaTheme(Brightness brightness) {
 ColorScheme _lightScheme() {
   return const ColorScheme(
     brightness: Brightness.light,
-    primary: HexaColors.primaryMid,
+    primary: HexaColors.primaryNavy,
     onPrimary: Colors.white,
-    primaryContainer: Color(0xFFDCEBFF),
-    onPrimaryContainer: Color(0xFF00224E),
+    primaryContainer: const Color(0xFFE2E8F0),
+    onPrimaryContainer: HexaColors.primaryNavy,
     secondary: HexaColors.accentPurple,
     onSecondary: Colors.white,
-    secondaryContainer: Color(0xFFF3E8FF),
-    onSecondaryContainer: Color(0xFF581C87),
-    tertiary: HexaColors.accentAmber,
+    secondaryContainer: const Color(0xFFF3E8FF),
+    onSecondaryContainer: const Color(0xFF581C87),
+    tertiary: HexaColors.accentInfo,
     onTertiary: Colors.white,
+    tertiaryContainer: const Color(0xFFDBEAFE),
+    onTertiaryContainer: const Color(0xFF1E3A8A),
     error: HexaColors.loss,
     onError: Colors.white,
-    surface: Colors.white,
+    surface: HexaColors.surfaceApp,
     onSurface: HexaColors.textOnLightSurface,
-    surfaceContainerHighest: Color(0xFFF1F5F9),
-    surfaceContainerHigh: Color(0xFFE8EEF4),
-    surfaceContainer: Color(0xFFF4F7FB),
-    onSurfaceVariant: Color(0xFF64748B),
-    outline: Color(0xFFCBD5E1),
-    outlineVariant: HexaColors.border,
+    surfaceContainerHighest: HexaColors.surfaceCardLight,
+    surfaceContainerHigh: const Color(0xFFF1F5F9),
+    surfaceContainer: const Color(0xFFF4F7FB),
+    onSurfaceVariant: HexaColors.neutral,
+    outline: const Color(0xFFCBD5E1),
+    outlineVariant: const Color(0xFFE2E8F0),
   );
 }
 

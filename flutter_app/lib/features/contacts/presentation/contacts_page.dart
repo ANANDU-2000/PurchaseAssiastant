@@ -15,6 +15,7 @@ import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/contacts_hub_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../shared/widgets/app_settings_action.dart';
+import '../../../shared/widgets/bag_default_unit_hint.dart';
 
 Color _avatarColor(String seed) {
   const palette = <Color>[
@@ -764,6 +765,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
     }
     var selectedCat = cats.first['id']?.toString();
     final nameCtrl = TextEditingController();
+    final kgCtrl = TextEditingController();
     String? unit;
     final saved = await showModalBottomSheet<bool>(
       context: context,
@@ -819,12 +821,26 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                     items: const [
                       DropdownMenuItem(value: null, child: Text('—')),
                       DropdownMenuItem(value: 'kg', child: Text('kg')),
+                      DropdownMenuItem(value: 'bag', child: Text('bag')),
                       DropdownMenuItem(value: 'box', child: Text('box')),
                       DropdownMenuItem(value: 'piece', child: Text('pc')),
-                      DropdownMenuItem(value: 'L', child: Text('L')),
                     ],
                     onChanged: (v) => setSt(() => unit = v),
                   ),
+                  if (unit == 'bag') ...[
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: kgCtrl,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: 'Default kg per bag (optional)',
+                        hintText: 'e.g. 50',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const BagDefaultUnitHint(),
+                  ],
                   const SizedBox(height: 20),
                   FilledButton(
                     onPressed: () => Navigator.pop(ctx, true),
@@ -840,11 +856,13 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
     final categoryId = selectedCat;
     if (saved != true || nameCtrl.text.trim().isEmpty || categoryId == null) {
       nameCtrl.dispose();
+      kgCtrl.dispose();
       return;
     }
     final session = ref.read(sessionProvider);
     if (session == null) {
       nameCtrl.dispose();
+      kgCtrl.dispose();
       return;
     }
     try {
@@ -853,6 +871,8 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
             categoryId: categoryId,
             name: nameCtrl.text.trim(),
             defaultUnit: unit,
+            defaultKgPerBag:
+                unit == 'bag' ? parseOptionalKgPerBag(kgCtrl.text) : null,
           );
       ref.invalidate(catalogItemsListProvider);
       ref.invalidate(itemCategoriesListProvider);
@@ -872,6 +892,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
       }
     }
     nameCtrl.dispose();
+    kgCtrl.dispose();
   }
 
   Future<void> _editSupplier(Map<String, dynamic> s) async {
@@ -1405,7 +1426,8 @@ class _SuppliersTab extends ConsumerWidget {
               await ref.read(contactsSuppliersEnrichedProvider.future);
             },
             child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
+              physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics()),
               children: const [
                 SizedBox(
                     height: 120, child: Center(child: Text('No suppliers yet')))
@@ -1419,7 +1441,8 @@ class _SuppliersTab extends ConsumerWidget {
             await ref.read(contactsSuppliersEnrichedProvider.future);
           },
           child: ListView.separated(
-            physics: const AlwaysScrollableScrollPhysics(),
+            physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics()),
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
             itemCount: list.length,
             separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -1470,7 +1493,8 @@ class _BrokersTab extends ConsumerWidget {
             await ref.read(contactsBrokersEnrichedProvider.future);
           },
           child: ListView.separated(
-            physics: const AlwaysScrollableScrollPhysics(),
+            physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics()),
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
             itemCount: list.length,
             separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -1518,6 +1542,7 @@ class _CategoriesTab extends ConsumerWidget {
           ),
           data: (items) {
             if (cats.isEmpty) {
+              final cs = Theme.of(context).colorScheme;
               return Center(
                 child: Padding(
                   padding: const EdgeInsets.all(24),
@@ -1527,12 +1552,14 @@ class _CategoriesTab extends ConsumerWidget {
                     style: Theme.of(context)
                         .textTheme
                         .bodyMedium
-                        ?.copyWith(color: HexaColors.textSecondary),
+                        ?.copyWith(color: cs.onSurfaceVariant),
                   ),
                 ),
               );
             }
             return ListView.separated(
+              physics: const BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics()),
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
               itemCount: cats.length,
               separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -1543,11 +1570,13 @@ class _CategoriesTab extends ConsumerWidget {
                 final nItems = items
                     .where((it) => it['category_id']?.toString() == id)
                     .length;
+                final cs = Theme.of(context).colorScheme;
                 return Card(
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
-                    side: const BorderSide(color: HexaColors.border),
+                    side: BorderSide(
+                        color: cs.outlineVariant.withValues(alpha: 0.65)),
                   ),
                   child: ListTile(
                     contentPadding: const EdgeInsets.symmetric(
@@ -1564,10 +1593,10 @@ class _CategoriesTab extends ConsumerWidget {
                       style: Theme.of(context)
                           .textTheme
                           .bodySmall
-                          ?.copyWith(color: HexaColors.textSecondary),
+                          ?.copyWith(color: cs.onSurfaceVariant),
                     ),
-                    trailing: const Icon(Icons.chevron_right_rounded,
-                        color: HexaColors.textSecondary),
+                    trailing: Icon(Icons.chevron_right_rounded,
+                        color: cs.onSurfaceVariant),
                     onTap: () => context.push('/catalog/category/$id'),
                   ),
                 );
@@ -1607,6 +1636,7 @@ class _ItemsTab extends ConsumerWidget {
           ),
           data: (items) {
             if (items.isEmpty) {
+              final cs = Theme.of(context).colorScheme;
               return Center(
                 child: Padding(
                   padding: const EdgeInsets.all(24),
@@ -1616,12 +1646,14 @@ class _ItemsTab extends ConsumerWidget {
                     style: Theme.of(context)
                         .textTheme
                         .bodyMedium
-                        ?.copyWith(color: HexaColors.textSecondary),
+                        ?.copyWith(color: cs.onSurfaceVariant),
                   ),
                 ),
               );
             }
             return ListView.separated(
+              physics: const BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics()),
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
               itemCount: items.length,
               separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -1633,11 +1665,13 @@ class _ItemsTab extends ConsumerWidget {
                 final du = it['default_unit']?.toString();
                 final sub =
                     '${catName[cid] ?? '—'}${du != null && du.isNotEmpty ? ' · default: $du' : ''}';
+                final cs = Theme.of(context).colorScheme;
                 return Card(
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
-                    side: const BorderSide(color: HexaColors.border),
+                    side: BorderSide(
+                        color: cs.outlineVariant.withValues(alpha: 0.65)),
                   ),
                   child: ListTile(
                     contentPadding: const EdgeInsets.symmetric(
@@ -1654,10 +1688,10 @@ class _ItemsTab extends ConsumerWidget {
                       style: Theme.of(context)
                           .textTheme
                           .bodySmall
-                          ?.copyWith(color: HexaColors.textSecondary),
+                          ?.copyWith(color: cs.onSurfaceVariant),
                     ),
-                    trailing: const Icon(Icons.chevron_right_rounded,
-                        color: HexaColors.textSecondary),
+                    trailing: Icon(Icons.chevron_right_rounded,
+                        color: cs.onSurfaceVariant),
                     onTap: () => context.push('/catalog/item/$id'),
                   ),
                 );

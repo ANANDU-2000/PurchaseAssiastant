@@ -456,6 +456,7 @@ class HexaApi {
     required String categoryId,
     required String name,
     String? defaultUnit,
+    double? defaultKgPerBag,
   }) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/businesses/$businessId/catalog-items',
@@ -464,6 +465,8 @@ class HexaApi {
         'name': name,
         if (defaultUnit != null && defaultUnit.isNotEmpty)
           'default_unit': defaultUnit,
+        if (defaultKgPerBag != null && defaultKgPerBag > 0)
+          'default_kg_per_bag': defaultKgPerBag,
       },
     );
     return res.data ?? {};
@@ -482,14 +485,25 @@ class HexaApi {
     String? categoryId,
     String? name,
     String? defaultUnit,
+    bool includeDefaultUnit = false,
+    bool patchDefaultKgPerBag = false,
+    double? defaultKgPerBag,
   }) async {
+    final data = <String, dynamic>{
+      if (categoryId != null) 'category_id': categoryId,
+      if (name != null) 'name': name,
+    };
+    if (includeDefaultUnit) {
+      data['default_unit'] = defaultUnit;
+    } else if (defaultUnit != null) {
+      data['default_unit'] = defaultUnit;
+    }
+    if (patchDefaultKgPerBag) {
+      data['default_kg_per_bag'] = defaultKgPerBag;
+    }
     final res = await _dio.patch<Map<String, dynamic>>(
       '/v1/businesses/$businessId/catalog-items/$itemId',
-      data: {
-        if (categoryId != null) 'category_id': categoryId,
-        if (name != null) 'name': name,
-        if (defaultUnit != null) 'default_unit': defaultUnit,
-      },
+      data: data,
     );
     return res.data ?? {};
   }

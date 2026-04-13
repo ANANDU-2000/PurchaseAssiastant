@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,6 +10,7 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
+import '../../../shared/widgets/bag_default_unit_hint.dart';
 
 class CatalogItemDetailPage extends ConsumerStatefulWidget {
   const CatalogItemDetailPage({super.key, required this.itemId});
@@ -35,6 +37,95 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
     if (n == null) return '—';
     return NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
         .format(n);
+  }
+
+  Future<void> _editItemDefaults(Map<String, dynamic> item) async {
+    var unit = item['default_unit']?.toString();
+    final kgCtrl = TextEditingController(
+      text: item['default_kg_per_bag'] != null
+          ? item['default_kg_per_bag'].toString()
+          : '',
+    );
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSt) => AlertDialog(
+          title: const Text('Default purchase unit'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                DropdownButtonFormField<String?>(
+                  key: ValueKey(unit),
+                  initialValue: unit,
+                  decoration: const InputDecoration(
+                    labelText: 'Default unit (optional)',
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: null, child: Text('—')),
+                    DropdownMenuItem(value: 'kg', child: Text('kg')),
+                    DropdownMenuItem(value: 'bag', child: Text('bag')),
+                    DropdownMenuItem(value: 'box', child: Text('box')),
+                    DropdownMenuItem(value: 'piece', child: Text('piece')),
+                  ],
+                  onChanged: (v) => setSt(() => unit = v),
+                ),
+                if (unit == 'bag') ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: kgCtrl,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Default kg per bag (optional)',
+                      hintText: 'e.g. 50',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const BagDefaultUnitHint(),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Save')),
+          ],
+        ),
+      ),
+    );
+    try {
+      if (ok != true) return;
+      final session = ref.read(sessionProvider);
+      if (session == null) return;
+      final kgParsed =
+          unit == 'bag' ? parseOptionalKgPerBag(kgCtrl.text) : null;
+      await ref.read(hexaApiProvider).updateCatalogItem(
+            businessId: session.primaryBusiness.id,
+            itemId: widget.itemId,
+            includeDefaultUnit: true,
+            defaultUnit: unit,
+            patchDefaultKgPerBag: unit == 'bag',
+            defaultKgPerBag: kgParsed,
+          );
+      ref.invalidate(catalogItemDetailProvider(widget.itemId));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Saved')));
+      }
+    } on DioException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+      }
+    } finally {
+      kgCtrl.dispose();
+    }
   }
 
   Future<void> _refresh() async {
@@ -272,6 +363,38 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                         .labelLarge
                         ?.copyWith(color: HexaColors.textSecondary),
                   ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 4, bottom: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Builder(
+                          builder: (context) {
+                            final du = item['default_unit']?.toString();
+                            final dkg = item['default_kg_per_bag'];
+                            final line = (du == null || du.isEmpty)
+                                ? 'No default unit'
+                                : (du == 'bag' && dkg != null)
+                                    ? 'Default: $du · $dkg kg/bag'
+                                    : 'Default unit: $du';
+                            return Text(
+                              line,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(fontWeight: FontWeight.w600),
+                            );
+                          },
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => _editItemDefaults(item),
+                        child: const Text('Edit'),
+                      ),
+                    ],
+                  ),
+                ),
                 Text(
                   'Last ${_range.from} → ${_range.to}',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -295,37 +418,72 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                     final as = ins['avg_selling'];
                     final ld = ins['last_entry_date']?.toString();
                     final pm = ins['profit_margin_pct'];
-                    return Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Performance',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleSmall
-                                    ?.copyWith(fontWeight: FontWeight.w800)),
-                            const SizedBox(height: 12),
-                            Wrap(
-                              spacing: 12,
-                              runSpacing: 8,
+                    final itemName = item['name']?.toString() ?? '';
+                    final intelKey =
+                        '$itemName|${_num(al)?.toStringAsFixed(4) ?? ''}';
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                _chip(context, 'Lines', '$lc'),
-                                _chip(context, 'Purchases', '$ec'),
-                                _chip(context, 'Total profit', _inr(_num(tp))),
-                                _chip(context, 'Avg landing', _inr(_num(al))),
-                                _chip(context, 'Avg selling', _inr(_num(as))),
-                                if (pm != null)
-                                  _chip(context, 'Margin %',
-                                      '${(pm as num).toStringAsFixed(1)}%'),
-                                if (ld != null)
-                                  _chip(context, 'Last purchase', ld),
+                                Text('Performance',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleSmall
+                                        ?.copyWith(fontWeight: FontWeight.w800)),
+                                const SizedBox(height: 12),
+                                Wrap(
+                                  spacing: 12,
+                                  runSpacing: 8,
+                                  children: [
+                                    _chip(context, 'Lines', '$lc'),
+                                    _chip(context, 'Purchases', '$ec'),
+                                    _chip(
+                                        context, 'Total profit', _inr(_num(tp))),
+                                    _chip(context, 'Avg landing', _inr(_num(al))),
+                                    _chip(
+                                        context, 'Avg selling', _inr(_num(as))),
+                                    if (pm != null)
+                                      _chip(context, 'Margin %',
+                                          '${(pm as num).toStringAsFixed(1)}%'),
+                                    if (ld != null)
+                                      _chip(context, 'Last purchase', ld),
+                                  ],
+                                ),
                               ],
                             ),
-                          ],
+                          ),
                         ),
-                      ),
+                        const SizedBox(height: 12),
+                        Consumer(
+                          builder: (context, ref, _) {
+                            final pip = ref.watch(
+                                catalogItemPriceIntelProvider(intelKey));
+                            return pip.when(
+                              loading: () => const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 8),
+                                child: LinearProgressIndicator(),
+                              ),
+                              error: (_, __) => const SizedBox.shrink(),
+                              data: (p) => _PriceIntelDecisionCard(
+                                pip: p,
+                                inr: _inr,
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        linesAsync.when(
+                          loading: () => const SizedBox.shrink(),
+                          error: (_, __) => const SizedBox.shrink(),
+                          data: (rows) =>
+                              _LandingTrendMiniChart(rows: rows, inr: _inr),
+                        ),
+                      ],
                     );
                   },
                 ),
@@ -471,6 +629,290 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                   .bodyMedium
                   ?.copyWith(fontWeight: FontWeight.w700)),
         ],
+      ),
+    );
+  }
+}
+
+class _PriceIntelDecisionCard extends StatelessWidget {
+  const _PriceIntelDecisionCard({
+    required this.pip,
+    required this.inr,
+  });
+
+  final Map<String, dynamic> pip;
+  final String Function(num?) inr;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final conf = pip['confidence'];
+    if (conf is num && conf <= 0) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            'Add a few more purchases with this item name to unlock landing benchmarks and supplier comparison.',
+            style: tt.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+              height: 1.35,
+            ),
+          ),
+        ),
+      );
+    }
+    final avg = pip['avg'];
+    final last = pip['last_price'];
+    final low = pip['low'];
+    final high = pip['high'];
+    final pos = pip['position_pct'];
+    final hints = (pip['decision_hints'] as List?) ?? [];
+    final sups = (pip['supplier_compare'] as List?) ?? [];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Decisions · landing cost',
+              style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              children: [
+                _miniMetric(context, 'Avg', avg is num ? inr(avg) : '—'),
+                _miniMetric(context, 'Last', last is num ? inr(last) : '—'),
+                _miniMetric(context, 'Best', low is num ? inr(low) : '—'),
+                _miniMetric(context, 'Worst', high is num ? inr(high) : '—'),
+              ],
+            ),
+            if (pos is num) ...[
+              const SizedBox(height: 12),
+              Text(
+                pos >= 66
+                    ? 'Latest landing is on the high side of your range'
+                    : (pos <= 33
+                        ? 'Latest landing is on the low side of your range'
+                        : 'Latest landing is mid-range vs your history'),
+                style: tt.labelSmall?.copyWith(
+                  color: pos >= 66 ? HexaColors.warning : cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 6),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: (pos / 100).clamp(0.0, 1.0),
+                  minHeight: 8,
+                  backgroundColor: cs.surfaceContainerHighest,
+                  color: pos >= 66 ? HexaColors.warning : HexaColors.accentInfo,
+                ),
+              ),
+            ],
+            if (hints.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              ...hints.take(3).map(
+                    (h) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.tips_and_updates_outlined,
+                              size: 16, color: cs.tertiary),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              '$h',
+                              style: tt.bodySmall?.copyWith(height: 1.3),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+            ],
+            if (sups.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Suppliers (avg landing)',
+                style: tt.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 6),
+              ...sups.take(6).map((s) {
+                if (s is! Map) return const SizedBox.shrink();
+                final m = Map<String, dynamic>.from(s);
+                final n = m['name']?.toString() ?? '';
+                final av = m['avg_landing'];
+                final avn = av is num ? av.toDouble() : double.tryParse('$av');
+                final good = avg is num && avn != null && avn <= avg;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    children: [
+                      Icon(
+                        good
+                            ? Icons.check_circle_outline
+                            : Icons.circle_outlined,
+                        size: 18,
+                        color: good ? HexaColors.profit : cs.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(n, style: tt.bodyMedium)),
+                      Text(
+                        avn != null ? inr(avn) : '—',
+                        style: tt.bodyMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _miniMetric(BuildContext context, String k, String v) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            k,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+          Text(
+            v,
+            style: Theme.of(context)
+                .textTheme
+                .titleSmall
+                ?.copyWith(fontWeight: FontWeight.w800),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LandingTrendMiniChart extends StatelessWidget {
+  const _LandingTrendMiniChart({
+    required this.rows,
+    required this.inr,
+  });
+
+  final List<Map<String, dynamic>> rows;
+  final String Function(num?) inr;
+
+  static num? _parse(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v;
+    return num.tryParse(v.toString());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (rows.length < 2) return const SizedBox.shrink();
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final pts = <({DateTime? d, double y})>[];
+    for (final r in rows) {
+      final raw = r['entry_date']?.toString();
+      final lc = _parse(r['landing_cost']);
+      if (lc == null) continue;
+      DateTime? dt;
+      if (raw != null) {
+        dt = DateTime.tryParse(raw);
+      }
+      pts.add((d: dt, y: lc.toDouble()));
+    }
+    pts.sort((a, b) {
+      if (a.d == null && b.d == null) return 0;
+      if (a.d == null) return -1;
+      if (b.d == null) return 1;
+      return a.d!.compareTo(b.d!);
+    });
+    if (pts.length < 2) return const SizedBox.shrink();
+    final spots = <FlSpot>[];
+    var minY = pts.first.y;
+    var maxY = pts.first.y;
+    for (var i = 0; i < pts.length; i++) {
+      final y = pts[i].y;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+      spots.add(FlSpot(i.toDouble(), y));
+    }
+    final span = (maxY - minY).abs() < 1e-6 ? 1.0 : (maxY - minY);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Landing trend (this period)',
+              style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 120,
+              child: RepaintBoundary(
+                child: LayoutBuilder(
+                  builder: (context, c) {
+                    if (c.maxWidth <= 0) return const SizedBox.shrink();
+                    return LineChart(
+                      LineChartData(
+                        minY: minY - span * 0.08,
+                        maxY: maxY + span * 0.08,
+                        gridData: const FlGridData(show: false),
+                        titlesData: const FlTitlesData(show: false),
+                        borderData: FlBorderData(show: false),
+                        lineTouchData: const LineTouchData(enabled: false),
+                        lineBarsData: [
+                          LineChartBarData(
+                            spots: spots,
+                            isCurved: true,
+                            color: HexaColors.accentInfo,
+                            barWidth: 2.5,
+                            dotData: FlDotData(
+                              show: true,
+                              getDotPainter: (a, b, c, d) =>
+                                  FlDotCirclePainter(
+                                radius: 3,
+                                color: HexaColors.primaryNavy,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Oldest → newest · ${inr(minY)} – ${inr(maxY)}',
+              style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+            ),
+          ],
+        ),
       ),
     );
   }

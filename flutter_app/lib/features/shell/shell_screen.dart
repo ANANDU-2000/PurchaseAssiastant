@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/auth/session_notifier.dart';
 import '../../core/providers/connectivity_provider.dart';
 import '../../core/theme/hexa_colors.dart';
 import '../entries/presentation/entry_create_sheet.dart';
@@ -32,38 +36,67 @@ class ShellScreen extends ConsumerWidget {
     }
 
     final cs = Theme.of(context).colorScheme;
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      body: Stack(
+        clipBehavior: Clip.none,
         children: [
-          if (offline)
-            Material(
-              color: const Color(0xFFF59E0B),
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                child: Row(
-                  children: [
-                    const Icon(Icons.flash_on_rounded,
-                        size: 18, color: Color(0xFF1C1917)),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Offline — showing cached data where available. New purchases need a connection.',
-                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                              color: const Color(0xFF1C1917),
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
-                              height: 1.25,
-                            ),
-                      ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (offline)
+                Material(
+                  color: const Color(0xFFF59E0B),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.flash_on_rounded,
+                            size: 18, color: Color(0xFF1C1917)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Offline — showing cached data where available. New purchases need a connection.',
+                            style:
+                                Theme.of(context).textTheme.labelMedium?.copyWith(
+                                      color: const Color(0xFF1C1917),
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                      height: 1.25,
+                                    ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
+                ),
+              Expanded(child: navigationShell),
+            ],
+          ),
+          Positioned(
+            right: 12,
+            bottom: 72 + bottomInset + 8,
+            child: Tooltip(
+              message: 'WhatsApp assistant',
+              child: Material(
+                elevation: 6,
+                shadowColor: Colors.black26,
+                color: const Color(0xFF25D366),
+                borderRadius: BorderRadius.circular(14),
+                child: InkWell(
+                  onTap: () => unawaited(_openWhatsappAssistant(context, ref)),
+                  borderRadius: BorderRadius.circular(14),
+                  child: const SizedBox(
+                    width: 48,
+                    height: 48,
+                    child: Icon(Icons.chat_rounded, color: Colors.white, size: 24),
+                  ),
                 ),
               ),
             ),
-          Expanded(child: navigationShell),
+          ),
         ],
       ),
       floatingActionButton: Tooltip(
@@ -76,7 +109,7 @@ class ShellScreen extends ConsumerWidget {
             borderRadius: BorderRadius.circular(16),
             color: cs.surface,
             border: Border.all(
-              color: HexaColors.primaryMid.withValues(alpha: 0.45),
+              color: HexaColors.accentInfo.withValues(alpha: 0.45),
               width: 1.5,
             ),
             boxShadow: [
@@ -95,14 +128,14 @@ class ShellScreen extends ConsumerWidget {
                 HapticFeedback.mediumImpact();
                 showEntryCreateSheet(context);
               },
-              splashColor: HexaColors.primaryMid.withValues(alpha: 0.12),
-              highlightColor: HexaColors.primaryMid.withValues(alpha: 0.06),
+              splashColor: HexaColors.accentInfo.withValues(alpha: 0.12),
+              highlightColor: HexaColors.accentInfo.withValues(alpha: 0.06),
               child: const SizedBox(
                 width: 56,
                 height: 56,
                 child: Icon(
                   Icons.add_rounded,
-                  color: HexaColors.primaryMid,
+                  color: HexaColors.accentInfo,
                   size: 26,
                 ),
               ),
@@ -182,6 +215,50 @@ class ShellScreen extends ConsumerWidget {
   }
 }
 
+Future<void> _openWhatsappAssistant(BuildContext context, WidgetRef ref) async {
+  try {
+    final m = await ref.read(hexaApiProvider).getWhatsappAssistantInfo();
+    final raw = m['assistant_e164']?.toString().trim();
+    if (raw == null || raw.isEmpty) {
+      if (!context.mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('WhatsApp assistant'),
+          content: const Text(
+            'No assistant number is configured yet. Ask your admin, or add the number in Settings.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                context.push('/settings');
+              },
+              child: const Text('Open Settings'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    final digits = raw.replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty) return;
+    final uri = Uri.parse('https://wa.me/$digits');
+    if (!await canLaunchUrl(uri)) return;
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  } catch (_) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open WhatsApp')),
+      );
+    }
+  }
+}
+
 class _ShellTab extends StatelessWidget {
   const _ShellTab({
     required this.selected,
@@ -210,8 +287,8 @@ class _ShellTab extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(12),
-          splashColor: HexaColors.primaryMid.withValues(alpha: 0.12),
-          highlightColor: HexaColors.primaryMid.withValues(alpha: 0.06),
+          splashColor: HexaColors.accentInfo.withValues(alpha: 0.12),
+          highlightColor: HexaColors.accentInfo.withValues(alpha: 0.06),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
             child: Column(
@@ -227,14 +304,14 @@ class _ShellTab extends StatelessWidget {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: selected
-                          ? HexaColors.primaryMid.withValues(alpha: 0.18)
+                          ? HexaColors.accentInfo.withValues(alpha: 0.16)
                           : Colors.transparent,
                     ),
                     child: Icon(
                       selected ? selectedIcon : icon,
                       size: 21,
                       color: selected
-                          ? HexaColors.primaryMid
+                          ? HexaColors.accentInfo
                           : muted,
                     ),
                   ),
@@ -247,7 +324,7 @@ class _ShellTab extends StatelessWidget {
                       fontSize: 10,
                       fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                       color: selected
-                          ? HexaColors.primaryMid
+                          ? HexaColors.accentInfo
                           : muted,
                     ),
                   ),

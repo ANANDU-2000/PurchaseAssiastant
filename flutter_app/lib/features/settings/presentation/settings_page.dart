@@ -1,14 +1,15 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, Uint8List;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
@@ -347,6 +348,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         ),
       ),
       body: ListView(
+        physics: const BouncingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics()),
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
         children: [
           Text('Account',
@@ -401,6 +404,43 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0.2,
                       ),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () async {
+                            final t = _whatsappAssistant!['assistant_e164']
+                                .toString()
+                                .trim();
+                            await Clipboard.setData(ClipboardData(text: t));
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Number copied')),
+                            );
+                          },
+                          icon: const Icon(Icons.copy_rounded, size: 18),
+                          label: const Text('Copy'),
+                        ),
+                        FilledButton.icon(
+                          onPressed: () async {
+                            final raw = _whatsappAssistant!['assistant_e164']
+                                .toString()
+                                .trim();
+                            final digits =
+                                raw.replaceAll(RegExp(r'\D'), '');
+                            if (digits.isEmpty) return;
+                            final uri = Uri.parse('https://wa.me/$digits');
+                            if (!await canLaunchUrl(uri)) return;
+                            await launchUrl(uri,
+                                mode: LaunchMode.externalApplication);
+                          },
+                          icon: const Icon(Icons.chat_rounded, size: 18),
+                          label: const Text('Open WhatsApp'),
+                        ),
+                      ],
                     ),
                   ],
                   if (_whatsappAssistant?['linked_phone_last4'] != null &&

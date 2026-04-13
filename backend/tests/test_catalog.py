@@ -45,17 +45,44 @@ def test_category_and_item_crud():
     )
     assert r.status_code == 201, r.text
     iid = r.json()["id"]
+    assert r.json().get("default_kg_per_bag") is None
+
+    r = client.post(
+        f"/v1/businesses/{bid}/catalog-items",
+        json={
+            "category_id": cid,
+            "name": "Rice bulk",
+            "default_unit": "bag",
+            "default_kg_per_bag": 50,
+        },
+        headers=h,
+    )
+    assert r.status_code == 201, r.text
+    bag_id = r.json()["id"]
+    assert r.json().get("default_kg_per_bag") == 50.0
+
+    r = client.patch(
+        f"/v1/businesses/{bid}/catalog-items/{bag_id}",
+        json={"default_unit": "kg"},
+        headers=h,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json().get("default_kg_per_bag") is None
     r = client.get(f"/v1/businesses/{bid}/catalog-items", headers=h)
     assert r.status_code == 200
-    assert len(r.json()) == 1
+    assert len(r.json()) == 2
 
     r = client.get(f"/v1/businesses/{bid}/catalog-items?category_id={cid}", headers=h)
     assert r.status_code == 200
-    assert len(r.json()) == 1
-    assert r.json()[0]["id"] == iid
+    assert len(r.json()) == 2
+    ids = {row["id"] for row in r.json()}
+    assert iid in ids and bag_id in ids
 
     r = client.delete(f"/v1/businesses/{bid}/item-categories/{cid}", headers=h)
     assert r.status_code == 400
+
+    r = client.delete(f"/v1/businesses/{bid}/catalog-items/{bag_id}", headers=h)
+    assert r.status_code == 204
 
     r = client.delete(f"/v1/businesses/{bid}/catalog-items/{iid}", headers=h)
     assert r.status_code == 204

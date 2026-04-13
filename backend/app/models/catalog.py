@@ -30,6 +30,7 @@ class CatalogItem(Base):
     category_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("item_categories.id"), index=True)
     name: Mapped[str] = mapped_column(String(512))
     default_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    default_kg_per_bag: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     category = relationship("ItemCategory", back_populates="items")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -63,13 +64,15 @@ async def resolve_catalog_items_on_entry(
             raise ValueError(f"Invalid catalog_item_id: {li.catalog_item_id}")
         cat = cit.category
         unit = cit.default_unit if cit.default_unit in ("kg", "box", "piece", "bag") else li.unit
-        new_lines.append(
-            li.model_copy(
-                update={
-                    "item_name": cit.name.strip(),
-                    "category": cat.name.strip() if cat else None,
-                    "unit": unit,
-                }
-            )
-        )
+        upd: dict[str, Any] = {
+            "item_name": cit.name.strip(),
+            "category": cat.name.strip() if cat else None,
+            "unit": unit,
+        }
+        if unit == "bag":
+            kg_pb = li.kg_per_bag
+            if kg_pb is None and cit.default_kg_per_bag is not None:
+                kg_pb = float(cit.default_kg_per_bag)
+            upd["kg_per_bag"] = kg_pb
+        new_lines.append(li.model_copy(update=upd))
     return body.model_copy(update={"lines": new_lines})
