@@ -86,7 +86,14 @@ if not _sqlite and (
         _ctx.verify_mode = ssl.CERT_NONE
         _connect_args["ssl"] = _ctx
     else:
-        _connect_args["ssl"] = True
+        # Render/minimal images sometimes lack a full system CA store; certifi fixes
+        # SSLCertVerificationError to Supabase (pooler) on Python 3.14+.
+        try:
+            import certifi
+
+            _connect_args["ssl"] = ssl.create_default_context(cafile=certifi.where())
+        except Exception:  # noqa: BLE001
+            _connect_args["ssl"] = True
     _connect_args.setdefault("timeout", 120)
 
 try:
