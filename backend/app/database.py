@@ -15,7 +15,23 @@ _pooler = (settings.database_pooler_url or "").strip()
 _effective_url = _pooler if _pooler else settings.database_url
 
 if _pooler:
-    logger.info("Using DATABASE_POOLER_URL for SQLAlchemy engine (Supabase pooler)")
+    logger.info("Using DATABASE_POOLER_URL for SQLAlchemy engine")
+    if not _pooler.startswith("postgresql+asyncpg://"):
+        logger.warning(
+            "DATABASE_POOLER_URL should start with postgresql+asyncpg:// so SQLAlchemy uses asyncpg."
+        )
+    # Direct host + 5432 is NOT the pooler — Render often gets Errno 101 to db.*.supabase.co.
+    if (
+        "db." in _pooler
+        and ".supabase.co" in _pooler
+        and ":5432" in _pooler
+        and "pooler.supabase.com" not in _pooler
+    ):
+        logger.warning(
+            "DATABASE_POOLER_URL looks like a direct Supabase URL (db.*.supabase.co:5432). "
+            "Copy the pooler string from Supabase Dashboard → Connect → "
+            "Transaction pooler (host aws-0-*.pooler.supabase.com, port 6543) or Session pooler."
+        )
 
 _connect_args: dict = {"check_same_thread": False} if _sqlite else {}
 if not _sqlite and (
