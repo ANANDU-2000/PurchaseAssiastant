@@ -319,10 +319,10 @@ ThemeData buildHexaTheme(Brightness brightness) {
 ColorScheme _lightScheme() {
   return const ColorScheme(
     brightness: Brightness.light,
-    primary: HexaColors.primaryDeep,
+    primary: HexaColors.primaryMid,
     onPrimary: Colors.white,
-    primaryContainer: Color(0xFFCCF4F3),
-    onPrimaryContainer: Color(0xFF0A3D3C),
+    primaryContainer: Color(0xFFDCEBFF),
+    onPrimaryContainer: Color(0xFF00224E),
     secondary: HexaColors.accentPurple,
     onSecondary: Colors.white,
     secondaryContainer: Color(0xFFF3E8FF),

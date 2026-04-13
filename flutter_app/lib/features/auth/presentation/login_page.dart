@@ -17,7 +17,7 @@ abstract final class _AuthLight {
   static const input = Color(0xFFF2F2F7);
   static const label = Color(0xFF8E8E93);
   static const title = Color(0xFF000000);
-  static const iosBlue = HexaColors.primaryDeep;
+  static const iosBlue = HexaColors.primaryMid;
   static const segmentTrack = Color(0xFFE5E5EA);
   static const error = Color(0xFFFF3B30);
   static const divider = Color(0xFFC6C6C8);

@@ -8,16 +8,20 @@ abstract final class HexaColors {
   static const surfaceElevated = Color(0xFF1C2235);
   static const surfaceMuted = Color(0xFF232A3E);
 
-  // === BRAND (teal primary; purple as secondary accent) ===
-  static const primaryDeep = Color(0xFF0E7C7B);
-  static const primaryMid = Color(0xFF17A8A7);
-  static const primaryLight = Color(0xFF102827);
+  // === BRAND ===
+  /// Harisree teal — use sparingly (badges, one chart series), not for every button.
+  static const brandTeal = Color(0xFF17A8A7);
+
+  /// Primary UI accent — iOS-style blue (most buttons, nav selection, links).
+  static const primaryMid = Color(0xFF007AFF);
+  static const primaryDeep = Color(0xFF0056B3);
+  /// Soft wash for selected rows / chip backgrounds (light blue, not green).
+  static const primaryLight = Color(0xFFE8F0FE);
   static const accentPurple = Color(0xFF9B79E8);
 
-  /// Kept for gradual migration — maps to the teal accent, not legacy blue.
   static const accentBlue = primaryMid;
   static const brand = primaryMid;
-  static const brandHover = Color(0xFF35C4C3);
+  static const brandHover = Color(0xFF0066DD);
 
   // === SEMANTIC ===
   static const profit = Color(0xFF2ECC71);
@@ -27,17 +31,17 @@ abstract final class HexaColors {
 
   // === CHART COLORS ===
   static const chartLandingCost = Color(0xFF5B8DEF);
-  static const chartSellingCost = Color(0xFF34C99A);
+  static const chartSellingCost = Color(0xFF6366F1);
   static const chartPurple = Color(0xFF9B79E8);
   static const chartOrange = Color(0xFFFB923C);
   static const chartPink = Color(0xFFF472B6);
 
   static const List<Color> chartPalette = [
-    Color(0xFF17A8A7),
+    Color(0xFF007AFF),
     Color(0xFF5B8DEF),
-    Color(0xFF34C99A),
-    Color(0xFF9B79E8),
-    Color(0xFFF0A500),
+    Color(0xFF8B5CF6),
+    brandTeal,
+    Color(0xFFF59E0B),
     Color(0xFFF472B6),
     Color(0xFF94A3B8),
     Color(0xFFE74C3C),
@@ -53,28 +57,28 @@ abstract final class HexaColors {
   static const accentLine = primaryMid;
   static const cost = Color(0xFF94A3B8);
   static const costMuted = Color(0xFF64748B);
-  static const heroGradientEnd = Color(0xFF1C4A48);
+  static const heroGradientEnd = Color(0xFF1E3A5F);
 
-  /// Primary CTA: light teal → deep teal → subtle purple.
+  /// Primary CTA — blue → indigo (no teal band).
   static LinearGradient get ctaGradient => const LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: [
-          Color(0xFF5EEAD4),
-          Color(0xFF17A8A7),
-          Color(0xFF6B4FB8),
+          Color(0xFF60A5FA),
+          Color(0xFF007AFF),
+          Color(0xFF6366F1),
         ],
         stops: [0.0, 0.5, 1.0],
       );
 
-  /// Hero / balance card — navy into deep teal.
+  /// Hero / balance card — navy into blue (brand-consistent, not green).
   static LinearGradient get heroCardGradient => const LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: [
-          Color(0xFF0E2A35),
-          Color(0xFF123D3C),
-          Color(0xFF1C4A48),
+          Color(0xFF0F172A),
+          Color(0xFF1E3A5F),
+          Color(0xFF1D4ED8),
         ],
       );
 
