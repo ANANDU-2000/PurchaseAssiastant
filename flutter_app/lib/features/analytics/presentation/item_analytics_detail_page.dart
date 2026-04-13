@@ -7,6 +7,7 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/theme/theme_context_ext.dart';
 import '../../../core/widgets/friendly_load_error.dart';
+import '../../entries/presentation/entry_create_sheet.dart';
 
 final _pipProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, itemName) async {
@@ -112,80 +113,55 @@ class _ItemAnalyticsDetailPageState
                   return va <= vb ? a : b;
                 });
 
+          final bestAvg = (best?['avg_landing'] as num?)?.toDouble();
+          final savings = (avg != null && bestAvg != null)
+              ? (avg - bestAvg).clamp(-1e12, 1e12)
+              : null;
+
           return RefreshIndicator(
             onRefresh: () async =>
                 ref.invalidate(_pipProvider(widget.itemName)),
             color: HexaColors.primaryMid,
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                8,
+                16,
+                28 + MediaQuery.of(context).padding.bottom,
+              ),
               children: [
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        HexaColors.heroGradientEnd,
-                        HexaColors.primaryDeep,
-                        HexaColors.primaryMid
-                      ],
-                    ),
-                    border: Border.all(
-                        color: HexaColors.primaryMid.withValues(alpha: 0.35)),
-                    boxShadow: HexaColors.cardShadow(context),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Price intelligence',
-                        style: tt.labelSmall?.copyWith(
-                          color: HexaColors.textPrimary.withValues(alpha: 0.9),
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        widget.itemName,
-                        style: tt.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w900,
-                          color: HexaColors.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      if (best != null)
-                        Text(
-                          'Best landing: ${best['name']?.toString() ?? '—'} at ${_inr((best['avg_landing'] as num?)?.toDouble())}',
-                          style: tt.bodySmall?.copyWith(
-                              color: HexaColors.textPrimary,
-                              fontWeight: FontWeight.w700,
-                              height: 1.35),
-                        ),
-                    ],
-                  ),
+                _DecisionCard(
+                  itemName: widget.itemName,
+                  best: best,
+                  bestLanding: bestAvg,
+                  savingsVsAvg: savings,
+                  inr: _inr,
+                  onAddPurchase: () => showEntryCreateSheet(context),
                 ),
                 const SizedBox(height: 20),
-                Text('Price position (landing)',
-                    style: tt.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: onSurf)),
+                Text(
+                  'Price position (landing)',
+                  style: tt.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                    color: onSurf,
+                  ),
+                ),
                 const SizedBox(height: 8),
                 if (low != null && high != null && last != null)
                   Text(
                     '${_inr(low)} min · ${_inr(high)} max · last ${_inr(last)}',
                     style: tt.labelMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 const SizedBox(height: 10),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(10),
                   child: LinearProgressIndicator(
                     value: pos / 100,
-                    minHeight: 14,
+                    minHeight: 8,
                     backgroundColor: context.adaptiveElevated,
                     color: pos > 66
                         ? HexaColors.warning
@@ -198,51 +174,41 @@ class _ItemAnalyticsDetailPageState
                 Text(
                   '${pos.toStringAsFixed(0)}% in range · Avg ${_inr(avg)}',
                   style: tt.labelSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w600),
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(height: 20),
-                Text('Snapshot',
-                    style: tt.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: onSurf)),
+                Text(
+                  'Snapshot',
+                  style: tt.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                    color: onSurf,
+                  ),
+                ),
                 const SizedBox(height: 10),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    _StatTile(
-                        label: 'Avg',
-                        value: _inr(avg),
-                        accent: HexaColors.primaryMid),
-                    _StatTile(
-                        label: 'Low',
-                        value: _inr(low),
-                        accent: HexaColors.profit),
-                    _StatTile(
-                        label: 'High',
-                        value: _inr(high),
-                        accent: HexaColors.warning),
-                    _StatTile(
-                        label: 'Last',
-                        value: _inr(last),
-                        accent: HexaColors.chartPurple),
-                    _StatTile(
-                        label: 'Trend',
-                        value: p['trend']?.toString() ?? '—',
-                        accent: HexaColors.chartOrange),
-                    _StatTile(
-                        label: 'Frequency',
-                        value: '${p['frequency'] ?? 0}',
-                        accent: HexaColors.chartSellingCost),
+                _MetricTable(
+                  rows: [
+                    ('Avg', _inr(avg)),
+                    ('Low', _inr(low)),
+                    ('High', _inr(high)),
+                    ('Last', _inr(last)),
+                    ('Trend', p['trend']?.toString() ?? '—'),
+                    ('Frequency', '${p['frequency'] ?? 0}'),
                   ],
                 ),
                 if (hints.isNotEmpty) ...[
                   const SizedBox(height: 20),
-                  Text('Verdicts',
-                      style: tt.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          color: onSurf)),
+                  Text(
+                    'Verdicts',
+                    style: tt.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                      color: onSurf,
+                    ),
+                  ),
                   const SizedBox(height: 8),
                   ...hints.map(
                     (h) => Padding(
@@ -277,10 +243,14 @@ class _ItemAnalyticsDetailPageState
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    Text('Suppliers',
-                        style: tt.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            color: onSurf)),
+                    Text(
+                      'Suppliers',
+                      style: tt.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                        color: onSurf,
+                      ),
+                    ),
                     const Spacer(),
                     FilterChip(
                       label: const Text('Name'),
@@ -417,52 +387,130 @@ class _ItemAnalyticsDetailPageState
   }
 }
 
-class _StatTile extends StatelessWidget {
-  const _StatTile(
-      {required this.label, required this.value, required this.accent});
+class _DecisionCard extends StatelessWidget {
+  const _DecisionCard({
+    required this.itemName,
+    required this.best,
+    required this.bestLanding,
+    required this.savingsVsAvg,
+    required this.inr,
+    required this.onAddPurchase,
+  });
 
-  final String label;
-  final String value;
-  final Color accent;
+  final String itemName;
+  final Map<String, dynamic>? best;
+  final double? bestLanding;
+  final double? savingsVsAvg;
+  final String Function(num?) inr;
+  final VoidCallback onAddPurchase;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final name = best?['name']?.toString();
+    return Card(
+      color: cs.surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: cs.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              itemName,
+              style: tt.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (name != null && bestLanding != null) ...[
+              Text(
+                'Best supplier: $name — ${inr(bestLanding)}/unit',
+                style: tt.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 28,
+                  height: 1.15,
+                  color: cs.onSurface,
+                ),
+              ),
+              if (savingsVsAvg != null && savingsVsAvg! > 0) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'You save ${inr(savingsVsAvg)} vs average',
+                  style: tt.labelLarge?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ] else
+              Text(
+                'Add more purchases to compare suppliers.',
+                style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+              ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: onAddPurchase,
+              icon: const Icon(Icons.add_shopping_cart_rounded),
+              label: const Text('Add purchase'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MetricTable extends StatelessWidget {
+  const _MetricTable({required this.rows});
+
+  final List<(String, String)> rows;
 
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
     return Container(
-      width: 148,
-      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: context.adaptiveCard,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: cs.outlineVariant),
-        boxShadow: HexaColors.cardShadow(context),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                  width: 3,
-                  height: 14,
-                  decoration: BoxDecoration(
-                      color: accent, borderRadius: BorderRadius.circular(2))),
-              const SizedBox(width: 6),
-              Text(
-                label.toUpperCase(),
-                style: tt.labelSmall?.copyWith(
-                    color: cs.onSurfaceVariant,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 10,
-                    letterSpacing: 0.4),
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0) Divider(height: 1, color: cs.outlineVariant),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      rows[i].$1,
+                      style: tt.labelLarge?.copyWith(
+                        fontSize: 12,
+                        color: cs.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    rows[i].$2,
+                    style: tt.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: cs.onSurface,
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(value,
-              style: tt.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w900, color: cs.onSurface)),
+            ),
+          ],
         ],
       ),
     );

@@ -665,6 +665,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
+      backgroundColor: Colors.white,
       builder: (ctx) {
         return Padding(
           padding: EdgeInsets.only(
@@ -771,6 +772,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
+      backgroundColor: Colors.white,
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setSt) {

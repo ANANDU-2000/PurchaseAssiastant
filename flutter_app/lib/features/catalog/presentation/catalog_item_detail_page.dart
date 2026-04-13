@@ -356,12 +356,23 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
               children: [
                 if (catName != null && catName.isNotEmpty)
-                  Text(
-                    catName,
-                    style: Theme.of(context)
-                        .textTheme
-                        .labelLarge
-                        ?.copyWith(color: HexaColors.textSecondary),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      Icons.category_outlined,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    title: Text(
+                      'Category: $catName',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => context.push(
+                      '/contacts/category?name=${Uri.encodeComponent(catName!)}',
+                    ),
                   ),
                 Padding(
                   padding: const EdgeInsets.only(top: 4, bottom: 4),
@@ -425,6 +436,16 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Card(
+                          color: Theme.of(context).colorScheme.surface,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .outlineVariant,
+                            ),
+                          ),
                           child: Padding(
                             padding: const EdgeInsets.all(16),
                             child: Column(
@@ -563,33 +584,100 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                             ?.copyWith(color: HexaColors.textSecondary),
                       );
                     }
-                    return SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: DataTable(
-                        columns: const [
-                          DataColumn(label: Text('Date')),
-                          DataColumn(label: Text('Qty')),
-                          DataColumn(label: Text('Landing')),
-                          DataColumn(label: Text('Selling')),
-                          DataColumn(label: Text('Profit')),
-                        ],
-                        rows: rows.map((r) {
-                          final eid = r['entry_id']?.toString() ?? '';
-                          final d = r['entry_date']?.toString() ?? '';
-                          return DataRow(
-                            onSelectChanged: (_) {
-                              if (eid.isNotEmpty) context.push('/entry/$eid');
-                            },
-                            cells: [
-                              DataCell(Text(d)),
-                              DataCell(Text('${r['qty']} ${r['unit']}')),
-                              DataCell(Text(_inr(_num(r['landing_cost'])))),
-                              DataCell(Text(_inr(_num(r['selling_price'])))),
-                              DataCell(Text(_inr(_num(r['profit'])))),
-                            ],
-                          );
-                        }).toList(),
-                      ),
+                    final cs = Theme.of(context).colorScheme;
+                    return Column(
+                      children: List.generate(rows.length, (i) {
+                        final r = rows[i];
+                        final eid = r['entry_id']?.toString() ?? '';
+                        final d = r['entry_date']?.toString().split('T').first ?? '';
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Material(
+                            color: cs.surface,
+                            borderRadius: BorderRadius.circular(12),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: eid.isEmpty
+                                  ? null
+                                  : () => context.push('/entry/$eid'),
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 10),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                      color: cs.outlineVariant),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            d,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .labelMedium
+                                                ?.copyWith(
+                                                  fontWeight:
+                                                      FontWeight.w700,
+                                                ),
+                                          ),
+                                        ),
+                                        Text(
+                                          _inr(_num(r['profit'])),
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleSmall
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w800,
+                                                color: HexaColors.profit,
+                                              ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            'Qty ${r['qty']} ${r['unit']}',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodySmall
+                                                ?.copyWith(
+                                                  color: cs.onSurfaceVariant,
+                                                ),
+                                          ),
+                                        ),
+                                        Text(
+                                          'Landing ${_inr(_num(r['landing_cost']))}',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall,
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Selling ${_inr(_num(r['selling_price']))}',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: cs.onSurfaceVariant,
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
                     );
                   },
                 ),
@@ -650,6 +738,12 @@ class _PriceIntelDecisionCard extends StatelessWidget {
     final conf = pip['confidence'];
     if (conf is num && conf <= 0) {
       return Card(
+        color: cs.surface,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: cs.outlineVariant),
+        ),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Text(
@@ -671,6 +765,12 @@ class _PriceIntelDecisionCard extends StatelessWidget {
     final sups = (pip['supplier_compare'] as List?) ?? [];
 
     return Card(
+      color: cs.surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: cs.outlineVariant),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -860,6 +960,12 @@ class _LandingTrendMiniChart extends StatelessWidget {
     }
     final span = (maxY - minY).abs() < 1e-6 ? 1.0 : (maxY - minY);
     return Card(
+      color: cs.surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: cs.outlineVariant),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(

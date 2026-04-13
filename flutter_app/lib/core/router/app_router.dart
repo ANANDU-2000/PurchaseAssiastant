@@ -19,6 +19,7 @@ import '../../features/entries/presentation/entry_detail_page.dart';
 import '../../features/home/presentation/home_page.dart';
 import '../../features/notifications/presentation/notifications_page.dart';
 import '../../features/settings/presentation/settings_page.dart';
+import '../../features/search/presentation/search_page.dart';
 import '../../features/shell/shell_screen.dart';
 import '../../features/splash/presentation/splash_page.dart';
 
@@ -77,6 +78,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
           child: const LoginPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/search',
+        name: 'search',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const SearchPage(),
         ),
       ),
       // Same shell as /home — some users/bookmarks expect "dashboard" after sign-in.

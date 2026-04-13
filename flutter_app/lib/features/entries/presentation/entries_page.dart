@@ -72,6 +72,15 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
     return '$name +${lines.length - 1} more';
   }
 
+  static String _dateGroupLabel(DateTime d) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(d.year, d.month, d.day);
+    if (day == today) return 'Today';
+    if (day == today.subtract(const Duration(days: 1))) return 'Yesterday';
+    return DateFormat.yMMMd().format(day);
+  }
+
   static String _subtitle(Map<String, dynamic> e) {
     final lines = e['lines'];
     final buf = StringBuffer();
@@ -103,7 +112,7 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
       }
     }
     if (profit != 0) {
-      if (buf.isNotEmpty) buf.write(' · ');
+      if (buf.isNotEmpty) buf.write(', ');
       buf.write(
           'P/L ${NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(profit)}');
     }
@@ -119,6 +128,7 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      backgroundColor: Colors.white,
       builder: (ctx) {
         DateTime? nf = from;
         DateTime? nt = to;
@@ -348,6 +358,30 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
                     onPrimaryAction: () => showEntryCreateSheet(context),
                   );
                 }
+                final sorted = List<Map<String, dynamic>>.from(items);
+                sorted.sort((a, b) {
+                  final da = DateTime.tryParse(
+                          a['entry_date']?.toString() ?? '') ??
+                      DateTime.fromMillisecondsSinceEpoch(0);
+                  final db = DateTime.tryParse(
+                          b['entry_date']?.toString() ?? '') ??
+                      DateTime.fromMillisecondsSinceEpoch(0);
+                  return db.compareTo(da);
+                });
+                final flat = <Object>[];
+                String? lastGroup;
+                for (final e in sorted) {
+                  final raw = e['entry_date'];
+                  final dt = DateTime.tryParse(raw?.toString() ?? '');
+                  final label = dt == null
+                      ? 'Unknown date'
+                      : _dateGroupLabel(dt);
+                  if (label != lastGroup) {
+                    flat.add(label);
+                    lastGroup = label;
+                  }
+                  flat.add(e);
+                }
                 return RefreshIndicator(
                   onRefresh: () async {
                     ref.invalidate(entriesListProvider);
@@ -357,10 +391,31 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
                     physics: const BouncingScrollPhysics(
                         parent: AlwaysScrollableScrollPhysics()),
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 88),
-                    itemCount: items.length,
+                    itemCount: flat.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 8),
                     itemBuilder: (context, i) {
-                      final e = items[i];
+                      final row = flat[i];
+                      if (row is String) {
+                        final cs = Theme.of(context).colorScheme;
+                        return Padding(
+                          padding: EdgeInsets.only(
+                            top: i == 0 ? 0 : 12,
+                            bottom: 4,
+                          ),
+                          child: Text(
+                            row,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleSmall
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  color: cs.onSurfaceVariant,
+                                  letterSpacing: 0.2,
+                                ),
+                          ),
+                        );
+                      }
+                      final e = row as Map<String, dynamic>;
                       final id = e['id']?.toString();
                       return Card(
                         child: ListTile(

@@ -33,6 +33,8 @@ class BrokerDetailPage extends ConsumerStatefulWidget {
 class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
   late DateTime _to;
   late DateTime _from;
+  /// '7' | '30' | '90' | '0' (all time) — matches [DropdownButton] value.
+  late String _rangePreset;
   bool _loading = false;
   Map<String, dynamic>? _metrics;
   List<dynamic>? _entries;
@@ -42,6 +44,7 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
     super.initState();
     _to = _dOnly(DateTime.now());
     _from = _to.subtract(const Duration(days: 89));
+    _rangePreset = '90';
     WidgetsBinding.instance.addPostFrameCallback((_) => _reload());
   }
 
@@ -85,6 +88,7 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
     setState(() {
       _to = n;
       _from = days <= 0 ? DateTime(2020) : n.subtract(Duration(days: days - 1));
+      _rangePreset = days <= 0 ? '0' : '$days';
     });
     _reload();
   }
@@ -163,7 +167,11 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
             icon: const Icon(Icons.arrow_back_rounded),
             onPressed: () => context.pop()),
         title: async.maybeWhen(
-          data: (b) => Text(b['name']?.toString() ?? 'Broker'),
+          data: (b) => Text(
+            b['name']?.toString() ?? 'Broker',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
           orElse: () => const Text('Broker'),
         ),
       ),
@@ -183,29 +191,33 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
                   : ct;
           return RefreshIndicator(
             onRefresh: _reload,
-            child: ListView(
-              padding: const EdgeInsets.all(20),
+            child: SafeArea(
+              bottom: false,
+              child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
               children: [
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      ActionChip(
-                          label: const Text('7d'), onPressed: () => _preset(7)),
-                      const SizedBox(width: 8),
-                      ActionChip(
-                          label: const Text('30d'),
-                          onPressed: () => _preset(30)),
-                      const SizedBox(width: 8),
-                      ActionChip(
-                          label: const Text('90d'),
-                          onPressed: () => _preset(90)),
-                      const SizedBox(width: 8),
-                      ActionChip(
-                          label: const Text('All'),
-                          onPressed: () => _preset(0)),
-                    ],
+                DropdownButtonFormField<String>(
+                  key: ValueKey(_rangePreset),
+                  initialValue: _rangePreset,
+                  decoration: const InputDecoration(
+                    labelText: 'Date range',
+                    isDense: true,
                   ),
+                  isExpanded: true,
+                  items: const [
+                    DropdownMenuItem(
+                        value: '7', child: Text('Last 7 days')),
+                    DropdownMenuItem(
+                        value: '30', child: Text('Last 30 days')),
+                    DropdownMenuItem(
+                        value: '90', child: Text('Last 90 days')),
+                    DropdownMenuItem(
+                        value: '0', child: Text('All time')),
+                  ],
+                  onChanged: (v) {
+                    if (v == null) return;
+                    _preset(int.parse(v));
+                  },
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
@@ -237,55 +249,47 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
                           padding: EdgeInsets.all(24),
                           child: CircularProgressIndicator()))
                 else if (_metrics != null) ...[
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _miniStat(
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      child: Column(
+                        children: [
+                          _metricRow(
                             context,
                             'Deals',
                             '${(_metrics!['deals'] as num?)?.toInt() ?? 0}',
-                            Icons.receipt_long_rounded),
+                          ),
+                          const Divider(height: 20),
+                          _metricRow(
+                            context,
+                            'Commission',
+                            '₹${((_metrics!['total_commission'] as num?)?.toDouble() ?? 0).toStringAsFixed(0)}',
+                          ),
+                          const Divider(height: 20),
+                          _metricRow(
+                            context,
+                            'Linked profit',
+                            '₹${((_metrics!['total_profit'] as num?)?.toDouble() ?? 0).toStringAsFixed(0)}',
+                          ),
+                          const Divider(height: 20),
+                          _metricRow(
+                            context,
+                            'Net (profit − comm.)',
+                            () {
+                              final tp = (_metrics!['total_profit'] as num?)
+                                      ?.toDouble() ??
+                                  0;
+                              final tc = (_metrics!['total_commission']
+                                          as num?)
+                                      ?.toDouble() ??
+                                  0;
+                              return '₹${(tp - tc).toStringAsFixed(0)}';
+                            }(),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _miniStat(
-                          context,
-                          'Commission',
-                          '₹${((_metrics!['total_commission'] as num?)?.toDouble() ?? 0).toStringAsFixed(0)}',
-                          Icons.payments_rounded,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _miniStat(
-                          context,
-                          'Linked profit',
-                          '₹${((_metrics!['total_profit'] as num?)?.toDouble() ?? 0).toStringAsFixed(0)}',
-                          Icons.trending_up_rounded,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _miniStat(
-                          context,
-                          'Net (profit − comm.)',
-                          () {
-                            final tp = (_metrics!['total_profit'] as num?)
-                                    ?.toDouble() ??
-                                0;
-                            final tc = (_metrics!['total_commission'] as num?)
-                                    ?.toDouble() ??
-                                0;
-                            return '₹${(tp - tc).toStringAsFixed(0)}';
-                          }(),
-                          Icons.balance_rounded,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                   const SizedBox(height: 20),
                   Text('Commission impact (monthly)',
@@ -356,32 +360,34 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
                 ],
               ],
             ),
+            ),
           );
         },
       ),
     );
   }
 
-  Widget _miniStat(
-      BuildContext context, String label, String value, IconData icon) {
+  Widget _metricRow(BuildContext context, String label, String value) {
     final tt = Theme.of(context).textTheme;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, size: 22, color: HexaColors.primaryMid),
-            const SizedBox(height: 8),
-            Text(label,
-                style:
-                    tt.labelSmall?.copyWith(color: HexaColors.textSecondary)),
-            const SizedBox(height: 4),
-            Text(value,
-                style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
-          ],
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: tt.labelMedium?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ),
-      ),
+        Text(
+          value,
+          textAlign: TextAlign.right,
+          style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+        ),
+      ],
     );
   }
 }

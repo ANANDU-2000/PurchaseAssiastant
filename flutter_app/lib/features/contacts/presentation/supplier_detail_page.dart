@@ -13,6 +13,8 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
+import '../../../shared/widgets/hexa_empty_state.dart';
+import '../../entries/presentation/entry_create_sheet.dart';
 
 final _supplierProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, supplierId) async {
@@ -484,32 +486,13 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                   ),
                   const SizedBox(height: 8),
                   if ((_entries ?? []).isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 24),
-                      child: Center(
-                        child: Column(
-                          children: [
-                            Icon(Icons.receipt_long_outlined,
-                                size: 56,
-                                color: HexaColors.primaryMid
-                                    .withValues(alpha: 0.5)),
-                            const SizedBox(height: 12),
-                            Text(
-                              '0 entries in this period',
-                              style: tt.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  color: HexaColors.textSecondary),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Add purchases from this supplier to see history here',
-                              textAlign: TextAlign.center,
-                              style: tt.bodySmall
-                                  ?.copyWith(color: HexaColors.textSecondary),
-                            ),
-                          ],
-                        ),
-                      ),
+                    HexaEmptyState(
+                      icon: Icons.receipt_long_rounded,
+                      title: 'No purchases from this supplier yet',
+                      subtitle:
+                          'Add a purchase and link it to this supplier to see metrics.',
+                      primaryActionLabel: 'Add purchase',
+                      onPrimaryAction: () => showEntryCreateSheet(context),
                     )
                   else
                     _EntryTable(entries: _entries ?? []),

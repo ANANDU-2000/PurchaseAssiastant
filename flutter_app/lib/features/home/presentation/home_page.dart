@@ -216,7 +216,7 @@ class _HomePageState extends ConsumerState<HomePage>
                   borderRadius: BorderRadius.circular(12),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(12),
-                    onTap: () => context.go('/entries?focusSearch=1'),
+                    onTap: () => context.push('/search'),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 12),
@@ -227,7 +227,7 @@ class _HomePageState extends ConsumerState<HomePage>
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              'Search purchase log…',
+                              'Search items, suppliers, entries…',
                               style: tt.bodyMedium?.copyWith(
                                 color: cs.onSurfaceVariant,
                               ),
@@ -320,9 +320,9 @@ class _HomePageState extends ConsumerState<HomePage>
                             Text(
                               'Signals',
                               style: tt.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w800,
+                                fontWeight: FontWeight.w700,
                                 color: cs.onSurface,
-                                fontSize: 15,
+                                fontSize: 16,
                               ),
                             ),
                           ],
@@ -349,9 +349,9 @@ class _HomePageState extends ConsumerState<HomePage>
                         Text(
                           'Quick actions',
                           style: tt.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w700,
                             color: cs.onSurface,
-                            fontSize: 15,
+                            fontSize: 16,
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -1010,7 +1010,7 @@ class _StatCard extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: tt.labelSmall?.copyWith(
-                      fontSize: 10,
+                      fontSize: 12,
                       color: labelColor,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 0.5,
@@ -1049,7 +1049,7 @@ class _SignalsEmptyState extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
       decoration: BoxDecoration(
-        color: HexaColors.surfaceCard,
+        color: cs.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
             color: cs.outlineVariant.withValues(alpha: 0.85)),
@@ -1502,7 +1502,8 @@ class _HeroProfitCard extends StatelessWidget {
                       style: tt.headlineMedium?.copyWith(
                         height: 1.0,
                         color: cs.onSurface,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 28,
                         letterSpacing: -1,
                       ),
                     ),

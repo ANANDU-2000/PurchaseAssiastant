@@ -24,13 +24,15 @@ Widget _overviewSliceError(
   String sectionLabel,
   VoidCallback onRetry,
 ) {
+  final cs = Theme.of(context).colorScheme;
   return Container(
     margin: const EdgeInsets.only(top: 4, bottom: 8),
     padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
-      color: HexaColors.surfaceCard,
+      color: cs.surface,
       borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: HexaColors.border),
+      border: Border.all(
+          color: cs.outlineVariant.withValues(alpha: 0.65)),
     ),
     child: Column(
       mainAxisSize: MainAxisSize.min,
@@ -547,7 +549,7 @@ class _OverviewTab extends ConsumerWidget {
             await ref.read(analyticsKpiProvider.future);
           },
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
             children: [
               Text('Overview',
                   style: tt.titleMedium?.copyWith(
@@ -674,13 +676,15 @@ class _OverviewStatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     return Material(
-      color: HexaColors.surfaceCard,
+      color: cs.surface,
       borderRadius: BorderRadius.circular(16),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: HexaColors.border),
+          border: Border.all(
+              color: cs.outlineVariant.withValues(alpha: 0.65)),
           boxShadow: HexaColors.cardShadow(context),
         ),
         padding: const EdgeInsets.all(12),
@@ -943,13 +947,15 @@ class _ItemCostRevenueBars extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     if (rows.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: HexaColors.surfaceCard,
+          color: cs.surface,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: HexaColors.border),
+          border: Border.all(
+              color: cs.outlineVariant.withValues(alpha: 0.65)),
         ),
         child: Text('No items in range',
             style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary)),
@@ -1015,9 +1021,10 @@ class _ItemCostRevenueBars extends StatelessWidget {
     }
     return Container(
       decoration: BoxDecoration(
-        color: HexaColors.surfaceCard,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: HexaColors.border),
+        border: Border.all(
+            color: cs.outlineVariant.withValues(alpha: 0.65)),
         boxShadow: HexaColors.cardShadow(context),
       ),
       padding: const EdgeInsets.all(16),
@@ -1140,13 +1147,15 @@ class _CategoryProfitDonut extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     if (rows.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: HexaColors.surfaceCard,
+          color: cs.surface,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: HexaColors.border),
+          border: Border.all(
+              color: cs.outlineVariant.withValues(alpha: 0.65)),
         ),
         child: Text('No categories in this range',
             style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary)),
@@ -1161,9 +1170,10 @@ class _CategoryProfitDonut extends StatelessWidget {
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: HexaColors.surfaceCard,
+          color: cs.surface,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: HexaColors.border),
+          border: Border.all(
+              color: cs.outlineVariant.withValues(alpha: 0.65)),
         ),
         child: Text('No profit in categories for this range',
             style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary)),
@@ -1175,9 +1185,10 @@ class _CategoryProfitDonut extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: HexaColors.surfaceCard,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: HexaColors.border),
+        border: Border.all(
+            color: cs.outlineVariant.withValues(alpha: 0.65)),
         boxShadow: HexaColors.cardShadow(context),
       ),
       padding: const EdgeInsets.all(16),
@@ -1275,11 +1286,13 @@ class _SupplierMarginPerformers extends StatelessWidget {
         .map((r) => (r['margin_pct'] as num?)?.toDouble() ?? 0)
         .fold<double>(0, math.max);
     final scale = maxM > 0 ? maxM : 1.0;
+    final cs = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        color: HexaColors.surfaceCard,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: HexaColors.border),
+        border: Border.all(
+            color: cs.outlineVariant.withValues(alpha: 0.65)),
         boxShadow: HexaColors.cardShadow(context),
       ),
       padding: const EdgeInsets.all(16),
@@ -1295,7 +1308,8 @@ class _SupplierMarginPerformers extends StatelessWidget {
               const Spacer(),
               if (top.isNotEmpty)
                 Chip(
-                  avatar: const Text('🥇', style: TextStyle(fontSize: 12)),
+                  avatar: Icon(Icons.emoji_events_rounded,
+                      size: 16, color: HexaColors.warning),
                   label: Text(top.first['supplier_name']?.toString() ?? '',
                       style: tt.labelSmall),
                   backgroundColor:
@@ -1564,7 +1578,7 @@ class _ItemsTabState extends ConsumerState<_ItemsTab> {
                         ],
                       )
                     : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 88),
                         itemCount: filtered.length,
                         itemBuilder: (context, i) {
                           final r = filtered[i];
@@ -1586,7 +1600,7 @@ class _ItemsTabState extends ConsumerState<_ItemsTab> {
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 10),
                             child: Material(
-                              color: HexaColors.surfaceCard,
+                              color: Theme.of(context).colorScheme.surface,
                               borderRadius: BorderRadius.circular(16),
                               child: InkWell(
                                 borderRadius: BorderRadius.circular(16),
@@ -1897,7 +1911,7 @@ class _CategoriesTabState extends ConsumerState<_CategoriesTab> {
                         ],
                       )
                     : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 88),
                         itemCount: filtered.length,
                         itemBuilder: (context, idx) {
                           final r = filtered[idx];
@@ -1912,9 +1926,13 @@ class _CategoriesTabState extends ConsumerState<_CategoriesTab> {
                             padding: const EdgeInsets.only(bottom: 10),
                             child: Container(
                               decoration: BoxDecoration(
-                                color: HexaColors.surfaceCard,
+                                color: Theme.of(context).colorScheme.surface,
                                 borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: HexaColors.border),
+                                border: Border.all(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .outlineVariant
+                                        .withValues(alpha: 0.65)),
                                 boxShadow: HexaColors.cardShadow(context),
                               ),
                               child: Theme(
@@ -2279,7 +2297,7 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
                         ],
                       )
                     : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 88),
                         itemCount: filtered.length,
                         itemBuilder: (context, i) {
                           final r = filtered[i];
@@ -2290,7 +2308,7 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 10),
                             child: Material(
-                              color: HexaColors.surfaceCard,
+                              color: Theme.of(context).colorScheme.surface,
                               borderRadius: BorderRadius.circular(16),
                               child: InkWell(
                                 borderRadius: BorderRadius.circular(16),
@@ -2656,7 +2674,7 @@ class _BrokersTabState extends ConsumerState<_BrokersTab> {
                         ],
                       )
                     : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 88),
                         itemCount: filtered.length,
                         itemBuilder: (context, i) {
                           final r = filtered[i];
@@ -2673,7 +2691,7 @@ class _BrokersTabState extends ConsumerState<_BrokersTab> {
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 10),
                             child: Material(
-                              color: HexaColors.surfaceCard,
+                              color: Theme.of(context).colorScheme.surface,
                               borderRadius: BorderRadius.circular(16),
                               child: InkWell(
                                 borderRadius: BorderRadius.circular(16),
@@ -2809,6 +2827,7 @@ class _BrokerStackedCompare extends StatelessWidget {
     if (top.isEmpty) {
       return const SizedBox.shrink();
     }
+    final cs = Theme.of(context).colorScheme;
     var maxY = 1.0;
     for (final r in top) {
       final c = ((r['total_commission'] as num?) ?? 0).toDouble().abs();
@@ -2847,9 +2866,10 @@ class _BrokerStackedCompare extends StatelessWidget {
       height: 200,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: HexaColors.surfaceCard,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: HexaColors.border),
+        border: Border.all(
+            color: cs.outlineVariant.withValues(alpha: 0.65)),
         boxShadow: HexaColors.cardShadow(context),
       ),
       child: Column(

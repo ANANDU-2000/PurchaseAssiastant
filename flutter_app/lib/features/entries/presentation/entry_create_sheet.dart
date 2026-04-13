@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
@@ -121,9 +120,6 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
   /// Server-issued after a successful Preview; required to Save (confirm=true).
   String? _previewToken;
 
-  /// From GET /v1/me/whatsapp-assistant — for in-app "open WhatsApp" (same as Settings).
-  Map<String, dynamic>? _whatsappAssistant;
-
   _CommissionMode _commMode = _CommissionMode.totalRupees;
   bool _landingPriceSpike = false;
 
@@ -152,7 +148,6 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     _commission.addListener(_onFormFieldChanged);
     _quickEntry.addListener(_onFormFieldChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_loadWhatsappAssistant());
       unawaited(_prefetchEntryQuickPicks());
     });
   }
@@ -163,25 +158,6 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     try {
       await ref.read(entryQuickPicksProvider(session.primaryBusiness.id).future);
     } catch (_) {}
-  }
-
-  Future<void> _loadWhatsappAssistant() async {
-    try {
-      final m = await ref.read(hexaApiProvider).getWhatsappAssistantInfo();
-      if (mounted) setState(() => _whatsappAssistant = m);
-    } catch (_) {
-      if (mounted) setState(() => _whatsappAssistant = null);
-    }
-  }
-
-  Future<void> _openWhatsappAssistantChat() async {
-    final raw = _whatsappAssistant?['assistant_e164']?.toString().trim();
-    if (raw == null || raw.isEmpty) return;
-    final digits = raw.replaceAll(RegExp(r'\D'), '');
-    if (digits.isEmpty) return;
-    final uri = Uri.parse('https://wa.me/$digits');
-    if (!await canLaunchUrl(uri)) return;
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   @override
@@ -741,7 +717,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      backgroundColor: HexaColors.surfaceCard,
+      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -1508,12 +1484,6 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                           Text('New purchase',
                               style: tt.titleLarge
                                   ?.copyWith(fontWeight: FontWeight.w800)),
-                          const SizedBox(height: 6),
-                          Text(
-                            'Fill below, then Preview — Save unlocks after a successful preview.',
-                            style: tt.bodySmall?.copyWith(
-                                color: cs.onSurfaceVariant, height: 1.4),
-                          ),
                         ],
                       ),
                     ),
@@ -1537,16 +1507,6 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                _WhatsappAssistantCard(
-                  assistant: _whatsappAssistant,
-                  onOpenChat: _openWhatsappAssistantChat,
-                  onOpenSettings: () {
-                    final router = GoRouter.of(context);
-                    Navigator.of(context).pop();
-                    Future.microtask(() => router.push('/settings'));
-                  },
-                ),
-                const SizedBox(height: 16),
                 if (!_advancedEntryOptions) ...[
                   Text(
                     'Supplier & broker',
@@ -3565,101 +3525,6 @@ class _CatalogItemPickModalState extends State<_CatalogItemPickModal> {
                     ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Points users to the server-side WhatsApp bot; opens `wa.me` when configured.
-class _WhatsappAssistantCard extends StatelessWidget {
-  const _WhatsappAssistantCard({
-    required this.assistant,
-    required this.onOpenChat,
-    required this.onOpenSettings,
-  });
-
-  final Map<String, dynamic>? assistant;
-  final VoidCallback onOpenChat;
-  final VoidCallback onOpenSettings;
-
-  static const _waGreen = Color(0xFF25D366);
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-    final raw = assistant?['assistant_e164']?.toString().trim();
-    final hasNumber = raw != null && raw.isNotEmpty;
-    final last4 = assistant?['linked_phone_last4']?.toString();
-
-    return Material(
-      color: HexaColors.surfaceCard,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.65)),
-      ),
-      child: InkWell(
-        onTap: hasNumber ? onOpenChat : onOpenSettings,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: _waGreen.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.chat_rounded, color: _waGreen, size: 24),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      hasNumber
-                          ? 'Add via WhatsApp'
-                          : 'WhatsApp assistant',
-                      style:
-                          tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      hasNumber
-                          ? 'Opens WhatsApp with Harisree. Use the phone number you sign in with. Send a text draft — preview and YES work there too.'
-                          : (assistant?['instructions']?.toString() ??
-                              'Ask your admin to enable the assistant number, or open Settings for details.'),
-                      style: tt.bodySmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                        height: 1.35,
-                      ),
-                    ),
-                    if (last4 != null && last4.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        'Your account phone ends in ···$last4',
-                        style: tt.labelSmall?.copyWith(
-                          color: cs.onSurfaceVariant,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              Icon(
-                hasNumber ? Icons.open_in_new_rounded : Icons.settings_outlined,
-                size: 20,
-                color: cs.primary,
-              ),
-            ],
-          ),
         ),
       ),
     );
