@@ -17,10 +17,18 @@ WhatsApp (compliance):
 Offline:
 - Use `OfflineStore` (Hive) for dashboard cache and future entry queue; keep TTLs reasonable.
 
-Performance (product UI must stay fast on web/PWA):
+Performance (target ~60fps → keep work per frame small; critical on web/PWA):
+- **Scroll**: No heavy widgets (charts, large images, blur) inside every list row; lazy-build with `.builder`; avoid nested `ScrollView`s.
+- **Structure**: Prefer many small `StatelessWidget`s over one giant widget file section; use `const` wherever the tree allows.
+- **Rebuilds (Riverpod)**: Prefer `Consumer` / `ConsumerWidget` scoped to what changes; use `select` on providers or split providers so a small edit doesn’t rebuild the whole screen. Avoid `setState` for cross-widget state — use Riverpod notifiers/providers.
+- **Perceived speed**: Show shell/layout immediately; load with existing patterns (`AsyncValue`, cached dashboard, `FriendlyLoadError` + retry). Skeleton/shimmer only when adding new screens — don’t block layout on network.
+- **Spacing**: Stick to 8 / 12 / 16px steps for padding and gaps unless matching existing screen.
+- **Motion**: Subtle only (theme already uses iOS-style route transitions); avoid stacking animations. Optional: light `InkWell` / `FilledButton` feedback — no flashy loops.
+- **Touch**: Use `InkWell` / `Material` for ripples; don’t wrap the whole scroll body in competing gesture detectors.
+- **Memory**: `dispose()` controllers, listeners, and timers in `StatefulWidget`s that create them.
+- **Network**: Don’t block first paint on API; handle offline via `connectivity` + copy; never show raw exceptions (use `friendlyApiError`).
+- **Avoid**: Nested scrolls, many stacked shadows/blurs, parsing huge JSON synchronously in build methods, blocking `async` in `build`.
 - Long lists → `ListView.builder` / `GridView.builder`; avoid huge `Column` of children.
-- Avoid nested scroll views; one primary scroll per screen where possible.
-- Prefer `const` constructors; split widgets so small state changes don’t rebuild the whole tree.
 - Keep shadows light (`HexaColors.cardShadow`) — heavy `BoxShadow` stacks hurt GPU on low-end phones.
 - `fl_chart`: `RepaintBoundary` + `LineTouchData(enabled: false)` unless interaction is required.
 - Prefer `ref.keepAlive()` with a bounded lifetime for expensive providers when tab-switching would refetch unnecessarily.
