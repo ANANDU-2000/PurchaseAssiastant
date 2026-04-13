@@ -10,15 +10,35 @@ logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
+
+def _normalize_postgres_async_url(url: str) -> str:
+    """Ensure async engine uses asyncpg. Plain postgresql:// selects psycopg2 and breaks startup."""
+    if url.startswith("postgresql+asyncpg://") or url.startswith("postgres+asyncpg://"):
+        return url
+    if url.startswith("postgresql://"):
+        return "postgresql+asyncpg://" + url.removeprefix("postgresql://")
+    if url.startswith("postgres://"):
+        return "postgresql+asyncpg://" + url.removeprefix("postgres://")
+    return url
+
+
 _sqlite = settings.database_url.startswith("sqlite")
 _pooler = (settings.database_pooler_url or "").strip()
 _effective_url = _pooler if _pooler else settings.database_url
+if not _sqlite:
+    _effective_url = _normalize_postgres_async_url(_effective_url)
 
 if _pooler:
     logger.info("Using DATABASE_POOLER_URL for SQLAlchemy engine")
-    if not _pooler.startswith("postgresql+asyncpg://"):
+    if not _pooler.startswith(("postgresql+asyncpg://", "postgres+asyncpg://")) and (
+        _pooler.startswith("postgresql://") or _pooler.startswith("postgres://")
+    ):
+        logger.info(
+            "Normalized DATABASE_POOLER_URL to postgresql+asyncpg:// (Supabase often pastes postgresql://)."
+        )
+    elif not _pooler.startswith(("postgresql+asyncpg://", "postgres+asyncpg://")):
         logger.warning(
-            "DATABASE_POOLER_URL should start with postgresql+asyncpg:// so SQLAlchemy uses asyncpg."
+            "DATABASE_POOLER_URL should use postgresql+asyncpg:// (or plain postgresql://, which we normalize)."
         )
     # Direct host + 5432 is NOT the pooler — Render often gets Errno 101 to db.*.supabase.co.
     if (
