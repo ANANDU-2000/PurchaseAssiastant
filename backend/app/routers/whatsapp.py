@@ -94,7 +94,7 @@ async def whatsapp_webhook(
             results.append(res)
         except Exception as e:  # noqa: BLE001
             logger.exception("WhatsApp handle failed: %s", e)
-            results.append({"ok": False, "error": str(e)})
+            results.append({"ok": False, "error": "internal_error"})
 
     return {"ok": True, "processed": len(results), "results": results}
 
@@ -142,4 +142,4 @@ async def whatsapp_authkey_webhook(
         return {"ok": True, "result": res}
     except Exception as e:  # noqa: BLE001
         logger.exception("Authkey webhook handle failed: %s", e)
-        return {"ok": False, "error": str(e)}
+        return {"ok": False, "error": "internal_error"}

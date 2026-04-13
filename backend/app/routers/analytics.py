@@ -5,7 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -342,9 +342,11 @@ async def analytics_categories(
 ):
     del _m
     bf = _date_filter(business_id, from_date, to_date)
+    # One SQL expression for GROUP BY + SELECT — Postgres rejects bare category vs coalesce().
+    cat_key = func.coalesce(EntryLineItem.category, literal("Uncategorized"))
     q = (
         select(
-            func.coalesce(EntryLineItem.category, "Uncategorized").label("cat"),
+            cat_key.label("cat"),
             func.coalesce(func.sum(EntryLineItem.profit), 0).label("tp"),
             func.coalesce(func.sum(EntryLineItem.qty), 0).label("tq"),
             func.count(EntryLineItem.id).label("lc"),
@@ -352,7 +354,7 @@ async def analytics_categories(
         .select_from(EntryLineItem)
         .join(Entry, Entry.id == EntryLineItem.entry_id)
         .where(*bf)
-        .group_by(func.coalesce(EntryLineItem.category, "Uncategorized"))
+        .group_by(cat_key)
         .order_by(func.coalesce(func.sum(EntryLineItem.profit), 0).desc())
     )
     r = await db.execute(q)
@@ -360,14 +362,14 @@ async def analytics_categories(
 
     q_best = (
         select(
-            func.coalesce(EntryLineItem.category, "Uncategorized").label("cat"),
+            cat_key.label("cat"),
             EntryLineItem.item_name,
             func.coalesce(func.sum(EntryLineItem.profit), 0).label("ip"),
         )
         .select_from(EntryLineItem)
         .join(Entry, Entry.id == EntryLineItem.entry_id)
         .where(*bf)
-        .group_by(func.coalesce(EntryLineItem.category, "Uncategorized"), EntryLineItem.item_name)
+        .group_by(cat_key, EntryLineItem.item_name)
     )
     r2 = await db.execute(q_best)
     best: dict[str, tuple[str, float]] = {}

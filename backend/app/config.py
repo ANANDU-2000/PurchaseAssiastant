@@ -100,6 +100,7 @@ class Settings(BaseSettings):
     authkey_api_key: str | None = None
     authkey_base_url: str = "https://manage.authkey.io"
     authkey_sender_label: str = "HARISREE"
+    authkey_from_number: str | None = None
 
     openai_api_key: str | None = None
     openai_model_parse: str = "gpt-4.1-mini"

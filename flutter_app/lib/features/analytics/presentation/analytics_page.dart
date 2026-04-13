@@ -16,19 +16,55 @@ import '../../../core/theme/theme_context_ext.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/app_settings_action.dart';
 
-/// KPI can succeed while a dependent chart request fails — show a compact retry.
-Widget _overviewSliceError(BuildContext context, VoidCallback onRetry) {
-  return Padding(
-    padding: const EdgeInsets.only(top: 4, bottom: 12),
-    child: Row(
+/// KPI can succeed while a dependent chart request fails — one card per slice (clear label).
+Widget _overviewSliceError(
+  BuildContext context,
+  String sectionLabel,
+  VoidCallback onRetry,
+) {
+  return Container(
+    margin: const EdgeInsets.only(top: 4, bottom: 8),
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: HexaColors.surfaceCard,
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: HexaColors.border),
+    ),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Icon(Icons.wifi_off_rounded,
-            size: 18,
-            color: Theme.of(context).colorScheme.onSurfaceVariant),
-        const SizedBox(width: 8),
-        TextButton(
-          onPressed: onRetry,
-          child: const Text('Retry'),
+        Row(
+          children: [
+            Icon(Icons.cloud_off_rounded,
+                size: 20,
+                color: Theme.of(context).colorScheme.onSurfaceVariant),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                sectionLabel,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Could not load this section.',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('Retry'),
+          ),
         ),
       ],
     ),
@@ -558,6 +594,7 @@ class _OverviewTab extends ConsumerWidget {
                 loading: () => const SizedBox.shrink(),
                 error: (_, __) => _overviewSliceError(
                     context,
+                    'Daily profit trend',
                     () => ref.invalidate(analyticsDailyProfitProvider)),
                 data: (points) =>
                     _ProfitTrendCard(points: points, tt: tt, inr: inr),
@@ -567,6 +604,7 @@ class _OverviewTab extends ConsumerWidget {
                 loading: () => const SizedBox.shrink(),
                 error: (_, __) => _overviewSliceError(
                     context,
+                    'Item costs & revenue',
                     () => ref.invalidate(analyticsItemsTableProvider)),
                 data: (rows) =>
                     _ItemCostRevenueBars(rows: rows, tt: tt, inr: inr),
@@ -576,6 +614,7 @@ class _OverviewTab extends ConsumerWidget {
                 loading: () => const SizedBox.shrink(),
                 error: (_, __) => _overviewSliceError(
                     context,
+                    'Category split',
                     () => ref.invalidate(analyticsCategoriesTableProvider)),
                 data: (rows) =>
                     _CategoryProfitDonut(rows: rows, tt: tt, inr: inr),
@@ -585,6 +624,7 @@ class _OverviewTab extends ConsumerWidget {
                 loading: () => const SizedBox.shrink(),
                 error: (_, __) => _overviewSliceError(
                     context,
+                    'Supplier performance',
                     () => ref.invalidate(analyticsSuppliersTableProvider)),
                 data: (rows) => _SupplierMarginPerformers(rows: rows, tt: tt),
               ),
@@ -2045,6 +2085,7 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: _overviewSliceError(
                   context,
+                  'Supplier insight',
                   () => ref.invalidate(analyticsBestSupplierInsightProvider),
                 ),
               ),

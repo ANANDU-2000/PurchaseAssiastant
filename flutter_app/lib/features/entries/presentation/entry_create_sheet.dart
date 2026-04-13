@@ -1348,6 +1348,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
           children: [
             ListView(
               controller: scrollController,
+              physics: const ClampingScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 100),
               children: [
                 if (_landingPriceSpike) ...[
@@ -1415,13 +1416,34 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    OutlinedButton(
+                      onPressed: _busy ? null : () => Navigator.of(context).pop(),
+                      child: const Text('Cancel'),
+                    ),
+                    const Spacer(),
+                    FilledButton(
+                      onPressed: _busy
+                          ? null
+                          : (_previewToken != null && _previewToken!.isNotEmpty
+                              ? () {
+                                  HapticFeedback.mediumImpact();
+                                  unawaited(_finalizeSaveAfterPreview());
+                                }
+                              : null),
+                      child: const Text('Save'),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 14),
                 TextField(
                   controller: _quickEntry,
                   enabled: !_busy,
                   decoration: InputDecoration(
                     labelText: 'Quick line',
-                    hintText: 'rice 50kg 42 ravi  OR  ari 50kg 42 ravi',
+                    hintText: 'e.g. rice 50kg 42 ravi',
                     prefixIcon: const Icon(Icons.bolt_rounded,
                         color: HexaColors.primaryMid),
                     suffixIcon: IconButton(
@@ -1435,7 +1457,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                 ),
                 _quickLineParseChips(),
                 const SizedBox(height: 16),
-                Text('Supplier & Broker',
+                Text('Supplier & broker',
                     style:
                         tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
                 const SizedBox(height: 8),
@@ -1478,6 +1500,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                               child: InputDecorator(
                                 decoration: const InputDecoration(
                                   labelText: 'Supplier (optional)',
+                                  prefixIcon: Icon(Icons.storefront_outlined,
+                                      color: HexaColors.primaryMid),
                                   suffixIcon:
                                       Icon(Icons.keyboard_arrow_up_rounded),
                                 ),
@@ -1516,6 +1540,60 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                     onRetry: () => ref.invalidate(brokersListProvider),
                   ),
                   data: (list) {
+                    final selectedBrokerName = list
+                        .cast<Map<String, dynamic>>()
+                        .where((b) => b['id']?.toString() == _brokerId)
+                        .map((b) => b['name']?.toString() ?? '')
+                        .cast<String>()
+                        .firstWhere(
+                          (name) => name.isNotEmpty,
+                          orElse: () => '',
+                        );
+                    if (selectedBrokerName.isNotEmpty) {
+                      return Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: cs.outlineVariant),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.handshake_outlined,
+                                size: 20, color: HexaColors.primaryMid),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Broker',
+                                    style: tt.labelMedium?.copyWith(
+                                      color: cs.onSurfaceVariant,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    selectedBrokerName,
+                                    style: tt.bodyMedium?.copyWith(
+                                        fontWeight: FontWeight.w600),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: _busy ? null : _addBrokerDialog,
+                              child: const Text('Change'),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
                     return Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1524,8 +1602,9 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                             key: ValueKey(_brokerId ?? '∅'),
                             initialValue: _brokerId,
                             decoration: const InputDecoration(
-                              labelText: 'Broker (from supplier or pick)',
-                              helperText: 'Updates when you choose a supplier',
+                              labelText: 'Broker (optional)',
+                              prefixIcon: Icon(Icons.handshake_outlined),
+                              helperText: 'Auto-fills from supplier when linked',
                             ),
                             items: [
                               const DropdownMenuItem<String?>(
@@ -1553,28 +1632,13 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                     );
                   },
                 ),
-                if (_supplierId == null || selectedSupplierLocation == null)
-                  TextField(
-                    controller: _place,
-                    enabled: !_busy,
-                    textCapitalization: TextCapitalization.sentences,
-                    decoration: const InputDecoration(
-                      labelText: 'Purchase place / market (optional)',
-                      hintText: 'e.g. Koyambedu, wholesale yard',
-                      prefixIcon: Icon(Icons.place_outlined,
-                          color: HexaColors.primaryMid),
-                    ),
-                    onChanged: (_) => setState(() {}),
-                  )
-                else
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      'Place from supplier: $selectedSupplierLocation',
-                      style: tt.bodySmall
-                          ?.copyWith(color: HexaColors.textSecondary),
-                    ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Supplier stays visible above. Broker auto-fills when linked.',
+                    style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                   ),
+                ),
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -1659,11 +1723,11 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                 ExpansionTile(
                   initiallyExpanded: false,
                   tilePadding: EdgeInsets.zero,
-                  title: Text('Advanced costs & catalog tools',
+                  title: Text('Advanced options',
                       style:
                           tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
                   subtitle: Text(
-                    'Invoice, commission, transport, quick-create masters',
+                    'Place / market, invoice, commission, quick-create masters',
                     style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                   ),
                   children: [
@@ -1760,6 +1824,31 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                         ),
                       ),
                     ),
+                    TextField(
+                      controller: _place,
+                      enabled: !_busy,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: const InputDecoration(
+                        labelText: 'Purchase place / market (optional)',
+                        hintText: 'e.g. Koyambedu, wholesale yard',
+                        prefixIcon: Icon(Icons.place_outlined,
+                            color: HexaColors.primaryMid),
+                      ),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    if (_supplierId != null &&
+                        selectedSupplierLocation != null) ...[
+                      const SizedBox(height: 6),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'From supplier: $selectedSupplierLocation',
+                          style: tt.bodySmall
+                              ?.copyWith(color: HexaColors.textSecondary),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
                     if (_advancedEntryOptions) ...[
                       TextField(
                         controller: _invoice,
@@ -1938,13 +2027,13 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       if (t.unitQty > 0) parts.add('${_formatRollupQty(t.unitQty)} u');
       qtyBody = parts.isEmpty ? '—' : parts.join(' · ');
     } else if (t.kg > 0 && t.unitQty <= 0 && t.bagQty <= 0) {
-      qtyTitle = 'Total kg';
+      qtyTitle = 'Qty (kg)';
       qtyBody = t.kg.toStringAsFixed(1);
     } else if (t.bagQty > 0 && t.kg <= 0 && t.unitQty <= 0) {
-      qtyTitle = 'Total bags';
-      qtyBody = _formatRollupQty(t.bagQty);
+      qtyTitle = 'Qty';
+      qtyBody = '${_formatRollupQty(t.bagQty)} bags';
     } else if (t.kg <= 0 && t.unitQty > 0 && t.bagQty <= 0) {
-      qtyTitle = 'Total qty (units)';
+      qtyTitle = 'Qty';
       qtyBody = _formatRollupQty(t.unitQty);
     } else if (t.kg > 0 && t.unitQty > 0) {
       qtyTitle = 'Weight / units';
@@ -2267,12 +2356,14 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                       side: const BorderSide(
                           color: HexaColors.primaryMid, width: 1.2),
                       padding: const EdgeInsets.symmetric(
-                          vertical: 12, horizontal: 10),
+                          vertical: 10, horizontal: 10),
+                      visualDensity: VisualDensity.compact,
+                      textStyle: const TextStyle(fontSize: 12),
                     ),
                     onPressed:
                         _busy ? null : () => _pickCatalogForLine(lineIndex),
-                    icon: const Icon(Icons.list_alt_outlined, size: 20),
-                    label: const Text('📋 Pick from catalog'),
+                    icon: const Icon(Icons.list_alt_outlined, size: 18),
+                    label: const Text('Catalog'),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -2280,35 +2371,58 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
-                          vertical: 12, horizontal: 10),
+                          vertical: 10, horizontal: 10),
                       side: BorderSide(color: cs.outlineVariant),
+                      visualDensity: VisualDensity.compact,
+                      textStyle: const TextStyle(fontSize: 12),
                     ),
                     onPressed:
                         _busy ? null : () => _pickVariantForLine(lineIndex),
                     icon: const Icon(Icons.subdirectory_arrow_right_rounded,
-                        size: 20),
+                        size: 18),
                     label: const Text('Variant'),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 10),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: l.category,
-                    decoration: const InputDecoration(
-                        labelText: 'Category',
-                        prefixIcon: Icon(Icons.category_outlined)),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: cs.outlineVariant),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.category_outlined,
+                          size: 16, color: HexaColors.primaryMid),
+                      const SizedBox(width: 6),
+                      Text(
+                        l.category.text.trim().isEmpty
+                            ? 'No category'
+                            : l.category.text.trim(),
+                        style: tt.labelMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: l.category.text.trim().isEmpty
+                              ? cs.onSurfaceVariant
+                              : cs.onSurface,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: TextButton(
-                    onPressed: _busy ? null : _addCategoryFromEntry,
-                    child: const Text('＋ New'),
+                TextButton(
+                  onPressed: _busy ? null : _addCategoryFromEntry,
+                  child: Text(
+                    l.category.text.trim().isEmpty ? '＋ Add category' : 'Change',
                   ),
                 ),
               ],
@@ -2379,34 +2493,6 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                 ],
               ),
             ],
-            Theme(
-              data:
-                  Theme.of(context).copyWith(dividerColor: Colors.transparent),
-              child: ExpansionTile(
-                tilePadding: EdgeInsets.zero,
-                title: Text(
-                  'Stock notes (optional)',
-                  style: tt.labelMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: HexaColors.textSecondary),
-                ),
-                children: [
-                  TextField(
-                    controller: l.stockNote,
-                    enabled: !_busy,
-                    maxLines: 2,
-                    onChanged: (_) => setState(() {}),
-                    textCapitalization: TextCapitalization.sentences,
-                    decoration: const InputDecoration(
-                      hintText: 'Current stock before purchase',
-                      prefixIcon: Icon(Icons.warehouse_outlined),
-                      alignLabelWithHint: true,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 4),
             TextField(
               controller: l.purchase,
               keyboardType: TextInputType.number,
@@ -2414,19 +2500,15 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               decoration: InputDecoration(
                 labelText: _advancedEntryOptions
                     ? (l.unit == 'bag'
-                        ? 'Purchase / bag (invoice) *'
+                        ? 'Purchase / bag (invoice ₹) *'
                         : 'Purchase price / unit *')
                     : (l.unit == 'bag'
-                        ? 'Landed cost / bag (₹) *'
-                        : 'Landed cost / unit (₹) *'),
+                        ? 'What you paid / bag (₹) *'
+                        : 'What you paid / unit (₹) *'),
                 prefixIcon: const Icon(Icons.currency_rupee_rounded),
                 helperText: _advancedEntryOptions
-                    ? (l.unit == 'bag'
-                        ? 'Invoice ₹ per bag; commission field below adds to landed.'
-                        : 'Invoice ₹ per unit; commission adds to landed.')
-                    : (l.unit == 'bag'
-                        ? 'All-in landed ₹ per bag for this line.'
-                        : 'All-in landed ₹ per kg/pc — use Advanced for invoice + commission split.'),
+                    ? 'Invoice price before commission — commission adds to landed cost'
+                    : null,
               ),
             ),
             Padding(
@@ -2440,10 +2522,31 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                 onInsight: lineIndex == 0 ? _onLandingInsight : null,
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: _landedCostReadout(l),
-            ),
+            if (_advancedEntryOptions)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: _landedCostReadout(l),
+              )
+            else
+              Builder(
+                builder: (context) {
+                  final paid = _parseDouble(l.purchase.text);
+                  if (paid == null || paid <= 0) {
+                    return const SizedBox.shrink();
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 4, left: 4),
+                    child: Text(
+                      '= ₹${_effectiveLanding(l).toStringAsFixed(2)} landed',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: HexaColors.primaryMid,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  );
+                },
+              ),
             const SizedBox(height: 8),
             TextField(
               controller: l.selling,

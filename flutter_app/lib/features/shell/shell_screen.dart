@@ -31,11 +31,9 @@ class ShellScreen extends ConsumerWidget {
       navigationShell.goBranch(branch);
     }
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor:
-          isDark ? HexaColors.canvas : Theme.of(context).scaffoldBackgroundColor,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -107,24 +105,22 @@ class ShellScreen extends ConsumerWidget {
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       bottomNavigationBar: BottomAppBar(
         padding: EdgeInsets.zero,
-        // Room for icon row + label (avoids "BOTTOM OVERFLOWED" on narrow/web viewports).
         height: 72,
         elevation: 0,
         shadowColor: Colors.transparent,
-        color: isDark ? HexaColors.surfaceCard : cs.surface,
+        color: cs.surface,
         surfaceTintColor: Colors.transparent,
         shape: const CircularNotchedRectangle(),
         notchMargin: 10,
         child: DecoratedBox(
           decoration: BoxDecoration(
             border: Border(
-                top: BorderSide(
-                    color: isDark ? HexaColors.border : cs.outlineVariant)),
+                top: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.9))),
             boxShadow: [
               BoxShadow(
-                color: HexaColors.accentPurple.withValues(alpha: 0.06),
-                blurRadius: 24,
-                offset: const Offset(0, -4),
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 18,
+                offset: const Offset(0, -2),
               ),
             ],
           ),
@@ -196,7 +192,7 @@ class _ShellTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
-    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final muted = const Color(0xFF64748B);
     return Semantics(
       button: true,
       selected: selected,
@@ -228,10 +224,10 @@ class _ShellTab extends StatelessWidget {
                     ),
                     child: Icon(
                       selected ? selectedIcon : icon,
-                      size: 22,
+                      size: 21,
                       color: selected
                           ? HexaColors.primaryMid
-                          : muted.withValues(alpha: 0.72),
+                          : muted,
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -244,7 +240,7 @@ class _ShellTab extends StatelessWidget {
                       fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                       color: selected
                           ? HexaColors.primaryMid
-                          : muted.withValues(alpha: 0.72),
+                          : muted,
                     ),
                   ),
                 ],

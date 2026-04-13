@@ -22,5 +22,14 @@ Performance:
 
 iOS feel (when touching UI):
 - Prefer `BouncingScrollPhysics`, light haptics on shell nav and primary actions, avoid gradient-heavy CTAs on auth.
-- Default theme is **light** (`ThemeMode.light` when pref unset). Full-screen routes use iOS-like slide transitions (`page_transitions.dart`).
-- Shell/home scaffolds respect theme brightness — avoid hardcoding `HexaColors.canvas` on new screens when in light mode.
+- Product UI is **light-only** (`ThemeMode.light` in `app.dart`). Full-screen routes use iOS-like slide transitions (`page_transitions.dart`).
+- Shell/home scaffolds use theme surfaces — prefer `HexaColors.surfaceCard` over `Colors.white` for cards.
+
+Entry form (`entry_create_sheet.dart`):
+- Simple mode: one “what you paid / unit” field; hide the large landed “auto” readout (advanced mode shows purchase + landed auto when commission splits apply).
+- Purchase place / market lives under **Advanced options**, not the main scroll.
+- Do not resurrect removed fields (e.g. stock notes) without an explicit product ask.
+
+WhatsApp:
+- Webhook: `POST /v1/webhooks/whatsapp/authkey`; outbound optional via `AUTHKEY_API_KEY` + `authkey_send.py`.
+- Respect quiet hours / rate limits in `whatsapp_flow.py`; no bulk unsolicited sends.

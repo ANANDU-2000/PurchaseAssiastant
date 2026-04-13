@@ -107,19 +107,14 @@ class _HomePageState extends ConsumerState<HomePage>
     final hi = insights.valueOrNull;
     final branding = ref.watch(tenantBrandingProvider);
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final cs = Theme.of(context).colorScheme;
-    final appBarIconColor =
-        isDark ? HexaColors.textSecondary : cs.onSurfaceVariant;
-    final titleColor = isDark ? HexaColors.primaryMid : cs.primary;
+    final appBarIconColor = cs.onSurfaceVariant;
+    final titleColor = HexaColors.primaryMid;
     return Scaffold(
-      backgroundColor: isDark
-          ? HexaColors.canvas
-          : Theme.of(context).scaffoldBackgroundColor,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: isDark
-            ? HexaColors.canvas
-            : Theme.of(context).appBarTheme.backgroundColor,
+        automaticallyImplyLeading: false,
+        backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
         surfaceTintColor: Colors.transparent,
         title: Row(
           children: [
@@ -150,13 +145,6 @@ class _HomePageState extends ConsumerState<HomePage>
             ),
           ],
         ),
-        leading: ModalRoute.of(context)?.canPop == true
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back_rounded),
-                color: appBarIconColor,
-                onPressed: () => context.pop(),
-              )
-            : null,
         scrolledUnderElevation: 0,
         elevation: 0,
         actions: [
@@ -171,24 +159,21 @@ class _HomePageState extends ConsumerState<HomePage>
                   icon: const Icon(Icons.refresh_rounded),
                 ),
                 const _HomeNotificationsButton(),
-                IconButton(
-                  tooltip: 'Contacts',
-                  onPressed: () => context.go('/contacts'),
-                  icon: const Icon(Icons.person_outline_rounded),
-                ),
                 const AppSettingsAction(),
               ],
             ),
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _refresh,
-        edgeOffset: 80,
-        child: CustomScrollView(
-          physics: const BouncingScrollPhysics(
-              parent: AlwaysScrollableScrollPhysics()),
-          slivers: [
+      body: SafeArea(
+        bottom: false,
+        child: RefreshIndicator(
+          onRefresh: _refresh,
+          edgeOffset: 80,
+          child: CustomScrollView(
+            physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics()),
+            slivers: [
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -220,15 +205,17 @@ class _HomePageState extends ConsumerState<HomePage>
                 child: Text(
                   _rangeCaption(period),
                   style: tt.bodySmall?.copyWith(
-                      color: isDark
-                          ? HexaColors.textSecondary
-                          : cs.onSurfaceVariant,
-                      fontWeight: FontWeight.w500),
+                      color: cs.onSurfaceVariant, fontWeight: FontWeight.w500),
                 ),
               ),
             ),
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                12,
+                16,
+                72 + MediaQuery.of(context).padding.bottom,
+              ),
               sliver: SliverToBoxAdapter(
                 child: dash.when(
                   loading: () => Column(
@@ -284,9 +271,7 @@ class _HomePageState extends ConsumerState<HomePage>
                               'Signals',
                               style: tt.titleMedium?.copyWith(
                                 fontWeight: FontWeight.w800,
-                                color: isDark
-                                    ? HexaColors.textPrimary
-                                    : cs.onSurface,
+                                color: cs.onSurface,
                                 fontSize: 15,
                               ),
                             ),
@@ -315,9 +300,7 @@ class _HomePageState extends ConsumerState<HomePage>
                           'Quick actions',
                           style: tt.titleMedium?.copyWith(
                             fontWeight: FontWeight.w800,
-                            color: isDark
-                                ? HexaColors.textPrimary
-                                : cs.onSurface,
+                            color: cs.onSurface,
                             fontSize: 15,
                           ),
                         ),
@@ -352,7 +335,8 @@ class _HomePageState extends ConsumerState<HomePage>
                 ),
               ),
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -772,7 +756,7 @@ class _StatCard extends StatelessWidget {
         isDark ? HexaColors.textSecondary : cs.onSurfaceVariant;
     final valueColor = isDark ? HexaColors.textPrimary : cs.onSurface;
     return Material(
-      color: isDark ? HexaColors.surfaceCard : Colors.white,
+      color: HexaColors.surfaceCard,
       elevation: 0,
       borderRadius: BorderRadius.circular(16),
       child: Container(
@@ -827,7 +811,8 @@ class _StatCard extends StatelessWidget {
                   Text(
                     value,
                     style: tt.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
                       color: valueColor,
                       letterSpacing: -0.3,
                     ),
@@ -851,17 +836,14 @@ class _SignalsEmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
       decoration: BoxDecoration(
-        color: isDark ? HexaColors.surfaceCard : Colors.white,
+        color: HexaColors.surfaceCard,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-            color: isDark
-                ? HexaColors.border
-                : cs.outlineVariant.withValues(alpha: 0.85)),
+            color: cs.outlineVariant.withValues(alpha: 0.85)),
         boxShadow: HexaColors.cardShadow(context),
       ),
       child: Column(
@@ -873,7 +855,7 @@ class _SignalsEmptyState extends StatelessWidget {
             'No purchases yet',
             style: tt.titleSmall?.copyWith(
                 fontWeight: FontWeight.w700,
-                color: isDark ? HexaColors.textPrimary : cs.onSurface,
+                color: cs.onSurface,
                 fontSize: 15),
           ),
           const SizedBox(height: 6),
@@ -881,8 +863,7 @@ class _SignalsEmptyState extends StatelessWidget {
             'Add your first entry to see profit signals',
             textAlign: TextAlign.center,
             style: tt.bodySmall?.copyWith(
-                color:
-                    isDark ? HexaColors.textSecondary : cs.onSurfaceVariant,
+                color: cs.onSurfaceVariant,
                 fontSize: 12),
           ),
           const SizedBox(height: 16),
@@ -1098,7 +1079,7 @@ class _QuickActionCards extends StatelessWidget {
     final tt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final sideCardBg = isDark ? HexaColors.surfaceCard : Colors.white;
+    final sideCardBg = HexaColors.surfaceCard;
     final sideBorder = isDark
         ? HexaColors.border
         : cs.outlineVariant.withValues(alpha: 0.85);

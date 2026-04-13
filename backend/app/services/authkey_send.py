@@ -41,6 +41,8 @@ async def send_whatsapp_authkey(
         "authkey": key,
         "sender": settings.authkey_sender_label,
     }
+    if (settings.authkey_from_number or "").strip():
+        payload["from"] = settings.authkey_from_number.strip()
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
             res = await client.post(url, json=payload)

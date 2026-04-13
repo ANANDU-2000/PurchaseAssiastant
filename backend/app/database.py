@@ -13,6 +13,7 @@ except ImportError:
 
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.config import get_settings
 
@@ -86,6 +87,12 @@ if _pooler:
         )
 
 _connect_args: dict = {"check_same_thread": False} if _sqlite else {}
+# asyncpg caches prepared statements per connection. PgBouncer (transaction mode) and
+# Supabase pooler reuse connections across clients — stale stmt names →
+# InvalidSQLStatementNameError. Disabling the cache is the standard fix.
+if not _sqlite:
+    _connect_args["statement_cache_size"] = 0
+
 if not _sqlite and (
     "supabase.co" in _effective_url or "pooler.supabase.com" in _effective_url
 ):
@@ -144,11 +151,29 @@ if not _sqlite:
     except Exception:  # noqa: BLE001
         pass
 
-engine = create_async_engine(
-    _effective_url,
-    echo=settings.app_env == "development",
-    connect_args=_connect_args,
-)
+_engine_kwargs: dict = {
+    "echo": settings.app_env == "development",
+    "connect_args": _connect_args,
+}
+if not _sqlite:
+    if _pooler:
+        # With PgBouncer / Supabase transaction poolers, client-side pooling can keep
+        # stale asyncpg connection state around. NullPool is the safest production mode.
+        _engine_kwargs["poolclass"] = NullPool
+    else:
+        # Recycle before typical managed-Postgres idle timeouts; pre-ping drops dead conns.
+        _engine_kwargs["pool_pre_ping"] = True
+        _engine_kwargs["pool_recycle"] = 280
+
+engine = create_async_engine(_effective_url, **_engine_kwargs)
+if not _sqlite:
+    logger.info(
+        "Database engine: asyncpg statement_cache_size=%r poolclass=%s pool_pre_ping=%s pool_recycle=%s",
+        _connect_args.get("statement_cache_size"),
+        _engine_kwargs.get("poolclass"),
+        _engine_kwargs.get("pool_pre_ping"),
+        _engine_kwargs.get("pool_recycle"),
+    )
 async_session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 

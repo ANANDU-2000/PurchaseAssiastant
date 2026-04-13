@@ -7,20 +7,36 @@
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
-  <meta name="description" content="My Purchases">
+  <meta name="description" content="Harisree Purchases">
 
+  <!-- iOS PWA: fixed viewport, no horizontal scroll -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Harisree">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="hexa_purchase_assistant">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <meta name="theme-color" content="#17A8A7">
 
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>hexa_purchase_assistant</title>
+  <title>Harisree Purchases</title>
   <link rel="manifest" href="manifest.json">
   <style>
-    html, body { margin: 0; height: 100%; background: #07080D; }
-    /* Optional tiny hint while engine boots — not full-screen (won’t cover the canvas). */
+    * { -webkit-tap-highlight-color: transparent; touch-action: pan-y; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+      background: #F5F7FA;
+      overscroll-behavior: none;
+      -webkit-overflow-scrolling: touch;
+    }
+    flt-glass-pane {
+      touch-action: pan-y !important;
+    }
     #boot {
       position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 1;
       font: 12px/1.4 system-ui, sans-serif; color: #64748b; pointer-events: none;
@@ -28,7 +44,6 @@
   </style>
 </head>
 <body>
-  <!-- Do not auto-reload here — it races the Flutter engine and causes a permanent white screen. -->
   <div id="boot" aria-live="polite">Starting…</div>
   <script src="flutter_bootstrap.js" defer></script>
 </body>

@@ -40,7 +40,7 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
   /// Extra hint in debug so local web devs know why XHR fails (connection refused).
   String _entriesLoadErrorSubtitle() {
     if (!kDebugMode) return kFriendlyLoadNetworkSubtitle;
-    return '${kFriendlyLoadNetworkSubtitle}\n\n'
+    return '$kFriendlyLoadNetworkSubtitle\n\n'
         'Local dev: start the API (uvicorn on port 8000) or set API_BASE_URL '
         'to match where the backend listens.';
   }
