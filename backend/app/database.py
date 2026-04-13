@@ -89,7 +89,16 @@ _connect_args: dict = {"check_same_thread": False} if _sqlite else {}
 if not _sqlite and (
     "supabase.co" in _effective_url or "pooler.supabase.com" in _effective_url
 ):
-    if settings.database_ssl_insecure:
+    if settings.database_ssl_skip_verify:
+        logger.warning(
+            "DATABASE_SSL_SKIP_VERIFY=true: using TLS to Postgres without verifying the server certificate. "
+            "Traffic is still encrypted; only chain validation is skipped (workaround for some Render+Supabase SSL issues)."
+        )
+        _ctx = ssl.create_default_context()
+        _ctx.check_hostname = False
+        _ctx.verify_mode = ssl.CERT_NONE
+        _connect_args["ssl"] = _ctx
+    elif settings.database_ssl_insecure:
         _ctx = ssl.create_default_context()
         _ctx.check_hostname = False
         _ctx.verify_mode = ssl.CERT_NONE

@@ -66,6 +66,9 @@ class Settings(BaseSettings):
     database_pooler_password: str | None = None
     # Dev-only: if TLS fails with CERTIFICATE_VERIFY_FAILED (AV/corporate proxy MITM), set true. Forbidden in production.
     database_ssl_insecure: bool = False
+    # Encrypted TLS to Postgres, but skip verifying the server certificate chain. Some PaaS (e.g. Render) + Supabase
+    # pooler combinations fail SSL verify despite valid AWS certs; opt-in only. Prefer false once CA trust works.
+    database_ssl_skip_verify: bool = False
     redis_url: str | None = "redis://localhost:6379/0"
 
     jwt_secret: str = "change-me-min-32-chars-dev-only"
