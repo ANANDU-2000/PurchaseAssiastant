@@ -65,7 +65,7 @@ async def register(
         username=body.username,
         password_hash=pwd_hash,
         phone=None,
-        name=None,
+        name=body.name,
     )
     if settings.superadmin_bootstrap_email and body.email == settings.superadmin_bootstrap_email.strip().lower():
         user.is_super_admin = True
@@ -73,7 +73,7 @@ async def register(
     db.add(user)
     await db.flush()
 
-    biz = Business(name="My business")
+    biz = Business(name="Harisree workspace")
     db.add(biz)
     await db.flush()
     db.add(Membership(user_id=user.id, business_id=biz.id, role="owner"))
@@ -165,6 +165,17 @@ async def auth_google(
 
     r_sub = await db.execute(select(User).where(User.google_sub == sub))
     user = r_sub.scalar_one_or_none()
+    if user:
+        gn = claims.get("name")
+        if (
+            gn
+            and isinstance(gn, str)
+            and gn.strip()
+            and not (user.name and user.name.strip())
+        ):
+            user.name = gn.strip()
+            await db.commit()
+            await db.refresh(user)
     if not user:
         r_email = await db.execute(select(User).where(User.email == email))
         user = r_email.scalar_one_or_none()
@@ -176,23 +187,33 @@ async def auth_google(
                     status.HTTP_409_CONFLICT,
                     detail="This email is already linked to a different sign-in method",
                 )
+            gn2 = claims.get("name")
+            if (
+                gn2
+                and isinstance(gn2, str)
+                and gn2.strip()
+                and not (user.name and user.name.strip())
+            ):
+                user.name = gn2.strip()
             await db.commit()
             await db.refresh(user)
         else:
             uname = await _allocate_username(db, email, sub)
+            raw_name = claims.get("name")
+            disp = raw_name.strip()[:255] if isinstance(raw_name, str) and raw_name.strip() else None
             user = User(
                 email=email,
                 username=uname,
                 password_hash=None,
                 phone=None,
-                name=claims.get("name"),
+                name=disp,
                 google_sub=sub,
             )
             if settings.superadmin_bootstrap_email and email == settings.superadmin_bootstrap_email.strip().lower():
                 user.is_super_admin = True
             db.add(user)
             await db.flush()
-            biz = Business(name="My business")
+            biz = Business(name="Harisree workspace")
             db.add(biz)
             await db.flush()
             db.add(Membership(user_id=user.id, business_id=biz.id, role="owner"))

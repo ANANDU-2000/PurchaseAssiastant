@@ -18,6 +18,48 @@ _LOGO_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 router = APIRouter(prefix="/v1/me", tags=["me"])
 
 
+class UserProfileOut(BaseModel):
+    id: uuid.UUID
+    email: str
+    username: str
+    name: str | None = None
+
+    model_config = {"from_attributes": False}
+
+
+class UserProfilePatch(BaseModel):
+    name: str | None = Field(None, max_length=255)
+
+
+@router.get("/profile", response_model=UserProfileOut)
+async def get_my_profile(user: Annotated[User, Depends(get_current_user)]):
+    return UserProfileOut(
+        id=user.id,
+        email=user.email,
+        username=user.username,
+        name=user.name,
+    )
+
+
+@router.patch("/profile", response_model=UserProfileOut)
+async def patch_my_profile(
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    body: UserProfilePatch,
+):
+    if body.name is not None:
+        t = body.name.strip()
+        user.name = t if t else None
+    await db.commit()
+    await db.refresh(user)
+    return UserProfileOut(
+        id=user.id,
+        email=user.email,
+        username=user.username,
+        name=user.name,
+    )
+
+
 class BusinessBrief(BaseModel):
     id: uuid.UUID
     name: str

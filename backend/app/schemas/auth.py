@@ -7,6 +7,9 @@ class RegisterRequest(BaseModel):
     email: str = Field(..., min_length=5, max_length=320)
     username: str = Field(..., min_length=3, max_length=64)
     password: str = Field(..., min_length=8, max_length=128)
+    name: str | None = Field(
+        None, max_length=255, description="Optional display name; stored as users.name"
+    )
 
     @field_validator("email")
     @classmethod
@@ -20,6 +23,14 @@ class RegisterRequest(BaseModel):
         if not re.match(r"^[a-z0-9_]{3,64}$", s):
             raise ValueError("Username: 3–64 chars, letters, numbers, underscore only")
         return s
+
+    @field_validator("name")
+    @classmethod
+    def name_strip(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        t = v.strip()
+        return t if t else None
 
 
 class LoginRequest(BaseModel):

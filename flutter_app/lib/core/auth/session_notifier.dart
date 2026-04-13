@@ -211,11 +211,15 @@ class SessionNotifier extends Notifier<Session?> {
   Future<void> register(
       {required String username,
       required String email,
-      required String password}) async {
+      required String password,
+      String? name}) async {
     final api = ref.read(hexaApiProvider);
     final store = ref.read(tokenStoreProvider);
     final tokens = await api.register(
-        username: username, email: email, password: password);
+        username: username,
+        email: email,
+        password: password,
+        name: name);
     await store.write(access: tokens.access, refresh: tokens.refresh);
     api.setAuthToken(tokens.access);
     final businesses = await api.meBusinesses();

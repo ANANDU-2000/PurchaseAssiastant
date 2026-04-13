@@ -17,7 +17,12 @@ WhatsApp (compliance):
 Offline:
 - Use `OfflineStore` (Hive) for dashboard cache and future entry queue; keep TTLs reasonable.
 
-Performance:
+Performance (product UI must stay fast on web/PWA):
+- Long lists → `ListView.builder` / `GridView.builder`; avoid huge `Column` of children.
+- Avoid nested scroll views; one primary scroll per screen where possible.
+- Prefer `const` constructors; split widgets so small state changes don’t rebuild the whole tree.
+- Keep shadows light (`HexaColors.cardShadow`) — heavy `BoxShadow` stacks hurt GPU on low-end phones.
+- `fl_chart`: `RepaintBoundary` + `LineTouchData(enabled: false)` unless interaction is required.
 - Prefer `ref.keepAlive()` with a bounded lifetime for expensive providers when tab-switching would refetch unnecessarily.
 
 iOS feel (when touching UI):

@@ -91,15 +91,11 @@ abstract final class HexaColors {
         ),
       ];
 
+  /// Light shadows only — heavy shadows cost repaints on low-end devices / PWA.
   static List<BoxShadow> cardShadow(BuildContext context) => [
         BoxShadow(
-          color: Colors.black.withValues(alpha: 0.35),
-          blurRadius: 20,
-          offset: const Offset(0, 8),
-        ),
-        BoxShadow(
-          color: accentPurple.withValues(alpha: 0.08),
-          blurRadius: 24,
+          color: Colors.black.withValues(alpha: 0.07),
+          blurRadius: 12,
           offset: const Offset(0, 4),
         ),
       ];

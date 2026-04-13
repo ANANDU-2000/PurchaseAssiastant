@@ -38,6 +38,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
   final _loginPass = TextEditingController();
 
   final _regUser = TextEditingController();
+  final _regName = TextEditingController();
   final _regEmail = TextEditingController();
   final _regPass = TextEditingController();
   final _regPass2 = TextEditingController();
@@ -87,6 +88,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
     _loginEmail.dispose();
     _loginPass.dispose();
     _regUser.dispose();
+    _regName.dispose();
     _regEmail.dispose();
     _regPass.dispose();
     _regPass2.dispose();
@@ -163,6 +165,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
             username: _regUser.text.trim(),
             email: _regEmail.text.trim(),
             password: _regPass.text,
+            name: _regName.text.trim().isEmpty ? null : _regName.text.trim(),
           );
       if (mounted) context.go('/home');
     } catch (e) {
@@ -328,6 +331,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
                                 _SignUpForm(
                                   bodyStyle: _bodyStyle,
                                   userCtrl: _regUser,
+                                  nameCtrl: _regName,
                                   emailCtrl: _regEmail,
                                   passCtrl: _regPass,
                                   pass2Ctrl: _regPass2,
@@ -559,6 +563,7 @@ class _SignInFormState extends State<_SignInForm> {
     final fd = widget.fieldDecoration;
     return ListView(
       padding: EdgeInsets.zero,
+      physics: const BouncingScrollPhysics(),
       children: [
         TextField(
           controller: widget.emailCtrl,
@@ -613,6 +618,7 @@ class _SignUpForm extends StatefulWidget {
   const _SignUpForm({
     required this.bodyStyle,
     required this.userCtrl,
+    required this.nameCtrl,
     required this.emailCtrl,
     required this.passCtrl,
     required this.pass2Ctrl,
@@ -624,6 +630,7 @@ class _SignUpForm extends StatefulWidget {
 
   final TextStyle bodyStyle;
   final TextEditingController userCtrl;
+  final TextEditingController nameCtrl;
   final TextEditingController emailCtrl;
   final TextEditingController passCtrl;
   final TextEditingController pass2Ctrl;
@@ -645,6 +652,7 @@ class _SignUpFormState extends State<_SignUpForm> {
     final fd = widget.fieldDecoration;
     return ListView(
       padding: EdgeInsets.zero,
+      physics: const BouncingScrollPhysics(),
       children: [
         TextField(
           controller: widget.userCtrl,
@@ -654,6 +662,18 @@ class _SignUpFormState extends State<_SignUpForm> {
             label: 'Username',
             helper: '3–64 chars: letters, numbers, underscore',
             prefix: const Icon(Icons.badge_outlined,
+                color: _AuthLight.label, size: 22),
+          ),
+        ),
+        const SizedBox(height: 14),
+        TextField(
+          controller: widget.nameCtrl,
+          textCapitalization: TextCapitalization.words,
+          style: widget.bodyStyle,
+          decoration: fd(
+            label: 'Your name (optional)',
+            helper: 'Shown in the app when set',
+            prefix: const Icon(Icons.person_outline_rounded,
                 color: _AuthLight.label, size: 22),
           ),
         ),

@@ -94,10 +94,16 @@ class HexaApi {
     required String username,
     required String email,
     required String password,
+    String? name,
   }) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/auth/register',
-      data: {'username': username, 'email': email, 'password': password},
+      data: {
+        'username': username,
+        'email': email,
+        'password': password,
+        if (name != null && name.trim().isNotEmpty) 'name': name.trim(),
+      },
     );
     return _tokenPairFromResponse(res);
   }
