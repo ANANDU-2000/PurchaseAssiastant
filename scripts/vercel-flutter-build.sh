@@ -16,7 +16,8 @@ fi
 flutter config --no-analytics
 flutter pub get
 
-# Set API_BASE_URL in Vercel → Environment Variables (Production) so the web app calls Render.
+# REQUIRED for production: set API_BASE_URL in Vercel → Environment Variables (Production)
+# to your live API origin (e.g. https://your-service.onrender.com). If unset, this default is used.
 API_URL="${API_BASE_URL:-https://my-purchases-api.onrender.com}"
 GOOGLE_ID="${GOOGLE_OAUTH_CLIENT_ID:-}"
 

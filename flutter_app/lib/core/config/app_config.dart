@@ -8,6 +8,7 @@ class AppConfig {
   /// Default product name (store listing / package name are separate).
   static const String appName = 'Harisree Purchases';
 
+  /// Vercel web builds: set `API_BASE_URL` in project env (see `scripts/vercel-flutter-build.sh`).
   static const String apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: 'http://localhost:8000',
