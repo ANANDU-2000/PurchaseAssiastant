@@ -30,6 +30,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Map<String, dynamic>? _billing;
   String? _billingErr;
   Map<String, dynamic>? _whatsappAssistant;
+  late final TextEditingController _waOverrideCtrl;
   late final TextEditingController _brandingTitleCtrl;
   Uint8List? _pendingLogoBytes;
   String _pendingLogoFilename = 'logo.jpg';
@@ -46,6 +47,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   @override
   void initState() {
     super.initState();
+    _waOverrideCtrl = TextEditingController();
     _brandingTitleCtrl = TextEditingController();
     if (!kIsWeb) {
       _razorpay = Razorpay();
@@ -79,6 +81,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   @override
   void dispose() {
     _razorpay?.clear();
+    _waOverrideCtrl.dispose();
     _brandingTitleCtrl.dispose();
     super.dispose();
   }
@@ -262,16 +265,51 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Future<void> _loadWhatsappAssistant() async {
     final session = ref.read(sessionProvider);
     if (session == null) return;
+    final prefs = ref.read(sharedPreferencesProvider);
+    final local = prefs.getString(kWhatsappAssistantOverrideKey)?.trim() ?? '';
     try {
       final m = await ref.read(hexaApiProvider).getWhatsappAssistantInfo();
       if (mounted) {
-        setState(() => _whatsappAssistant = m);
+        setState(() {
+          _whatsappAssistant = m;
+          final apiRaw =
+              m['assistant_e164']?.toString().trim() ?? '';
+          if (apiRaw.isEmpty && _waOverrideCtrl.text.isEmpty) {
+            _waOverrideCtrl.text = local;
+          }
+        });
       }
     } catch (_) {
       if (mounted) {
-        setState(() => _whatsappAssistant = null);
+        setState(() {
+          _whatsappAssistant = null;
+          if (_waOverrideCtrl.text.isEmpty) {
+            _waOverrideCtrl.text = local;
+          }
+        });
       }
     }
+  }
+
+  Future<void> _saveWhatsappOverride() async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    final t = _waOverrideCtrl.text.trim();
+    if (t.isEmpty) {
+      await prefs.remove(kWhatsappAssistantOverrideKey);
+    } else {
+      await prefs.setString(kWhatsappAssistantOverrideKey, t);
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Saved on this device')),
+      );
+    }
+  }
+
+  String _effectiveAssistantE164() {
+    final api = _whatsappAssistant?['assistant_e164']?.toString().trim() ?? '';
+    if (api.isNotEmpty) return api;
+    return _waOverrideCtrl.text.trim();
   }
 
   Future<void> _refreshBilling() async {
@@ -392,11 +430,37 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         'Save the assistant number in your contacts. Message from the phone you use to sign in. Purchases need a preview and YES — never auto-saved from chat alone.',
                     style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                   ),
-                  if (_whatsappAssistant?['assistant_e164'] != null &&
+                  if (_whatsappAssistant?['assistant_e164'] == null ||
                       _whatsappAssistant!['assistant_e164']
                           .toString()
                           .trim()
-                          .isNotEmpty) ...[
+                          .isEmpty) ...[
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _waOverrideCtrl,
+                      keyboardType: TextInputType.phone,
+                      decoration: InputDecoration(
+                        labelText: 'Assistant number (paste from Authkey)',
+                        hintText: '+91…',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        isDense: true,
+                      ),
+                      onSubmitted: (_) => unawaited(_saveWhatsappOverride()),
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: OutlinedButton(
+                        onPressed: _saveWhatsappOverride,
+                        child: const Text('Save on this device'),
+                      ),
+                    ),
+                  ],
+                  if ((_whatsappAssistant?['assistant_e164']?.toString() ?? '')
+                      .trim()
+                      .isNotEmpty) ...[
                     const SizedBox(height: 10),
                     SelectableText(
                       _whatsappAssistant!['assistant_e164'].toString().trim(),
@@ -406,15 +470,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       ),
                     ),
                     const SizedBox(height: 10),
+                  ],
+                  if (_effectiveAssistantE164().isNotEmpty) ...[
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
                       children: [
                         OutlinedButton.icon(
                           onPressed: () async {
-                            final t = _whatsappAssistant!['assistant_e164']
-                                .toString()
-                                .trim();
+                            final t = _effectiveAssistantE164();
                             await Clipboard.setData(ClipboardData(text: t));
                             if (!context.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -426,9 +490,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         ),
                         FilledButton.icon(
                           onPressed: () async {
-                            final raw = _whatsappAssistant!['assistant_e164']
-                                .toString()
-                                .trim();
+                            final raw = _effectiveAssistantE164();
                             final digits =
                                 raw.replaceAll(RegExp(r'\D'), '');
                             if (digits.isEmpty) return;

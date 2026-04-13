@@ -14,7 +14,10 @@ import '../../../shared/widgets/hexa_empty_state.dart';
 import 'entry_create_sheet.dart';
 
 class EntriesPage extends ConsumerStatefulWidget {
-  const EntriesPage({super.key});
+  const EntriesPage({super.key, this.requestSearchFocus = false});
+
+  /// From home search tap: focus the purchase log search field.
+  final bool requestSearchFocus;
 
   @override
   ConsumerState<EntriesPage> createState() => _EntriesPageState();
@@ -22,6 +25,7 @@ class EntriesPage extends ConsumerStatefulWidget {
 
 class _EntriesPageState extends ConsumerState<EntriesPage> {
   late final TextEditingController _searchCtrl;
+  final _searchFocus = FocusNode();
 
   @override
   void initState() {
@@ -29,6 +33,11 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
     _searchCtrl =
         TextEditingController(text: ref.read(entrySearchQueryProvider));
     _searchCtrl.addListener(_onSearchChanged);
+    if (widget.requestSearchFocus) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _searchFocus.requestFocus();
+      });
+    }
   }
 
   void _onSearchChanged() {
@@ -49,6 +58,7 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
   void dispose() {
     _searchCtrl.removeListener(_onSearchChanged);
     _searchCtrl.dispose();
+    _searchFocus.dispose();
     super.dispose();
   }
 
@@ -97,7 +107,7 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
       buf.write(
           'P/L ${NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(profit)}');
     }
-    return buf.isEmpty ? '—' : buf.toString();
+    return buf.isEmpty ? 'n/a' : buf.toString();
   }
 
   Future<void> _showFiltersSheet(BuildContext context, WidgetRef ref) async {
@@ -259,7 +269,7 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
       appBar: AppBar(
         title: searchQ.trim().isEmpty
             ? const Text('Purchase log')
-            : Text('Purchase log · "$searchQ"'),
+            : Text('Purchase log, "$searchQ"'),
         actions: [
           IconButton(
             tooltip: 'Suppliers & contacts',
@@ -297,6 +307,7 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
               listenable: _searchCtrl,
               builder: (context, _) {
                 return SearchBar(
+                  focusNode: _searchFocus,
                   controller: _searchCtrl,
                   hintText: 'Search items, notes…',
                   leading: const Icon(Icons.search_rounded),
@@ -330,10 +341,10 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
                 if (items.isEmpty) {
                   return HexaEmptyState(
                     icon: Icons.receipt_long_rounded,
-                    title: 'No entries yet',
+                    title: 'No purchases in your log yet',
                     subtitle:
                         'Add a purchase to see it here. Entries sync when you are online and signed in.',
-                    primaryActionLabel: 'Add entry',
+                    primaryActionLabel: 'Add purchase',
                     onPrimaryAction: () => showEntryCreateSheet(context),
                   );
                 }

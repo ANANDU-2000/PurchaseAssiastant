@@ -41,8 +41,9 @@ abstract final class HexaColors {
   static const accentAmber = Color(0xFFF59E0B);
 
   // === CHART COLORS ===
-  static const chartLandingCost = Color(0xFF2563EB);
-  static const chartSellingCost = Color(0xFF6366F1);
+  static const chartLandingCost = Color(0xFF3B82F6);
+  static const chartSellingCost = Color(0xFF10B981);
+  static const chartProfit = Color(0xFFF59E0B);
   static const chartPurple = Color(0xFF9B79E8);
   static const chartOrange = Color(0xFFFB923C);
   static const chartPink = Color(0xFFF472B6);

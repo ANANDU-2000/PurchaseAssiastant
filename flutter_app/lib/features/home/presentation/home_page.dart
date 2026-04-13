@@ -208,6 +208,40 @@ class _HomePageState extends ConsumerState<HomePage>
                 ),
               ),
             ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                child: Material(
+                  color: cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => context.go('/entries?focusSearch=1'),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 12),
+                      child: Row(
+                        children: [
+                          Icon(Icons.search_rounded,
+                              color: cs.onSurfaceVariant, size: 22),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Search purchase log…',
+                              style: tt.bodyMedium?.copyWith(
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                          Icon(Icons.chevron_right_rounded,
+                              color: cs.onSurfaceVariant, size: 20),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
             SliverPadding(
               padding: EdgeInsets.fromLTRB(
                 16,
@@ -245,7 +279,7 @@ class _HomePageState extends ConsumerState<HomePage>
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _HeroProfitCard(
-                          profitText: empty ? '—' : _inr(d.totalProfit),
+                          profitText: empty ? _inr(0) : _inr(d.totalProfit),
                           changePct: mom,
                           periodLabel: dashboardPeriodLabel(period),
                           rangeCaption: _rangeCaption(period),
@@ -609,7 +643,7 @@ class _WeekTrendExpansion extends StatelessWidget {
             style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
           ),
           subtitle: Text(
-            'Last 7 days · expand',
+            'Last 7 days (tap to expand)',
             style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
           ),
           initiallyExpanded: false,
@@ -675,7 +709,7 @@ class _DatePeriodPill extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final borderColor = selected
-        ? HexaColors.primaryNavy
+        ? HexaColors.brandTeal
         : (isDark
             ? const Color(0x20FFFFFF)
             : cs.outline.withValues(alpha: 0.45));
@@ -691,7 +725,7 @@ class _DatePeriodPill extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: selected ? HexaColors.primaryNavy : Colors.transparent,
+            color: selected ? HexaColors.brandTeal : Colors.transparent,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: borderColor,
@@ -834,7 +868,7 @@ class _StatsGrid extends StatelessWidget {
             Expanded(
               child: _StatCard(
                 label: 'Purchase ₹',
-                value: purchase != null ? inr(purchase!) : '—',
+                value: purchase != null ? inr(purchase!) : inr(0),
                 stripe: HexaColors.chartLandingCost,
                 icon: Icons.shopping_bag_outlined,
                 iconTint: HexaColors.chartLandingCost,
@@ -844,7 +878,7 @@ class _StatsGrid extends StatelessWidget {
             Expanded(
               child: _StatCard(
                 label: 'Profit ₹',
-                value: profit != null ? inr(profit!) : '—',
+                value: profit != null ? inr(profit!) : inr(0),
                 stripe: HexaColors.profit,
                 icon: Icons.trending_up_rounded,
                 iconTint: HexaColors.profit,
@@ -860,7 +894,7 @@ class _StatsGrid extends StatelessWidget {
                 label: 'Margin %',
                 value: marginPct != null
                     ? '${marginPct!.toStringAsFixed(1)}%'
-                    : '—',
+                    : '0%',
                 stripe: HexaColors.accentAmber,
                 icon: Icons.percent_rounded,
                 iconTint: HexaColors.accentAmber,
@@ -870,7 +904,7 @@ class _StatsGrid extends StatelessWidget {
             Expanded(
               child: _StatCard(
                 label: 'Count',
-                value: count > 0 ? '$count' : '—',
+                value: '$count',
                 stripe: HexaColors.chartPurple,
                 icon: Icons.receipt_long_outlined,
                 iconTint: HexaColors.chartPurple,
@@ -884,7 +918,7 @@ class _StatsGrid extends StatelessWidget {
             Expanded(
               child: _StatCard(
                 label: 'Qty (base)',
-                value: qtyBase != null ? qtyBase!.toStringAsFixed(1) : '—',
+                value: qtyBase != null ? qtyBase!.toStringAsFixed(1) : '0',
                 stripe: HexaColors.chartOrange,
                 icon: Icons.scale_outlined,
                 iconTint: HexaColors.chartOrange,
@@ -894,7 +928,7 @@ class _StatsGrid extends StatelessWidget {
             Expanded(
               child: _StatCard(
                 label: 'Avg/Purchase',
-                value: avgPurchase != null ? inr(avgPurchase!) : '—',
+                value: avgPurchase != null ? inr(avgPurchase!) : inr(0),
                 stripe: HexaColors.chartPink,
                 icon: Icons.bar_chart_rounded,
                 iconTint: HexaColors.chartPink,
@@ -1027,19 +1061,12 @@ class _SignalsEmptyState extends StatelessWidget {
               size: 48, color: HexaColors.primaryMid.withValues(alpha: 0.4)),
           const SizedBox(height: 14),
           Text(
-            'No purchases yet',
+            'Record a purchase to see profit signals here.',
+            textAlign: TextAlign.center,
             style: tt.titleSmall?.copyWith(
                 fontWeight: FontWeight.w700,
                 color: cs.onSurface,
                 fontSize: 15),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Add your first entry to see profit signals',
-            textAlign: TextAlign.center,
-            style: tt.bodySmall?.copyWith(
-                color: cs.onSurfaceVariant,
-                fontSize: 12),
           ),
           const SizedBox(height: 16),
           SizedBox(
@@ -1063,11 +1090,11 @@ class _SignalsEmptyState extends StatelessWidget {
                   child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.add_rounded,
+                      Icon(Icons.add_shopping_cart_rounded,
                           color: HexaColors.primaryMid, size: 20),
                       SizedBox(width: 6),
                       Text(
-                        '+ Add Purchase',
+                        '+ New purchase',
                         style: TextStyle(
                           fontWeight: FontWeight.w800,
                           color: HexaColors.primaryMid,
@@ -1117,7 +1144,7 @@ class _SignalsContent extends StatelessWidget {
           icon: Icons.emoji_events_rounded,
           iconColor: HexaColors.warning,
           title: 'Top item',
-          subtitle: '${hi.topItem!} · ${inr(hi.topItemProfit ?? 0)}',
+          subtitle: '${hi.topItem!}, ${inr(hi.topItemProfit ?? 0)}',
         ),
       );
     }
@@ -1131,7 +1158,7 @@ class _SignalsContent extends StatelessWidget {
           icon: Icons.trending_down_rounded,
           iconColor: HexaColors.loss,
           title: 'Needs attention',
-          subtitle: '${hi.worstItem!} · ${inr(hi.worstItemProfit!)}',
+          subtitle: '${hi.worstItem!}, ${inr(hi.worstItemProfit!)}',
         ),
       );
     }
@@ -1144,7 +1171,7 @@ class _SignalsContent extends StatelessWidget {
           iconColor: HexaColors.primaryMid,
           title: 'Best supplier',
           subtitle:
-              '${hi.bestSupplierName!} · ${inr(hi.bestSupplierProfit ?? 0)}',
+              '${hi.bestSupplierName!}, ${inr(hi.bestSupplierProfit ?? 0)}',
         ),
       );
     }
@@ -1266,114 +1293,99 @@ class _QuickActionCards extends StatelessWidget {
     final sideIcon = isDark ? Colors.white : cs.primary;
     final sideLabel =
         isDark ? HexaColors.textSecondary : cs.onSurfaceVariant;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(
-          flex: 2,
-          child: Material(
-            color: HexaColors.primaryMid.withValues(alpha: 0.12),
+    const h = 64.0;
+    Widget cell({
+      required VoidCallback onTap,
+      required Widget child,
+      Color? fill,
+      Color? borderC,
+    }) {
+      return Expanded(
+        child: Material(
+          color: fill ?? sideCardBg,
+          borderRadius: BorderRadius.circular(14),
+          child: InkWell(
             borderRadius: BorderRadius.circular(14),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(14),
-              onTap: onAddEntry,
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: HexaColors.primaryMid.withValues(alpha: 0.4),
+            onTap: onTap,
+            child: Container(
+              height: h,
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: borderC ?? sideBorder,
+                ),
+              ),
+              child: child,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        cell(
+          onTap: onAddEntry,
+          fill: HexaColors.primaryMid.withValues(alpha: 0.12),
+          borderC: HexaColors.primaryMid.withValues(alpha: 0.4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.add_shopping_cart_rounded,
+                  size: 22, color: HexaColors.primaryMid),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  'New purchase',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: tt.labelLarge?.copyWith(
+                    color: HexaColors.primaryMid,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12,
                   ),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.add_rounded,
-                        size: 24, color: HexaColors.primaryMid),
-                    const SizedBox(width: 6),
-                    Text(
-                      'New Entry',
-                      style: tt.labelLarge?.copyWith(
-                          color: HexaColors.primaryMid,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 13),
-                    ),
-                  ],
-                ),
               ),
-            ),
+            ],
           ),
         ),
         const SizedBox(width: 8),
-        Expanded(
-          child: Material(
-            color: sideCardBg,
-            borderRadius: BorderRadius.circular(14),
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: onScan,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: sideBorder),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.document_scanner_outlined,
-                        size: 22, color: sideIcon),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Scan',
-                      textAlign: TextAlign.center,
-                      style: tt.labelSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: sideLabel,
-                          fontSize: 12),
-                    ),
-                  ],
-                ),
+        cell(
+          onTap: onScan,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.document_scanner_outlined,
+                  size: 22, color: sideIcon),
+              const SizedBox(height: 4),
+              Text(
+                'Scan',
+                style: tt.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: sideLabel,
+                    fontSize: 11),
               ),
-            ),
+            ],
           ),
         ),
         const SizedBox(width: 8),
-        Expanded(
-          child: Material(
-            color: sideCardBg,
-            borderRadius: BorderRadius.circular(14),
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: onReports,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: sideBorder),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.bar_chart_rounded,
-                        size: 22, color: sideIcon),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Reports',
-                      textAlign: TextAlign.center,
-                      style: tt.labelSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: sideLabel,
-                          fontSize: 12),
-                    ),
-                  ],
-                ),
+        cell(
+          onTap: onReports,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.bar_chart_rounded, size: 22, color: sideIcon),
+              const SizedBox(height: 4),
+              Text(
+                'Reports',
+                style: tt.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: sideLabel,
+                    fontSize: 11),
               ),
-            ),
+            ],
           ),
         ),
       ],

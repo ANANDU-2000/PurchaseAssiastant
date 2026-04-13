@@ -1744,7 +1744,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                     decoration: InputDecoration(
                       labelText: 'Quick line',
                       hintText: 'e.g. rice 50kg 42 ravi',
-                      prefixIcon: const Icon(Icons.bolt_rounded,
+                      prefixIcon: const Icon(Icons.add_shopping_cart_rounded,
                           color: HexaColors.primaryMid),
                       suffixIcon: IconButton(
                         tooltip: 'Parse into line 1',
@@ -1971,7 +1971,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                           decoration: InputDecoration(
                             labelText: 'Quick line',
                             hintText: 'e.g. rice 50kg 42 ravi',
-                            prefixIcon: const Icon(Icons.bolt_rounded,
+                            prefixIcon: const Icon(Icons.add_shopping_cart_rounded,
                                 color: HexaColors.primaryMid),
                             suffixIcon: IconButton(
                               tooltip: 'Parse into line 1',
@@ -2787,6 +2787,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                   Expanded(
                     child: TextField(
                       controller: l.item,
+                      style: tt.bodyLarge,
                       onChanged: (_) => setState(() {
                         l.catalogItemId = null;
                         l.catalogVariantId = null;
@@ -2794,6 +2795,8 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                       decoration: const InputDecoration(
                         labelText: 'Item *',
                         prefixIcon: Icon(Icons.inventory_2_outlined),
+                        filled: true,
+                        fillColor: Color(0xFFF1F5F9),
                       ),
                     ),
                   ),
@@ -2848,12 +2851,13 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               TextField(
                 controller: l.qty,
                 keyboardType: TextInputType.number,
+                style: tt.bodyLarge,
                 onChanged: (_) => setState(() {}),
                 decoration: InputDecoration(
                   labelText: l.unit == 'bag' ? 'Bags *' : 'Quantity *',
                   prefixIcon: const Icon(Icons.numbers_rounded),
                   filled: true,
-                  fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.35),
+                  fillColor: const Color(0xFFF1F5F9),
                 ),
               ),
               if (l.unit == 'bag') ...[
@@ -2872,15 +2876,16 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               TextField(
                 controller: l.purchase,
                 keyboardType: TextInputType.number,
+                style: tt.bodyLarge,
                 onChanged: (_) => setState(() {}),
                 decoration: InputDecoration(
                   labelText: l.unit == 'bag'
                       ? 'Landed cost / bag (₹) *'
                       : 'Landed cost / unit (₹) *',
                   prefixIcon: const Icon(Icons.currency_rupee_rounded),
-                  helperText: 'What you paid — matches your invoice per unit',
+                  helperText: 'What you paid, matches your invoice per unit',
                   filled: true,
-                  fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.35),
+                  fillColor: const Color(0xFFF1F5F9),
                 ),
               ),
               SmartPricePanel(
@@ -2896,6 +2901,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               TextField(
                 controller: l.selling,
                 keyboardType: TextInputType.number,
+                style: tt.bodyLarge,
                 onChanged: (_) => setState(() {}),
                 decoration: InputDecoration(
                   labelText: l.unit == 'bag'
@@ -2903,7 +2909,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                       : 'Selling price / unit',
                   prefixIcon: const Icon(Icons.sell_outlined),
                   filled: true,
-                  fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.35),
+                  fillColor: const Color(0xFFF1F5F9),
                 ),
               ),
               SmartPricePanel(

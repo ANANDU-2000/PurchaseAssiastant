@@ -127,7 +127,7 @@ Widget _trendCell(String? t) {
       );
     default:
       return Text(
-        '—',
+        'n/a',
         style: TextStyle(
             color: HexaColors.textSecondary.withValues(alpha: 0.85),
             fontSize: 12),
@@ -137,7 +137,7 @@ Widget _trendCell(String? t) {
 
 Widget _categoryBestChip(String? name, TextTheme tt) {
   if (name == null || name.isEmpty) {
-    return Text('—',
+    return Text('n/a',
         style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary));
   }
   return Chip(
@@ -253,48 +253,50 @@ List<Map<String, dynamic>> _filterQuery(
       .toList();
 }
 
-class _AnalyticsDateChip extends StatelessWidget {
-  const _AnalyticsDateChip({required this.label, required this.onTap});
+DateTime _analyticsDayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: Material(
-        color: HexaColors.surfaceElevated,
-        borderRadius: BorderRadius.circular(20),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            child: Text(
-              label,
-              style: tt.labelMedium?.copyWith(
-                color: HexaColors.textSecondary,
-                fontWeight: FontWeight.w700,
-                fontSize: 12,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
+/// Which preset matches the current range, or `custom`.
+String _analyticsPresetId(({DateTime from, DateTime to}) range, DateTime now) {
+  final today = _analyticsDayOnly(now);
+  final fd = _analyticsDayOnly(range.from);
+  final td = _analyticsDayOnly(range.to);
+  final yest = today.subtract(const Duration(days: 1));
+  if (fd == today && td == today) return 'today';
+  if (fd == yest && td == yest) return 'yesterday';
+  final weekStart = today.subtract(Duration(days: today.weekday - 1));
+  final monthStart = DateTime(now.year, now.month, 1);
+  final yearStart = DateTime(now.year, 1, 1);
+  if (fd == weekStart && td == today) return 'this_week';
+  if (fd == monthStart && td == today) return 'this_month';
+  if (fd == yearStart && td == today) return 'this_year';
+  if (fd == today.subtract(const Duration(days: 6)) && td == today) {
+    return 'last_7';
   }
+  if (fd == today.subtract(const Duration(days: 29)) && td == today) {
+    return 'last_30';
+  }
+  final firstThis = DateTime(now.year, now.month, 1);
+  final lastPrev = firstThis.subtract(const Duration(days: 1));
+  final firstPrev = DateTime(lastPrev.year, lastPrev.month, 1);
+  if (fd == firstPrev && td == _analyticsDayOnly(lastPrev)) {
+    return 'last_month';
+  }
+  return 'custom';
 }
 
-class AnalyticsPage extends ConsumerWidget {
+class AnalyticsPage extends ConsumerStatefulWidget {
   const AnalyticsPage({super.key});
 
+  @override
+  ConsumerState<AnalyticsPage> createState() => _AnalyticsPageState();
+}
+
+class _AnalyticsPageState extends ConsumerState<AnalyticsPage> {
   String _inr(num n) =>
       NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
           .format(n);
 
-  Future<void> _pickFrom(BuildContext context, WidgetRef ref) async {
+  Future<void> _pickFrom(BuildContext context) async {
     final range = ref.read(analyticsDateRangeProvider);
     final picked = await showDatePicker(
       context: context,
@@ -305,11 +307,11 @@ class AnalyticsPage extends ConsumerWidget {
     if (picked != null) {
       ref.read(analyticsDateRangeProvider.notifier).state =
           (from: picked, to: range.to);
-      _invalidateTables(ref);
+      _invalidateTables();
     }
   }
 
-  Future<void> _pickTo(BuildContext context, WidgetRef ref) async {
+  Future<void> _pickTo(BuildContext context) async {
     final range = ref.read(analyticsDateRangeProvider);
     final picked = await showDatePicker(
       context: context,
@@ -320,16 +322,55 @@ class AnalyticsPage extends ConsumerWidget {
     if (picked != null) {
       ref.read(analyticsDateRangeProvider.notifier).state =
           (from: range.from, to: picked);
-      _invalidateTables(ref);
+      _invalidateTables();
     }
   }
 
-  void _preset(WidgetRef ref, {required DateTime from, required DateTime to}) {
+  void _preset({required DateTime from, required DateTime to}) {
     ref.read(analyticsDateRangeProvider.notifier).state = (from: from, to: to);
-    _invalidateTables(ref);
+    _invalidateTables();
   }
 
-  void _invalidateTables(WidgetRef ref) {
+  void _applyPresetId(String id, DateTime now) {
+    final today = _analyticsDayOnly(now);
+    switch (id) {
+      case 'today':
+        _preset(from: today, to: today);
+        break;
+      case 'yesterday':
+        final y = today.subtract(const Duration(days: 1));
+        _preset(from: y, to: y);
+        break;
+      case 'this_week':
+        _preset(
+            from: today.subtract(Duration(days: today.weekday - 1)), to: today);
+        break;
+      case 'this_month':
+        _preset(from: DateTime(now.year, now.month, 1), to: today);
+        break;
+      case 'this_year':
+        _preset(from: DateTime(now.year, 1, 1), to: today);
+        break;
+      case 'last_7':
+        _preset(
+            from: today.subtract(const Duration(days: 6)), to: today);
+        break;
+      case 'last_30':
+        _preset(
+            from: today.subtract(const Duration(days: 29)), to: today);
+        break;
+      case 'last_month':
+        final firstThis = DateTime(now.year, now.month, 1);
+        final lastPrev = firstThis.subtract(const Duration(days: 1));
+        final firstPrev = DateTime(lastPrev.year, lastPrev.month, 1);
+        _preset(from: firstPrev, to: _analyticsDayOnly(lastPrev));
+        break;
+      default:
+        break;
+    }
+  }
+
+  void _invalidateTables() {
     ref.invalidate(analyticsKpiProvider);
     ref.invalidate(analyticsDailyProfitProvider);
     ref.invalidate(analyticsItemsTableProvider);
@@ -340,17 +381,25 @@ class AnalyticsPage extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final range = ref.watch(analyticsDateRangeProvider);
     final tt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
     final fmt = DateFormat.yMMMd();
 
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final monthStart = DateTime(now.year, now.month, 1);
-    final weekStart = today.subtract(Duration(days: today.weekday - 1));
-    final yearStart = DateTime(now.year, 1, 1);
+    final presetId = _analyticsPresetId(range, now);
+    const presetLabels = <String, String>{
+      'last_7': 'Last 7 days',
+      'last_30': 'Last 30 days',
+      'today': 'Today',
+      'yesterday': 'Yesterday',
+      'this_week': 'This week',
+      'this_month': 'This month',
+      'this_year': 'This year',
+      'last_month': 'Last month',
+      'custom': 'Custom range',
+    };
 
     return DefaultTabController(
       length: 5,
@@ -369,14 +418,14 @@ class AnalyticsPage extends ConsumerWidget {
           ),
           actions: const [AppSettingsAction()],
           bottom: TabBar(
-            isScrollable: true,
+            isScrollable: false,
             labelColor: cs.primary,
             unselectedLabelColor: cs.onSurfaceVariant,
             indicatorColor: cs.primary,
             tabs: const [
               Tab(text: 'Overview'),
               Tab(text: 'Items'),
-              Tab(text: 'Categories'),
+              Tab(text: 'Cats'),
               Tab(text: 'Suppliers'),
               Tab(text: 'Brokers'),
             ],
@@ -401,7 +450,7 @@ class AnalyticsPage extends ConsumerWidget {
                         ),
                       ),
                       TextButton.icon(
-                        onPressed: () => _pickFrom(context, ref),
+                        onPressed: () => _pickFrom(context),
                         icon:
                             const Icon(Icons.calendar_month_rounded, size: 18),
                         label: const Text('From'),
@@ -409,7 +458,7 @@ class AnalyticsPage extends ConsumerWidget {
                             foregroundColor: HexaColors.primaryMid),
                       ),
                       TextButton.icon(
-                        onPressed: () => _pickTo(context, ref),
+                        onPressed: () => _pickTo(context),
                         icon: const Icon(Icons.event_rounded, size: 18),
                         label: const Text('To'),
                         style: TextButton.styleFrom(
@@ -418,57 +467,22 @@ class AnalyticsPage extends ConsumerWidget {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        _AnalyticsDateChip(
-                            label: 'Today',
-                            onTap: () => _preset(ref, from: today, to: today)),
-                        _AnalyticsDateChip(
-                          label: 'Yesterday',
-                          onTap: () {
-                            final y = today.subtract(const Duration(days: 1));
-                            _preset(ref, from: y, to: y);
-                          },
+                  DropdownButton<String>(
+                    value: presetId,
+                    isExpanded: true,
+                    borderRadius: BorderRadius.circular(12),
+                    underline: const SizedBox.shrink(),
+                    items: [
+                      for (final e in presetLabels.entries)
+                        DropdownMenuItem<String>(
+                          value: e.key,
+                          child: Text(e.value),
                         ),
-                        _AnalyticsDateChip(
-                            label: 'This week',
-                            onTap: () =>
-                                _preset(ref, from: weekStart, to: today)),
-                        _AnalyticsDateChip(
-                            label: 'This month',
-                            onTap: () =>
-                                _preset(ref, from: monthStart, to: today)),
-                        _AnalyticsDateChip(
-                            label: 'This year',
-                            onTap: () =>
-                                _preset(ref, from: yearStart, to: today)),
-                        _AnalyticsDateChip(
-                          label: 'Last 7 days',
-                          onTap: () => _preset(ref,
-                              from: today.subtract(const Duration(days: 6)),
-                              to: today),
-                        ),
-                        _AnalyticsDateChip(
-                          label: 'Last 30 days',
-                          onTap: () => _preset(ref,
-                              from: today.subtract(const Duration(days: 29)),
-                              to: today),
-                        ),
-                        _AnalyticsDateChip(
-                          label: 'Last month',
-                          onTap: () {
-                            final firstThis = DateTime(now.year, now.month, 1);
-                            final lastPrev =
-                                firstThis.subtract(const Duration(days: 1));
-                            final firstPrev =
-                                DateTime(lastPrev.year, lastPrev.month, 1);
-                            _preset(ref, from: firstPrev, to: lastPrev);
-                          },
-                        ),
-                      ],
-                    ),
+                    ],
+                    onChanged: (v) {
+                      if (v == null || v == 'custom') return;
+                      _applyPresetId(v, now);
+                    },
                   ),
                 ],
               ),
@@ -768,7 +782,7 @@ class _ProfitTrendCard extends StatelessWidget {
                   fontWeight: FontWeight.w800, color: HexaColors.primaryNavy)),
           const SizedBox(height: 12),
           SizedBox(
-            height: 200,
+            height: 140,
             child: allZero
                 ? Center(
                     child: Column(
@@ -798,8 +812,9 @@ class _ProfitTrendCard extends StatelessWidget {
                       ],
                     ),
                   )
-                : LineChart(
-                    LineChartData(
+                : RepaintBoundary(
+                    child: LineChart(
+                      LineChartData(
                       minY: 0,
                       maxY: maxY + padY,
                       gridData: FlGridData(
@@ -908,6 +923,7 @@ class _ProfitTrendCard extends StatelessWidget {
                         ),
                       ],
                     ),
+                    ),
                   ),
           ),
         ],
@@ -955,7 +971,8 @@ class _ItemCostRevenueBars extends StatelessWidget {
       final tp = (r['total_profit'] as num?)?.toDouble() ?? 0;
       final land = al * tq;
       final sell = land + tp;
-      maxY = math.max(maxY, math.max(land, sell));
+      final profitRod = (sell - land).clamp(0.0, double.maxFinite);
+      maxY = math.max(maxY, math.max(land, math.max(sell, profitRod)));
     }
     final groups = <BarChartGroupData>[];
     for (var i = 0; i < top.length; i++) {
@@ -965,6 +982,7 @@ class _ItemCostRevenueBars extends StatelessWidget {
       final tp = (r['total_profit'] as num?)?.toDouble() ?? 0;
       final land = al * tq;
       final sell = land + tp;
+      final profitRod = (sell - land).clamp(0.0, double.maxFinite);
       groups.add(
         BarChartGroupData(
           x: i,
@@ -981,6 +999,13 @@ class _ItemCostRevenueBars extends StatelessWidget {
               toY: sell,
               width: 10,
               color: HexaColors.chartSellingCost,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(4)),
+            ),
+            BarChartRodData(
+              toY: profitRod,
+              width: 8,
+              color: HexaColors.chartProfit,
               borderRadius:
                   const BorderRadius.vertical(top: Radius.circular(4)),
             ),
@@ -1026,12 +1051,23 @@ class _ItemCostRevenueBars extends StatelessWidget {
               Text('Selling revenue',
                   style:
                       tt.labelSmall?.copyWith(color: HexaColors.textSecondary)),
+              const SizedBox(width: 16),
+              Container(
+                  width: 10,
+                  height: 10,
+                  decoration: const BoxDecoration(
+                      color: HexaColors.chartProfit, shape: BoxShape.circle)),
+              const SizedBox(width: 6),
+              Text('Profit',
+                  style:
+                      tt.labelSmall?.copyWith(color: HexaColors.textSecondary)),
             ],
           ),
           const SizedBox(height: 12),
           SizedBox(
-            height: 200,
-            child: BarChart(
+            height: 160,
+            child: RepaintBoundary(
+              child: BarChart(
               BarChartData(
                 maxY: maxY * 1.08,
                 gridData: FlGridData(
@@ -1085,6 +1121,7 @@ class _ItemCostRevenueBars extends StatelessWidget {
                 alignment: BarChartAlignment.spaceAround,
                 groupsSpace: 20,
               ),
+            ),
             ),
           ),
         ],
@@ -1152,7 +1189,7 @@ class _CategoryProfitDonut extends StatelessWidget {
                   fontWeight: FontWeight.w800, color: HexaColors.primaryNavy)),
           const SizedBox(height: 12),
           SizedBox(
-            height: 180,
+            height: 140,
             child: Stack(
               alignment: Alignment.center,
               children: [
@@ -1208,8 +1245,7 @@ class _CategoryProfitDonut extends StatelessWidget {
                   ),
                   label: Text(
                     rows[i]['category']?.toString() ?? '',
-                    style:
-                        tt.labelSmall?.copyWith(color: HexaColors.primaryNavy),
+                    style: tt.labelSmall?.copyWith(color: Colors.white),
                   ),
                   backgroundColor: HexaColors.surfaceElevated,
                   side: const BorderSide(color: HexaColors.border),
@@ -2277,34 +2313,38 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
                                       childrenPadding:
                                           const EdgeInsets.fromLTRB(
                                               14, 0, 14, 14),
-                                      title: Text(
-                                        '${medalFor(sid)}${r['supplier_name']?.toString() ?? '—'}',
-                                        style: tt.titleSmall?.copyWith(
-                                            fontWeight: FontWeight.w800),
-                                      ),
-                                      subtitle: Padding(
-                                        padding: const EdgeInsets.only(top: 6),
-                                        child: Row(
-                                          children: [
-                                            Text('${r['deals'] ?? '—'} deals',
-                                                style: tt.labelSmall?.copyWith(
-                                                    color: HexaColors
-                                                        .textSecondary)),
-                                            const Text(' · ',
-                                                style: TextStyle(
-                                                    color: HexaColors
-                                                        .textSecondary)),
-                                            Text(
-                                              widget.inr(profit),
-                                              style: tt.labelSmall?.copyWith(
-                                                fontWeight: FontWeight.w900,
-                                                color: profit >= 0
-                                                    ? HexaColors.profit
-                                                    : HexaColors.loss,
+                                      title: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            '${medalFor(sid)}${r['supplier_name']?.toString() ?? 'Supplier'}',
+                                            style: tt.bodyMedium?.copyWith(
+                                                fontWeight: FontWeight.w700),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Row(
+                                            children: [
+                                              Text(
+                                                '${(r['deals'] as num?) ?? 0} deals, ',
+                                                style: tt.bodySmall?.copyWith(
+                                                  color: HexaColors
+                                                      .textSecondary,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
                                               ),
-                                            ),
-                                          ],
-                                        ),
+                                              Text(
+                                                widget.inr(profit),
+                                                style: tt.bodySmall?.copyWith(
+                                                  fontWeight: FontWeight.w900,
+                                                  color: profit >= 0
+                                                      ? HexaColors.profit
+                                                      : HexaColors.loss,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
                                       ),
                                       children: [
                                         Text('Margin profile',

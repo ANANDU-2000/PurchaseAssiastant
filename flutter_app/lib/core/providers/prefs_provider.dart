@@ -7,6 +7,9 @@ import '../notifications/local_notifications_service.dart';
 /// SharedPreferences key for notification opt-in (also used at app startup).
 const kNotificationsOptInKey = 'pref_notifications_opt_in';
 
+/// Local override when API has no assistant number (Settings + shell WhatsApp).
+const kWhatsappAssistantOverrideKey = 'whatsapp_assistant_override';
+
 final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
   throw UnimplementedError(
       'sharedPreferencesProvider must be overridden in ProviderScope');

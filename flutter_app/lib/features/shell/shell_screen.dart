@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/auth/session_notifier.dart';
 import '../../core/providers/connectivity_provider.dart';
+import '../../core/providers/prefs_provider.dart';
 import '../../core/theme/hexa_colors.dart';
 import '../entries/presentation/entry_create_sheet.dart';
 
@@ -218,29 +219,24 @@ class ShellScreen extends ConsumerWidget {
 Future<void> _openWhatsappAssistant(BuildContext context, WidgetRef ref) async {
   try {
     final m = await ref.read(hexaApiProvider).getWhatsappAssistantInfo();
-    final raw = m['assistant_e164']?.toString().trim();
+    var raw = m['assistant_e164']?.toString().trim();
+    if (raw == null || raw.isEmpty) {
+      raw = ref
+          .read(sharedPreferencesProvider)
+          .getString(kWhatsappAssistantOverrideKey)
+          ?.trim();
+    }
     if (raw == null || raw.isEmpty) {
       if (!context.mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('WhatsApp assistant'),
-          content: const Text(
-            'No assistant number is configured yet. Ask your admin, or add the number in Settings.',
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Set your WhatsApp bot number in Settings'),
+          action: SnackBarAction(
+            label: 'Open',
+            onPressed: () {
+              if (context.mounted) context.push('/settings');
+            },
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('OK'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                context.push('/settings');
-              },
-              child: const Text('Open Settings'),
-            ),
-          ],
         ),
       );
       return;

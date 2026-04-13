@@ -201,7 +201,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                   path: '/entries',
                   name: 'entries',
-                  builder: (context, state) => const EntriesPage()),
+                  builder: (context, state) => EntriesPage(
+                        requestSearchFocus:
+                            state.uri.queryParameters['focusSearch'] == '1',
+                      )),
             ],
           ),
           StatefulShellBranch(

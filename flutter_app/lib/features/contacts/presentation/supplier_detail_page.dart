@@ -40,11 +40,13 @@ class _SupplierStatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: HexaColors.border.withValues(alpha: 0.9)),
+        border: Border.all(
+            color: cs.outlineVariant.withValues(alpha: 0.65)),
         boxShadow: HexaColors.cardShadow(context),
       ),
       child: Padding(
@@ -73,7 +75,7 @@ class _SupplierStatCard extends StatelessWidget {
                         child: Text(
                           label.toUpperCase(),
                           style: tt.labelSmall?.copyWith(
-                            color: HexaColors.textSecondary,
+                            color: cs.onSurfaceVariant,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 0.35,
                           ),
@@ -86,7 +88,7 @@ class _SupplierStatCard extends StatelessWidget {
                     value,
                     style: tt.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
-                        color: HexaColors.textPrimary),
+                        color: cs.onSurface),
                   ),
                 ],
               ),
@@ -312,7 +314,8 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
           final wa = s['whatsapp_number']?.toString();
           final bid = s['broker_id']?.toString();
           final loc = s['location']?.toString() ?? '';
-          final name = s['name']?.toString() ?? '—';
+          final name = s['name']?.toString() ?? 'n/a';
+          final cs = Theme.of(context).colorScheme;
           return RefreshIndicator(
             onRefresh: _reload,
             child: ListView(
@@ -322,13 +325,11 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(20),
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [HexaColors.primaryDeep, HexaColors.primaryMid],
-                    ),
-                    borderRadius: BorderRadius.all(Radius.circular(20)),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHigh,
+                    borderRadius: const BorderRadius.all(Radius.circular(20)),
+                    border: Border.all(
+                        color: cs.outlineVariant.withValues(alpha: 0.5)),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -336,7 +337,7 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                       Text(
                         name,
                         style: tt.headlineSmall?.copyWith(
-                            color: Colors.white,
+                            color: cs.onSurface,
                             fontWeight: FontWeight.w800,
                             fontSize: 22),
                       ),
@@ -345,14 +346,12 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                         Row(
                           children: [
                             Icon(Icons.place_outlined,
-                                size: 18,
-                                color: Colors.white.withValues(alpha: 0.85)),
+                                size: 18, color: cs.onSurfaceVariant),
                             const SizedBox(width: 6),
                             Expanded(
                                 child: Text(loc,
                                     style: tt.bodyMedium?.copyWith(
-                                        color: Colors.white
-                                            .withValues(alpha: 0.85)))),
+                                        color: cs.onSurfaceVariant))),
                           ],
                         ),
                       ],
@@ -360,37 +359,27 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                         const SizedBox(height: 8),
                         Text(phone,
                             style: tt.bodyMedium?.copyWith(
-                                color: Colors.white.withValues(alpha: 0.95))),
+                                color: cs.onSurface)),
                       ],
                       if (wa != null && wa.isNotEmpty) ...[
                         const SizedBox(height: 6),
                         Text('WhatsApp: $wa',
                             style: tt.bodySmall?.copyWith(
-                                color: Colors.white.withValues(alpha: 0.88))),
+                                color: cs.onSurfaceVariant)),
                       ],
                       const SizedBox(height: 14),
                       Wrap(
                         spacing: 10,
                         runSpacing: 8,
                         children: [
-                          OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.white,
-                              side: BorderSide(
-                                  color: Colors.white.withValues(alpha: 0.85)),
-                            ),
+                          FilledButton.tonalIcon(
                             onPressed: phone == null || phone.isEmpty
                                 ? null
                                 : () => _dial(phone),
                             icon: const Icon(Icons.call_rounded, size: 20),
                             label: const Text('Call'),
                           ),
-                          OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.white,
-                              side: BorderSide(
-                                  color: Colors.white.withValues(alpha: 0.85)),
-                            ),
+                          FilledButton.tonalIcon(
                             onPressed: wa == null || wa.isEmpty
                                 ? null
                                 : () => _openWhatsApp(wa),
@@ -407,18 +396,18 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                             _ChipPill(
                                 label: '7d',
                                 onTap: () => _preset(7),
-                                onGradient: true),
+                                onGradient: false),
                             _ChipPill(
                                 label: '30d',
                                 onTap: () => _preset(30),
-                                onGradient: true),
+                                onGradient: false),
                             _ChipPill(
                                 label: '90d',
                                 onTap: () => _preset(90),
-                                onGradient: true),
+                                onGradient: false),
                             _ChipPill(
                               label: 'YTD',
-                              onGradient: true,
+                              onGradient: false,
                               onTap: () {
                                 final n = DateTime.now();
                                 setState(() {
@@ -431,7 +420,7 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                             _ChipPill(
                                 label: 'All',
                                 onTap: () => _preset(0),
-                                onGradient: true),
+                                onGradient: false),
                           ],
                         ),
                       ),
@@ -439,7 +428,7 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                       Text(
                         '${fmt.format(_from)} – ${fmt.format(_to)}',
                         style: tt.labelMedium?.copyWith(
-                            color: Colors.white.withValues(alpha: 0.65)),
+                            color: cs.onSurfaceVariant),
                       ),
                     ],
                   ),
@@ -540,62 +529,62 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
     final tp = (m['total_profit'] as num?)?.toDouble() ?? 0;
     final pam = (m['purchase_amount'] as num?)?.toDouble() ?? 0;
     final margin = (m['profit_margin_pct'] as num?)?.toDouble() ?? 0;
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(
-                child: _SupplierStatCard(
-                    icon: Icons.receipt_long_rounded,
-                    label: 'Deals',
-                    value: '$deals',
-                    accent: const Color(0xFF1A6B8A))),
-            const SizedBox(width: 12),
-            Expanded(
-                child: _SupplierStatCard(
-                    icon: Icons.shopping_cart_outlined,
-                    label: 'Purchase',
-                    value: '₹${pam.toStringAsFixed(0)}',
-                    accent: const Color(0xFF3949AB))),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-                child: _SupplierStatCard(
-                    icon: Icons.scale_rounded,
-                    label: 'Total qty',
-                    value: tq.toStringAsFixed(1),
-                    accent: const Color(0xFF6A1B9A))),
-            const SizedBox(width: 12),
-            Expanded(
-                child: _SupplierStatCard(
-                    icon: Icons.price_change_outlined,
-                    label: 'Avg landing',
-                    value: '₹${al.toStringAsFixed(2)}',
-                    accent: const Color(0xFFFF9800))),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-                child: _SupplierStatCard(
-                    icon: Icons.trending_up_rounded,
-                    label: 'Total profit',
-                    value: '₹${tp.toStringAsFixed(0)}',
-                    accent: HexaColors.profit)),
-            const SizedBox(width: 12),
-            Expanded(
-                child: _SupplierStatCard(
-                    icon: Icons.percent_rounded,
-                    label: 'Avg margin',
-                    value: '${margin.toStringAsFixed(1)}%',
-                    accent: HexaColors.accentAmber)),
-          ],
-        ),
-      ],
+    const w = 152.0;
+    return SizedBox(
+      height: 120,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        children: [
+          SizedBox(
+              width: w,
+              child: _SupplierStatCard(
+                  icon: Icons.receipt_long_rounded,
+                  label: 'Deals',
+                  value: '$deals',
+                  accent: const Color(0xFF1A6B8A))),
+          const SizedBox(width: 12),
+          SizedBox(
+              width: w,
+              child: _SupplierStatCard(
+                  icon: Icons.shopping_cart_outlined,
+                  label: 'Purchase',
+                  value: '₹${pam.toStringAsFixed(0)}',
+                  accent: const Color(0xFF3949AB))),
+          const SizedBox(width: 12),
+          SizedBox(
+              width: w,
+              child: _SupplierStatCard(
+                  icon: Icons.scale_rounded,
+                  label: 'Total qty',
+                  value: tq.toStringAsFixed(1),
+                  accent: const Color(0xFF6A1B9A))),
+          const SizedBox(width: 12),
+          SizedBox(
+              width: w,
+              child: _SupplierStatCard(
+                  icon: Icons.price_change_outlined,
+                  label: 'Avg landing',
+                  value: '₹${al.toStringAsFixed(2)}',
+                  accent: const Color(0xFFFF9800))),
+          const SizedBox(width: 12),
+          SizedBox(
+              width: w,
+              child: _SupplierStatCard(
+                  icon: Icons.trending_up_rounded,
+                  label: 'Total profit',
+                  value: '₹${tp.toStringAsFixed(0)}',
+                  accent: HexaColors.profit)),
+          const SizedBox(width: 12),
+          SizedBox(
+              width: w,
+              child: _SupplierStatCard(
+                  icon: Icons.percent_rounded,
+                  label: 'Avg margin',
+                  value: '${margin.toStringAsFixed(1)}%',
+                  accent: HexaColors.accentAmber)),
+        ],
+      ),
     );
   }
 }
@@ -640,8 +629,8 @@ class _PerfBar extends StatelessWidget {
         ? HexaColors.profit
         : (pct >= 40 ? HexaColors.accentAmber : HexaColors.loss);
     final caption = !hasSupplierData
-        ? '${pct.toStringAsFixed(0)}% — No data yet. Add purchases from this supplier'
-        : '${pct.toStringAsFixed(0)}% — ${good ? 'Better than many on price' : 'Negotiate harder on landing'}';
+        ? '${pct.toStringAsFixed(0)}%: No data yet. Add purchases from this supplier'
+        : '${pct.toStringAsFixed(0)}%: ${good ? 'Better than many on price' : 'Negotiate harder on landing'}';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
