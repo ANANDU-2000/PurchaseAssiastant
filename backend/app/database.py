@@ -2,6 +2,7 @@ import logging
 import ssl
 from collections.abc import AsyncGenerator
 
+from sqlalchemy.engine.url import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import get_settings
@@ -27,6 +28,15 @@ _pooler = (settings.database_pooler_url or "").strip()
 _effective_url = _pooler if _pooler else settings.database_url
 if not _sqlite:
     _effective_url = _normalize_postgres_async_url(_effective_url)
+
+# Optional: password only in DATABASE_POOLER_PASSWORD — keeps @/#/ etc. out of the URI string.
+if _pooler and settings.database_pooler_password and settings.database_pooler_password.strip():
+    try:
+        _u = make_url(_effective_url)
+        _effective_url = str(_u.set(password=settings.database_pooler_password.strip()))
+        logger.info("Applied DATABASE_POOLER_PASSWORD (URI should omit password; userinfo user@host only).")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Could not merge DATABASE_POOLER_PASSWORD into pooler URL: %s", e)
 
 if _pooler:
     logger.info("Using DATABASE_POOLER_URL for SQLAlchemy engine")
@@ -65,6 +75,19 @@ if not _sqlite and (
     else:
         _connect_args["ssl"] = True
     _connect_args.setdefault("timeout", 120)
+
+try:
+    _diag = make_url(_effective_url)
+    if not _sqlite and _diag.host and "@" in _diag.host:
+        logger.error(
+            "Database URL is misparsed (hostname contains '@'). Put the password in "
+            "DATABASE_POOLER_PASSWORD and set DATABASE_POOLER_URL to "
+            "postgresql+asyncpg://USER@HOST:PORT/DB with no password in the string."
+        )
+    elif not _sqlite and _pooler and _diag.host:
+        logger.info("Pooler DB host=%s port=%s database=%s", _diag.host, _diag.port, _diag.database)
+except Exception:  # noqa: BLE001
+    pass
 
 engine = create_async_engine(
     _effective_url,

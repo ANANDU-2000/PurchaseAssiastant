@@ -60,6 +60,10 @@ class Settings(BaseSettings):
     # On some hosts (e.g. Render) direct db.<ref>.supabase.co:5432 can fail with "Network is unreachable";
     # set this to the pooler URL and keep DATABASE_URL as fallback or duplicate — engine uses this when set.
     database_pooler_url: str | None = None
+    # When set, overrides any password embedded in DATABASE_POOLER_URL. Use with a URI that has no
+    # password in the userinfo (postgresql+asyncpg://USER@HOST:PORT/DB) so special chars like @ in the
+    # password do not break parsing (avoids gaierror / "Name or service not known" on Render).
+    database_pooler_password: str | None = None
     # Dev-only: if TLS fails with CERTIFICATE_VERIFY_FAILED (AV/corporate proxy MITM), set true. Forbidden in production.
     database_ssl_insecure: bool = False
     redis_url: str | None = "redis://localhost:6379/0"
