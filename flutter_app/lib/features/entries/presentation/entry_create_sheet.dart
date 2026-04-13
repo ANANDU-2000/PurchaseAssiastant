@@ -6,11 +6,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/catalog_providers.dart';
+import '../../../core/providers/entry_quick_picks_provider.dart';
 import '../../../core/providers/contacts_hub_provider.dart';
 import '../../../core/providers/dashboard_provider.dart';
 import '../../../core/providers/entries_list_provider.dart';
@@ -31,13 +33,23 @@ Future<void> showEntryCreateSheet(BuildContext context) async {
     isScrollControlled: true,
     useSafeArea: true,
     showDragHandle: true,
-    backgroundColor: HexaColors.surfaceCard,
+    backgroundColor: Colors.white,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
     builder: (ctx) => Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-      child: const EntryCreateSheet(),
+      child: Theme(
+        data: ThemeData(
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: HexaColors.primaryMid,
+            brightness: Brightness.light,
+          ),
+          useMaterial3: true,
+          scaffoldBackgroundColor: Colors.white,
+        ),
+        child: const EntryCreateSheet(),
+      ),
     ),
   );
 }
@@ -68,6 +80,9 @@ class _LineControllers {
   /// Set when user picks a row from the master catalog (sent as catalog_item_id).
   String? catalogItemId;
   String? catalogVariantId;
+
+  /// Cash-register mode: type name instead of catalog pick (rare).
+  bool manualItemEntry = false;
 
   void dispose() {
     item.dispose();
@@ -105,6 +120,9 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
   /// Server-issued after a successful Preview; required to Save (confirm=true).
   String? _previewToken;
 
+  /// From GET /v1/me/whatsapp-assistant — for in-app "open WhatsApp" (same as Settings).
+  Map<String, dynamic>? _whatsappAssistant;
+
   _CommissionMode _commMode = _CommissionMode.totalRupees;
   bool _landingPriceSpike = false;
 
@@ -132,6 +150,37 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     super.initState();
     _commission.addListener(_onFormFieldChanged);
     _quickEntry.addListener(_onFormFieldChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_loadWhatsappAssistant());
+      unawaited(_prefetchEntryQuickPicks());
+    });
+  }
+
+  Future<void> _prefetchEntryQuickPicks() async {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    try {
+      await ref.read(entryQuickPicksProvider(session.primaryBusiness.id).future);
+    } catch (_) {}
+  }
+
+  Future<void> _loadWhatsappAssistant() async {
+    try {
+      final m = await ref.read(hexaApiProvider).getWhatsappAssistantInfo();
+      if (mounted) setState(() => _whatsappAssistant = m);
+    } catch (_) {
+      if (mounted) setState(() => _whatsappAssistant = null);
+    }
+  }
+
+  Future<void> _openWhatsappAssistantChat() async {
+    final raw = _whatsappAssistant?['assistant_e164']?.toString().trim();
+    if (raw == null || raw.isEmpty) return;
+    final digits = raw.replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty) return;
+    final uri = Uri.parse('https://wa.me/$digits');
+    if (!await canLaunchUrl(uri)) return;
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   @override
@@ -385,6 +434,30 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     }
   }
 
+  Future<void> _applyDefaultSupplierForCatalog(String? catalogItemId) async {
+    if (catalogItemId == null || catalogItemId.isEmpty) return;
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    EntryQuickPicks picks;
+    try {
+      picks = await ref.read(
+          entryQuickPicksProvider(session.primaryBusiness.id).future);
+    } catch (_) {
+      return;
+    }
+    final sid = picks.lastSupplierForCatalog(catalogItemId);
+    if (sid == null) return;
+    final suppliers = await ref.read(suppliersListProvider.future);
+    if (!mounted) return;
+    final supList = suppliers
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    setState(() {
+      _supplierId = sid;
+      _brokerId = _brokerIdForSupplier(supList, sid);
+    });
+  }
+
   Future<void> _pickCatalogForLine(int lineIndex) async {
     final cats = await ref.read(itemCategoriesListProvider.future);
     final items = await ref.read(catalogItemsListProvider.future);
@@ -393,10 +466,21 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
             content: Text(
-                'Add categories and items under Settings → Item catalog.')),
+                'Add categories and items under Catalog in the app first.')),
       );
       return;
     }
+    final session = ref.read(sessionProvider);
+    EntryQuickPicks? quickPicks;
+    if (session != null) {
+      try {
+        quickPicks = await ref
+            .read(entryQuickPicksProvider(session.primaryBusiness.id).future);
+      } catch (_) {
+        quickPicks = null;
+      }
+    }
+    if (!mounted) return;
     final catName = <String, String>{
       for (final c in cats) c['id'].toString(): c['name'].toString(),
     };
@@ -404,47 +488,35 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.white,
       showDragHandle: true,
       builder: (ctx) {
-        return DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.55,
-          minChildSize: 0.35,
-          maxChildSize: 0.9,
-          builder: (ctx, scroll) {
-            return ListView.builder(
-              controller: scroll,
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-              itemCount: items.length,
-              itemBuilder: (context, i) {
-                final it = items[i];
-                final name = it['name']?.toString() ?? '';
-                final cid = it['category_id']?.toString() ?? '';
-                final du = it['default_unit']?.toString();
-                final sub =
-                    '${catName[cid] ?? ''}${du != null && du.isNotEmpty ? ' · $du' : ''}';
-                return ListTile(
-                  title: Text(name,
-                      style: const TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: Text(sub),
-                  onTap: () {
-                    setState(() {
-                      l.catalogItemId = it['id']?.toString();
-                      l.item.text = name;
-                      l.category.text = catName[cid] ?? '';
-                      if (du != null &&
-                          (du == 'kg' ||
-                              du == 'box' ||
-                              du == 'piece' ||
-                              du == 'bag')) {
-                        l.unit = du;
-                      }
-                    });
-                    Navigator.pop(ctx);
-                  },
-                );
-              },
-            );
+        return _CatalogItemPickModal(
+          categories: cats,
+          items: items,
+          categoryNames: catName,
+          recentLines: quickPicks?.recentLines ?? const [],
+          topLines: quickPicks?.topLines ?? const [],
+          onPick: (it) {
+            final name = it['name']?.toString() ?? '';
+            final cid = it['category_id']?.toString() ?? '';
+            final du = it['default_unit']?.toString();
+            setState(() {
+              l.manualItemEntry = false;
+              l.catalogItemId = it['id']?.toString();
+              l.item.text = name;
+              l.category.text = catName[cid] ?? '';
+              l.catalogVariantId = null;
+              if (du != null &&
+                  (du == 'kg' ||
+                      du == 'box' ||
+                      du == 'piece' ||
+                      du == 'bag')) {
+                l.unit = du;
+              }
+            });
+            unawaited(_applyDefaultSupplierForCatalog(l.catalogItemId));
+            Navigator.pop(ctx);
           },
         );
       },
@@ -796,6 +868,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
         final cid = b['category_id']?.toString();
         setState(() {
           l.catalogItemId = b['id']?.toString();
+          l.manualItemEntry = false;
           if (cid != null && catNameById.containsKey(cid)) {
             l.category.text = catNameById[cid]!;
           }
@@ -834,6 +907,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       l.purchase.text = parsed.landing.toString();
       l.selling.text = parsed.selling != null ? parsed.selling!.toString() : '';
       l.catalogItemId = null;
+      l.manualItemEntry = true;
       if (parsed.supplierHint != null && suppliers.isNotEmpty) {
         final hint = parsed.supplierHint!.toLowerCase();
         Map<String, dynamic>? match;
@@ -1346,7 +1420,9 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
         return Stack(
           clipBehavior: Clip.none,
           children: [
-            ListView(
+            ColoredBox(
+              color: Colors.white,
+              child: ListView(
               controller: scrollController,
               physics: const ClampingScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 100),
@@ -1384,25 +1460,25 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     CircleAvatar(
-                      radius: 22,
+                      radius: 24,
                       backgroundColor:
-                          HexaColors.primaryLight.withValues(alpha: 0.9),
+                          HexaColors.primaryLight.withValues(alpha: 0.95),
                       child: const Icon(Icons.edit_note_rounded,
-                          color: HexaColors.primaryMid, size: 26),
+                          color: HexaColors.primaryMid, size: 28),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 14),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('New Entry',
+                          Text('New purchase',
                               style: tt.titleLarge
                                   ?.copyWith(fontWeight: FontWeight.w800)),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 6),
                           Text(
-                            'Preview → Confirm to save',
+                            'Fill below, then Preview — Save unlocks after a successful preview.',
                             style: tt.bodySmall?.copyWith(
-                                color: cs.onSurfaceVariant, height: 1.35),
+                                color: cs.onSurfaceVariant, height: 1.4),
                           ),
                         ],
                       ),
@@ -1416,244 +1492,483 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    OutlinedButton(
-                      onPressed: _busy ? null : () => Navigator.of(context).pop(),
-                      child: const Text('Cancel'),
-                    ),
-                    const Spacer(),
-                    FilledButton(
-                      onPressed: _busy
-                          ? null
-                          : (_previewToken != null && _previewToken!.isNotEmpty
-                              ? () {
-                                  HapticFeedback.mediumImpact();
-                                  unawaited(_finalizeSaveAfterPreview());
-                                }
-                              : null),
-                      child: const Text('Save'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: _quickEntry,
-                  enabled: !_busy,
-                  decoration: InputDecoration(
-                    labelText: 'Quick line',
-                    hintText: 'e.g. rice 50kg 42 ravi',
-                    prefixIcon: const Icon(Icons.bolt_rounded,
-                        color: HexaColors.primaryMid),
-                    suffixIcon: IconButton(
-                      tooltip: 'Parse into line 1',
-                      onPressed: _busy ? null : _parseQuickEntry,
-                      icon: const Icon(Icons.arrow_downward_rounded),
-                    ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed:
+                        _busy ? null : () => Navigator.of(context).pop(),
+                    icon: Icon(Icons.close_rounded, size: 20, color: cs.primary),
+                    label: const Text('Close'),
                   ),
-                  onSubmitted: (_) => _parseQuickEntry(),
-                  onChanged: (_) => setState(() {}),
                 ),
-                _quickLineParseChips(),
-                const SizedBox(height: 16),
-                Text('Supplier & broker',
-                    style:
-                        tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
                 const SizedBox(height: 8),
-                suppliersAsync.when(
-                  loading: () => const LinearProgressIndicator(),
-                  error: (_, __) => FriendlyLoadError(
-                    message: 'Could not load suppliers',
-                    onRetry: () => ref.invalidate(suppliersListProvider),
-                  ),
-                  data: (list) {
-                    final suppliers = list
-                        .map((e) => Map<String, dynamic>.from(e as Map))
-                        .toList();
-                    if (suppliers.isEmpty) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Material(
-                          color: HexaColors.primaryLight.withValues(alpha: 0.5),
-                          borderRadius: BorderRadius.circular(10),
-                          child: const ListTile(
-                            dense: true,
-                            leading: Icon(Icons.info_outline_rounded),
-                            title: Text('No suppliers yet — tap ＋ to add one'),
-                          ),
-                        ),
-                      );
-                    }
-                    final name = _selectedSupplierName(suppliers);
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: _busy
-                                  ? null
-                                  : () => _openSupplierPicker(suppliers),
-                              borderRadius: BorderRadius.circular(14),
-                              child: InputDecorator(
-                                decoration: const InputDecoration(
-                                  labelText: 'Supplier (optional)',
-                                  prefixIcon: Icon(Icons.storefront_outlined,
-                                      color: HexaColors.primaryMid),
-                                  suffixIcon:
-                                      Icon(Icons.keyboard_arrow_up_rounded),
-                                ),
-                                child: Text(
-                                  name ?? 'Tap to search or choose',
-                                  style: tt.bodyLarge?.copyWith(
-                                    color: name != null
-                                        ? null
-                                        : Theme.of(context)
-                                            .colorScheme
-                                            .onSurfaceVariant,
-                                    fontWeight: name != null
-                                        ? FontWeight.w600
-                                        : FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: TextButton(
-                            onPressed: _busy ? null : _addSupplierDialog,
-                            child: const Text('＋ New'),
-                          ),
-                        ),
-                      ],
-                    );
+                _WhatsappAssistantCard(
+                  assistant: _whatsappAssistant,
+                  onOpenChat: _openWhatsappAssistantChat,
+                  onOpenSettings: () {
+                    final router = GoRouter.of(context);
+                    Navigator.of(context).pop();
+                    Future.microtask(() => router.push('/settings'));
                   },
                 ),
-                brokersAsync.when(
-                  loading: () => const SizedBox.shrink(),
-                  error: (_, __) => FriendlyLoadError(
-                    message: 'Could not load brokers',
-                    onRetry: () => ref.invalidate(brokersListProvider),
+                const SizedBox(height: 16),
+                if (!_advancedEntryOptions) ...[
+                  Text(
+                    'Supplier & broker',
+                    style:
+                        tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
                   ),
-                  data: (list) {
-                    final selectedBrokerName = list
-                        .cast<Map<String, dynamic>>()
-                        .where((b) => b['id']?.toString() == _brokerId)
-                        .map((b) => b['name']?.toString() ?? '')
-                        .cast<String>()
-                        .firstWhere(
-                          (name) => name.isNotEmpty,
-                          orElse: () => '',
+                  const SizedBox(height: 8),
+                  suppliersAsync.when(
+                    loading: () => const LinearProgressIndicator(),
+                    error: (_, __) => FriendlyLoadError(
+                      message: 'Could not load suppliers',
+                      onRetry: () => ref.invalidate(suppliersListProvider),
+                    ),
+                    data: (list) {
+                      final suppliers = list
+                          .map((e) => Map<String, dynamic>.from(e as Map))
+                          .toList();
+                      if (suppliers.isEmpty) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Material(
+                            color:
+                                HexaColors.primaryLight.withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(10),
+                            child: const ListTile(
+                              dense: true,
+                              leading: Icon(Icons.info_outline_rounded),
+                              title:
+                                  Text('No suppliers yet — tap ＋ to add one'),
+                            ),
+                          ),
                         );
-                    if (selectedBrokerName.isNotEmpty) {
-                      return Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: cs.outlineVariant),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.handshake_outlined,
-                                size: 20, color: HexaColors.primaryMid),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Broker',
-                                    style: tt.labelMedium?.copyWith(
-                                      color: cs.onSurfaceVariant,
-                                      fontWeight: FontWeight.w700,
+                      }
+                      final name = _selectedSupplierName(suppliers);
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: _busy
+                                    ? null
+                                    : () => _openSupplierPicker(suppliers),
+                                borderRadius: BorderRadius.circular(14),
+                                child: InputDecorator(
+                                  decoration: const InputDecoration(
+                                    labelText: 'Supplier (optional)',
+                                    prefixIcon: Icon(Icons.storefront_outlined,
+                                        color: HexaColors.primaryMid),
+                                    suffixIcon:
+                                        Icon(Icons.keyboard_arrow_up_rounded),
+                                  ),
+                                  child: Text(
+                                    name ?? 'Tap to search or choose',
+                                    style: tt.bodyLarge?.copyWith(
+                                      color: name != null
+                                          ? null
+                                          : Theme.of(context)
+                                              .colorScheme
+                                              .onSurfaceVariant,
+                                      fontWeight: name != null
+                                          ? FontWeight.w600
+                                          : FontWeight.w500,
                                     ),
                                   ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    selectedBrokerName,
-                                    style: tt.bodyMedium?.copyWith(
-                                        fontWeight: FontWeight.w600),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            TextButton(
-                              onPressed: _busy ? null : _addBrokerDialog,
-                              child: const Text('Change'),
-                            ),
-                          ],
-                        ),
-                      );
-                    }
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: DropdownButtonFormField<String?>(
-                            key: ValueKey(_brokerId ?? '∅'),
-                            initialValue: _brokerId,
-                            decoration: const InputDecoration(
-                              labelText: 'Broker (optional)',
-                              prefixIcon: Icon(Icons.handshake_outlined),
-                              helperText: 'Auto-fills from supplier when linked',
-                            ),
-                            items: [
-                              const DropdownMenuItem<String?>(
-                                  value: null, child: Text('None')),
-                              ...list.map(
-                                (b) => DropdownMenuItem<String?>(
-                                  value: b['id']?.toString(),
-                                  child: Text(b['name']?.toString() ?? ''),
                                 ),
                               ),
-                            ],
-                            onChanged: _busy
-                                ? null
-                                : (v) => setState(() => _brokerId = v),
+                            ),
                           ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: TextButton(
-                            onPressed: _busy ? null : _addBrokerDialog,
-                            child: const Text('＋ New'),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: TextButton(
+                              onPressed: _busy ? null : _addSupplierDialog,
+                              child: const Text('＋ New'),
+                            ),
                           ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    'Supplier stays visible above. Broker auto-fills when linked.',
-                    style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                        ],
+                      );
+                    },
                   ),
-                ),
-                const SizedBox(height: 12),
+                  brokersAsync.when(
+                    loading: () => const SizedBox.shrink(),
+                    error: (_, __) => FriendlyLoadError(
+                      message: 'Could not load brokers',
+                      onRetry: () => ref.invalidate(brokersListProvider),
+                    ),
+                    data: (list) {
+                      final selectedBrokerName = list
+                          .cast<Map<String, dynamic>>()
+                          .where((b) => b['id']?.toString() == _brokerId)
+                          .map((b) => b['name']?.toString() ?? '')
+                          .cast<String>()
+                          .firstWhere(
+                            (name) => name.isNotEmpty,
+                            orElse: () => '',
+                          );
+                      if (selectedBrokerName.isNotEmpty) {
+                        return Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: cs.outlineVariant),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.handshake_outlined,
+                                  size: 20, color: HexaColors.primaryMid),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Broker',
+                                      style: tt.labelMedium?.copyWith(
+                                        color: cs.onSurfaceVariant,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      selectedBrokerName,
+                                      style: tt.bodyMedium?.copyWith(
+                                          fontWeight: FontWeight.w600),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: _busy ? null : _addBrokerDialog,
+                                child: const Text('Change'),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<String?>(
+                              key: ValueKey(_brokerId ?? '∅'),
+                              initialValue: _brokerId,
+                              decoration: const InputDecoration(
+                                labelText: 'Broker (optional)',
+                                prefixIcon: Icon(Icons.handshake_outlined),
+                                helperText:
+                                    'Auto-fills from supplier when linked',
+                              ),
+                              items: [
+                                const DropdownMenuItem<String?>(
+                                    value: null, child: Text('None')),
+                                ...list.map(
+                                  (b) => DropdownMenuItem<String?>(
+                                    value: b['id']?.toString(),
+                                    child: Text(b['name']?.toString() ?? ''),
+                                  ),
+                                ),
+                              ],
+                              onChanged: _busy
+                                  ? null
+                                  : (v) => setState(() => _brokerId = v),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: TextButton(
+                              onPressed: _busy ? null : _addBrokerDialog,
+                              child: const Text('＋ New'),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Optional — broker auto-fills when linked to supplier.',
+                      style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                if (_advancedEntryOptions) ...[
+                  TextField(
+                    controller: _quickEntry,
+                    enabled: !_busy,
+                    decoration: InputDecoration(
+                      labelText: 'Quick line',
+                      hintText: 'e.g. rice 50kg 42 ravi',
+                      prefixIcon: const Icon(Icons.bolt_rounded,
+                          color: HexaColors.primaryMid),
+                      suffixIcon: IconButton(
+                        tooltip: 'Parse into line 1',
+                        onPressed: _busy ? null : _parseQuickEntry,
+                        icon: const Icon(Icons.arrow_downward_rounded),
+                      ),
+                    ),
+                    onSubmitted: (_) => _parseQuickEntry(),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                  _quickLineParseChips(),
+                  const SizedBox(height: 16),
+                  Text('Supplier & broker',
+                      style: tt.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 8),
+                  suppliersAsync.when(
+                    loading: () => const LinearProgressIndicator(),
+                    error: (_, __) => FriendlyLoadError(
+                      message: 'Could not load suppliers',
+                      onRetry: () => ref.invalidate(suppliersListProvider),
+                    ),
+                    data: (list) {
+                      final suppliers = list
+                          .map((e) => Map<String, dynamic>.from(e as Map))
+                          .toList();
+                      if (suppliers.isEmpty) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Material(
+                            color:
+                                HexaColors.primaryLight.withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(10),
+                            child: const ListTile(
+                              dense: true,
+                              leading: Icon(Icons.info_outline_rounded),
+                              title:
+                                  Text('No suppliers yet — tap ＋ to add one'),
+                            ),
+                          ),
+                        );
+                      }
+                      final name = _selectedSupplierName(suppliers);
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: _busy
+                                    ? null
+                                    : () => _openSupplierPicker(suppliers),
+                                borderRadius: BorderRadius.circular(14),
+                                child: InputDecorator(
+                                  decoration: const InputDecoration(
+                                    labelText: 'Supplier (optional)',
+                                    prefixIcon: Icon(Icons.storefront_outlined,
+                                        color: HexaColors.primaryMid),
+                                    suffixIcon:
+                                        Icon(Icons.keyboard_arrow_up_rounded),
+                                  ),
+                                  child: Text(
+                                    name ?? 'Tap to search or choose',
+                                    style: tt.bodyLarge?.copyWith(
+                                      color: name != null
+                                          ? null
+                                          : Theme.of(context)
+                                              .colorScheme
+                                              .onSurfaceVariant,
+                                      fontWeight: name != null
+                                          ? FontWeight.w600
+                                          : FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: TextButton(
+                              onPressed: _busy ? null : _addSupplierDialog,
+                              child: const Text('＋ New'),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                  brokersAsync.when(
+                    loading: () => const SizedBox.shrink(),
+                    error: (_, __) => FriendlyLoadError(
+                      message: 'Could not load brokers',
+                      onRetry: () => ref.invalidate(brokersListProvider),
+                    ),
+                    data: (list) {
+                      final selectedBrokerName = list
+                          .cast<Map<String, dynamic>>()
+                          .where((b) => b['id']?.toString() == _brokerId)
+                          .map((b) => b['name']?.toString() ?? '')
+                          .cast<String>()
+                          .firstWhere(
+                            (name) => name.isNotEmpty,
+                            orElse: () => '',
+                          );
+                      if (selectedBrokerName.isNotEmpty) {
+                        return Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: cs.outlineVariant),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.handshake_outlined,
+                                  size: 20, color: HexaColors.primaryMid),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Broker',
+                                      style: tt.labelMedium?.copyWith(
+                                        color: cs.onSurfaceVariant,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      selectedBrokerName,
+                                      style: tt.bodyMedium?.copyWith(
+                                          fontWeight: FontWeight.w600),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: _busy ? null : _addBrokerDialog,
+                                child: const Text('Change'),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<String?>(
+                              key: ValueKey(_brokerId ?? '∅'),
+                              initialValue: _brokerId,
+                              decoration: const InputDecoration(
+                                labelText: 'Broker (optional)',
+                                prefixIcon: Icon(Icons.handshake_outlined),
+                                helperText:
+                                    'Auto-fills from supplier when linked',
+                              ),
+                              items: [
+                                const DropdownMenuItem<String?>(
+                                    value: null, child: Text('None')),
+                                ...list.map(
+                                  (b) => DropdownMenuItem<String?>(
+                                    value: b['id']?.toString(),
+                                    child: Text(b['name']?.toString() ?? ''),
+                                  ),
+                                ),
+                              ],
+                              onChanged: _busy
+                                  ? null
+                                  : (v) => setState(() => _brokerId = v),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: TextButton(
+                              onPressed: _busy ? null : _addBrokerDialog,
+                              child: const Text('＋ New'),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Broker auto-fills from supplier when linked.',
+                      style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ] else ...[
+                  Material(
+                    color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(14),
+                    child: ExpansionTile(
+                      tilePadding:
+                          const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                      childrenPadding:
+                          const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      shape: const RoundedRectangleBorder(),
+                      collapsedShape: const RoundedRectangleBorder(),
+                      title: Text(
+                        'More — quick line',
+                        style: tt.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w800),
+                      ),
+                      subtitle: Text(
+                        'Parse a one-liner into line 1',
+                        style: tt.bodySmall?.copyWith(
+                            color: cs.onSurfaceVariant),
+                      ),
+                      children: [
+                        TextField(
+                          controller: _quickEntry,
+                          enabled: !_busy,
+                          decoration: InputDecoration(
+                            labelText: 'Quick line',
+                            hintText: 'e.g. rice 50kg 42 ravi',
+                            prefixIcon: const Icon(Icons.bolt_rounded,
+                                color: HexaColors.primaryMid),
+                            suffixIcon: IconButton(
+                              tooltip: 'Parse into line 1',
+                              onPressed: _busy ? null : _parseQuickEntry,
+                              icon: const Icon(Icons.arrow_downward_rounded),
+                            ),
+                          ),
+                          onSubmitted: (_) => _parseQuickEntry(),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                        _quickLineParseChips(),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 Row(
                   children: [
                     Text('Items',
                         style: tt.titleSmall
                             ?.copyWith(fontWeight: FontWeight.w800)),
                     const Spacer(),
-                    TextButton(
-                      onPressed: _busy
-                          ? null
-                          : () {
-                              setState(() => _lines.add(_LineControllers()));
-                            },
-                      child: const Text('＋ Add line'),
-                    ),
+                    if (_advancedEntryOptions)
+                      TextButton(
+                        onPressed: _busy
+                            ? null
+                            : () {
+                                setState(() => _lines.add(_LineControllers()));
+                              },
+                        child: const Text('＋ Add line'),
+                      ),
                   ],
                 ),
                 const SizedBox(height: 4),
@@ -1926,21 +2241,26 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                 ),
               ],
             ),
+            ),
             Positioned(
               left: 10,
               right: 10,
               bottom: 10,
               child: Material(
-                elevation: 6,
+                elevation: 8,
+                shadowColor: Colors.black26,
                 borderRadius: BorderRadius.circular(16),
-                color: HexaColors.surfaceElevated,
+                color: _advancedEntryOptions
+                    ? HexaColors.surfaceElevated
+                    : Colors.white,
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
-                    border: Border(
-                        top: BorderSide(
-                            color: HexaColors.border.withValues(alpha: 0.6),
-                            width: 1)),
+                    border: Border.all(
+                      color: _advancedEntryOptions
+                          ? HexaColors.border.withValues(alpha: 0.6)
+                          : Colors.black12,
+                    ),
                   ),
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -2017,6 +2337,39 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
         NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
     final tt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
+    if (!_advancedEntryOptions &&
+        _lines.length == 1 &&
+        !t.mixedUnits) {
+      return Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Total cost\n${nf.format(t.cost)}',
+              textAlign: TextAlign.center,
+              style: tt.labelSmall?.copyWith(
+                  color: HexaColors.costMuted, fontWeight: FontWeight.w600),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              'Revenue\n${nf.format(t.revenue)}',
+              textAlign: TextAlign.center,
+              style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              'Profit\n${nf.format(t.profit)}',
+              textAlign: TextAlign.center,
+              style: tt.labelSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: t.profit >= 0 ? HexaColors.profit : HexaColors.loss,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
     final String qtyTitle;
     final String qtyBody;
     if (t.mixedUnits) {
@@ -2272,6 +2625,267 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
   }
 
   Widget _lineCard(BuildContext context, {required int lineIndex}) {
+    if (!_advancedEntryOptions) {
+      return _lineCardCashRegister(context, lineIndex: lineIndex);
+    }
+    return _lineCardAdvanced(context, lineIndex: lineIndex);
+  }
+
+  /// Fast path: pick item → qty → landed → sell. No duplicate category/unit editors.
+  Widget _lineCardCashRegister(BuildContext context, {required int lineIndex}) {
+    final l = _lines[lineIndex];
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final unitSet = {'kg', 'bag', 'box', 'piece'};
+    if (!unitSet.contains(l.unit)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() => l.unit = 'kg');
+      });
+    }
+    final fromCatalog = l.catalogItemId != null && !l.manualItemEntry;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 14),
+      elevation: 1.5,
+      shadowColor: Colors.black.withValues(alpha: 0.12),
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.35)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Text(
+                  'Purchase line',
+                  style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                const Spacer(),
+                if (_lines.length > 1)
+                  IconButton(
+                    icon: Icon(Icons.delete_outline_rounded, color: cs.error),
+                    onPressed: _busy
+                        ? null
+                        : () {
+                            setState(() {
+                              l.dispose();
+                              _lines.removeAt(lineIndex);
+                            });
+                          },
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            if (!l.manualItemEntry) ...[
+              Material(
+                color: HexaColors.primaryLight,
+                borderRadius: BorderRadius.circular(14),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: _busy ? null : () => _pickCatalogForLine(lineIndex),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 14),
+                    child: Row(
+                      children: [
+                        Icon(Icons.search_rounded, color: cs.primary, size: 22),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: l.item.text.trim().isEmpty
+                              ? Text(
+                                  'Search or pick item',
+                                  style: tt.bodyLarge?.copyWith(
+                                    color: cs.onSurfaceVariant,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                )
+                              : Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      l.item.text.trim(),
+                                      style: tt.titleMedium?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      l.category.text.trim().isEmpty
+                                          ? l.unit
+                                          : '${l.category.text.trim()} · ${l.unit}',
+                                      style: tt.bodySmall?.copyWith(
+                                        color: cs.onSurfaceVariant,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                        ),
+                        Icon(Icons.chevron_right_rounded,
+                            color: cs.onSurfaceVariant),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: _busy
+                      ? null
+                      : () => setState(() {
+                            l.manualItemEntry = true;
+                            l.catalogItemId = null;
+                            l.catalogVariantId = null;
+                          }),
+                  child: const Text('Type item name instead'),
+                ),
+              ),
+            ] else ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: l.item,
+                      onChanged: (_) => setState(() {
+                        l.catalogItemId = null;
+                        l.catalogVariantId = null;
+                      }),
+                      decoration: const InputDecoration(
+                        labelText: 'Item *',
+                        prefixIcon: Icon(Icons.inventory_2_outlined),
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _busy
+                        ? null
+                        : () => setState(() {
+                              l.manualItemEntry = false;
+                            }),
+                    child: const Text('Pick\nfrom list'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Unit',
+                style: tt.labelSmall?.copyWith(
+                  color: HexaColors.textSecondary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 6),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: SegmentedButton<String>(
+                  style: SegmentedButton.styleFrom(
+                    selectedBackgroundColor: HexaColors.primaryMid,
+                    selectedForegroundColor: Colors.white,
+                    foregroundColor: HexaColors.textSecondary,
+                    side: const BorderSide(color: HexaColors.border),
+                  ),
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment<String>(value: 'kg', label: Text('kg')),
+                    ButtonSegment<String>(value: 'bag', label: Text('bag')),
+                    ButtonSegment<String>(value: 'box', label: Text('box')),
+                    ButtonSegment<String>(value: 'piece', label: Text('pc')),
+                  ],
+                  selected: {if (unitSet.contains(l.unit)) l.unit else 'kg'},
+                  onSelectionChanged: _busy
+                      ? null
+                      : (Set<String> next) {
+                          setState(() => l.unit = next.first);
+                        },
+                ),
+              ),
+            ],
+            if (fromCatalog ||
+                (l.manualItemEntry && l.item.text.trim().isNotEmpty)) ...[
+              const SizedBox(height: 8),
+              TextField(
+                controller: l.qty,
+                keyboardType: TextInputType.number,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  labelText: l.unit == 'bag' ? 'Bags *' : 'Quantity *',
+                  prefixIcon: const Icon(Icons.numbers_rounded),
+                  filled: true,
+                  fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.35),
+                ),
+              ),
+              if (l.unit == 'bag') ...[
+                const SizedBox(height: 8),
+                TextField(
+                  controller: l.kgPerBag,
+                  keyboardType: TextInputType.number,
+                  onChanged: (_) => setState(() {}),
+                  decoration: const InputDecoration(
+                    labelText: 'Kg per bag *',
+                    prefixIcon: Icon(Icons.scale_rounded),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+              TextField(
+                controller: l.purchase,
+                keyboardType: TextInputType.number,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  labelText: l.unit == 'bag'
+                      ? 'Landed cost / bag (₹) *'
+                      : 'Landed cost / unit (₹) *',
+                  prefixIcon: const Icon(Icons.currency_rupee_rounded),
+                  helperText: 'What you paid — matches your invoice per unit',
+                  filled: true,
+                  fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.35),
+                ),
+              ),
+              SmartPricePanel(
+                item: l.item,
+                qty: l.qty,
+                priceController: l.purchase,
+                metric: 'landing',
+                minimalInline: true,
+                currentPriceResolver: () => _effectiveLanding(l),
+                onInsight: lineIndex == 0 ? _onLandingInsight : null,
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: l.selling,
+                keyboardType: TextInputType.number,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  labelText: l.unit == 'bag'
+                      ? 'Selling price / kg'
+                      : 'Selling price / unit',
+                  prefixIcon: const Icon(Icons.sell_outlined),
+                  filled: true,
+                  fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.35),
+                ),
+              ),
+              SmartPricePanel(
+                item: l.item,
+                qty: l.qty,
+                priceController: l.selling,
+                metric: 'selling',
+                minimalInline: true,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _lineCardAdvanced(BuildContext context, {required int lineIndex}) {
     final l = _lines[lineIndex];
     final tt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
@@ -2663,6 +3277,348 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Category chips + search — opens as white bottom sheet (cash-register flow).
+class _CatalogItemPickModal extends StatefulWidget {
+  const _CatalogItemPickModal({
+    required this.categories,
+    required this.items,
+    required this.categoryNames,
+    required this.recentLines,
+    required this.topLines,
+    required this.onPick,
+  });
+
+  final List<Map<String, dynamic>> categories;
+  final List<Map<String, dynamic>> items;
+  final Map<String, String> categoryNames;
+  final List<Map<String, dynamic>> recentLines;
+  final List<Map<String, dynamic>> topLines;
+  final void Function(Map<String, dynamic> item) onPick;
+
+  @override
+  State<_CatalogItemPickModal> createState() => _CatalogItemPickModalState();
+}
+
+class _CatalogItemPickModalState extends State<_CatalogItemPickModal> {
+  final _search = TextEditingController();
+  String? _filterCategoryId;
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  Map<String, dynamic> _resolveHistoryLine(Map<String, dynamic> line) {
+    final id = line['catalog_item_id']?.toString();
+    if (id != null && id.isNotEmpty) {
+      for (final it in widget.items) {
+        if (it['id']?.toString() == id) return Map<String, dynamic>.from(it);
+      }
+    }
+    final name = line['item_name']?.toString() ?? 'Item';
+    final unit = line['unit']?.toString() ?? 'kg';
+    return {
+      'id': id,
+      'name': name,
+      'category_id': null,
+      'default_unit': unit,
+    };
+  }
+
+  Widget _historyStrip(
+    BuildContext context, {
+    required String title,
+    required List<Map<String, dynamic>> lines,
+  }) {
+    if (lines.isEmpty) return const SizedBox.shrink();
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+          child: Text(
+            title,
+            style: tt.labelLarge?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: cs.onSurfaceVariant,
+            ),
+          ),
+        ),
+        SizedBox(
+          height: 52,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            itemCount: lines.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (context, i) {
+              final line = lines[i];
+              final pick = _resolveHistoryLine(line);
+              final label = pick['name']?.toString() ?? '';
+              final cid = pick['category_id']?.toString() ?? '';
+              final cat = widget.categoryNames[cid] ?? '';
+              return Material(
+                color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => widget.onPick(pick),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: tt.labelLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        if (cat.isNotEmpty)
+                          Text(
+                            cat,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: tt.labelSmall?.copyWith(
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final q = _search.text.trim().toLowerCase();
+    final filtered = widget.items.where((it) {
+      final cid = it['category_id']?.toString() ?? '';
+      if (_filterCategoryId != null && cid != _filterCategoryId) {
+        return false;
+      }
+      if (q.isEmpty) return true;
+      return (it['name']?.toString() ?? '').toLowerCase().contains(q);
+    }).toList();
+
+    final h = MediaQuery.sizeOf(context).height * 0.72;
+    final showShortcuts = q.isEmpty && _filterCategoryId == null;
+
+    return SafeArea(
+      child: SizedBox(
+        height: h,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+              child: Text(
+                'Choose item',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: TextField(
+                controller: _search,
+                decoration: const InputDecoration(
+                  hintText: 'Search…',
+                  prefixIcon: Icon(Icons.search_rounded),
+                  filled: true,
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            if (showShortcuts) ...[
+              const SizedBox(height: 8),
+              _historyStrip(context,
+                  title: 'Recent', lines: widget.recentLines),
+              const SizedBox(height: 8),
+              _historyStrip(context,
+                  title: 'Often used', lines: widget.topLines),
+            ],
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 44,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: FilterChip(
+                      label: const Text('All'),
+                      selected: _filterCategoryId == null,
+                      onSelected: (_) =>
+                          setState(() => _filterCategoryId = null),
+                    ),
+                  ),
+                  ...widget.categories.map((c) {
+                    final id = c['id']?.toString() ?? '';
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: FilterChip(
+                        label: Text(c['name']?.toString() ?? ''),
+                        selected: _filterCategoryId == id,
+                        onSelected: (_) => setState(() {
+                          _filterCategoryId =
+                              _filterCategoryId == id ? null : id;
+                        }),
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: filtered.isEmpty
+                  ? Center(
+                      child: Text(
+                        'No items match — try All or another category',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(context).colorScheme.outline,
+                            ),
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 28),
+                      itemCount: filtered.length,
+                      itemBuilder: (context, i) {
+                        final it = filtered[i];
+                        final name = it['name']?.toString() ?? '';
+                        final cid = it['category_id']?.toString() ?? '';
+                        final du = it['default_unit']?.toString();
+                        final sub =
+                            '${widget.categoryNames[cid] ?? ''}${du != null && du.isNotEmpty ? ' · $du' : ''}';
+                        return ListTile(
+                          title: Text(
+                            name,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: Text(sub),
+                          onTap: () => widget.onPick(it),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Points users to the server-side WhatsApp bot; opens `wa.me` when configured.
+class _WhatsappAssistantCard extends StatelessWidget {
+  const _WhatsappAssistantCard({
+    required this.assistant,
+    required this.onOpenChat,
+    required this.onOpenSettings,
+  });
+
+  final Map<String, dynamic>? assistant;
+  final VoidCallback onOpenChat;
+  final VoidCallback onOpenSettings;
+
+  static const _waGreen = Color(0xFF25D366);
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final raw = assistant?['assistant_e164']?.toString().trim();
+    final hasNumber = raw != null && raw.isNotEmpty;
+    final last4 = assistant?['linked_phone_last4']?.toString();
+
+    return Material(
+      color: HexaColors.surfaceCard,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.65)),
+      ),
+      child: InkWell(
+        onTap: hasNumber ? onOpenChat : onOpenSettings,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: _waGreen.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.chat_rounded, color: _waGreen, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      hasNumber
+                          ? 'Add via WhatsApp'
+                          : 'WhatsApp assistant',
+                      style:
+                          tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      hasNumber
+                          ? 'Opens WhatsApp with Harisree. Use the phone number you sign in with. Send a text draft — preview and YES work there too.'
+                          : (assistant?['instructions']?.toString() ??
+                              'Ask your admin to enable the assistant number, or open Settings for details.'),
+                      style: tt.bodySmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                        height: 1.35,
+                      ),
+                    ),
+                    if (last4 != null && last4.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        'Your account phone ends in ···$last4',
+                        style: tt.labelSmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              Icon(
+                hasNumber ? Icons.open_in_new_rounded : Icons.settings_outlined,
+                size: 20,
+                color: cs.primary,
+              ),
+            ],
+          ),
         ),
       ),
     );

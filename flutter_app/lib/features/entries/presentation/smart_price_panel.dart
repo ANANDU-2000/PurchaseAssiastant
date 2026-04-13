@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/auth/session_notifier.dart';
 
@@ -14,6 +15,7 @@ class SmartPricePanel extends ConsumerStatefulWidget {
     required this.priceController,
     required this.metric,
     this.compact = false,
+    this.minimalInline = false,
     this.onInsight,
 
     /// When [metric] is `landing`, pass landed cost here so the API compares apples to apples (history is landed cost).
@@ -27,6 +29,9 @@ class SmartPricePanel extends ConsumerStatefulWidget {
   /// API `price_field`: landing | selling
   final String metric;
   final bool compact;
+
+  /// One-line hints (avg / last) for fast entry — no cards or supplier drill-down.
+  final bool minimalInline;
 
   /// Fired when price intelligence payload updates (or clears).
   final void Function(Map<String, dynamic>? pip)? onInsight;
@@ -128,6 +133,46 @@ class _SmartPricePanelState extends ConsumerState<SmartPricePanel> {
     final cs = Theme.of(context).colorScheme;
     final title =
         widget.metric == 'landing' ? 'Landing insight' : 'Selling insight';
+
+    if (widget.minimalInline) {
+      if (_loading) return const SizedBox.shrink();
+      final p = _pip;
+      if (p == null ||
+          (p['confidence'] is num && (p['confidence'] as num) <= 0)) {
+        return const SizedBox.shrink();
+      }
+      final avg = p['avg'];
+      final last = p['last_price'];
+      final nf = NumberFormat.currency(
+          locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+      if (widget.metric == 'landing') {
+        final parts = <String>[];
+        if (avg is num) parts.add('Last avg ${nf.format(avg)}');
+        if (last is num) parts.add('Last ${nf.format(last)}');
+        if (parts.isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(top: 4, left: 4),
+          child: Text(
+            parts.join(' · '),
+            style: tt.labelSmall?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        );
+      }
+      if (avg is! num) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(top: 4, left: 4),
+        child: Text(
+          'Avg selling ${nf.format(avg)}',
+          style: tt.labelSmall?.copyWith(
+            color: cs.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+    }
 
     if (_loading) {
       return Padding(
