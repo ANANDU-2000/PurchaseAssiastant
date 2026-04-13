@@ -102,6 +102,21 @@ try:
 except Exception:  # noqa: BLE001
     pass
 
+if not _sqlite:
+    try:
+        _eu = make_url(_effective_url)
+        _h = (_eu.host or "").lower()
+        if _h.startswith("db.") and "supabase.co" in _h and "pooler" not in _h:
+            logger.error(
+                "Effective DB host is Supabase DIRECT (db.*.supabase.co). From Render this often fails with "
+                "OSError: [Errno 101] Network is unreachable (IPv4 vs IPv6). Fix: Supabase → Connect → "
+                "Transaction pooler → set DATABASE_POOLER_URL to "
+                "postgresql+asyncpg://postgres.PROJECT_REF@aws-0-REGION.pooler.supabase.com:6543/postgres "
+                "(no password in URL) and DATABASE_POOLER_PASSWORD; leave DATABASE_URL as fallback or any value."
+            )
+    except Exception:  # noqa: BLE001
+        pass
+
 engine = create_async_engine(
     _effective_url,
     echo=settings.app_env == "development",
