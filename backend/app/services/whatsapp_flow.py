@@ -289,7 +289,7 @@ def _parse_entry_text(text: str) -> EntryCreateRequest | None:
 def _preview_lines(body: EntryCreateRequest) -> str:
     li = body.lines[0]
     return (
-        "Preview HEXA entry\n"
+        "Preview Harisree entry\n"
         f"Date: {body.entry_date.isoformat()}\n"
         f"Item: {li.item_name}\n"
         f"Qty: {li.qty} {li.unit}\n"
@@ -367,7 +367,7 @@ async def handle_inbound_text(
             settings,
             db,
             to_e164=to_digits,
-            body="This WhatsApp number is not linked to a HEXA account. Sign in with the same phone in the app first.",
+            body="This WhatsApp number is not linked to a Harisree account. Sign in with the same phone in the app first.",
         )
         return {"ok": True, "handled": True, "reason": "unknown_user"}
 
@@ -377,7 +377,7 @@ async def handle_inbound_text(
             settings,
             db,
             to_e164=to_digits,
-            body="No business workspace found. Open the HEXA app to finish setup.",
+            body="No business workspace found. Open the Harisree app to finish setup.",
         )
         return {"ok": True, "handled": True, "reason": "no_business"}
 
@@ -397,7 +397,7 @@ async def handle_inbound_text(
             settings,
             db,
             to_e164=to_digits,
-            body="HEXA WhatsApp automation is turned off for this server. Use the mobile app or ask your admin to re-enable the bot.",
+            body="Harisree WhatsApp automation is turned off for this server. Use the mobile app or ask your admin to re-enable the bot.",
         )
         return {"ok": True, "handled": True, "reason": "whatsapp_bot_disabled"}
 
@@ -431,7 +431,7 @@ async def handle_inbound_text(
                 settings,
                 db,
                 to_e164=to_digits,
-                body="Saved in HEXA.",
+                body="Saved in Harisree.",
             )
             return {"ok": True, "handled": True, "saved": True}
 
@@ -519,7 +519,7 @@ async def handle_inbound_text(
         db,
         to_e164=to_digits,
         body=(
-            "HEXA WhatsApp\n"
+            "Harisree WhatsApp\n"
             "• *OVERVIEW* or *REPORT* — this month.\n"
             "• *TODAY* — today's totals.\n"
             "• *BEST SUPPLIER* — top supplier (MTD).\n"

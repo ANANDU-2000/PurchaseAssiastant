@@ -325,6 +325,11 @@ class _HomePageState extends ConsumerState<HomePage>
                               label: 'Catalog',
                               onTap: () => context.push('/catalog'),
                             ),
+                            _SecondaryChip(
+                              icon: Icons.chat_bubble_outline_rounded,
+                              label: 'Assistant',
+                              onTap: () => context.push('/ai'),
+                            ),
                           ],
                         ),
                         const SizedBox(height: 20),

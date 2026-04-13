@@ -7,7 +7,7 @@ router = APIRouter(tags=["health"])
 async def root():
     """Avoid a bare 404 at the API origin — browsers often open `/` first."""
     return {
-        "service": "My Purchases API",
+        "service": "Harisree Purchases API",
         "docs": "/docs",
         "openapi_json": "/openapi.json",
         "health": "/health",

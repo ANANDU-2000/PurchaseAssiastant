@@ -21,6 +21,7 @@ import '../../features/notifications/presentation/notifications_page.dart';
 import '../../features/settings/presentation/settings_page.dart';
 import '../../features/shell/shell_screen.dart';
 import '../../features/splash/presentation/splash_page.dart';
+import '../../features/ai/presentation/ai_chat_page.dart';
 final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -159,11 +160,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           child: const SettingsPage(),
         ),
       ),
-      // In-app AI chat hidden for end users (WhatsApp bot is primary). Route kept for future flag.
       GoRoute(
         path: '/ai',
         name: 'ai',
-        redirect: (context, state) => '/home',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const AiChatPage(),
+        ),
       ),
       GoRoute(
         path: '/notifications',

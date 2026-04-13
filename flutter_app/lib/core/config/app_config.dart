@@ -6,7 +6,7 @@ class AppConfig {
   AppConfig._();
 
   /// Default product name (store listing / package name are separate).
-  static const String appName = 'My Purchases';
+  static const String appName = 'Harisree Purchases';
 
   static const String apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',

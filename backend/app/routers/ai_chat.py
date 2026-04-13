@@ -1,4 +1,4 @@
-"""HEXA AI — chat stub + structured intent (OpenAI / Groq / Gemini optional; keys stay on server)."""
+"""Harisree AI — chat stub + structured intent (OpenAI / Groq / Gemini optional; keys stay on server)."""
 
 import re
 import uuid
@@ -17,7 +17,7 @@ from app.services.usage_logging import log_usage
 
 router = APIRouter(prefix="/v1/businesses/{business_id}/ai", tags=["ai"])
 
-HEXA_INTENT_SYSTEM = """You are a purchase assistant. Extract a structured JSON for business entries.
+HARISREE_INTENT_SYSTEM = """You are a purchase assistant for Harisree. Extract a structured JSON for business entries.
 Return ONLY JSON.
 
 Supported intents:
@@ -119,11 +119,11 @@ async def ai_chat(
 ):
     last = body.messages[-1].content.strip()
     reply = (
-        "🛒 HEXA\n\n"
+        "🛒 Harisree assistant\n\n"
         f"You: {last}\n\n"
         "Preview → confirm → save is required before writing entries.\n"
-        "Use **AI → Intent** for structured extraction, or type a line in **Entries**.\n\n"
-        f"{HEXA_INTENT_SYSTEM.splitlines()[0]}"
+        "Use **Entries** with Preview, or WhatsApp for the same guarded flow.\n\n"
+        f"{HARISREE_INTENT_SYSTEM.splitlines()[0]}"
     )
     await log_usage(
         db,

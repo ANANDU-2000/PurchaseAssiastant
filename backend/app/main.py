@@ -122,7 +122,7 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
 
 
-app = FastAPI(title="My Purchases API", lifespan=lifespan)
+app = FastAPI(title="Harisree Purchases API", lifespan=lifespan)
 
 _backend_root = Path(__file__).resolve().parent.parent
 _static_root = _backend_root / "static"
