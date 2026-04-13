@@ -1,0 +1,7 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "npm install --ignore-scripts --no-audit --no-fund",
+  "buildCommand": "bash scripts/vercel-flutter-build.sh",
+  "outputDirectory": "flutter_app/build/web",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}
