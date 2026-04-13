@@ -79,6 +79,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           child: const LoginPage(),
         ),
       ),
+      // Same shell as /home — some users/bookmarks expect "dashboard" after sign-in.
+      GoRoute(
+        path: '/dashboard',
+        redirect: (context, state) => '/home',
+      ),
       GoRoute(
         path: '/catalog',
         pageBuilder: (context, state) => iosPushPage(
