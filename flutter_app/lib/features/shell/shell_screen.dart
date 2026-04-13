@@ -7,13 +7,13 @@ import '../../core/providers/connectivity_provider.dart';
 import '../../core/theme/hexa_colors.dart';
 import '../entries/presentation/entry_create_sheet.dart';
 
-/// Shell: [IndexedStack body] · [BottomAppBar] with center notch + FAB · Home | Entries | Contacts | Reports.
+/// Shell: [IndexedStack body] · [BottomAppBar] with center notch + FAB · Home | Entries | Catalog | Reports.
 class ShellScreen extends ConsumerWidget {
   const ShellScreen({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
 
-  /// Branch indices: 0 home, 1 entries, 2 contacts, 3 analytics (Reports)
+  /// Branch indices: 0 home, 1 entries, 2 catalog (suppliers/items), 3 analytics (Reports)
   static const branchHome = 0;
   static const branchEntries = 1;
   static const branchContacts = 2;
@@ -160,7 +160,7 @@ class ShellScreen extends ConsumerWidget {
                     selected: idx == ShellScreen.branchContacts,
                     icon: Icons.people_alt_outlined,
                     selectedIcon: Icons.people_alt_rounded,
-                    label: 'Contacts',
+                    label: 'Catalog',
                     onTap: () => go(ShellScreen.branchContacts),
                   ),
                 ),

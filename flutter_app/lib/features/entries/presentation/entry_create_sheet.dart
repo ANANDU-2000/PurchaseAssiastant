@@ -1767,7 +1767,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Create masters here or open the Contacts tab in the bottom navigation.',
+                              'Create masters here or open the Catalog tab in the bottom navigation.',
                               style: tt.bodySmall?.copyWith(
                                   color: HexaColors.textSecondary,
                                   height: 1.35),
@@ -2386,47 +2386,69 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               ],
             ),
             const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: cs.outlineVariant),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.category_outlined,
-                          size: 16, color: HexaColors.primaryMid),
-                      const SizedBox(width: 6),
-                      Text(
-                        l.category.text.trim().isEmpty
-                            ? 'No category'
-                            : l.category.text.trim(),
-                        style: tt.labelMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: l.category.text.trim().isEmpty
-                              ? cs.onSurfaceVariant
-                              : cs.onSurface,
+            if (_advancedEntryOptions || l.catalogItemId == null) ...[
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: cs.outlineVariant),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.category_outlined,
+                            size: 16, color: HexaColors.primaryMid),
+                        const SizedBox(width: 6),
+                        Text(
+                          l.category.text.trim().isEmpty
+                              ? 'No category'
+                              : l.category.text.trim(),
+                          style: tt.labelMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: l.category.text.trim().isEmpty
+                                ? cs.onSurfaceVariant
+                                : cs.onSurface,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                TextButton(
-                  onPressed: _busy ? null : _addCategoryFromEntry,
+                  TextButton(
+                    onPressed: _busy ? null : _addCategoryFromEntry,
+                    child: Text(
+                      l.category.text.trim().isEmpty
+                          ? '＋ Add category'
+                          : 'Change',
+                    ),
+                  ),
+                ],
+              ),
+            ] else ...[
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
                   child: Text(
-                    l.category.text.trim().isEmpty ? '＋ Add category' : 'Change',
+                    l.category.text.trim().isEmpty
+                        ? 'Category from catalog (pick Item above)'
+                        : 'Category: ${l.category.text.trim()} · from catalog',
+                    style: tt.bodySmall?.copyWith(
+                      color: HexaColors.textSecondary,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
             const SizedBox(height: 8),
             Text('Unit',
                 style: tt.labelSmall?.copyWith(

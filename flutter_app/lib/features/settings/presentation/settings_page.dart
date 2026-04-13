@@ -28,6 +28,7 @@ class SettingsPage extends ConsumerStatefulWidget {
 class _SettingsPageState extends ConsumerState<SettingsPage> {
   Map<String, dynamic>? _billing;
   String? _billingErr;
+  Map<String, dynamic>? _whatsappAssistant;
   late final TextEditingController _brandingTitleCtrl;
   Uint8List? _pendingLogoBytes;
   String _pendingLogoFilename = 'logo.jpg';
@@ -63,6 +64,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refreshBilling();
+      unawaited(_loadWhatsappAssistant());
       final s = ref.read(sessionProvider);
       final pb = s?.primaryBusiness;
       if (pb != null && mounted) {
@@ -256,6 +258,21 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
   }
 
+  Future<void> _loadWhatsappAssistant() async {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    try {
+      final m = await ref.read(hexaApiProvider).getWhatsappAssistantInfo();
+      if (mounted) {
+        setState(() => _whatsappAssistant = m);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _whatsappAssistant = null);
+      }
+    }
+  }
+
   Future<void> _refreshBilling() async {
     final session = ref.read(sessionProvider);
     if (session == null) return;
@@ -345,6 +362,61 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               subtitle: Text(session != null
                   ? 'Signed in · ${session.primaryBusiness.name}'
                   : 'Not signed in'),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            color: context.adaptiveCard,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.chat_rounded, color: cs.primary),
+                      const SizedBox(width: 8),
+                      Text(
+                        'WhatsApp assistant',
+                        style: tt.titleSmall
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _whatsappAssistant?['instructions']?.toString() ??
+                        'Save the assistant number in your contacts. Message from the phone you use to sign in. Purchases need a preview and YES — never auto-saved from chat alone.',
+                    style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                  ),
+                  if (_whatsappAssistant?['assistant_e164'] != null &&
+                      _whatsappAssistant!['assistant_e164']
+                          .toString()
+                          .trim()
+                          .isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    SelectableText(
+                      _whatsappAssistant!['assistant_e164'].toString().trim(),
+                      style: tt.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ],
+                  if (_whatsappAssistant?['linked_phone_last4'] != null &&
+                      _whatsappAssistant!['linked_phone_last4']
+                          .toString()
+                          .isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        'Linked account phone ends in ···${_whatsappAssistant!['linked_phone_last4']}',
+                        style: tt.labelSmall
+                            ?.copyWith(color: cs.onSurfaceVariant),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 20),

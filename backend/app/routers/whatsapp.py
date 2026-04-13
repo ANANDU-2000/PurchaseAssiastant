@@ -11,7 +11,7 @@ from app.config import Settings, get_settings
 from app.database import get_db
 from app.services.platform_credentials import effective_dialog360
 from app.services.webhook_rate_limit import allow as webhook_rate_allow
-from app.services.whatsapp_flow import handle_inbound_text
+from app.services.whatsapp_flow import handle_inbound_nontext, handle_inbound_text
 from app.services.whatsapp_state import idempotent_message
 
 logger = logging.getLogger(__name__)
@@ -70,11 +70,9 @@ async def whatsapp_webhook(
     results: list[dict[str, Any]] = []
 
     for msg in messages:
-        if msg.get("type") != "text":
-            continue
         phone = msg.get("from")
         mid = msg.get("id")
-        body = (msg.get("text") or {}).get("body")
+        mtype = str(msg.get("type") or "text").strip().lower()
         if not phone:
             continue
 
@@ -84,13 +82,25 @@ async def whatsapp_webhook(
             continue
 
         try:
-            res = await handle_inbound_text(
-                settings=settings,
-                db=db,
-                phone_from=str(phone),
-                text=str(body) if body is not None else None,
-                message_id=str(mid) if mid else None,
-            )
+            if mtype == "text":
+                body = (msg.get("text") or {}).get("body")
+                res = await handle_inbound_text(
+                    settings=settings,
+                    db=db,
+                    phone_from=str(phone),
+                    text=str(body) if body is not None else None,
+                    message_id=str(mid) if mid else None,
+                )
+            elif mtype in ("audio", "image", "document", "video", "sticker"):
+                res = await handle_inbound_nontext(
+                    settings=settings,
+                    db=db,
+                    phone_from=str(phone),
+                    kind=mtype,
+                    message_id=str(mid) if mid else None,
+                )
+            else:
+                res = {"ok": True, "handled": False, "reason": f"unsupported_type:{mtype}"}
             results.append(res)
         except Exception as e:  # noqa: BLE001
             logger.exception("WhatsApp handle failed: %s", e)

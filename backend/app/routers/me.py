@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
 from app.database import get_db
+from app.config import Settings, get_settings
 from app.deps import get_current_user, require_owner_membership
 from app.models import Business, Membership, User
 
@@ -39,6 +40,32 @@ async def get_my_profile(user: Annotated[User, Depends(get_current_user)]):
         username=user.username,
         name=user.name,
     )
+
+
+class WhatsappAssistantInfo(BaseModel):
+    """Shown in Settings so owners know which number to save for Harisree WhatsApp."""
+
+    assistant_e164: str | None = None
+    linked_phone_last4: str | None = None
+    instructions: str = (
+        "Save the assistant number in your contacts. Message from the same phone you use to sign in to Harisree. "
+        "Purchases are never saved without your YES confirmation after a preview."
+    )
+
+
+@router.get("/whatsapp-assistant", response_model=WhatsappAssistantInfo)
+async def get_whatsapp_assistant_info(
+    user: Annotated[User, Depends(get_current_user)],
+    settings: Annotated[Settings, Depends(get_settings)],
+):
+    num = (settings.whatsapp_assistant_e164 or settings.authkey_from_number or "").strip()
+    num = num if num else None
+    last4 = None
+    raw = (user.phone or "").strip()
+    digits = "".join(c for c in raw if c.isdigit())
+    if len(digits) >= 4:
+        last4 = digits[-4:]
+    return WhatsappAssistantInfo(assistant_e164=num, linked_phone_last4=last4)
 
 
 @router.patch("/profile", response_model=UserProfileOut)

@@ -136,6 +136,12 @@ class HexaApi {
         .toList();
   }
 
+  /// Assistant number hint for Settings (same gates as WhatsApp: linked account phone).
+  Future<Map<String, dynamic>> getWhatsappAssistantInfo() async {
+    final res = await _dio.get<Map<String, dynamic>>('/v1/me/whatsapp-assistant');
+    return Map<String, dynamic>.from(res.data ?? {});
+  }
+
   /// Owner: optional in-app title + logo URL (HTTPS recommended).
   Future<Map<String, dynamic>> patchBusinessBranding({
     required String businessId,

@@ -343,6 +343,92 @@ def _draft_from_state(data: dict[str, Any]) -> EntryCreateRequest:
 _QUERY_RE = re.compile(r"(?P<item>.+?)\s+(?P<price>\d+(?:\.\d+)?)\s*(?:ok|okay|good|fine)\??", re.I)
 
 
+async def handle_inbound_nontext(
+    *,
+    settings: Settings,
+    db: AsyncSession,
+    phone_from: str,
+    kind: str,
+    message_id: str | None,
+) -> dict[str, Any]:
+    """
+    Voice / image / PDF — never auto-save. Ask user to send structured text or use the app.
+    Same membership + entitlement gates as text.
+    """
+    to_digits = _digits(phone_from)
+    if _in_quiet_hours_ist():
+        return {"ok": True, "handled": False, "reason": "quiet_hours"}
+
+    await reset_consecutive_replies(settings, to_digits)
+
+    user = await find_user_by_chat_phone(db, phone_from)
+    if user is None:
+        await _send_guarded(
+            settings,
+            db,
+            to_e164=to_digits,
+            body="This WhatsApp number is not linked to a Harisree account. Sign in with the same phone in the app first.",
+        )
+        return {"ok": True, "handled": True, "reason": "unknown_user"}
+
+    biz = await primary_business_id(db, user.id)
+    if biz is None:
+        await _send_guarded(
+            settings,
+            db,
+            to_e164=to_digits,
+            body="No business workspace found. Open the Harisree app to finish setup.",
+        )
+        return {"ok": True, "handled": True, "reason": "no_business"}
+
+    try:
+        await assert_whatsapp_entitled(db, biz, settings)
+    except HTTPException as e:
+        await _send_guarded(
+            settings,
+            db,
+            to_e164=to_digits,
+            body=str(e.detail),
+        )
+        return {"ok": True, "handled": True, "reason": "whatsapp_billing"}
+
+    if not await is_whatsapp_bot_enabled(db, settings):
+        await _send_guarded(
+            settings,
+            db,
+            to_e164=to_digits,
+            body="Harisree WhatsApp automation is turned off for this server. Use the mobile app or ask your admin to re-enable the bot.",
+        )
+        return {"ok": True, "handled": True, "reason": "whatsapp_bot_disabled"}
+
+    labels = {
+        "audio": "Voice notes",
+        "image": "Photos",
+        "document": "PDFs / documents",
+        "video": "Videos",
+        "sticker": "Stickers",
+    }
+    label = labels.get(kind, "This attachment type")
+
+    await _send_guarded(
+        settings,
+        db,
+        to_e164=to_digits,
+        body=(
+            f"{label} are not auto-saved yet (preview + YES required for every purchase).\n\n"
+            "Send a *text* draft:\n"
+            "item: …\n"
+            "qty: …\n"
+            "unit: kg|box|piece\n"
+            "buy: …\n"
+            "land: …\n"
+            "date: YYYY-MM-DD (optional)\n\n"
+            "Or open the Harisree app → Add purchase."
+        ),
+    )
+    return {"ok": True, "handled": True, "nontext": kind}
+
+
 async def handle_inbound_text(
     *,
     settings: Settings,

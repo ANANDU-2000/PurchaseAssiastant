@@ -101,6 +101,8 @@ class Settings(BaseSettings):
     authkey_base_url: str = "https://manage.authkey.io"
     authkey_sender_label: str = "HARISREE"
     authkey_from_number: str | None = None
+    # E.164 number to show in the app (“chat with this assistant”). Falls back to authkey_from_number if unset.
+    whatsapp_assistant_e164: str | None = None
 
     openai_api_key: str | None = None
     openai_model_parse: str = "gpt-4.1-mini"

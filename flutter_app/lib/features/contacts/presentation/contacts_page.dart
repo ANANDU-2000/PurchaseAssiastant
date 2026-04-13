@@ -1269,11 +1269,11 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Contacts',
+            Text('Catalog',
                 style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
             const SizedBox(height: 2),
             Text(
-              'Category → items · suppliers & brokers used on purchase lines',
+              'Suppliers · brokers · categories · items — pick when adding a purchase',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: tt.labelSmall?.copyWith(
@@ -1464,23 +1464,30 @@ class _BrokersTab extends ConsumerWidget {
       ),
       data: (list) {
         if (list.isEmpty) return const Center(child: Text('No brokers yet'));
-        return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-          itemCount: list.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 8),
-          itemBuilder: (context, i) {
-            final b = list[i];
-            final id = b['id']?.toString();
-            final m = b['_metrics'] as Map<String, dynamic>?;
-            return _BrokerCard(
-              data: Map<String, dynamic>.from(b),
-              metrics: m,
-              isOwner: isOwner,
-              onOpen: id == null ? () {} : () => context.push('/broker/$id'),
-              onEdit: () => onEdit(b),
-              onDelete: () => onDelete(b),
-            );
+        return RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(contactsBrokersEnrichedProvider);
+            await ref.read(contactsBrokersEnrichedProvider.future);
           },
+          child: ListView.separated(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            itemCount: list.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            itemBuilder: (context, i) {
+              final b = list[i];
+              final id = b['id']?.toString();
+              final m = b['_metrics'] as Map<String, dynamic>?;
+              return _BrokerCard(
+                data: Map<String, dynamic>.from(b),
+                metrics: m,
+                isOwner: isOwner,
+                onOpen: id == null ? () {} : () => context.push('/broker/$id'),
+                onEdit: () => onEdit(b),
+                onDelete: () => onDelete(b),
+              );
+            },
+          ),
         );
       },
     );
