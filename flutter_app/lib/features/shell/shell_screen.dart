@@ -74,12 +74,16 @@ class ShellScreen extends ConsumerWidget {
           height: 56,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            color: Theme.of(context).colorScheme.primary,
+            color: cs.surface,
+            border: Border.all(
+              color: HexaColors.primaryMid.withValues(alpha: 0.45),
+              width: 1.5,
+            ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.28),
-                blurRadius: 14,
-                offset: const Offset(0, 5),
+                color: Colors.black.withValues(alpha: 0.07),
+                blurRadius: 12,
+                offset: const Offset(0, 3),
               ),
             ],
           ),
@@ -91,12 +95,16 @@ class ShellScreen extends ConsumerWidget {
                 HapticFeedback.mediumImpact();
                 showEntryCreateSheet(context);
               },
-              splashColor: Colors.white.withValues(alpha: 0.2),
-              highlightColor: Colors.white.withValues(alpha: 0.1),
+              splashColor: HexaColors.primaryMid.withValues(alpha: 0.12),
+              highlightColor: HexaColors.primaryMid.withValues(alpha: 0.06),
               child: const SizedBox(
                 width: 56,
                 height: 56,
-                child: Icon(Icons.add_rounded, color: Colors.white, size: 26),
+                child: Icon(
+                  Icons.add_rounded,
+                  color: HexaColors.primaryMid,
+                  size: 26,
+                ),
               ),
             ),
           ),

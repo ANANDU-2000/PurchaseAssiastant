@@ -24,12 +24,20 @@
   <link rel="manifest" href="manifest.json">
   <style>
     * { -webkit-tap-highlight-color: transparent; touch-action: pan-y; }
-    html, body {
+    html {
+      height: 100%;
+      width: 100%;
+      max-width: 100vw;
+      overflow-x: hidden;
+    }
+    body {
       margin: 0;
       padding: 0;
       height: 100%;
       width: 100%;
-      overflow: hidden;
+      max-width: 100vw;
+      overflow-x: hidden;
+      overflow-y: hidden;
       background: #F5F7FA;
       overscroll-behavior: none;
       -webkit-overflow-scrolling: touch;

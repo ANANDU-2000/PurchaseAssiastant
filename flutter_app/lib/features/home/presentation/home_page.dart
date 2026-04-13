@@ -325,11 +325,6 @@ class _HomePageState extends ConsumerState<HomePage>
                               label: 'Catalog',
                               onTap: () => context.push('/catalog'),
                             ),
-                            _SecondaryChip(
-                              icon: Icons.chat_bubble_outline_rounded,
-                              label: 'Assistant',
-                              onTap: () => context.push('/ai'),
-                            ),
                           ],
                         ),
                         const SizedBox(height: 20),
@@ -367,39 +362,31 @@ class _SevenDayProfitChartRow extends ConsumerWidget {
               if (maxW <= 0 || !maxW.isFinite) {
                 return const SizedBox(height: 80);
               }
-              return SizedBox(
-                height: 80,
-                width: maxW,
-                child: series.when(
-                  loading: () => const Center(
-                    child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+              return series.when(
+                  loading: () => SizedBox(
+                    height: 80,
+                    width: maxW,
+                    child: const Center(
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
                     ),
                   ),
-                  error: (_, __) => Center(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.wifi_off_rounded,
-                            size: 18,
-                            color: isDark
-                                ? HexaColors.textSecondary
-                                : cs.onSurfaceVariant),
-                        const SizedBox(width: 8),
-                        TextButton(
-                          onPressed: () =>
-                              ref.invalidate(homeSevenDayProfitProvider),
-                          child: const Text('Retry'),
-                        ),
-                      ],
+                  error: (_, __) => SizedBox(
+                    width: maxW,
+                    height: 168,
+                    child: FriendlyLoadError(
+                      message: 'Could not load week chart',
+                      onRetry: () =>
+                          ref.invalidate(homeSevenDayProfitProvider),
                     ),
                   ),
                   data: (pts) {
                     if (pts.isEmpty ||
                         pts.every((p) => p.profit == 0)) {
-                      return const SizedBox(height: 80);
+                      return SizedBox(height: 80, width: maxW);
                     }
                     final spots = <FlSpot>[];
                     var maxY = 1.0;
@@ -409,32 +396,36 @@ class _SevenDayProfitChartRow extends ConsumerWidget {
                       spots.add(FlSpot(i.toDouble(), y));
                     }
                     if (maxY <= 0) maxY = 1;
-                    return LineChart(
-                      LineChartData(
-                        minY: 0,
-                        maxY: maxY * 1.05,
-                        gridData: const FlGridData(show: false),
-                        titlesData: const FlTitlesData(show: false),
-                        borderData: FlBorderData(show: false),
-                        lineTouchData: const LineTouchData(enabled: false),
-                        lineBarsData: [
-                          LineChartBarData(
-                            spots: spots,
-                            isCurved: true,
-                            color: HexaColors.primaryMid,
-                            barWidth: 2.5,
-                            dotData: const FlDotData(show: false),
-                            belowBarData: BarAreaData(
-                              show: true,
-                              color: HexaColors.primaryMid.withValues(alpha: 0.1),
+                    return SizedBox(
+                      height: 80,
+                      width: maxW,
+                      child: LineChart(
+                        LineChartData(
+                          minY: 0,
+                          maxY: maxY * 1.05,
+                          gridData: const FlGridData(show: false),
+                          titlesData: const FlTitlesData(show: false),
+                          borderData: FlBorderData(show: false),
+                          lineTouchData: const LineTouchData(enabled: false),
+                          lineBarsData: [
+                            LineChartBarData(
+                              spots: spots,
+                              isCurved: true,
+                              color: HexaColors.primaryMid,
+                              barWidth: 2.5,
+                              dotData: const FlDotData(show: false),
+                              belowBarData: BarAreaData(
+                                show: true,
+                                color: HexaColors.primaryMid
+                                    .withValues(alpha: 0.1),
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     );
                   },
-                ),
-              );
+                );
             },
           ),
         ),
@@ -531,8 +522,7 @@ class _DatePeriodPill extends StatelessWidget {
             style: tt.labelLarge?.copyWith(
               fontSize: 13,
               fontWeight: FontWeight.w800,
-              color:
-                  selected ? const Color(0xFF04201C) : unselectedLabel,
+              color: selected ? Colors.white : unselectedLabel,
             ),
           ),
         ),
@@ -576,14 +566,13 @@ class _HeroProfitLoadingState extends State<_HeroProfitLoading>
           height: 140,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(24),
-            gradient: LinearGradient(
-              begin: Alignment(-1.2 + t * 2.4, 0),
-              end: Alignment(-0.2 + t * 2.4, 0.2),
-              colors: [
-                HexaColors.heroGradientEnd,
-                HexaColors.primaryDeep,
-                HexaColors.primaryMid,
-              ],
+            color: Color.lerp(
+              const Color(0xFFF1F5F9),
+              HexaColors.primaryMid.withValues(alpha: 0.08),
+              t,
+            ),
+            border: Border.all(
+              color: HexaColors.primaryMid.withValues(alpha: 0.25),
             ),
           ),
           child: Center(
@@ -592,7 +581,7 @@ class _HeroProfitLoadingState extends State<_HeroProfitLoading>
               height: 28,
               child: CircularProgressIndicator(
                 strokeWidth: 2.5,
-                color: Colors.white.withValues(alpha: 0.85),
+                color: HexaColors.primaryMid.withValues(alpha: 0.85),
               ),
             ),
           ),
@@ -875,29 +864,34 @@ class _SignalsEmptyState extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             height: 44,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
+            child: Material(
+              color: HexaColors.primaryMid.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+              child: InkWell(
                 borderRadius: BorderRadius.circular(12),
-                gradient: const LinearGradient(
-                    colors: [HexaColors.primaryMid, HexaColors.primaryDeep]),
-              ),
-              child: Material(
-                color: Colors.transparent,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: onAdd,
+                onTap: onAdd,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: HexaColors.primaryMid.withValues(alpha: 0.35),
+                    ),
+                  ),
                   child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(Icons.add_rounded,
-                          color: Color(0xFF04201C), size: 20),
+                          color: HexaColors.primaryMid, size: 20),
                       SizedBox(width: 6),
                       Text(
                         '+ Add Purchase',
                         style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF04201C),
-                            fontSize: 15),
+                          fontWeight: FontWeight.w800,
+                          color: HexaColors.primaryMid,
+                          fontSize: 15,
+                        ),
                       ),
                     ],
                   ),
@@ -1096,34 +1090,34 @@ class _QuickActionCards extends StatelessWidget {
       children: [
         Expanded(
           flex: 2,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
+          child: Material(
+            color: HexaColors.primaryMid.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(14),
+            child: InkWell(
               borderRadius: BorderRadius.circular(14),
-              gradient: const LinearGradient(
-                  colors: [HexaColors.primaryMid, HexaColors.primaryDeep]),
-            ),
-            child: Material(
-              color: Colors.transparent,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: onAddEntry,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.add_rounded,
-                          size: 24, color: Colors.white),
-                      const SizedBox(width: 6),
-                      Text(
-                        'New Entry',
-                        style: tt.labelLarge?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 13),
-                      ),
-                    ],
+              onTap: onAddEntry,
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: HexaColors.primaryMid.withValues(alpha: 0.4),
                   ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.add_rounded,
+                        size: 24, color: HexaColors.primaryMid),
+                    const SizedBox(width: 6),
+                    Text(
+                      'New Entry',
+                      style: tt.labelLarge?.copyWith(
+                          color: HexaColors.primaryMid,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1271,22 +1265,15 @@ class _HeroProfitCard extends StatelessWidget {
     final up = changePct != null && changePct! >= 0;
     final badgeColor = up ? HexaColors.profit : HexaColors.loss;
 
+    final cs = Theme.of(context).colorScheme;
     return SizedBox(
       height: 140,
       child: Container(
         decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withValues(alpha: 0.85),
           borderRadius: BorderRadius.circular(24),
           border:
-              Border.all(color: HexaColors.primaryMid.withValues(alpha: 0.4)),
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              HexaColors.heroGradientEnd,
-              HexaColors.primaryDeep,
-              HexaColors.primaryMid,
-            ],
-          ),
+              Border.all(color: HexaColors.primaryMid.withValues(alpha: 0.35)),
           boxShadow: HexaColors.cardShadow(context),
         ),
         clipBehavior: Clip.antiAlias,
@@ -1301,13 +1288,13 @@ class _HeroProfitCard extends StatelessWidget {
                     Row(
                       children: [
                         Icon(Icons.trending_up_rounded,
-                            color: Colors.white.withValues(alpha: 0.7),
+                            color: HexaColors.primaryMid.withValues(alpha: 0.9),
                             size: 18),
                         const SizedBox(width: 6),
                         Text(
                           'Total Profit',
                           style: tt.labelLarge?.copyWith(
-                            color: Colors.white.withValues(alpha: 0.7),
+                            color: cs.onSurfaceVariant,
                             fontWeight: FontWeight.w600,
                             fontSize: 12,
                           ),
@@ -1321,7 +1308,7 @@ class _HeroProfitCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: tt.headlineMedium?.copyWith(
                         height: 1.0,
-                        color: Colors.white,
+                        color: cs.onSurface,
                         fontWeight: FontWeight.w700,
                         letterSpacing: -1,
                       ),
@@ -1330,7 +1317,7 @@ class _HeroProfitCard extends StatelessWidget {
                     Text(
                       '$periodLabel · $rangeCaption',
                       style: tt.bodySmall?.copyWith(
-                          color: Colors.white.withValues(alpha: 0.6),
+                          color: cs.onSurfaceVariant,
                           fontSize: 12),
                     ),
                   ],

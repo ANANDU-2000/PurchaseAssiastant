@@ -282,9 +282,7 @@ class _FilterChip extends StatelessWidget {
               label,
               style: tt.labelMedium?.copyWith(
                 fontWeight: FontWeight.w700,
-                color: selected
-                    ? const Color(0xFF04201C)
-                    : cs.onSurfaceVariant,
+                color: selected ? Colors.white : cs.onSurfaceVariant,
               ),
             ),
           ),
