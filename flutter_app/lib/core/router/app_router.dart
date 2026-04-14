@@ -197,6 +197,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         redirect: (context, state) => '/assistant',
       ),
       GoRoute(
+        path: '/assistant',
+        name: 'assistant',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const AssistantChatPage(),
+        ),
+      ),
+      GoRoute(
         path: '/notifications',
         name: 'notifications',
         pageBuilder: (context, state) => iosPushPage(
@@ -241,15 +249,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   path: '/analytics',
                   name: 'analytics',
                   builder: (context, state) => const AnalyticsPage()),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/assistant',
-                name: 'assistant',
-                builder: (context, state) => const AssistantChatPage(),
-              ),
             ],
           ),
         ],

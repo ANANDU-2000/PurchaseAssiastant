@@ -13,12 +13,11 @@ class ShellScreen extends ConsumerWidget {
 
   final StatefulNavigationShell navigationShell;
 
-  /// Branch indices: 0 home, 1 entries, 2 catalog (suppliers/items), 3 analytics, 4 assistant (hidden from nav)
+  /// Branch indices: 0 home, 1 entries, 2 catalog (suppliers/items), 3 analytics.
   static const branchHome = 0;
   static const branchEntries = 1;
   static const branchContacts = 2;
   static const branchAnalytics = 3;
-  static const branchAssistant = 4;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -36,8 +35,7 @@ class ShellScreen extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     // Avoid double FAB on catalog and assistant screens.
     // Use both index and URL — on web/deep-link, currentIndex can briefly desync from path.
-    final hideFabByIndex = idx == ShellScreen.branchContacts ||
-        idx == ShellScreen.branchAssistant;
+    final hideFabByIndex = idx == ShellScreen.branchContacts;
     final hideFabByPath =
         routePath.startsWith('/contacts') || routePath.startsWith('/assistant');
     final showShellPurchaseFab = !hideFabByIndex && !hideFabByPath;
