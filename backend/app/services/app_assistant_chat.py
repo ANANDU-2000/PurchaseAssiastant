@@ -440,12 +440,24 @@ async def run_app_assistant_turn(
             out = await commit_create_entry_confirmed(
                 db, business_id, user_id, body, source="app_chat"
             )
+            raw = out.model_dump(mode="json")
+            total_profit = 0.0
+            has_profit = False
+            for li in raw.get("lines") or []:
+                p = li.get("profit")
+                if p is not None:
+                    has_profit = True
+                    total_profit += float(p)
+            reply = f"Saved entry #{str(out.id)[:8]}…"
+            if has_profit:
+                sign = "+" if total_profit >= 0 else ""
+                reply += f"\nProfit impact: {sign}₹{total_profit:,.0f}"
             return {
-                "reply": f"Saved entry #{str(out.id)[:8]}…",
+                "reply": reply,
                 "intent": "confirm_saved",
                 "preview_token": None,
                 "entry_draft": None,
-                "saved_entry": out.model_dump(mode="json"),
+                "saved_entry": raw,
                 "missing_fields": [],
                 **_lm(),
             }

@@ -9,10 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import require_membership, require_owner_membership
-from app.models import CatalogItem, CatalogVariant, EntryLineItem, ItemCategory, Membership
+from app.models import CatalogItem, CatalogVariant, CategoryType, EntryLineItem, ItemCategory, Membership
 from app.models.entry import Entry
 
 router = APIRouter(prefix="/v1/businesses/{business_id}", tags=["catalog"])
+
+GENERAL_TYPE_NAME = "General"
 
 
 def _norm_name(s: str) -> str:
@@ -34,8 +36,25 @@ class ItemCategoryOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class CategoryTypeCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+
+
+class CategoryTypeUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+
+
+class CategoryTypeOut(BaseModel):
+    id: uuid.UUID
+    category_id: uuid.UUID
+    name: str
+
+    model_config = {"from_attributes": True}
+
+
 class CatalogItemCreate(BaseModel):
     category_id: uuid.UUID
+    type_id: uuid.UUID | None = None
     name: str = Field(min_length=1, max_length=512)
     default_unit: str | None = Field(default=None, pattern="^(kg|box|piece|bag)$")
     default_kg_per_bag: float | None = Field(default=None, gt=0)
@@ -43,6 +62,7 @@ class CatalogItemCreate(BaseModel):
 
 class CatalogItemUpdate(BaseModel):
     category_id: uuid.UUID | None = None
+    type_id: uuid.UUID | None = None
     name: str | None = Field(default=None, min_length=1, max_length=512)
     default_unit: str | None = Field(default=None, pattern="^(kg|box|piece|bag)$")
     default_kg_per_bag: float | None = Field(default=None, gt=0)
@@ -51,6 +71,8 @@ class CatalogItemUpdate(BaseModel):
 class CatalogItemOut(BaseModel):
     id: uuid.UUID
     category_id: uuid.UUID
+    type_id: uuid.UUID | None = None
+    type_name: str | None = None
     name: str
     default_unit: str | None
     default_kg_per_bag: float | None = None
@@ -132,6 +154,7 @@ async def _item_dup(
     db: AsyncSession,
     business_id: uuid.UUID,
     category_id: uuid.UUID,
+    type_id: uuid.UUID | None,
     name: str,
     exclude_id: uuid.UUID | None = None,
 ) -> bool:
@@ -140,10 +163,87 @@ async def _item_dup(
         CatalogItem.category_id == category_id,
         func.lower(CatalogItem.name) == _norm_name(name),
     )
+    if type_id is not None:
+        q = q.where(CatalogItem.type_id == type_id)
+    else:
+        q = q.where(CatalogItem.type_id.is_(None))
     if exclude_id is not None:
         q = q.where(CatalogItem.id != exclude_id)
     r = await db.execute(q)
     return r.first() is not None
+
+
+async def _type_name_dup(
+    db: AsyncSession,
+    category_id: uuid.UUID,
+    name: str,
+    exclude_id: uuid.UUID | None = None,
+) -> bool:
+    q = select(CategoryType.id).where(
+        CategoryType.category_id == category_id,
+        func.lower(CategoryType.name) == _norm_name(name),
+    )
+    if exclude_id is not None:
+        q = q.where(CategoryType.id != exclude_id)
+    r = await db.execute(q)
+    return r.first() is not None
+
+
+async def _get_or_create_general_type_id(
+    db: AsyncSession, business_id: uuid.UUID, category_id: uuid.UUID
+) -> uuid.UUID:
+    r = await db.execute(
+        select(CategoryType.id).where(
+            CategoryType.category_id == category_id,
+            func.lower(CategoryType.name) == _norm_name(GENERAL_TYPE_NAME),
+        )
+    )
+    row = r.first()
+    if row is not None:
+        return row[0]
+    cr = await db.execute(
+        select(ItemCategory.id).where(
+            ItemCategory.id == category_id,
+            ItemCategory.business_id == business_id,
+        )
+    )
+    if cr.first() is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="category_id not found in this business")
+    ct = CategoryType(category_id=category_id, name=GENERAL_TYPE_NAME)
+    db.add(ct)
+    await db.flush()
+    return ct.id
+
+
+def _catalog_item_out(i: CatalogItem, type_name: str | None = None) -> CatalogItemOut:
+    return CatalogItemOut(
+        id=i.id,
+        category_id=i.category_id,
+        type_id=i.type_id,
+        type_name=type_name,
+        name=i.name,
+        default_unit=i.default_unit,
+        default_kg_per_bag=float(i.default_kg_per_bag) if i.default_kg_per_bag is not None else None,
+    )
+
+
+async def _verify_type_in_category(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    category_id: uuid.UUID,
+    type_id: uuid.UUID,
+) -> None:
+    r = await db.execute(
+        select(CategoryType.id)
+        .join(ItemCategory, ItemCategory.id == CategoryType.category_id)
+        .where(
+            CategoryType.id == type_id,
+            CategoryType.category_id == category_id,
+            ItemCategory.business_id == business_id,
+        )
+    )
+    if r.first() is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="type_id not found for this category")
 
 
 async def _variant_dup(
@@ -195,6 +295,8 @@ async def create_item_category(
         )
     c = ItemCategory(business_id=business_id, name=body.name.strip())
     db.add(c)
+    await db.flush()
+    db.add(CategoryType(category_id=c.id, name=GENERAL_TYPE_NAME))
     await db.commit()
     await db.refresh(c)
     return ItemCategoryOut(id=c.id, name=c.name)
@@ -280,30 +382,165 @@ async def delete_item_category(
     await db.commit()
 
 
+# --- Category types (Category → Type → item) ---
+
+
+@router.get(
+    "/item-categories/{category_id}/category-types",
+    response_model=list[CategoryTypeOut],
+)
+async def list_category_types(
+    business_id: uuid.UUID,
+    category_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    del _m
+    cr = await db.execute(
+        select(ItemCategory.id).where(
+            ItemCategory.id == category_id,
+            ItemCategory.business_id == business_id,
+        )
+    )
+    if cr.first() is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Category not found")
+    r = await db.execute(
+        select(CategoryType)
+        .where(CategoryType.category_id == category_id)
+        .order_by(func.lower(CategoryType.name))
+    )
+    rows = r.scalars().all()
+    return [CategoryTypeOut(id=t.id, category_id=t.category_id, name=t.name) for t in rows]
+
+
+@router.post(
+    "/item-categories/{category_id}/category-types",
+    response_model=CategoryTypeOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_category_type(
+    business_id: uuid.UUID,
+    category_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    body: CategoryTypeCreate,
+):
+    del _m
+    cr = await db.execute(
+        select(ItemCategory.id).where(
+            ItemCategory.id == category_id,
+            ItemCategory.business_id == business_id,
+        )
+    )
+    if cr.first() is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Category not found")
+    if await _type_name_dup(db, category_id, body.name):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail="A type with this name already exists in this category",
+        )
+    t = CategoryType(category_id=category_id, name=body.name.strip())
+    db.add(t)
+    await db.commit()
+    await db.refresh(t)
+    return CategoryTypeOut(id=t.id, category_id=t.category_id, name=t.name)
+
+
+@router.patch(
+    "/item-categories/{category_id}/category-types/{type_id}",
+    response_model=CategoryTypeOut,
+)
+async def update_category_type(
+    business_id: uuid.UUID,
+    category_id: uuid.UUID,
+    type_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    body: CategoryTypeUpdate,
+):
+    del _m
+    r = await db.execute(
+        select(CategoryType)
+        .join(ItemCategory, ItemCategory.id == CategoryType.category_id)
+        .where(
+            CategoryType.id == type_id,
+            CategoryType.category_id == category_id,
+            ItemCategory.business_id == business_id,
+        )
+    )
+    t = r.scalar_one_or_none()
+    if t is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Type not found")
+    data = body.model_dump(exclude_unset=True)
+    if "name" in data and data["name"] is not None:
+        if await _type_name_dup(db, category_id, data["name"], exclude_id=type_id):
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail="A type with this name already exists in this category",
+            )
+        t.name = data["name"].strip()
+    await db.commit()
+    await db.refresh(t)
+    return CategoryTypeOut(id=t.id, category_id=t.category_id, name=t.name)
+
+
+@router.delete(
+    "/item-categories/{category_id}/category-types/{type_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_category_type(
+    business_id: uuid.UUID,
+    category_id: uuid.UUID,
+    type_id: uuid.UUID,
+    _owner: Annotated[Membership, Depends(require_owner_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    del _owner
+    r = await db.execute(
+        select(CategoryType)
+        .join(ItemCategory, ItemCategory.id == CategoryType.category_id)
+        .where(
+            CategoryType.id == type_id,
+            CategoryType.category_id == category_id,
+            ItemCategory.business_id == business_id,
+        )
+    )
+    t = r.scalar_one_or_none()
+    if t is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Type not found")
+    ic = await db.execute(
+        select(func.count(CatalogItem.id)).where(CatalogItem.type_id == type_id)
+    )
+    if int(ic.scalar() or 0) > 0:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete a type that still has catalog items — move or delete items first",
+        )
+    await db.delete(t)
+    await db.commit()
+
+
 @router.get("/catalog-items", response_model=list[CatalogItemOut])
 async def list_catalog_items(
     business_id: uuid.UUID,
     _m: Annotated[Membership, Depends(require_membership)],
     db: Annotated[AsyncSession, Depends(get_db)],
     category_id: uuid.UUID | None = Query(None, description="Filter by category"),
+    type_id: uuid.UUID | None = Query(None, description="Filter by category type"),
 ):
     del _m
-    q = select(CatalogItem).where(CatalogItem.business_id == business_id)
+    q = (
+        select(CatalogItem, CategoryType.name)
+        .outerjoin(CategoryType, CategoryType.id == CatalogItem.type_id)
+        .where(CatalogItem.business_id == business_id)
+    )
     if category_id is not None:
         q = q.where(CatalogItem.category_id == category_id)
+    if type_id is not None:
+        q = q.where(CatalogItem.type_id == type_id)
     q = q.order_by(func.lower(CatalogItem.name))
     r = await db.execute(q)
-    rows = r.scalars().all()
-    return [
-        CatalogItemOut(
-            id=i.id,
-            category_id=i.category_id,
-            name=i.name,
-            default_unit=i.default_unit,
-            default_kg_per_bag=float(i.default_kg_per_bag) if i.default_kg_per_bag is not None else None,
-        )
-        for i in rows
-    ]
+    return [_catalog_item_out(i, tn) for i, tn in r.all()]
 
 
 @router.post("/catalog-items", response_model=CatalogItemOut, status_code=status.HTTP_201_CREATED)
@@ -322,11 +559,18 @@ async def create_catalog_item(
     )
     if rc.first() is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="category_id not found in this business")
-    if await _item_dup(db, business_id, body.category_id, body.name):
+    resolved_type: uuid.UUID
+    if body.type_id is not None:
+        await _verify_type_in_category(db, business_id, body.category_id, body.type_id)
+        resolved_type = body.type_id
+    else:
+        resolved_type = await _get_or_create_general_type_id(db, business_id, body.category_id)
+    if await _item_dup(db, business_id, body.category_id, resolved_type, body.name):
         er = await db.execute(
             select(CatalogItem.id).where(
                 CatalogItem.business_id == business_id,
                 CatalogItem.category_id == body.category_id,
+                CatalogItem.type_id == resolved_type,
                 func.lower(CatalogItem.name) == _norm_name(body.name),
             )
         )
@@ -334,7 +578,7 @@ async def create_catalog_item(
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             detail={
-                "message": "An item with this name already exists in this category",
+                "message": "An item with this name already exists for this category and type",
                 "existing_item_id": str(eid),
             },
         )
@@ -342,6 +586,7 @@ async def create_catalog_item(
     i = CatalogItem(
         business_id=business_id,
         category_id=body.category_id,
+        type_id=resolved_type,
         name=body.name.strip(),
         default_unit=body.default_unit,
         default_kg_per_bag=dkg,
@@ -349,13 +594,11 @@ async def create_catalog_item(
     db.add(i)
     await db.commit()
     await db.refresh(i)
-    return CatalogItemOut(
-        id=i.id,
-        category_id=i.category_id,
-        name=i.name,
-        default_unit=i.default_unit,
-        default_kg_per_bag=float(i.default_kg_per_bag) if i.default_kg_per_bag is not None else None,
-    )
+    tn = None
+    if i.type_id is not None:
+        tr = await db.execute(select(CategoryType.name).where(CategoryType.id == i.type_id))
+        tn = tr.scalar_one_or_none()
+    return _catalog_item_out(i, tn)
 
 
 @router.get("/catalog-items/{item_id}", response_model=CatalogItemOut)
@@ -367,21 +610,18 @@ async def get_catalog_item(
 ):
     del _m
     r = await db.execute(
-        select(CatalogItem).where(
+        select(CatalogItem, CategoryType.name)
+        .outerjoin(CategoryType, CategoryType.id == CatalogItem.type_id)
+        .where(
             CatalogItem.id == item_id,
             CatalogItem.business_id == business_id,
         )
     )
-    i = r.scalar_one_or_none()
-    if i is None:
+    row = r.one_or_none()
+    if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")
-    return CatalogItemOut(
-        id=i.id,
-        category_id=i.category_id,
-        name=i.name,
-        default_unit=i.default_unit,
-        default_kg_per_bag=float(i.default_kg_per_bag) if i.default_kg_per_bag is not None else None,
-    )
+    i, tn = row
+    return _catalog_item_out(i, tn)
 
 
 @router.get("/catalog-items/{item_id}/insights", response_model=CatalogItemInsightsOut)
@@ -620,7 +860,8 @@ async def update_catalog_item(
     if i is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")
     data = body.model_dump(exclude_unset=True)
-    cid = data.get("category_id", i.category_id)
+    cid = i.category_id
+    tid = i.type_id
     if "category_id" in data and data["category_id"] is not None:
         rc = await db.execute(
             select(ItemCategory.id).where(
@@ -632,12 +873,23 @@ async def update_catalog_item(
             raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="category_id not found")
         i.category_id = data["category_id"]
         cid = i.category_id
+        if "type_id" not in data:
+            i.type_id = await _get_or_create_general_type_id(db, business_id, cid)
+            tid = i.type_id
+    if "type_id" in data:
+        if data["type_id"] is None:
+            i.type_id = await _get_or_create_general_type_id(db, business_id, cid)
+        else:
+            await _verify_type_in_category(db, business_id, cid, data["type_id"])
+            i.type_id = data["type_id"]
+        tid = i.type_id
     if "name" in data and data["name"] is not None:
-        if await _item_dup(db, business_id, cid, data["name"], exclude_id=item_id):
+        if await _item_dup(db, business_id, cid, tid, data["name"], exclude_id=item_id):
             er = await db.execute(
                 select(CatalogItem.id).where(
                     CatalogItem.business_id == business_id,
                     CatalogItem.category_id == cid,
+                    CatalogItem.type_id == tid,
                     func.lower(CatalogItem.name) == _norm_name(data["name"]),
                     CatalogItem.id != item_id,
                 )
@@ -646,7 +898,7 @@ async def update_catalog_item(
             raise HTTPException(
                 status.HTTP_409_CONFLICT,
                 detail={
-                    "message": "An item with this name already exists in this category",
+                    "message": "An item with this name already exists for this category and type",
                     "existing_item_id": str(oid),
                 },
             )
@@ -662,13 +914,11 @@ async def update_catalog_item(
             i.default_kg_per_bag = None
     await db.commit()
     await db.refresh(i)
-    return CatalogItemOut(
-        id=i.id,
-        category_id=i.category_id,
-        name=i.name,
-        default_unit=i.default_unit,
-        default_kg_per_bag=float(i.default_kg_per_bag) if i.default_kg_per_bag is not None else None,
-    )
+    tn = None
+    if i.type_id is not None:
+        tr = await db.execute(select(CategoryType.name).where(CategoryType.id == i.type_id))
+        tn = tr.scalar_one_or_none()
+    return _catalog_item_out(i, tn)
 
 
 @router.delete("/catalog-items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)

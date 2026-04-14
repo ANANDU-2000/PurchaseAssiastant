@@ -9,6 +9,7 @@ import '../../features/analytics/presentation/item_analytics_detail_page.dart';
 import '../../features/catalog/presentation/catalog_category_detail_page.dart';
 import '../../features/catalog/presentation/catalog_item_detail_page.dart';
 import '../../features/catalog/presentation/catalog_page.dart';
+import '../../features/catalog/presentation/catalog_type_items_page.dart';
 import '../../features/assistant/presentation/assistant_chat_page.dart';
 import '../../features/auth/presentation/login_page.dart';
 import '../../features/contacts/presentation/contacts_page.dart';
@@ -118,6 +119,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           return iosPushPage(
             key: state.pageKey,
             child: CatalogCategoryDetailPage(categoryId: id),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/catalog/category/:categoryId/type/:typeId',
+        pageBuilder: (context, state) {
+          final cid = state.pathParameters['categoryId']!;
+          final tid = state.pathParameters['typeId']!;
+          return iosPushPage(
+            key: state.pageKey,
+            child: CatalogTypeItemsPage(categoryId: cid, typeId: tid),
           );
         },
       ),

@@ -75,7 +75,7 @@ ThemeData buildHexaTheme(Brightness brightness) {
       ),
       bodyMedium: textTheme.bodyMedium?.copyWith(
         height: 1.35,
-        color: baseScheme.onSurfaceVariant,
+        color: isDark ? baseScheme.onSurfaceVariant : HexaColors.textBody,
         fontWeight: FontWeight.w500,
       ),
       labelLarge: textTheme.labelLarge?.copyWith(

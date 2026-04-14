@@ -177,6 +177,63 @@ class _HomePageState extends ConsumerState<HomePage>
                 ),
               ),
             ),
+            SliverToBoxAdapter(
+              child: insights.when(
+                loading: () => const SizedBox.shrink(),
+                error: (_, __) => const SizedBox.shrink(),
+                data: (ins) {
+                  final parts = <String>[];
+                  if (ins.topItem != null &&
+                      ins.topItemProfit != null &&
+                      ins.topItem!.isNotEmpty) {
+                    parts.add(
+                      'Top item: ${ins.topItem} (${_inr(ins.topItemProfit!.round())})',
+                    );
+                  }
+                  if (ins.bestSupplierName != null &&
+                      ins.bestSupplierName!.isNotEmpty) {
+                    parts.add('Best supplier: ${ins.bestSupplierName}');
+                  }
+                  if (ins.negativeLineCount > 0) {
+                    parts.add(
+                      '${ins.negativeLineCount} line${ins.negativeLineCount == 1 ? '' : 's'} below cost',
+                    );
+                  }
+                  if (parts.isEmpty) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                    child: Material(
+                      color: HexaColors.primaryLight,
+                      borderRadius: BorderRadius.circular(12),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 10),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(
+                              Icons.tips_and_updates_outlined,
+                              size: 18,
+                              color: HexaColors.accentInfo,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                parts.join(' · '),
+                                style: tt.bodySmall?.copyWith(
+                                  color: HexaColors.textBody,
+                                  height: 1.35,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
             SliverPadding(
               padding: EdgeInsets.fromLTRB(
                 16,

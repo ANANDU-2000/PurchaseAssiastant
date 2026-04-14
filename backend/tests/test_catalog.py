@@ -34,6 +34,16 @@ def test_category_and_item_crud():
     )
     assert r.status_code == 201, r.text
     cid = r.json()["id"]
+    r = client.get(
+        f"/v1/businesses/{bid}/item-categories/{cid}/category-types",
+        headers=h,
+    )
+    assert r.status_code == 200
+    types = r.json()
+    assert len(types) == 1
+    assert types[0]["name"] == "General"
+    general_tid = types[0]["id"]
+
     r = client.get(f"/v1/businesses/{bid}/item-categories", headers=h)
     assert r.status_code == 200
     assert len(r.json()) == 1
@@ -46,6 +56,8 @@ def test_category_and_item_crud():
     assert r.status_code == 201, r.text
     iid = r.json()["id"]
     assert r.json().get("default_kg_per_bag") is None
+    assert r.json().get("type_id") == general_tid
+    assert r.json().get("type_name") == "General"
 
     r = client.post(
         f"/v1/businesses/{bid}/catalog-items",

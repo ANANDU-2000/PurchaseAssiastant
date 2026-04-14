@@ -3,11 +3,14 @@ import 'package:flutter/material.dart';
 /// Premium light UI — navy primary text, semantic profit/loss, blue accent only where needed.
 abstract final class HexaColors {
   // === LIGHT SURFACES (production palette) ===
-  /// Page background (premium light canvas).
-  static const surfaceApp = Color(0xFFF8FAFC);
+  /// Page background — table-first / decision UI (white canvas).
+  static const surfaceApp = Color(0xFFFFFFFF);
   /// Cards and sheets on [surfaceApp] — clean white lift.
   static const surfaceCardLight = Color(0xFFFFFFFF);
   static const neutral = Color(0xFF64748B);
+
+  /// Body text on white (dark grey, not pure black).
+  static const textBody = Color(0xFF475569);
 
   /// Headlines, app identity — not for full-screen fills of interactive blue.
   static const primaryNavy = Color(0xFF0F172A);

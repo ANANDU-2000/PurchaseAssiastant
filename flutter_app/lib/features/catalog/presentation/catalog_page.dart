@@ -389,8 +389,12 @@ class _CatalogPageState extends ConsumerState<CatalogPage>
                         final cid = it['category_id']?.toString() ?? '';
                         final name = it['name']?.toString() ?? '';
                         final du = it['default_unit']?.toString();
-                        final catLine =
-                            '${catName[cid] ?? cid}${du != null && du.isNotEmpty ? ' · default $du' : ''}';
+                        final typeName = it['type_name']?.toString();
+                        final catLine = [
+                          catName[cid] ?? cid,
+                          if (typeName != null && typeName.isNotEmpty) typeName,
+                          if (du != null && du.isNotEmpty) 'default $du',
+                        ].join(' · ');
                         final insKey = '$id|${range.from}|${range.to}';
                         final ins =
                             ref.watch(catalogItemInsightsProvider(insKey));

@@ -435,15 +435,64 @@ class HexaApi {
         .delete<void>('/v1/businesses/$businessId/item-categories/$categoryId');
   }
 
+  Future<List<Map<String, dynamic>>> listCategoryTypes({
+    required String businessId,
+    required String categoryId,
+  }) async {
+    final res = await _dio.get<dynamic>(
+      '/v1/businesses/$businessId/item-categories/$categoryId/category-types',
+    );
+    final data = res.data;
+    if (data is! List) return [];
+    return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  Future<Map<String, dynamic>> createCategoryType({
+    required String businessId,
+    required String categoryId,
+    required String name,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/item-categories/$categoryId/category-types',
+      data: {'name': name},
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> updateCategoryType({
+    required String businessId,
+    required String categoryId,
+    required String typeId,
+    required String name,
+  }) async {
+    final res = await _dio.patch<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/item-categories/$categoryId/category-types/$typeId',
+      data: {'name': name},
+    );
+    return res.data ?? {};
+  }
+
+  Future<void> deleteCategoryType({
+    required String businessId,
+    required String categoryId,
+    required String typeId,
+  }) async {
+    await _dio.delete<void>(
+      '/v1/businesses/$businessId/item-categories/$categoryId/category-types/$typeId',
+    );
+  }
+
   Future<List<Map<String, dynamic>>> listCatalogItems({
     required String businessId,
     String? categoryId,
+    String? typeId,
   }) async {
     final res = await _dio.get<dynamic>(
       '/v1/businesses/$businessId/catalog-items',
       queryParameters: {
         if (categoryId != null && categoryId.isNotEmpty)
           'category_id': categoryId,
+        if (typeId != null && typeId.isNotEmpty) 'type_id': typeId,
       },
     );
     final data = res.data;
@@ -455,6 +504,7 @@ class HexaApi {
     required String businessId,
     required String categoryId,
     required String name,
+    String? typeId,
     String? defaultUnit,
     double? defaultKgPerBag,
   }) async {
@@ -463,6 +513,7 @@ class HexaApi {
       data: {
         'category_id': categoryId,
         'name': name,
+        if (typeId != null && typeId.isNotEmpty) 'type_id': typeId,
         if (defaultUnit != null && defaultUnit.isNotEmpty)
           'default_unit': defaultUnit,
         if (defaultKgPerBag != null && defaultKgPerBag > 0)
@@ -483,6 +534,8 @@ class HexaApi {
     required String businessId,
     required String itemId,
     String? categoryId,
+    String? typeId,
+    bool patchTypeId = false,
     String? name,
     String? defaultUnit,
     bool includeDefaultUnit = false,
@@ -491,6 +544,7 @@ class HexaApi {
   }) async {
     final data = <String, dynamic>{
       if (categoryId != null) 'category_id': categoryId,
+      if (patchTypeId) 'type_id': typeId,
       if (name != null) 'name': name,
     };
     if (includeDefaultUnit) {

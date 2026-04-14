@@ -29,6 +29,17 @@ final catalogItemsListProvider =
       .listCatalogItems(businessId: session.primaryBusiness.id);
 });
 
+/// Per-category types (Category → Type → items).
+final categoryTypesListProvider = FutureProvider.autoDispose
+    .family<List<Map<String, dynamic>>, String>((ref, categoryId) async {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return [];
+  return ref.read(hexaApiProvider).listCategoryTypes(
+        businessId: session.primaryBusiness.id,
+        categoryId: categoryId,
+      );
+});
+
 /// Params: `itemId|from|to` for stable family identity.
 final catalogItemInsightsProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, key) async {

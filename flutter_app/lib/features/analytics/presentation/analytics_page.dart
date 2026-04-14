@@ -354,7 +354,7 @@ class _AnalyticsPageState extends ConsumerState<AnalyticsPage> {
     return DefaultTabController(
       length: 5,
       child: Scaffold(
-        backgroundColor: context.adaptiveScaffold,
+        backgroundColor: Colors.white,
         appBar: AppBar(
           backgroundColor: context.adaptiveAppBarBg,
           surfaceTintColor: Colors.transparent,
@@ -373,11 +373,11 @@ class _AnalyticsPageState extends ConsumerState<AnalyticsPage> {
             unselectedLabelColor: cs.onSurfaceVariant,
             indicatorColor: cs.primary,
             tabs: const [
-              Tab(text: 'Overview'),
               Tab(text: 'Items'),
               Tab(text: 'Cats'),
               Tab(text: 'Suppliers'),
               Tab(text: 'Brokers'),
+              Tab(text: 'Summary'),
             ],
           ),
         ),
@@ -422,11 +422,11 @@ class _AnalyticsPageState extends ConsumerState<AnalyticsPage> {
             Expanded(
               child: TabBarView(
                 children: [
-                  _OverviewTab(tt: tt, inr: _inr),
                   _ItemsTab(inr: _inr),
                   _CategoriesTab(inr: _inr),
                   _SuppliersTab(inr: _inr),
                   _BrokersTab(inr: _inr),
+                  _OverviewTab(tt: tt, inr: _inr),
                 ],
               ),
             ),
@@ -478,7 +478,7 @@ class _OverviewTab extends ConsumerWidget {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
             children: [
-              Text('Overview',
+              Text('Charts & KPI mix',
                   style: tt.titleSmall?.copyWith(
                       fontWeight: FontWeight.w800,
                       color: onSurf,
