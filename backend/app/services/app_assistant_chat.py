@@ -36,7 +36,11 @@ from app.services.chat_draft_store import (
     save_chat_draft,
 )
 from app.services.fuzzy_catalog import best_token_sort_match
-from app.services.entry_intent_resolution import build_entry_create_request, ist_today
+from app.services.entry_intent_resolution import (
+    build_entry_create_request,
+    ist_today,
+    merge_kv_into_create_data,
+)
 
 
 def _lm(
@@ -233,6 +237,48 @@ def _entry_preview_text(lines: list[dict[str, Any]]) -> str:
     if not rendered:
         rendered = ["• (no lines)"]
     return "\n".join(rendered)
+
+
+def _single_missing_prompt(missing_fields: list[str] | None) -> str:
+    m = [x for x in (missing_fields or []) if x]
+    if not m:
+        return "Need one field: qty. Example: qty 100"
+    key = m[0]
+    examples = {
+        "item": "item rice",
+        "item_name": "item rice",
+        "qty": "qty 100",
+        "buy_price": "buy 700",
+        "landing_cost": "landing 720",
+        "selling_price": "sell 760",
+        "supplier_name": "supplier surag",
+        "broker_name": "broker ramesh",
+        "entry_date": "date 2026-04-14",
+        "unit": "unit kg",
+    }
+    ex = examples.get(key, f"{key} <value>")
+    return f"Need {key}. Example: {ex}"
+
+
+def _extract_inline_kv(text: str) -> dict[str, str]:
+    t = text.strip()
+    out: dict[str, str] = {}
+    patterns = [
+        ("qty", r"(?i)\bqty\s*[:=]?\s*([0-9]+(?:\.[0-9]+)?)"),
+        ("buy_price", r"(?i)\b(?:buy|buy_price|purchase)\s*[:=]?\s*([0-9]+(?:\.[0-9]+)?)"),
+        ("landing_cost", r"(?i)\b(?:landing|land|landing_cost)\s*[:=]?\s*([0-9]+(?:\.[0-9]+)?)"),
+        ("selling_price", r"(?i)\b(?:sell|selling|selling_price)\s*[:=]?\s*([0-9]+(?:\.[0-9]+)?)"),
+        ("unit", r"(?i)\bunit\s*[:=]?\s*(kg|bag|box|piece)"),
+        ("supplier", r"(?i)\bsupplier\s*[:=]?\s*([a-zA-Z][a-zA-Z .-]{1,80})"),
+        ("broker", r"(?i)\bbroker\s*[:=]?\s*([a-zA-Z][a-zA-Z .-]{1,80})"),
+        ("item", r"(?i)\bitem\s*[:=]?\s*([a-zA-Z][a-zA-Z0-9 .-]{1,80})"),
+        ("entry_date", r"(?i)\bdate\s*[:=]?\s*([0-9]{4}-[0-9]{2}-[0-9]{2})"),
+    ]
+    for key, pat in patterns:
+        m = re.search(pat, t)
+        if m:
+            out[key] = " ".join(m.group(1).split()).strip(" .,")
+    return out
 
 
 def _is_affirmation(text: str) -> bool:
@@ -553,6 +599,53 @@ async def run_app_assistant_turn(
         )
         if resumed is not None:
             return resumed
+        if isinstance(entry_eff, dict):
+            pending_data = entry_eff.get("__pending_entry_data__")
+            if isinstance(pending_data, dict):
+                kv = _extract_inline_kv(text)
+                merged_data = dict(pending_data)
+                if kv:
+                    merged_data = merge_kv_into_create_data(merged_data, kv)
+                stub_patch, _ = stub_intent_from_text(text)
+                for k, v in (stub_patch or {}).items():
+                    if v not in (None, ""):
+                        merged_data[k] = v
+                req_resume, miss_resume = await build_entry_create_request(
+                    db, business_id, _intent_data_to_transaction_dict(merged_data)
+                )
+                if req_resume is None or miss_resume:
+                    await save_chat_draft(
+                        settings,
+                        user_id,
+                        business_id,
+                        {"__pending_entry_data__": merged_data},
+                    )
+                    return {
+                        "reply": _single_missing_prompt(miss_resume),
+                        "intent": "clarify",
+                        "preview_token": None,
+                        "entry_draft": {"__pending_entry_data__": merged_data},
+                        "saved_entry": None,
+                        "missing_fields": miss_resume or [],
+                        **_lm(),
+                    }
+                content_r, normalized_r = await prepare_create_entry_preview(
+                    db, business_id, user_id, req_resume
+                )
+                token_r = content_r.get("preview_token")
+                draft_r = normalized_r.model_dump(mode="json")
+                lines_r = content_r.get("lines") or []
+                prev_r = _entry_preview_text(lines_r)
+                await save_chat_draft(settings, user_id, business_id, draft_r)
+                return {
+                    "reply": f"Preview (not saved):\n{prev_r}\n\nReply YES to save, or NO to cancel.",
+                    "intent": "add_purchase_preview",
+                    "preview_token": token_r,
+                    "entry_draft": draft_r,
+                    "saved_entry": None,
+                    "missing_fields": [],
+                    **_lm(),
+                }
 
     # Confirm / cancel — entity preview (supplier/category/item) or purchase entry
     if preview_token and _is_affirmation(text):
@@ -922,11 +1015,17 @@ async def run_app_assistant_turn(
         req, miss = await build_entry_create_request(db, business_id, tx)
         combine_miss = list(dict.fromkeys((miss or []) + llm_missing))
         if req is None or (miss and len(miss) > 0):
+            await save_chat_draft(
+                settings,
+                user_id,
+                business_id,
+                {"__pending_entry_data__": data},
+            )
             return {
-                "reply": reply_text or _format_missing_fields(combine_miss),
+                "reply": reply_text or _single_missing_prompt(combine_miss),
                 "intent": "clarify",
                 "preview_token": None,
-                "entry_draft": None,
+                "entry_draft": {"__pending_entry_data__": data},
                 "saved_entry": None,
                 "missing_fields": combine_miss,
                 **intent_lm,
@@ -957,12 +1056,17 @@ async def run_app_assistant_turn(
     tx = _intent_data_to_transaction_dict(data)
     req, miss = await build_entry_create_request(db, business_id, tx)
     if req is None or miss:
+        await save_chat_draft(
+            settings,
+            user_id,
+            business_id,
+            {"__pending_entry_data__": data},
+        )
         return {
-            "reply": _format_missing_fields(list(dict.fromkeys((miss or []) + stub_missing)))
-            + " Example: 100 kg rice buy ₹700 land ₹720.",
+            "reply": _single_missing_prompt(list(dict.fromkeys((miss or []) + stub_missing))),
             "intent": "clarify",
             "preview_token": None,
-            "entry_draft": None,
+            "entry_draft": {"__pending_entry_data__": data},
             "saved_entry": None,
             "missing_fields": list(dict.fromkeys((miss or []) + stub_missing)),
             **intent_lm,
