@@ -97,7 +97,29 @@ def _map_llm_entity_intent(
         name = data.get("supplier_name") or data.get("name")
         if not name or not str(name).strip():
             return None
-        return ("supplier", {"name": str(name).strip()})
+        payload: dict[str, Any] = {"name": str(name).strip()}
+        phone = data.get("phone") or data.get("supplier_phone") or data.get("whatsapp_number")
+        if phone:
+            payload["phone"] = str(phone).strip()
+        loc = data.get("location") or data.get("place") or data.get("city")
+        if loc:
+            payload["location"] = str(loc).strip()
+        bname = data.get("broker_name") or data.get("broker")
+        if bname:
+            payload["broker_name"] = str(bname).strip()
+        return ("supplier", payload)
+    if key == "create_broker":
+        name = data.get("broker_name") or data.get("name")
+        if not name or not str(name).strip():
+            return None
+        payload = {"name": str(name).strip()}
+        comm = _parse_float(data.get("commission_value") or data.get("commission"))
+        ctype = data.get("commission_type")
+        if ctype:
+            payload["commission_type"] = str(ctype).strip().lower()
+        if comm is not None:
+            payload["commission_value"] = comm
+        return ("broker", payload)
     if key == "create_category":
         name = data.get("category_name") or data.get("name")
         if not name or not str(name).strip():
@@ -768,7 +790,9 @@ async def run_app_assistant_turn(
             "reply": (
                 "Harisree assistant\n"
                 "• Purchase: “100 kg rice from Surag, buy ₹700 land ₹720” → preview → YES.\n"
-                "• create supplier Ravi | create category Rice > Biriyani\n"
+                "• create supplier Ravi from Delhi phone 9876543210\n"
+                "• create broker Ramesh commission 2%\n"
+                "• create category Rice > Biriyani\n"
                 "• create item Basmati 50kg bag under Rice\n"
                 "• Reports: profit this month, best supplier."
             ),

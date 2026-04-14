@@ -19,7 +19,7 @@ from app.services.fuzzy_catalog import (
     fuzzy_find_similar_variant_name_for_item,
 )
 
-EntityKind = Literal["supplier", "category", "category_item", "catalog_item", "variant"]
+EntityKind = Literal["supplier", "broker", "category", "category_item", "catalog_item", "variant"]
 
 _PREVIEW: dict[str, dict[str, Any]] = {}
 _TTL = 600.0
@@ -82,6 +82,22 @@ def parse_entity_message(text: str) -> tuple[EntityKind, dict[str, Any]] | None:
         payload = _parse_supplier_phrase(m.group(1).strip())
         if payload.get("name"):
             return ("supplier", payload)
+
+    m = re.match(r"(?i)^(?:create|add)\s+broker\s+(.+)$", t)
+    if m:
+        rest = " ".join(m.group(1).strip().split())
+        name = re.split(r"(?i)\b(?:commission|rate|percent|flat)\b", rest)[0].strip(" .,")
+        payload: dict[str, Any] = {"name": name}
+        m_pct = re.search(r"(?i)\b([0-9]+(?:\.[0-9]+)?)\s*%\b", rest)
+        m_flat = re.search(r"(?i)\b(?:flat|commission)\s*([0-9]+(?:\.[0-9]+)?)\b", rest)
+        if m_pct:
+            payload["commission_type"] = "percent"
+            payload["commission_value"] = float(m_pct.group(1))
+        elif m_flat:
+            payload["commission_type"] = "flat"
+            payload["commission_value"] = float(m_flat.group(1))
+        if payload.get("name"):
+            return ("broker", payload)
 
     m = re.match(r"(?i)^(?:create|add)\s+category\s+(.+?)\s*>\s*(.+)$", t)
     if m:
@@ -233,6 +249,16 @@ async def _dup_supplier(db: AsyncSession, business_id: uuid.UUID, name: str) -> 
     return r.first() is not None
 
 
+async def _dup_broker(db: AsyncSession, business_id: uuid.UUID, name: str) -> bool:
+    r = await db.execute(
+        select(Broker.id).where(
+            Broker.business_id == business_id,
+            func.lower(Broker.name) == name.lower().strip(),
+        )
+    )
+    return r.first() is not None
+
+
 def _force_create(payload: dict[str, Any]) -> bool:
     return payload.get("force_create") is True
 
@@ -373,6 +399,35 @@ async def commit_entity(
             "location": s.location,
             "broker_id": str(s.broker_id) if s.broker_id else None,
             "entity": "supplier",
+        }
+
+    if kind == "broker":
+        name = str(payload["name"]).strip()
+        if await _dup_broker(db, business_id, name):
+            raise ValueError("Broker already exists")
+        if not _force_create(payload):
+            r = await db.execute(select(Broker.name).where(Broker.business_id == business_id))
+            names = [row[0] for row in r.all() if row[0]]
+            matched, score = best_token_sort_match(name, names)
+            if matched and score >= 70 and matched.strip().lower() != name.lower():
+                raise ValueError(
+                    f'Did you mean "{matched}"? A similar broker already exists. '
+                    f'Say CREATE NEW to add "{name}" anyway.'
+                )
+        b = Broker(
+            business_id=business_id,
+            name=name,
+            commission_type=str(payload.get("commission_type") or "percent"),
+            commission_value=payload.get("commission_value"),
+        )
+        db.add(b)
+        await db.flush()
+        return {
+            "id": str(b.id),
+            "name": b.name,
+            "commission_type": b.commission_type,
+            "commission_value": float(b.commission_value) if b.commission_value is not None else None,
+            "entity": "broker",
         }
 
     if kind == "category":
@@ -564,6 +619,21 @@ async def preview_fuzzy_entity_block(
                 f'Say CREATE NEW to add "{name}" anyway.'
             )
         return None
+    if kind == "broker":
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            return None
+        if await _dup_broker(db, business_id, name):
+            return "Broker with this name already exists."
+        r = await db.execute(select(Broker.name).where(Broker.business_id == business_id))
+        names = [row[0] for row in r.all() if row[0]]
+        matched, score = best_token_sort_match(name, names)
+        if matched and score >= 70 and matched.strip().lower() != name.lower():
+            return (
+                f'Did you mean "{matched}"? A similar broker exists. '
+                f'Say CREATE NEW to add "{name}" anyway.'
+            )
+        return None
     if kind == "category":
         name = str(payload.get("name") or "").strip()
         if not name:
@@ -675,7 +745,7 @@ async def preview_fuzzy_entity_block(
 
 def preview_lines_for(kind: EntityKind, payload: dict[str, Any]) -> str:
     if kind == "supplier":
-        lines = [f"Supplier: {payload['name']}"]
+        lines = ["Type: Supplier", f"Name: {payload['name']}"]
         phone = str(payload.get("phone") or "").strip()
         location = str(payload.get("location") or "").strip()
         broker_name = str(payload.get("broker_name") or "").strip()
@@ -686,16 +756,30 @@ def preview_lines_for(kind: EntityKind, payload: dict[str, Any]) -> str:
         if broker_name:
             lines.append(f"Broker: {broker_name}")
         return "\n".join(lines)
+    if kind == "broker":
+        lines = ["Type: Broker", f"Name: {payload['name']}"]
+        ctype = str(payload.get("commission_type") or "").strip()
+        cval = payload.get("commission_value")
+        if ctype:
+            if cval is not None:
+                lines.append(f"Commission: {cval} ({ctype})")
+            else:
+                lines.append(f"Commission type: {ctype}")
+        return "\n".join(lines)
     if kind == "category":
-        return f"Category: {payload['name']}"
+        return f"Type: Category\nName: {payload['name']}"
     if kind == "category_item":
-        return f"Category: {payload['category_name']}\nItem: {payload['item_name']}"
+        return (
+            "Type: Category + Item\n"
+            f"Category: {payload['category_name']}\n"
+            f"Item: {payload['item_name']}"
+        )
     if kind == "catalog_item":
-        lines = ""
+        lines = "Type: Item\n"
         if payload.get("category_name"):
-            lines = f"Category: {payload['category_name']}\n"
+            lines += f"Category: {payload['category_name']}\n"
         if payload.get("type_name"):
-            lines += f"Type: {payload['type_name']}\n"
+            lines += f"Category type: {payload['type_name']}\n"
         lines += f"Item: {payload['name']}"
         if payload.get("default_unit"):
             lines += f"\nUnit: {payload['default_unit']}"

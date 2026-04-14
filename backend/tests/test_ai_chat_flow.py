@@ -129,6 +129,33 @@ def test_ai_chat_create_supplier_preview_and_confirm():
     assert d2.get("saved_entry", {}).get("entity") == "supplier"
 
 
+def test_ai_chat_create_broker_preview_and_confirm():
+    h, bid = _register_and_business()
+    r1 = client.post(
+        f"/v1/businesses/{bid}/ai/chat",
+        json={"messages": [{"role": "user", "content": "create broker Ramesh commission 2%"}]},
+        headers=h,
+    )
+    assert r1.status_code == 200, r1.text
+    d1 = r1.json()
+    assert d1.get("intent") == "entity_preview"
+    tok = d1.get("preview_token")
+    assert tok
+    r2 = client.post(
+        f"/v1/businesses/{bid}/ai/chat",
+        json={
+            "messages": [{"role": "user", "content": "yes"}],
+            "preview_token": tok,
+            "entry_draft": d1.get("entry_draft"),
+        },
+        headers=h,
+    )
+    assert r2.status_code == 200, r2.text
+    d2 = r2.json()
+    assert d2.get("intent") == "entity_saved"
+    assert d2.get("saved_entry", {}).get("entity") == "broker"
+
+
 def test_ai_chat_create_category_rice_biriyani():
     h, bid = _register_and_business()
     r1 = client.post(
