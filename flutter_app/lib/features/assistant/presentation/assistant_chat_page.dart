@@ -173,7 +173,9 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _msgs.add(_Bubble(text: friendlyApiError(e), user: false));
+        _msgs.add(
+          _Bubble(text: friendlyApiError(e, forAssistant: true), user: false),
+        );
       });
     } finally {
       if (mounted) {

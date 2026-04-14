@@ -118,6 +118,51 @@ async def lifespan(app: FastAPI):
                 )
 
         await conn.run_sync(_ensure_users_ai_budget_columns)
+
+        def _ensure_catalog_items_type_id(sync_conn):
+            """Prod DBs created before CategoryType layer may lack catalog_items.type_id; create_all does not ALTER."""
+            insp = inspect(sync_conn)
+            if not insp.has_table("catalog_items"):
+                return
+            cols = {c["name"] for c in insp.get_columns("catalog_items")}
+            if "type_id" in cols:
+                return
+            dialect = sync_conn.dialect.name
+            if dialect == "postgresql":
+                sync_conn.exec_driver_sql(
+                    "ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS type_id UUID NULL"
+                )
+                if insp.has_table("category_types"):
+                    sync_conn.exec_driver_sql(
+                        "CREATE INDEX IF NOT EXISTS ix_catalog_items_type_id ON catalog_items (type_id)"
+                    )
+                    sync_conn.exec_driver_sql(
+                        """
+                        DO $do$
+                        BEGIN
+                          IF NOT EXISTS (
+                            SELECT 1 FROM pg_constraint
+                            WHERE conname = 'catalog_items_type_id_fkey'
+                          ) THEN
+                            ALTER TABLE catalog_items
+                              ADD CONSTRAINT catalog_items_type_id_fkey
+                              FOREIGN KEY (type_id) REFERENCES category_types(id) ON DELETE SET NULL;
+                          END IF;
+                        END
+                        $do$;
+                        """
+                    )
+            else:
+                # SQLite and others: store UUID as string; FK optional
+                try:
+                    sync_conn.exec_driver_sql(
+                        "ALTER TABLE catalog_items ADD COLUMN type_id VARCHAR(36) NULL"
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+
+        await conn.run_sync(_ensure_catalog_items_type_id)
+
     yield
     await engine.dispose()
 

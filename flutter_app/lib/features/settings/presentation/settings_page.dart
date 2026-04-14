@@ -554,8 +554,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               leading: Icon(Icons.chat_outlined, color: cs.primary),
               title: const Text('In-app assistant'),
               subtitle: const Text(
-                'Purchase help and reports use the Assistant tab. API keys stay on the server — this app never stores LLM secrets.',
+                'Open assistant from Settings. API keys stay on the server — this app never stores LLM secrets.',
               ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => context.go('/assistant'),
             ),
           ),
           const SizedBox(height: 20),

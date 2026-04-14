@@ -61,6 +61,15 @@ def _month_to_date_range() -> tuple[date, date]:
     return start, today
 
 
+def _normalize_llm_entity_data(data: dict[str, Any]) -> dict[str, Any]:
+    """Collapse whitespace on string fields so previews are not raw messy user echoes."""
+    out = dict(data)
+    for k, v in list(out.items()):
+        if isinstance(v, str):
+            out[k] = " ".join(v.split())
+    return out
+
+
 def _parse_float(v: object) -> float | None:
     if v is None:
         return None
@@ -179,6 +188,51 @@ def _intent_data_to_transaction_dict(data: dict[str, Any]) -> dict[str, Any]:
         "entry_date": data.get("entry_date") or data.get("date"),
     }
     return out
+
+
+def _format_missing_fields(fields: list[str] | None) -> str:
+    order = [
+        "item",
+        "item_name",
+        "qty",
+        "unit",
+        "buy_price",
+        "landing_cost",
+        "selling_price",
+        "supplier_name",
+        "broker_name",
+        "entry_date",
+    ]
+    clean = [str(f).strip() for f in (fields or []) if str(f).strip()]
+    if not clean:
+        return "Need: item, qty, buy_price, landing_cost."
+    seen: set[str] = set()
+    dedup = []
+    for f in clean:
+        if f in seen:
+            continue
+        seen.add(f)
+        dedup.append(f)
+    ranked = sorted(dedup, key=lambda x: order.index(x) if x in order else 999)
+    return "Need: " + ", ".join(ranked) + "."
+
+
+def _entry_preview_text(lines: list[dict[str, Any]]) -> str:
+    rendered: list[str] = []
+    for li in lines[:5]:
+        rendered.append(
+            "• "
+            f"{li.get('item_name') or '-'} | "
+            f"qty {li.get('qty') or '-'} {li.get('unit') or '-'} | "
+            f"buy ₹{li.get('buy_price') or '-'} | "
+            f"landing ₹{li.get('landing_cost') or '-'} | "
+            f"sell ₹{li.get('selling_price') if li.get('selling_price') is not None else '-'} | "
+            f"supplier {li.get('supplier_name') or '-'} | "
+            f"broker {li.get('broker_name') or '-'}"
+        )
+    if not rendered:
+        rendered = ["• (no lines)"]
+    return "\n".join(rendered)
 
 
 def _is_affirmation(text: str) -> bool:
@@ -635,6 +689,21 @@ async def run_app_assistant_turn(
 
     text_for_entity, force_new = _strip_create_new_prefix(text)
     ent_parsed = parse_entity_message(text_for_entity)
+    if ent_parsed is None and re.match(r"(?i)^(?:create|add)\s+supplier\b", text_for_entity):
+        return {
+            "reply": (
+                "Need supplier name.\n"
+                "You can also include optional details:\n"
+                "• phone\n• location\n• broker\n\n"
+                "Example: create supplier name Aju from Delhi phone 9876543210"
+            ),
+            "intent": "clarify",
+            "preview_token": None,
+            "entry_draft": None,
+            "saved_entry": None,
+            "missing_fields": ["name"],
+            **_lm(),
+        }
     if ent_parsed:
         kind, payload = ent_parsed
         if force_new:
@@ -737,6 +806,7 @@ async def run_app_assistant_turn(
     if llm is not None:
         intent = str(llm.get("intent") or "create_entry")
         data = llm.get("data") if isinstance(llm.get("data"), dict) else {}
+        data = _normalize_llm_entity_data(data)
         llm_missing: list[str] = [
             str(x) for x in (llm.get("missing_fields") or []) if x is not None
         ]
@@ -853,9 +923,7 @@ async def run_app_assistant_turn(
         combine_miss = list(dict.fromkeys((miss or []) + llm_missing))
         if req is None or (miss and len(miss) > 0):
             return {
-                "reply": reply_text
-                or "Need: "
-                + ", ".join(combine_miss or ["more detail (qty, buy, land, item)"]),
+                "reply": reply_text or _format_missing_fields(combine_miss),
                 "intent": "clarify",
                 "preview_token": None,
                 "entry_draft": None,
@@ -868,10 +936,7 @@ async def run_app_assistant_turn(
         token = content.get("preview_token")
         draft = normalized.model_dump(mode="json")
         lines = content.get("lines") or []
-        prev_lines = "\n".join(
-            f"• {li.get('item_name')}: {li.get('qty')} {li.get('unit')} buy ₹{li.get('buy_price')} land ₹{li.get('landing_cost')}"
-            for li in lines[:5]
-        )
+        prev_lines = _entry_preview_text(lines)
         reply = (
             f"Preview (not saved):\n{prev_lines}\n\n"
             f"Reply YES to save, or NO to cancel."
@@ -893,9 +958,8 @@ async def run_app_assistant_turn(
     req, miss = await build_entry_create_request(db, business_id, tx)
     if req is None or miss:
         return {
-            "reply": "I need: "
-            + ", ".join(stub_missing or miss or ["item", "qty", "buy_price", "landing_cost"])
-            + ". Example: 100 kg rice buy ₹700 land ₹720",
+            "reply": _format_missing_fields(list(dict.fromkeys((miss or []) + stub_missing)))
+            + " Example: 100 kg rice buy ₹700 land ₹720.",
             "intent": "clarify",
             "preview_token": None,
             "entry_draft": None,
@@ -908,10 +972,7 @@ async def run_app_assistant_turn(
     token = content.get("preview_token")
     draft = normalized.model_dump(mode="json")
     lines = content.get("lines") or []
-    prev_lines = "\n".join(
-        f"• {li.get('item_name')}: {li.get('qty')} {li.get('unit')} buy ₹{li.get('buy_price')} land ₹{li.get('landing_cost')}"
-        for li in lines[:5]
-    )
+    prev_lines = _entry_preview_text(lines)
     reply = f"Preview (not saved):\n{prev_lines}\n\nReply YES to save, or NO to cancel."
     await save_chat_draft(settings, user_id, business_id, draft)
     return {

@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import date
 from typing import Annotated
@@ -5,14 +6,19 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from app.database import get_db
+from app.db_schema_compat import catalog_items_has_type_id_column
 from app.deps import require_membership, require_owner_membership
 from app.models import CatalogItem, CatalogVariant, CategoryType, EntryLineItem, ItemCategory, Membership
 from app.models.entry import Entry
 
 router = APIRouter(prefix="/v1/businesses/{business_id}", tags=["catalog"])
+
+logger = logging.getLogger(__name__)
 
 GENERAL_TYPE_NAME = "General"
 
@@ -157,16 +163,19 @@ async def _item_dup(
     type_id: uuid.UUID | None,
     name: str,
     exclude_id: uuid.UUID | None = None,
+    *,
+    has_type_col: bool = True,
 ) -> bool:
     q = select(CatalogItem.id).where(
         CatalogItem.business_id == business_id,
         CatalogItem.category_id == category_id,
         func.lower(CatalogItem.name) == _norm_name(name),
     )
-    if type_id is not None:
-        q = q.where(CatalogItem.type_id == type_id)
-    else:
-        q = q.where(CatalogItem.type_id.is_(None))
+    if has_type_col:
+        if type_id is not None:
+            q = q.where(CatalogItem.type_id == type_id)
+        else:
+            q = q.where(CatalogItem.type_id.is_(None))
     if exclude_id is not None:
         q = q.where(CatalogItem.id != exclude_id)
     r = await db.execute(q)
@@ -215,11 +224,35 @@ async def _get_or_create_general_type_id(
     return ct.id
 
 
-def _catalog_item_out(i: CatalogItem, type_name: str | None = None) -> CatalogItemOut:
+class _UnsetSentinel:
+    __slots__ = ()
+
+
+_UNSET = _UnsetSentinel()
+
+# Columns safe to load when catalog_items.type_id is missing (older DBs).
+_CATALOG_ITEM_CORE = (
+    CatalogItem.id,
+    CatalogItem.business_id,
+    CatalogItem.category_id,
+    CatalogItem.name,
+    CatalogItem.default_unit,
+    CatalogItem.default_kg_per_bag,
+    CatalogItem.created_at,
+)
+
+
+def _catalog_item_out(
+    i: CatalogItem,
+    type_name: str | None = None,
+    *,
+    type_id: uuid.UUID | None | _UnsetSentinel = _UNSET,
+) -> CatalogItemOut:
+    tid = i.type_id if type_id is _UNSET else type_id
     return CatalogItemOut(
         id=i.id,
         category_id=i.category_id,
-        type_id=i.type_id,
+        type_id=tid,
         type_name=type_name,
         name=i.name,
         default_unit=i.default_unit,
@@ -508,14 +541,15 @@ async def delete_category_type(
     t = r.scalar_one_or_none()
     if t is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Type not found")
-    ic = await db.execute(
-        select(func.count(CatalogItem.id)).where(CatalogItem.type_id == type_id)
-    )
-    if int(ic.scalar() or 0) > 0:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delete a type that still has catalog items — move or delete items first",
+    if await catalog_items_has_type_id_column(db):
+        ic = await db.execute(
+            select(func.count(CatalogItem.id)).where(CatalogItem.type_id == type_id)
         )
+        if int(ic.scalar() or 0) > 0:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail="Cannot delete a type that still has catalog items — move or delete items first",
+            )
     await db.delete(t)
     await db.commit()
 
@@ -529,18 +563,40 @@ async def list_catalog_items(
     type_id: uuid.UUID | None = Query(None, description="Filter by category type"),
 ):
     del _m
-    q = (
-        select(CatalogItem, CategoryType.name)
-        .outerjoin(CategoryType, CategoryType.id == CatalogItem.type_id)
-        .where(CatalogItem.business_id == business_id)
-    )
-    if category_id is not None:
-        q = q.where(CatalogItem.category_id == category_id)
-    if type_id is not None:
-        q = q.where(CatalogItem.type_id == type_id)
-    q = q.order_by(func.lower(CatalogItem.name))
-    r = await db.execute(q)
-    return [_catalog_item_out(i, tn) for i, tn in r.all()]
+    try:
+        has_type_col = await catalog_items_has_type_id_column(db)
+        if has_type_col:
+            q = (
+                select(CatalogItem, CategoryType.name)
+                .outerjoin(CategoryType, CategoryType.id == CatalogItem.type_id)
+                .where(CatalogItem.business_id == business_id)
+            )
+            if category_id is not None:
+                q = q.where(CatalogItem.category_id == category_id)
+            if type_id is not None:
+                q = q.where(CatalogItem.type_id == type_id)
+            q = q.order_by(func.lower(CatalogItem.name))
+            r = await db.execute(q)
+            return [_catalog_item_out(i, tn) for i, tn in r.all()]
+
+        q = (
+            select(CatalogItem)
+            .options(load_only(*_CATALOG_ITEM_CORE))
+            .where(CatalogItem.business_id == business_id)
+        )
+        if category_id is not None:
+            q = q.where(CatalogItem.category_id == category_id)
+        q = q.order_by(func.lower(CatalogItem.name))
+        r = await db.execute(q)
+        return [_catalog_item_out(i, None, type_id=None) for i in r.scalars().all()]
+    except SQLAlchemyError:
+        logger.exception(
+            "list_catalog_items failed business_id=%s category_id=%s type_id=%s",
+            business_id,
+            category_id,
+            type_id,
+        )
+        raise
 
 
 @router.post("/catalog-items", response_model=CatalogItemOut, status_code=status.HTTP_201_CREATED)
@@ -551,6 +607,7 @@ async def create_catalog_item(
     body: CatalogItemCreate,
 ):
     del _m
+    has_type_col = await catalog_items_has_type_id_column(db)
     rc = await db.execute(
         select(ItemCategory.id).where(
             ItemCategory.id == body.category_id,
@@ -565,15 +622,17 @@ async def create_catalog_item(
         resolved_type = body.type_id
     else:
         resolved_type = await _get_or_create_general_type_id(db, business_id, body.category_id)
-    if await _item_dup(db, business_id, body.category_id, resolved_type, body.name):
-        er = await db.execute(
-            select(CatalogItem.id).where(
-                CatalogItem.business_id == business_id,
-                CatalogItem.category_id == body.category_id,
-                CatalogItem.type_id == resolved_type,
-                func.lower(CatalogItem.name) == _norm_name(body.name),
-            )
+    if await _item_dup(
+        db, business_id, body.category_id, resolved_type, body.name, has_type_col=has_type_col
+    ):
+        dup_q = select(CatalogItem.id).where(
+            CatalogItem.business_id == business_id,
+            CatalogItem.category_id == body.category_id,
+            func.lower(CatalogItem.name) == _norm_name(body.name),
         )
+        if has_type_col:
+            dup_q = dup_q.where(CatalogItem.type_id == resolved_type)
+        er = await db.execute(dup_q)
         eid = er.scalar_one()
         raise HTTPException(
             status.HTTP_409_CONFLICT,
@@ -609,19 +668,38 @@ async def get_catalog_item(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     del _m
-    r = await db.execute(
-        select(CatalogItem, CategoryType.name)
-        .outerjoin(CategoryType, CategoryType.id == CatalogItem.type_id)
-        .where(
-            CatalogItem.id == item_id,
-            CatalogItem.business_id == business_id,
+    try:
+        has_type_col = await catalog_items_has_type_id_column(db)
+        if has_type_col:
+            r = await db.execute(
+                select(CatalogItem, CategoryType.name)
+                .outerjoin(CategoryType, CategoryType.id == CatalogItem.type_id)
+                .where(
+                    CatalogItem.id == item_id,
+                    CatalogItem.business_id == business_id,
+                )
+            )
+            row = r.one_or_none()
+            if row is None:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")
+            i, tn = row
+            return _catalog_item_out(i, tn)
+
+        r = await db.execute(
+            select(CatalogItem)
+            .options(load_only(*_CATALOG_ITEM_CORE))
+            .where(
+                CatalogItem.id == item_id,
+                CatalogItem.business_id == business_id,
+            )
         )
-    )
-    row = r.one_or_none()
-    if row is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")
-    i, tn = row
-    return _catalog_item_out(i, tn)
+        i = r.scalar_one_or_none()
+        if i is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")
+        return _catalog_item_out(i, None, type_id=None)
+    except SQLAlchemyError:
+        logger.exception("get_catalog_item failed business_id=%s item_id=%s", business_id, item_id)
+        raise
 
 
 @router.get("/catalog-items/{item_id}/insights", response_model=CatalogItemInsightsOut)
@@ -850,18 +928,20 @@ async def update_catalog_item(
     body: CatalogItemUpdate,
 ):
     del _m
-    r = await db.execute(
-        select(CatalogItem).where(
-            CatalogItem.id == item_id,
-            CatalogItem.business_id == business_id,
-        )
+    has_type_col = await catalog_items_has_type_id_column(db)
+    stmt = select(CatalogItem).where(
+        CatalogItem.id == item_id,
+        CatalogItem.business_id == business_id,
     )
+    if not has_type_col:
+        stmt = stmt.options(load_only(*_CATALOG_ITEM_CORE))
+    r = await db.execute(stmt)
     i = r.scalar_one_or_none()
     if i is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")
     data = body.model_dump(exclude_unset=True)
     cid = i.category_id
-    tid = i.type_id
+    tid: uuid.UUID | None = i.type_id if has_type_col else None
     if "category_id" in data and data["category_id"] is not None:
         rc = await db.execute(
             select(ItemCategory.id).where(
@@ -873,10 +953,10 @@ async def update_catalog_item(
             raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="category_id not found")
         i.category_id = data["category_id"]
         cid = i.category_id
-        if "type_id" not in data:
+        if has_type_col and "type_id" not in data:
             i.type_id = await _get_or_create_general_type_id(db, business_id, cid)
             tid = i.type_id
-    if "type_id" in data:
+    if has_type_col and "type_id" in data:
         if data["type_id"] is None:
             i.type_id = await _get_or_create_general_type_id(db, business_id, cid)
         else:
@@ -884,16 +964,18 @@ async def update_catalog_item(
             i.type_id = data["type_id"]
         tid = i.type_id
     if "name" in data and data["name"] is not None:
-        if await _item_dup(db, business_id, cid, tid, data["name"], exclude_id=item_id):
-            er = await db.execute(
-                select(CatalogItem.id).where(
-                    CatalogItem.business_id == business_id,
-                    CatalogItem.category_id == cid,
-                    CatalogItem.type_id == tid,
-                    func.lower(CatalogItem.name) == _norm_name(data["name"]),
-                    CatalogItem.id != item_id,
-                )
+        if await _item_dup(
+            db, business_id, cid, tid, data["name"], exclude_id=item_id, has_type_col=has_type_col
+        ):
+            dup_q = select(CatalogItem.id).where(
+                CatalogItem.business_id == business_id,
+                CatalogItem.category_id == cid,
+                func.lower(CatalogItem.name) == _norm_name(data["name"]),
+                CatalogItem.id != item_id,
             )
+            if has_type_col:
+                dup_q = dup_q.where(CatalogItem.type_id == tid)
+            er = await db.execute(dup_q)
             oid = er.scalar_one()
             raise HTTPException(
                 status.HTTP_409_CONFLICT,
@@ -913,6 +995,14 @@ async def update_catalog_item(
         else:
             i.default_kg_per_bag = None
     await db.commit()
+    if not has_type_col:
+        rr = await db.execute(
+            select(CatalogItem)
+            .options(load_only(*_CATALOG_ITEM_CORE))
+            .where(CatalogItem.id == item_id, CatalogItem.business_id == business_id)
+        )
+        i_out = rr.scalar_one()
+        return _catalog_item_out(i_out, None, type_id=None)
     await db.refresh(i)
     tn = None
     if i.type_id is not None:
@@ -929,12 +1019,14 @@ async def delete_catalog_item(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     del _owner
-    r = await db.execute(
-        select(CatalogItem).where(
-            CatalogItem.id == item_id,
-            CatalogItem.business_id == business_id,
-        )
+    has_type_col = await catalog_items_has_type_id_column(db)
+    stmt = select(CatalogItem).where(
+        CatalogItem.id == item_id,
+        CatalogItem.business_id == business_id,
     )
+    if not has_type_col:
+        stmt = stmt.options(load_only(*_CATALOG_ITEM_CORE))
+    r = await db.execute(stmt)
     i = r.scalar_one_or_none()
     if i is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")

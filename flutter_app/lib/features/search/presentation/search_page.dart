@@ -11,7 +11,7 @@ final unifiedSearchProvider =
     FutureProvider.autoDispose.family<Map<String, dynamic>, String>(
   (ref, q) async {
     final session = ref.watch(sessionProvider);
-    if (session == null || q.trim().length < 2) {
+    if (session == null || q.trim().length < 3) {
       return {
         'catalog_items': <dynamic>[],
         'suppliers': <dynamic>[],
@@ -56,9 +56,11 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
   void _scheduleSearch(String v) {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 300), () {
+    _debounce = Timer(const Duration(milliseconds: 450), () {
       if (!mounted) return;
-      setState(() => _debounced = v.trim());
+      final next = v.trim();
+      if (next == _debounced) return;
+      setState(() => _debounced = next);
     });
   }
 
@@ -77,7 +79,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
     final q = _debounced.toLowerCase();
-    final searchAsync = q.length >= 2
+    final searchAsync = q.length >= 3
         ? ref.watch(unifiedSearchProvider(_debounced))
         : const AsyncValue<Map<String, dynamic>>.data({});
 
@@ -114,11 +116,11 @@ class _SearchPageState extends ConsumerState<SearchPage> {
             },
           ),
           const SizedBox(height: 16),
-          if (q.length < 2)
+          if (q.length < 3)
             Padding(
               padding: const EdgeInsets.only(top: 24),
               child: Text(
-                'Type at least 2 characters to search.',
+                'Type at least 3 characters to search.',
                 style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
                 textAlign: TextAlign.center,
               ),

@@ -1140,7 +1140,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                       ?.copyWith(color: HexaColors.textSecondary)));
         }
         return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
           itemCount: suppliers.length,
           separatorBuilder: (_, __) => const SizedBox(height: 8),
           itemBuilder: (context, i) {
@@ -1167,7 +1167,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                       ?.copyWith(color: HexaColors.textSecondary)));
         }
         return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
           itemCount: brokers.length,
           separatorBuilder: (_, __) => const SizedBox(height: 8),
           itemBuilder: (context, i) {
@@ -1192,7 +1192,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                       ?.copyWith(color: HexaColors.textSecondary)));
         }
         return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
           itemCount: cats.length,
           separatorBuilder: (_, __) => const SizedBox(height: 8),
           itemBuilder: (context, i) {
@@ -1223,7 +1223,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                       ?.copyWith(color: HexaColors.textSecondary)));
         }
         return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
           itemCount: items.length,
           separatorBuilder: (_, __) => const SizedBox(height: 8),
           itemBuilder: (context, i) {
@@ -1445,7 +1445,7 @@ class _SuppliersTab extends ConsumerWidget {
           child: ListView.separated(
             physics: const BouncingScrollPhysics(
                 parent: AlwaysScrollableScrollPhysics()),
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
             itemCount: list.length,
             separatorBuilder: (_, __) => const SizedBox(height: 8),
             itemBuilder: (context, i) {
@@ -1497,7 +1497,7 @@ class _BrokersTab extends ConsumerWidget {
           child: ListView.separated(
             physics: const BouncingScrollPhysics(
                 parent: AlwaysScrollableScrollPhysics()),
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
             itemCount: list.length,
             separatorBuilder: (_, __) => const SizedBox(height: 8),
             itemBuilder: (context, i) {
@@ -1562,7 +1562,7 @@ class _CategoriesTab extends ConsumerWidget {
             return ListView.separated(
               physics: const BouncingScrollPhysics(
                   parent: AlwaysScrollableScrollPhysics()),
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
               itemCount: cats.length,
               separatorBuilder: (_, __) => const SizedBox(height: 8),
               itemBuilder: (context, i) {
@@ -1656,7 +1656,7 @@ class _ItemsTab extends ConsumerWidget {
             return ListView.separated(
               physics: const BouncingScrollPhysics(
                   parent: AlwaysScrollableScrollPhysics()),
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
               itemCount: items.length,
               separatorBuilder: (_, __) => const SizedBox(height: 8),
               itemBuilder: (context, i) {

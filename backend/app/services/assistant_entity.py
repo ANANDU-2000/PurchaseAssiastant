@@ -10,7 +10,7 @@ from typing import Any, Literal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import CatalogItem, CatalogVariant, CategoryType, ItemCategory, Supplier
+from app.models import Broker, CatalogItem, CatalogVariant, CategoryType, ItemCategory, Supplier
 from app.services.fuzzy_catalog import (
     best_token_sort_match,
     fuzzy_find_similar_catalog_item_name_in_category,
@@ -79,9 +79,9 @@ def parse_entity_message(text: str) -> tuple[EntityKind, dict[str, Any]] | None:
 
     m = re.match(r"(?i)^(?:create|add)\s+supplier\s+(.+)$", t)
     if m:
-        name = m.group(1).strip().strip("'\"")  # noqa: B005
-        if name:
-            return ("supplier", {"name": name})
+        payload = _parse_supplier_phrase(m.group(1).strip())
+        if payload.get("name"):
+            return ("supplier", payload)
 
     m = re.match(r"(?i)^(?:create|add)\s+category\s+(.+?)\s*>\s*(.+)$", t)
     if m:
@@ -120,6 +120,68 @@ def parse_entity_message(text: str) -> tuple[EntityKind, dict[str, Any]] | None:
             return ("variant", {"variant_name": vname, "item_name": item_name})
 
     return None
+
+
+def _parse_supplier_phrase(rest: str) -> dict[str, Any]:
+    """
+    Parse supplier free-text into fields.
+    Examples:
+      "name aju from delhi number 9876543210"
+      "aju phone 9876543210 broker ramesh"
+    """
+    raw = " ".join(rest.strip().split())
+    low = raw.lower()
+
+    # Phone: prefer longest contiguous digits (ignore country code separators/spaces).
+    digits = re.findall(r"\d{7,15}", re.sub(r"[^\d]", " ", raw))
+    phone = max(digits, key=len) if digits else None
+
+    # Location hints.
+    loc = None
+    m_loc = re.search(r"(?i)\b(?:from|at|in|location)\s+([a-zA-Z][a-zA-Z .-]{1,60})", raw)
+    if m_loc:
+        loc = " ".join(m_loc.group(1).split()).strip(" .,")
+
+    # Broker hint.
+    broker_name = None
+    m_broker = re.search(r"(?i)\bbroker\s+([a-zA-Z][a-zA-Z .-]{1,60})", raw)
+    if m_broker:
+        broker_name = " ".join(m_broker.group(1).split()).strip(" .,")
+
+    # Name candidates.
+    name = None
+    m_name = re.search(r"(?i)\bname\s+([a-zA-Z][a-zA-Z .-]{1,80})", raw)
+    if m_name:
+        name = " ".join(m_name.group(1).split()).strip(" .,")
+
+    # If "name ..." was noisy, trim known trailing markers.
+    if name:
+        name = re.split(r"(?i)\b(?:from|at|in|location|number|phone|mobile|broker)\b", name)[0].strip(" .,")
+
+    # Fallback: first 1-3 words after command, before markers.
+    if not name:
+        s = raw
+        if phone:
+            s = s.replace(phone, " ")
+        s = re.split(r"(?i)\b(?:from|at|in|location|number|phone|mobile|broker)\b", s)[0]
+        toks = [t for t in re.findall(r"[A-Za-z][A-Za-z'-]*", s) if t.lower() not in {"and", "his", "her"}]
+        if toks:
+            name = " ".join(toks[:3]).strip()
+
+    # Final cleanup: block obviously invalid names.
+    if name:
+        nlow = name.lower()
+        if nlow in {"name", "supplier", "create", "add"} or len(name) < 2:
+            name = None
+
+    payload: dict[str, Any] = {"name": name}
+    if phone:
+        payload["phone"] = phone
+    if loc:
+        payload["location"] = loc
+    if broker_name:
+        payload["broker_name"] = broker_name
+    return payload
 
 
 def _parse_item_phrase(rest: str) -> dict[str, Any]:
@@ -283,10 +345,35 @@ async def commit_entity(
                     f'Did you mean "{sim}"? A similar supplier already exists. '
                     f'Say CREATE NEW to add "{name}" anyway.'
                 )
-        s = Supplier(business_id=business_id, name=name)
+        broker_id = None
+        broker_name = str(payload.get("broker_name") or "").strip()
+        if broker_name:
+            br = await db.execute(
+                select(Broker).where(
+                    Broker.business_id == business_id,
+                    func.lower(Broker.name) == broker_name.lower(),
+                )
+            )
+            b = br.scalar_one_or_none()
+            if b is not None:
+                broker_id = b.id
+        s = Supplier(
+            business_id=business_id,
+            name=name,
+            phone=(str(payload.get("phone") or "").strip() or None),
+            location=(str(payload.get("location") or "").strip() or None),
+            broker_id=broker_id,
+        )
         db.add(s)
         await db.flush()
-        return {"id": str(s.id), "name": s.name, "entity": "supplier"}
+        return {
+            "id": str(s.id),
+            "name": s.name,
+            "phone": s.phone,
+            "location": s.location,
+            "broker_id": str(s.broker_id) if s.broker_id else None,
+            "entity": "supplier",
+        }
 
     if kind == "category":
         name = str(payload["name"]).strip()
@@ -588,7 +675,17 @@ async def preview_fuzzy_entity_block(
 
 def preview_lines_for(kind: EntityKind, payload: dict[str, Any]) -> str:
     if kind == "supplier":
-        return f"Supplier: {payload['name']}"
+        lines = [f"Supplier: {payload['name']}"]
+        phone = str(payload.get("phone") or "").strip()
+        location = str(payload.get("location") or "").strip()
+        broker_name = str(payload.get("broker_name") or "").strip()
+        if phone:
+            lines.append(f"Phone: {phone}")
+        if location:
+            lines.append(f"Location: {location}")
+        if broker_name:
+            lines.append(f"Broker: {broker_name}")
+        return "\n".join(lines)
     if kind == "category":
         return f"Category: {payload['name']}"
     if kind == "category_item":

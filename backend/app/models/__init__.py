@@ -1,4 +1,5 @@
 from app.models.base import Base
+from app.models.ai_engine import AssistantDecision, AssistantSession, CatalogAlias
 from app.models.business import Business
 from app.models.catalog import CatalogItem, CatalogVariant, CategoryType, ItemCategory
 from app.models.contacts import Broker, Supplier
@@ -24,6 +25,9 @@ __all__ = [
     "ApiUsageLog",
     "AdminAuditLog",
     "PlatformMonthlyExpense",
+    "AssistantSession",
+    "AssistantDecision",
+    "CatalogAlias",
     "Membership",
     "Broker",
     "Supplier",

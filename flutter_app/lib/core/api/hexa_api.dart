@@ -4,6 +4,16 @@ import 'package:http_parser/http_parser.dart';
 import '../config/app_config.dart';
 import '../models/session.dart';
 
+/// Transient failures only — do not retry after a full response (avoids duplicate assistant turns).
+bool _retryableAssistantRequest(DioException e) {
+  final sc = e.response?.statusCode;
+  if (sc != null && (sc == 502 || sc == 503 || sc == 504)) return true;
+  final t = e.type;
+  return t == DioExceptionType.connectionError ||
+      t == DioExceptionType.connectionTimeout ||
+      t == DioExceptionType.sendTimeout;
+}
+
 class HexaApi {
   HexaApi({String? baseUrl, Future<bool> Function()? onUnauthorizedRefresh})
       : _onUnauthorizedRefresh = onUnauthorizedRefresh,
@@ -853,21 +863,39 @@ class HexaApi {
   }
 
   /// In-app assistant — preview → confirm; optional [previewToken] + [entryDraft] for YES/NO.
+  ///
+  /// Uses a longer receive timeout (LLM cold start) and retries transient network / gateway errors.
   Future<Map<String, dynamic>> aiChat({
     required String businessId,
     required List<Map<String, dynamic>> messages,
     String? previewToken,
     Map<String, dynamic>? entryDraft,
   }) async {
-    final res = await _dio.post<Map<String, dynamic>>(
-      '/v1/businesses/$businessId/ai/chat',
-      data: {
-        'messages': messages,
-        if (previewToken != null) 'preview_token': previewToken,
-        if (entryDraft != null) 'entry_draft': entryDraft,
-      },
-    );
-    return res.data ?? {};
+    final path = '/v1/businesses/$businessId/ai/chat';
+    final data = <String, dynamic>{
+      'messages': messages,
+      if (previewToken != null) 'preview_token': previewToken,
+      if (entryDraft != null) 'entry_draft': entryDraft,
+    };
+    const receive = Duration(seconds: 120);
+    const maxAttempts = 3;
+    Object? lastError;
+    for (var attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        final res = await _dio.post<Map<String, dynamic>>(
+          path,
+          data: data,
+          options: Options(receiveTimeout: receive),
+        );
+        return res.data ?? {};
+      } on DioException catch (e) {
+        lastError = e;
+        final canRetry = attempt < maxAttempts - 1 && _retryableAssistantRequest(e);
+        if (!canRetry) rethrow;
+        await Future<void>.delayed(Duration(milliseconds: 320 * (attempt + 1)));
+      }
+    }
+    throw lastError ?? StateError('aiChat: no attempt');
   }
 
   /// Structured intent JSON (server-side; increments usage counter when AI enabled).

@@ -7,13 +7,13 @@ import '../../core/providers/connectivity_provider.dart';
 import '../../core/theme/hexa_colors.dart';
 import '../entries/presentation/entry_create_sheet.dart';
 
-/// Shell: [IndexedStack body] · bottom nav · Home | Entries | Catalog | Reports | Assistant.
+/// Shell: [IndexedStack body] · bottom nav · Home | Entries | (center +) | Catalog | Reports.
 class ShellScreen extends ConsumerWidget {
   const ShellScreen({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
 
-  /// Branch indices: 0 home, 1 entries, 2 catalog (suppliers/items), 3 analytics, 4 assistant
+  /// Branch indices: 0 home, 1 entries, 2 catalog (suppliers/items), 3 analytics, 4 assistant (hidden from nav)
   static const branchHome = 0;
   static const branchEntries = 1;
   static const branchContacts = 2;
@@ -23,6 +23,7 @@ class ShellScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final idx = navigationShell.currentIndex;
+    final routePath = GoRouterState.of(context).uri.path;
     final conn = ref.watch(connectivityResultsProvider);
     final offline =
         conn.valueOrNull != null && isOfflineResult(conn.valueOrNull!);
@@ -33,7 +34,16 @@ class ShellScreen extends ConsumerWidget {
     }
 
     final cs = Theme.of(context).colorScheme;
+    // Avoid double FAB on catalog and assistant screens.
+    // Use both index and URL — on web/deep-link, currentIndex can briefly desync from path.
+    final hideFabByIndex = idx == ShellScreen.branchContacts ||
+        idx == ShellScreen.branchAssistant;
+    final hideFabByPath =
+        routePath.startsWith('/contacts') || routePath.startsWith('/assistant');
+    final showShellPurchaseFab = !hideFabByIndex && !hideFabByPath;
+
     return Scaffold(
+      key: ValueKey<String>('shell_${routePath}_$idx'),
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -68,51 +78,54 @@ class ShellScreen extends ConsumerWidget {
           Expanded(child: navigationShell),
         ],
       ),
-      floatingActionButton: Tooltip(
-        message: 'New purchase entry',
-        child: Container(
-          key: const ValueKey('shell_fab'),
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            color: cs.surface,
-            border: Border.all(
-              color: HexaColors.accentInfo.withValues(alpha: 0.45),
-              width: 1.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.07),
-                blurRadius: 12,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(16),
-              onTap: () {
-                HapticFeedback.mediumImpact();
-                showEntryCreateSheet(context);
-              },
-              splashColor: HexaColors.accentInfo.withValues(alpha: 0.12),
-              highlightColor: HexaColors.accentInfo.withValues(alpha: 0.06),
-              child: const SizedBox(
+      floatingActionButton: showShellPurchaseFab
+          ? Tooltip(
+              message: 'New purchase entry',
+              child: Container(
+                key: const ValueKey('shell_fab'),
                 width: 56,
                 height: 56,
-                child: Icon(
-                  Icons.add_rounded,
-                  color: HexaColors.accentInfo,
-                  size: 26,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  color: cs.surface,
+                  border: Border.all(
+                    color: HexaColors.accentInfo.withValues(alpha: 0.45),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.07),
+                      blurRadius: 12,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () {
+                      HapticFeedback.mediumImpact();
+                      showEntryCreateSheet(context);
+                    },
+                    splashColor: HexaColors.accentInfo.withValues(alpha: 0.12),
+                    highlightColor:
+                        HexaColors.accentInfo.withValues(alpha: 0.06),
+                    child: const SizedBox(
+                      width: 56,
+                      height: 56,
+                      child: Icon(
+                        Icons.add_rounded,
+                        color: HexaColors.accentInfo,
+                        size: 26,
+                      ),
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
-        ),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+            )
+          : null,
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       bottomNavigationBar: BottomAppBar(
         padding: EdgeInsets.zero,
         height: 72,
@@ -154,6 +167,7 @@ class ShellScreen extends ConsumerWidget {
                     onTap: () => go(ShellScreen.branchEntries),
                   ),
                 ),
+                const SizedBox(width: 64),
                 Expanded(
                   child: _ShellTab(
                     selected: idx == ShellScreen.branchContacts,
@@ -170,15 +184,6 @@ class ShellScreen extends ConsumerWidget {
                     selectedIcon: Icons.bar_chart_rounded,
                     label: 'Reports',
                     onTap: () => go(ShellScreen.branchAnalytics),
-                  ),
-                ),
-                Expanded(
-                  child: _ShellTab(
-                    selected: idx == ShellScreen.branchAssistant,
-                    icon: Icons.chat_bubble_outline_rounded,
-                    selectedIcon: Icons.chat_bubble_rounded,
-                    label: 'Assistant',
-                    onTap: () => go(ShellScreen.branchAssistant),
                   ),
                 ),
               ],

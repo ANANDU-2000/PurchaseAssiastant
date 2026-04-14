@@ -118,11 +118,15 @@ bool _isNetworkError(DioException e) {
 enum AuthErrorContext { login, register }
 
 /// Short user-facing copy for failed API calls in SnackBars and dialogs (no stack traces or raw response dumps).
-String friendlyApiError(Object error) {
+///
+/// Set [forAssistant] for the in-app Assistant tab — clearer copy when the LLM endpoint fails.
+String friendlyApiError(Object error, {bool forAssistant = false}) {
   if (error is DioException) {
     final sc = error.response?.statusCode;
     if (sc == 401 || sc == 403) {
-      return 'You may need to sign in again.';
+      return forAssistant
+          ? 'Assistant could not verify your session. Open Settings or sign in again.'
+          : 'You may need to sign in again.';
     }
     if (sc == 404) {
       return 'That record was not found. Try refreshing.';
@@ -134,13 +138,25 @@ String friendlyApiError(Object error) {
       return 'Please check your input and try again.';
     }
     if (sc == 503) {
-      return 'Service is temporarily unavailable. Try again shortly.';
+      return forAssistant
+          ? 'Assistant is temporarily unavailable. Try again in a moment.'
+          : 'Service is temporarily unavailable. Try again shortly.';
     }
     if (sc != null && sc >= 500) {
-      return 'Something went wrong on our side. Please try again.';
+      return forAssistant
+          ? 'Assistant hit a server error. Please try again in a moment.'
+          : 'Something went wrong on our side. Please try again.';
     }
     if (_isNetworkError(error)) {
-      return "Can't connect right now. Check your internet and try again.";
+      if (forAssistant && kIsWeb) {
+        final web = _webBrowserNetworkHint(error);
+        if (web != null) {
+          return "Assistant couldn't reach the server. $web";
+        }
+      }
+      return forAssistant
+          ? "Can't reach the assistant. Check your connection and try again."
+          : "Can't connect right now. Check your internet and try again.";
     }
     return 'Request could not be completed. Try again.';
   }
