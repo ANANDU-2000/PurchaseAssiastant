@@ -19,7 +19,15 @@ from app.services.fuzzy_catalog import (
     fuzzy_find_similar_variant_name_for_item,
 )
 
-EntityKind = Literal["supplier", "broker", "category", "category_item", "catalog_item", "variant"]
+EntityKind = Literal[
+    "supplier",
+    "broker",
+    "category",
+    "category_type",
+    "category_item",
+    "catalog_item",
+    "variant",
+]
 
 _PREVIEW: dict[str, dict[str, Any]] = {}
 _TTL = 600.0
@@ -111,6 +119,13 @@ def parse_entity_message(text: str) -> tuple[EntityKind, dict[str, Any]] | None:
         name = m.group(1).strip().strip("'\"")
         if name:
             return ("category", {"name": name})
+
+    m = re.match(r"(?i)^(?:create|add)\s+(?:type|subcategory)\s+(.+?)\s+(?:under|in)\s+(.+)$", t)
+    if m:
+        tname = m.group(1).strip().strip("'\"")
+        cat = m.group(2).strip().strip("'\"")
+        if tname and cat:
+            return ("category_type", {"type_name": tname, "category_name": cat})
 
     m = re.match(r"(?i)^(?:create|add)\s+item\s+(.+?)\s+under\s+(.+)$", t)
     if m:
@@ -446,6 +461,37 @@ async def commit_entity(
         await db.flush()
         return {"id": str(c.id), "name": c.name, "entity": "category"}
 
+    if kind == "category_type":
+        tname = str(payload["type_name"]).strip()
+        cat_name = str(payload["category_name"]).strip()
+        r = await db.execute(
+            select(ItemCategory).where(
+                ItemCategory.business_id == business_id,
+                func.lower(ItemCategory.name) == cat_name.lower(),
+            )
+        )
+        cat = r.scalar_one_or_none()
+        if cat is None:
+            raise ValueError(f"Unknown category “{cat_name}”. Create category first.")
+        du = await db.execute(
+            select(CategoryType.id).where(
+                CategoryType.category_id == cat.id,
+                func.lower(CategoryType.name) == tname.lower(),
+            )
+        )
+        if du.first() is not None:
+            raise ValueError("Type already exists in this category")
+        ct = CategoryType(category_id=cat.id, name=tname)
+        db.add(ct)
+        await db.flush()
+        return {
+            "id": str(ct.id),
+            "category_id": str(cat.id),
+            "category_name": cat.name,
+            "name": ct.name,
+            "entity": "category_type",
+        }
+
     if kind == "category_item":
         cn = str(payload["category_name"]).strip()
         item_name = str(payload["item_name"]).strip()
@@ -647,6 +693,29 @@ async def preview_fuzzy_entity_block(
                 f'Say CREATE NEW to add "{name}" anyway.'
             )
         return None
+    if kind == "category_type":
+        tname = str(payload.get("type_name") or "").strip()
+        cat_name = str(payload.get("category_name") or "").strip()
+        if not tname or not cat_name:
+            return None
+        r = await db.execute(
+            select(ItemCategory).where(
+                ItemCategory.business_id == business_id,
+                func.lower(ItemCategory.name) == cat_name.lower(),
+            )
+        )
+        cat = r.scalar_one_or_none()
+        if cat is None:
+            return f"Category “{cat_name}” not found. Create category first."
+        du = await db.execute(
+            select(CategoryType.id).where(
+                CategoryType.category_id == cat.id,
+                func.lower(CategoryType.name) == tname.lower(),
+            )
+        )
+        if du.first() is not None:
+            return "Type already exists in this category."
+        return None
     if kind == "category_item":
         cn = str(payload.get("category_name") or "").strip()
         item_name = str(payload.get("item_name") or "").strip()
@@ -768,6 +837,12 @@ def preview_lines_for(kind: EntityKind, payload: dict[str, Any]) -> str:
         return "\n".join(lines)
     if kind == "category":
         return f"Type: Category\nName: {payload['name']}"
+    if kind == "category_type":
+        return (
+            "Type: Category Type\n"
+            f"Category: {payload['category_name']}\n"
+            f"Type name: {payload['type_name']}"
+        )
     if kind == "category_item":
         return (
             "Type: Category + Item\n"

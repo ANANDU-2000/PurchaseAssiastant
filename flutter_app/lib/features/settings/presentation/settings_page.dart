@@ -305,6 +305,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final notif = ref.watch(localNotificationsOptInProvider);
     final themeMode = ref.watch(themeModeProvider);
     final isOwner = session?.primaryBusiness.role == 'owner';
+    final showBillingSection =
+        isOwner && (ModalRoute.of(context)?.settings.name == '/settings/billing');
     final pb = session?.primaryBusiness;
     final onSurf = cs.onSurface;
 
@@ -597,15 +599,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               ],
             ),
           ),
-          const SizedBox(height: 20),
-          Text('Subscription',
-              style: tt.titleSmall?.copyWith(
-                  color: cs.onSurfaceVariant,
-                  fontWeight: FontWeight.w800)),
-          const SizedBox(height: 8),
-          Card(
-            color: context.adaptiveCard,
-            child: Padding(
+          if (showBillingSection) ...[
+            const SizedBox(height: 20),
+            Text('Subscription',
+                style: tt.titleSmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            Card(
+              color: context.adaptiveCard,
+              child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -743,6 +746,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               ),
             ),
           ),
+          ],
           const SizedBox(height: 28),
           FilledButton.tonalIcon(
             onPressed: () async {

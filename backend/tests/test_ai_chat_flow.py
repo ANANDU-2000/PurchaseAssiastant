@@ -226,6 +226,48 @@ def test_ai_chat_create_item_under_category():
     assert r2.json().get("saved_entry", {}).get("entity") == "catalog_item"
 
 
+def test_ai_chat_create_category_type_preview_and_confirm():
+    h, bid = _register_and_business()
+    r0 = client.post(
+        f"/v1/businesses/{bid}/ai/chat",
+        json={"messages": [{"role": "user", "content": "create category Rice"}]},
+        headers=h,
+    )
+    assert r0.status_code == 200, r0.text
+    d0 = r0.json()
+    r0c = client.post(
+        f"/v1/businesses/{bid}/ai/chat",
+        json={
+            "messages": [{"role": "user", "content": "yes"}],
+            "preview_token": d0["preview_token"],
+            "entry_draft": d0["entry_draft"],
+        },
+        headers=h,
+    )
+    assert r0c.status_code == 200, r0c.text
+
+    r1 = client.post(
+        f"/v1/businesses/{bid}/ai/chat",
+        json={"messages": [{"role": "user", "content": "create type Biriyani under Rice"}]},
+        headers=h,
+    )
+    assert r1.status_code == 200, r1.text
+    d1 = r1.json()
+    assert d1.get("intent") == "entity_preview"
+    assert "Category: Rice" in d1.get("reply", "")
+    r2 = client.post(
+        f"/v1/businesses/{bid}/ai/chat",
+        json={
+            "messages": [{"role": "user", "content": "yes"}],
+            "preview_token": d1["preview_token"],
+            "entry_draft": d1["entry_draft"],
+        },
+        headers=h,
+    )
+    assert r2.status_code == 200, r2.text
+    assert r2.json().get("saved_entry", {}).get("entity") == "category_type"
+
+
 def test_ai_chat_pending_preview_requires_yes_no():
     """Do not start a new parse while a preview is open (same preview_token)."""
     h, bid = _register_and_business()

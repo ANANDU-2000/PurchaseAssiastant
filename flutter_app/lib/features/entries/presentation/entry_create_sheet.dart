@@ -3216,11 +3216,11 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               onChanged: (_) => setState(() {}),
               decoration: InputDecoration(
                 labelText: l.unit == 'bag'
-                    ? 'Selling price / kg'
+                    ? 'Selling price / bag'
                     : 'Selling price / unit',
                 prefixIcon: const Icon(Icons.sell_outlined),
                 helperText: l.unit == 'bag'
-                    ? 'Per kg (retail). Revenue = bags × kg/bag × this ₹/kg — same basis as margin below.'
+                    ? 'Same unit basis as landed cost (/bag) for cleaner margin comparison.'
                     : null,
               ),
             ),
@@ -3264,14 +3264,14 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
         );
       }
-      final qtyKg = qty * kgPb;
       final totalCost = qty * land;
-      final revenue = sell * qtyKg;
+      final revenue = sell * qty;
       profit = revenue - totalCost;
       marginPct = revenue > 0 ? (profit / revenue) * 100.0 : 0.0;
       final costPerKg = land / kgPb;
+      final sellPerKg = sell / kgPb;
       bagDetail =
-          ' · Cost ₹${costPerKg.toStringAsFixed(0)}/kg vs sell ₹${sell.toStringAsFixed(0)}/kg';
+          ' · Cost ₹${costPerKg.toStringAsFixed(0)}/kg vs sell ₹${sellPerKg.toStringAsFixed(0)}/kg';
     } else {
       profit = (sell - land) * qty;
       marginPct = sell > 0 ? ((sell - land) / sell) * 100.0 : 0.0;

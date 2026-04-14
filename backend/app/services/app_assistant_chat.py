@@ -125,7 +125,16 @@ def _map_llm_entity_intent(
         if not name or not str(name).strip():
             return None
         return ("category", {"name": str(name).strip()})
-    if key in ("create_category_item", "create_category_type"):
+    if key == "create_category_type":
+        cat = data.get("category_name") or data.get("category")
+        tname = data.get("type_name") or data.get("name") or data.get("item_name")
+        if not cat or not tname:
+            return None
+        return (
+            "category_type",
+            {"category_name": str(cat).strip(), "type_name": str(tname).strip()},
+        )
+    if key == "create_category_item":
         cat = data.get("category_name") or data.get("category")
         item = data.get("item_name") or data.get("type_name") or data.get("name")
         if not cat or not item:
