@@ -21,19 +21,34 @@ async def root():
 async def health(settings: Settings = Depends(get_settings)):
     """Liveness + non-secret config hints for ops (Render/Vercel smoke tests)."""
     prov = (settings.ai_provider or "stub").strip().lower()
-    ai_key_env = bool(
-        (settings.openai_api_key or "").strip()
-        or (settings.groq_api_key or "").strip()
-        or (settings.google_ai_api_key or "").strip()
-    )
-    # App assistant: rule-based flows work with stub; LLM needs a provider key.
+    gemini_k = bool((settings.google_ai_api_key or "").strip())
+    groq_k = bool((settings.groq_api_key or "").strip())
+    openai_k = bool((settings.openai_api_key or "").strip())
+    ai_key_env = bool(gemini_k or groq_k or openai_k)
+    # Assistant always usable (stub rules + grounded queries); LLM intent needs provider + key.
     ai_ready = prov == "stub" or ai_key_env
+    # Failover-ready when any key exists (Gemini -> Groq -> OpenAI order at runtime).
+    llm_failover_ready = ai_key_env and bool(settings.enable_ai)
+    intent_llm_active = llm_failover_ready
+    if intent_llm_active:
+        ai_status = "llm_ready"
+    elif prov == "stub" or not prov:
+        ai_status = "rules_only"
+    else:
+        ai_status = "missing_api_key"
     return {
         "status": "ok",
         "app_env": settings.app_env,
         "ai_provider": prov,
         "ai_keys_set_in_env": ai_key_env,
+        "gemini_key_set_in_env": gemini_k,
+        "groq_key_set_in_env": groq_k,
+        "openai_key_set_in_env": openai_k,
+        "llm_failover_ready": llm_failover_ready,
+        "enable_ai": settings.enable_ai,
         "ai_ready": ai_ready,
+        "intent_llm_active": intent_llm_active,
+        "ai_status": ai_status,
         "assistant_ready": True,
         "redis_url_set": bool((settings.redis_url or "").strip()),
     }

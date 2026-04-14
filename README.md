@@ -1,6 +1,6 @@
 # HEXA Purchase Assistant
 
-WhatsApp-first + Flutter purchase tracking with profit clarity, analytics, and Price Intelligence (PIP).
+Flutter + FastAPI purchase tracking with in-app AI assistant (`/ai` → `POST .../ai/chat`), profit clarity, analytics, and Price Intelligence (PIP).
 
 ## Docs
 
@@ -12,7 +12,7 @@ WhatsApp-first + Flutter purchase tracking with profit clarity, analytics, and P
 | [OpenAPI](docs/api/openapi.yaml) | API contract (v0.1) |
 | [Flutter architecture](docs/flutter-architecture.md) | App structure, state, offline |
 | [Screen map & UX](docs/ux/screen-map.md) | Pages and Figma workflow |
-| [WhatsApp flows](docs/ux/whatsapp-flows.md) | Webhook conversation patterns |
+| [WhatsApp flows](docs/ux/whatsapp-flows.md) | Legacy webhook notes (optional forks) |
 | [Super Admin](docs/admin-panel.md) | Admin surface plan |
 | [Ops](docs/ops.md) | Rate limits, webhooks, monitoring |
 | [Delivery phases](docs/delivery-phases.md) | MVP → Phase 4 + testing |

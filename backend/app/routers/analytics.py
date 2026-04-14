@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import case, desc, func, literal, select
+from sqlalchemy import String, case, cast, desc, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -382,6 +382,7 @@ async def analytics_items(
         if prev is None or bp > prev[1]:
             best_br[iname] = (bname, bp)
 
+    # max(uuid) is not defined on PostgreSQL < 13; aggregate text then parse in Python.
     q_meta = (
         select(
             EntryLineItem.item_name,
@@ -389,7 +390,7 @@ async def analytics_items(
             func.max(EntryLineItem.category).label("lcat"),
             func.max(CatalogItem.name).label("cin"),
             func.max(CatalogVariant.name).label("cvn"),
-            func.max(CatalogItem.category_id).label("catid"),
+            func.max(cast(CatalogItem.category_id, String)).label("catid"),
         )
         .select_from(EntryLineItem)
         .join(Entry, Entry.id == EntryLineItem.entry_id)
@@ -402,7 +403,14 @@ async def analytics_items(
     r_meta = await db.execute(q_meta)
     meta_by_item: dict[str, tuple[str | None, str | None, str | None, str | None, uuid.UUID | None]] = {}
     for row in r_meta.all():
-        meta_by_item[str(row[0])] = (row[1], row[2], row[3], row[4], row[5])
+        raw_cat = row[5]
+        cat_uid: uuid.UUID | None = None
+        if raw_cat is not None and str(raw_cat).strip():
+            try:
+                cat_uid = uuid.UUID(str(raw_cat).strip())
+            except (ValueError, TypeError):
+                cat_uid = None
+        meta_by_item[str(row[0])] = (row[1], row[2], row[3], row[4], cat_uid)
 
     by_cat: dict[uuid.UUID, list[str]] = defaultdict(list)
     r_pool = await db.execute(

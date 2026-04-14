@@ -12,27 +12,13 @@ from app.database import get_db
 from app.deps import charge_ai_turn_for_business
 from app.models import User
 from app.services.app_assistant_chat import run_app_assistant_turn
+from app.services.assistant_business_context import build_compact_business_snapshot
 from app.services.intent_stub import stub_intent_from_text
 from app.services.llm_intent import extract_intent_json
 from app.services.usage_logging import log_usage
 
 router = APIRouter(prefix="/v1/businesses/{business_id}/ai", tags=["ai"])
-
-HARISREE_INTENT_SYSTEM = """You are a purchase assistant for Harisree. Extract a structured JSON for business entries.
-Return ONLY JSON.
-
-Supported intents:
-- create_entry
-- update_entry
-- delete_entry
-- query_summary
-
-Rules:
-- Never guess numbers. If missing, set null.
-- Normalize units (bag/kg/pc).
-- Recognize items and variants.
-- Map broker/supplier names if present.
-"""
+# Structured intent system prompt: app.services.assistant_system_prompt.SYSTEM_PROMPT
 
 
 class ChatMessage(BaseModel):
@@ -55,6 +41,11 @@ class ChatResponse(BaseModel):
     entry_draft: dict[str, Any] | None = None
     saved_entry: dict[str, Any] | None = None
     missing_fields: list[str] = Field(default_factory=list)
+    # Assistant LLM observability (no secrets)
+    reply_source: str = "rules"
+    llm_provider: str | None = None
+    llm_failover_used: bool = False
+    llm_failover_attempts: list[dict[str, Any]] | None = None
 
 
 class IntentRequest(BaseModel):
@@ -77,7 +68,17 @@ async def ai_chat(
     settings: Annotated[Settings, Depends(get_settings)],
     body: ChatRequest,
 ):
-    last = body.messages[-1].content.strip()
+    msgs = body.messages
+    last = msgs[-1].content.strip()
+    prior: str | None = None
+    if len(msgs) > 1:
+        parts: list[str] = []
+        for cm in msgs[:-1][-10:]:
+            c = (cm.content or "").strip()
+            if not c:
+                continue
+            parts.append(f"{cm.role}: {c[:2000]}")
+        prior = "\n".join(parts) if parts else None
     out = await run_app_assistant_turn(
         db=db,
         business_id=business_id,
@@ -86,6 +87,7 @@ async def ai_chat(
         settings=settings,
         preview_token=body.preview_token,
         entry_draft=body.entry_draft,
+        conversation_context=prior,
     )
     await log_usage(
         db,
@@ -105,6 +107,10 @@ async def ai_chat(
         entry_draft=out.get("entry_draft"),
         saved_entry=out.get("saved_entry"),
         missing_fields=out.get("missing_fields") or [],
+        reply_source=str(out.get("reply_source") or "rules"),
+        llm_provider=out.get("llm_provider"),
+        llm_failover_used=bool(out.get("llm_failover_used")),
+        llm_failover_attempts=out.get("llm_failover_attempts"),
     )
 
 
@@ -116,7 +122,13 @@ async def ai_intent(
     settings: Annotated[Settings, Depends(get_settings)],
     body: IntentRequest,
 ):
-    llm = await extract_intent_json(user_text=body.text, settings=settings, db=db)
+    snap = await build_compact_business_snapshot(db, business_id) if settings.enable_ai else None
+    llm = await extract_intent_json(
+        user_text=body.text,
+        settings=settings,
+        db=db,
+        business_snapshot=snap,
+    )
     if llm is not None:
         await log_usage(
             db,

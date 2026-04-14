@@ -14,5 +14,7 @@ def test_health_ok():
     assert data.get("status") == "ok"
     assert "ai_provider" in data
     assert "ai_ready" in data
+    assert "intent_llm_active" in data
+    assert "ai_status" in data
     assert "assistant_ready" in data
     assert "redis_url_set" in data

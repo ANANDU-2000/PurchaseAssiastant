@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import date
 from typing import Any
@@ -21,11 +22,28 @@ from app.services.assistant_entity import (
     parse_entity_message,
     preview_lines_for,
 )
+from app.services.assistant_business_context import build_compact_business_snapshot
 from app.services.entry_create_pipeline import commit_create_entry_confirmed, prepare_create_entry_preview
 from app.services.entry_preview_token import consume_preview_token
 from app.services.intent_stub import stub_intent_from_text
-from app.services.llm_intent import extract_intent_json
+from app.services.llm_intent import extract_intent_json_with_meta, synthesize_app_query_reply
 from app.services.entry_intent_resolution import build_entry_create_request, ist_today
+
+
+def _lm(
+    *,
+    reply_source: str = "rules",
+    llm_provider: str | None = None,
+    llm_failover_used: bool = False,
+    llm_failover_attempts: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Observability fields for /ai/chat (no secrets)."""
+    return {
+        "llm_provider": llm_provider,
+        "llm_failover_used": llm_failover_used,
+        "llm_failover_attempts": llm_failover_attempts,
+        "reply_source": reply_source,
+    }
 
 
 def _month_to_date_range() -> tuple[date, date]:
@@ -179,8 +197,25 @@ def _detect_query_intent(text: str) -> bool:
         "this month",
         "analytics",
         "insight",
+        "which supplier",
+        "best price",
+        "cheapest",
+        "highest",
+        "lowest",
+        "show me",
+        "what is",
+        "tell me",
+        "compare",
+        "margin",
+        "today",
+        "yesterday",
+        "week",
+        "ലാഭം",
+        "ആകെ",
+        "ഏറ്റവും",
+        "ഇന്ന്",
     )
-    return any(k in t for k in keys) or "?" in t
+    return any(k in t for k in keys) or "?" in t or t.endswith("?")
 
 
 def _bf(business_id: uuid.UUID, from_date: date, to_date: date):
@@ -197,9 +232,75 @@ async def _grounded_query_reply(
     text: str,
 ) -> str:
     """Short reply using same aggregates as analytics summary + home insights (month-to-date)."""
-    del text
+    t_raw = text.strip()
+    t = t_raw.lower()
     fd, td = _month_to_date_range()
     bf = _bf(business_id, fd, td)
+
+    # --- Today ---
+    if "today" in t or "ഇന്ന്" in t_raw:
+        day = ist_today()
+        bf_day = _bf(business_id, day, day)
+        purchase = await db.execute(
+            select(func.coalesce(func.sum(EntryLineItem.qty * EntryLineItem.buy_price), 0))
+            .select_from(EntryLineItem)
+            .join(Entry, Entry.id == EntryLineItem.entry_id)
+            .where(*bf_day)
+        )
+        profit = await db.execute(
+            select(func.coalesce(func.sum(EntryLineItem.profit), 0))
+            .select_from(EntryLineItem)
+            .join(Entry, Entry.id == EntryLineItem.entry_id)
+            .where(*bf_day)
+        )
+        cnt = await db.execute(select(func.count(Entry.id.distinct())).where(*bf_day))
+        tp = float(purchase.scalar() or 0)
+        prf = float(profit.scalar() or 0)
+        n = int(cnt.scalar() or 0)
+        return (
+            f"Today ({day.isoformat()}): purchase ₹{tp:,.0f} · profit ₹{prf:,.0f} · {n} entries."
+        )
+
+    # --- Supplier comparison for an item keyword: "best supplier for vaani" ---
+    item_kw = None
+    m = re.search(r"\bfor\s+([^\s?,.]+)", t)
+    if m:
+        item_kw = m.group(1).strip()
+    if (
+        item_kw
+        and len(item_kw) >= 2
+        and any(k in t for k in ("supplier", "cheapest", "cheap", "price", "which", "best", "landing"))
+    ):
+        q = (
+            select(
+                Supplier.name,
+                func.coalesce(func.avg(EntryLineItem.landing_cost), 0).label("avg_land"),
+                func.coalesce(func.sum(EntryLineItem.profit), 0).label("tp"),
+                func.count().label("deals"),
+            )
+            .select_from(EntryLineItem)
+            .join(Entry, Entry.id == EntryLineItem.entry_id)
+            .join(Supplier, Supplier.id == Entry.supplier_id)
+            .where(
+                *bf,
+                Entry.supplier_id.isnot(None),
+                EntryLineItem.item_name.ilike(f"%{item_kw}%"),
+            )
+            .group_by(Supplier.id, Supplier.name)
+            .order_by(func.avg(EntryLineItem.landing_cost).asc())
+            .limit(5)
+        )
+        rows = (await db.execute(q)).all()
+        if rows:
+            lines = [f"Suppliers for “{item_kw}” (lowest avg landing first):"]
+            for i, r in enumerate(rows):
+                medal = ("1.", "2.", "3.", "4.", "5.")[min(i, 4)]
+                lines.append(
+                    f"{medal} {r[0]}: avg landing ₹{float(r[1]):,.0f}, "
+                    f"profit ₹{float(r[2]):,.0f} ({int(r[3])} lines)"
+                )
+            return "\n".join(lines)
+        return f"No purchases for “{item_kw}” in {fd.isoformat()} → {td.isoformat()}."
 
     purchase = await db.execute(
         select(func.coalesce(func.sum(EntryLineItem.qty * EntryLineItem.buy_price), 0))
@@ -228,12 +329,10 @@ async def _grounded_query_reply(
         .where(*bf)
         .group_by(EntryLineItem.item_name)
         .order_by(func.coalesce(func.sum(EntryLineItem.profit), 0).desc())
-        .limit(1)
+        .limit(3)
     )
     top = await db.execute(q_top)
-    trow = top.first()
-    top_name = trow[0] if trow else None
-    top_profit = float(trow[1]) if trow else None
+    top_rows = top.all()
 
     q_best_sup = (
         select(
@@ -254,14 +353,15 @@ async def _grounded_query_reply(
     best_supplier_profit = float(bs_row[1]) if bs_row else None
 
     lines: list[str] = [
-        f"Period {fd.isoformat()} → {td.isoformat()}: "
+        f"This month ({fd.isoformat()} → {td.isoformat()}): "
         f"profit ₹{total_profit:,.0f}, purchases ₹{total_purchase:,.0f}, {purchase_count} entries."
     ]
-    if top_name:
-        lines.append(f"Top item: {top_name} (profit ₹{top_profit or 0:,.0f}).")
+    if top_rows:
+        parts = [f"{r[0]} (₹{float(r[1]):,.0f})" for r in top_rows if r[0]]
+        lines.append(f"Top items: {', '.join(parts)}.")
     if best_supplier_name:
         lines.append(
-            f"Best supplier: {best_supplier_name} (profit ₹{best_supplier_profit or 0:,.0f})."
+            f"Best supplier (profit): {best_supplier_name} (₹{best_supplier_profit or 0:,.0f})."
         )
     if purchase_count == 0:
         lines.append("No entries this month yet — add a purchase from Entries or chat.")
@@ -277,6 +377,7 @@ async def run_app_assistant_turn(
     settings: Settings,
     preview_token: str | None,
     entry_draft: dict[str, Any] | None,
+    conversation_context: str | None = None,
 ) -> dict[str, Any]:
     """
     Returns dict matching AppAssistantChatResponse fields (flat).
@@ -299,6 +400,7 @@ async def run_app_assistant_turn(
                     "entry_draft": None,
                     "saved_entry": saved,
                     "missing_fields": [],
+                    **_lm(),
                 }
             except ValueError as e:
                 await db.rollback()
@@ -309,6 +411,7 @@ async def run_app_assistant_turn(
                     "entry_draft": entry_draft,
                     "saved_entry": None,
                     "missing_fields": [],
+                    **_lm(),
                 }
         if not entry_draft:
             return {
@@ -318,6 +421,7 @@ async def run_app_assistant_turn(
                 "entry_draft": None,
                 "saved_entry": None,
                 "missing_fields": [],
+                **_lm(),
             }
         try:
             body = EntryCreateRequest.model_validate(entry_draft)
@@ -329,6 +433,7 @@ async def run_app_assistant_turn(
                 "entry_draft": None,
                 "saved_entry": None,
                 "missing_fields": [],
+                **_lm(),
             }
         body = body.model_copy(update={"confirm": True, "preview_token": preview_token})
         try:
@@ -342,6 +447,7 @@ async def run_app_assistant_turn(
                 "entry_draft": None,
                 "saved_entry": out.model_dump(mode="json"),
                 "missing_fields": [],
+                **_lm(),
             }
         except Exception as e:  # noqa: BLE001
             return {
@@ -351,6 +457,7 @@ async def run_app_assistant_turn(
                 "entry_draft": entry_draft,
                 "saved_entry": None,
                 "missing_fields": [],
+                **_lm(),
             }
 
     if preview_token and _is_negation(text):
@@ -363,6 +470,7 @@ async def run_app_assistant_turn(
             "entry_draft": None,
             "saved_entry": None,
             "missing_fields": [],
+            **_lm(),
         }
 
     # Pending preview: do not start a new intent or re-ask unrelated questions.
@@ -374,6 +482,7 @@ async def run_app_assistant_turn(
             "entry_draft": entry_draft,
             "saved_entry": None,
             "missing_fields": [],
+            **_lm(),
         }
 
     if _detect_help(text) and len(text) < 40:
@@ -390,6 +499,7 @@ async def run_app_assistant_turn(
             "entry_draft": None,
             "saved_entry": None,
             "missing_fields": [],
+            **_lm(),
         }
 
     ent_parsed = parse_entity_message(text)
@@ -407,6 +517,7 @@ async def run_app_assistant_turn(
                 "entry_draft": None,
                 "saved_entry": None,
                 "missing_fields": ["category"],
+                **_lm(),
             }
         tok = issue_entity_preview(user_id=user_id, business_id=business_id, kind=kind, payload=payload)
         prev = preview_lines_for(kind, payload)
@@ -417,10 +528,21 @@ async def run_app_assistant_turn(
             "entry_draft": {"__assistant__": "entity"},
             "saved_entry": None,
             "missing_fields": [],
+            **_lm(),
         }
 
+    snap = await build_compact_business_snapshot(db, business_id) if settings.enable_ai else None
+
     if _detect_query_intent(text):
-        reply = await _grounded_query_reply(db, business_id, text)
+        facts = await _grounded_query_reply(db, business_id, text)
+        synth, qmeta = await synthesize_app_query_reply(
+            user_text=text,
+            facts_text=facts,
+            settings=settings,
+            db=db,
+            business_snapshot=snap,
+        )
+        reply = synth if synth else facts
         return {
             "reply": reply,
             "intent": "query",
@@ -428,10 +550,28 @@ async def run_app_assistant_turn(
             "entry_draft": None,
             "saved_entry": None,
             "missing_fields": [],
+            **_lm(
+                reply_source="llm" if synth else "deterministic",
+                llm_provider=qmeta.get("provider_used") if synth else None,
+                llm_failover_used=bool(qmeta.get("failover_used")),
+                llm_failover_attempts=qmeta.get("failover"),
+            ),
         }
 
     # Parse purchase intent (LLM or stub via ai_chat router helpers)
-    llm = await extract_intent_json(user_text=text, settings=settings, db=db)
+    llm, intent_meta = await extract_intent_json_with_meta(
+        user_text=text,
+        settings=settings,
+        db=db,
+        conversation_context=conversation_context,
+        business_snapshot=snap,
+    )
+    intent_lm = _lm(
+        reply_source="rules",
+        llm_provider=intent_meta.get("provider_used"),
+        llm_failover_used=bool(intent_meta.get("failover_used")),
+        llm_failover_attempts=intent_meta.get("failover"),
+    )
     if llm is not None:
         intent = str(llm.get("intent") or "create_entry")
         data = llm.get("data") if isinstance(llm.get("data"), dict) else {}
@@ -441,7 +581,15 @@ async def run_app_assistant_turn(
         reply_text = str(llm.get("reply_text") or "").strip()
 
         if intent == "query_summary":
-            reply = await _grounded_query_reply(db, business_id, text)
+            facts = await _grounded_query_reply(db, business_id, text)
+            synth, qmeta = await synthesize_app_query_reply(
+                user_text=text,
+                facts_text=facts,
+                settings=settings,
+                db=db,
+                business_snapshot=snap,
+            )
+            reply = synth if synth else facts
             return {
                 "reply": reply,
                 "intent": "query",
@@ -449,6 +597,13 @@ async def run_app_assistant_turn(
                 "entry_draft": None,
                 "saved_entry": None,
                 "missing_fields": [],
+                **_lm(
+                    reply_source="llm" if synth else "deterministic",
+                    llm_provider=(qmeta.get("provider_used") if synth else intent_lm.get("llm_provider")),
+                    llm_failover_used=bool(qmeta.get("failover_used"))
+                    or bool(intent_lm.get("llm_failover_used")),
+                    llm_failover_attempts=qmeta.get("failover") or intent_lm.get("llm_failover_attempts"),
+                ),
             }
 
         if intent in ("update_entry", "delete_entry"):
@@ -459,6 +614,7 @@ async def run_app_assistant_turn(
                 "entry_draft": None,
                 "saved_entry": None,
                 "missing_fields": [],
+                **intent_lm,
             }
 
         ent_llm = _map_llm_entity_intent(intent, data)
@@ -473,6 +629,7 @@ async def run_app_assistant_turn(
                     "entry_draft": None,
                     "saved_entry": None,
                     "missing_fields": ["category_name"],
+                    **intent_lm,
                 }
             tok = issue_entity_preview(
                 user_id=user_id, business_id=business_id, kind=ek, payload=epayload
@@ -485,6 +642,7 @@ async def run_app_assistant_turn(
                 "entry_draft": {"__assistant__": "entity"},
                 "saved_entry": None,
                 "missing_fields": [],
+                **intent_lm,
             }
 
         tx = _intent_data_to_transaction_dict(data)
@@ -500,6 +658,7 @@ async def run_app_assistant_turn(
                 "entry_draft": None,
                 "saved_entry": None,
                 "missing_fields": combine_miss,
+                **intent_lm,
             }
 
         content, normalized = await prepare_create_entry_preview(db, business_id, user_id, req)
@@ -521,9 +680,10 @@ async def run_app_assistant_turn(
             "entry_draft": draft,
             "saved_entry": None,
             "missing_fields": [],
+            **intent_lm,
         }
 
-    # Stub path (no LLM)
+    # Stub path (no LLM structured intent)
     data, stub_missing = stub_intent_from_text(text)
     tx = _intent_data_to_transaction_dict(data)
     req, miss = await build_entry_create_request(db, business_id, tx)
@@ -537,6 +697,7 @@ async def run_app_assistant_turn(
             "entry_draft": None,
             "saved_entry": None,
             "missing_fields": list(dict.fromkeys((miss or []) + stub_missing)),
+            **intent_lm,
         }
 
     content, normalized = await prepare_create_entry_preview(db, business_id, user_id, req)
@@ -555,4 +716,5 @@ async def run_app_assistant_turn(
         "entry_draft": draft,
         "saved_entry": None,
         "missing_fields": [],
+        **intent_lm,
     }

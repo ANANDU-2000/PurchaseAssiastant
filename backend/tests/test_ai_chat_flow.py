@@ -1,10 +1,24 @@
 """In-app assistant chat — preview and grounded queries."""
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _disable_query_llm_overlay(monkeypatch: pytest.MonkeyPatch):
+    """Keep tests deterministic — no live LLM phrasing on grounded query replies."""
+
+    async def _fake(*_a, **_k):
+        return None, {"provider_used": None, "failover": [], "failover_used": False}
+
+    monkeypatch.setattr(
+        "app.services.app_assistant_chat.synthesize_app_query_reply",
+        _fake,
+    )
 
 
 def _register_and_business():
@@ -49,6 +63,19 @@ def test_ai_chat_query_grounded():
     data = r.json()
     assert data.get("intent") == "query"
     assert "profit" in data.get("reply", "").lower()
+
+
+def test_ai_chat_query_today():
+    h, bid = _register_and_business()
+    r = client.post(
+        f"/v1/businesses/{bid}/ai/chat",
+        json={"messages": [{"role": "user", "content": "summary today"}]},
+        headers=h,
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data.get("intent") == "query"
+    assert "today" in data.get("reply", "").lower()
 
 
 def test_ai_chat_stub_purchase_preview():
@@ -212,3 +239,67 @@ def test_ai_chat_pending_preview_requires_yes_no():
     )
     assert r3.status_code == 200, r3.text
     assert r3.json().get("intent") == "cancelled"
+
+
+def test_ai_chat_query_reply_source_deterministic():
+    h, bid = _register_and_business()
+    r = client.post(
+        f"/v1/businesses/{bid}/ai/chat",
+        json={"messages": [{"role": "user", "content": "profit this month"}]},
+        headers=h,
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data.get("reply_source") == "deterministic"
+    assert data.get("llm_failover_used") is False
+
+
+def test_extract_intent_failover_gemini_then_groq(monkeypatch: pytest.MonkeyPatch):
+    """Ordered failover for structured intent: Gemini returns nothing, Groq returns JSON."""
+    calls: list[str] = []
+
+    async def gem_fail(_t, _s, _k):
+        calls.append("gemini")
+        return None
+
+    async def groq_ok(_t, _s, _k):
+        calls.append("groq")
+        return {
+            "intent": "create_supplier",
+            "data": {"supplier_name": "Failover Co"},
+            "missing_fields": [],
+            "reply_text": "",
+        }
+
+    async def oa_fail(_t, _s, _k):
+        calls.append("openai")
+        return None
+
+    async def fake_keys(_s, _d):
+        return {"gemini": "gk", "groq": "qk", "openai": "ok"}
+
+    monkeypatch.setattr("app.services.llm_failover.resolve_provider_keys", fake_keys)
+    monkeypatch.setattr("app.services.llm_intent._gemini_json", gem_fail)
+    monkeypatch.setattr("app.services.llm_intent._groq_json", groq_ok)
+    monkeypatch.setattr("app.services.llm_intent._openai_json", oa_fail)
+
+    # Avoid rule-based `create supplier …` so the LLM path runs.
+    h, bid = _register_and_business()
+    r = client.post(
+        f"/v1/businesses/{bid}/ai/chat",
+        json={
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "register supplier Failover Co for purchases",
+                }
+            ]
+        },
+        headers=h,
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data.get("intent") == "entity_preview"
+    assert data.get("llm_provider") == "groq"
+    assert data.get("llm_failover_used") is True
+    assert calls == ["gemini", "groq"]

@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/entries_list_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
+import '../../../core/theme/hexa_colors.dart';
 import '../../../shared/widgets/app_settings_action.dart';
 import '../../../core/widgets/friendly_load_error.dart'
     show FriendlyLoadError, kFriendlyLoadNetworkSubtitle;
@@ -69,8 +70,36 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
     final first = lines.first;
     if (first is! Map) return 'Purchase entry';
     final name = first['item_name'] as String? ?? 'Item';
-    if (lines.length == 1) return name;
-    return '$name +${lines.length - 1} more';
+    final cat = first['category'] as String?;
+    final head = (cat != null && cat.trim().isNotEmpty) ? '$name ($cat)' : name;
+    if (lines.length == 1) return head;
+    return '$head +${lines.length - 1} more';
+  }
+
+  /// Approximate margin % of revenue when lines have qty + selling_price.
+  static double? _entryAvgMarginPct(Map<String, dynamic> e) {
+    final lines = e['lines'];
+    if (lines is! List) return null;
+    var profit = 0.0;
+    var rev = 0.0;
+    for (final li in lines) {
+      if (li is! Map) continue;
+      final p = (li['profit'] as num?)?.toDouble();
+      final q = (li['qty'] as num?)?.toDouble() ?? 0;
+      final sp = (li['selling_price'] as num?)?.toDouble();
+      if (p != null) profit += p;
+      if (sp != null && q > 0) rev += q * sp;
+    }
+    if (rev <= 0) return null;
+    return (profit / rev) * 100;
+  }
+
+  static Color? _marginStripeColor(Map<String, dynamic> e) {
+    final m = _entryAvgMarginPct(e);
+    if (m == null) return null;
+    if (m >= 10) return const Color(0xFF2ECC71);
+    if (m >= 5) return const Color(0xFFF0A500);
+    return const Color(0xFFE74C3C);
   }
 
   static String _dateGroupLabel(DateTime d) {
@@ -88,22 +117,37 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
     Map<String, String> brokerNames = const {},
   }) {
     final lines = e['lines'];
-    final buf = StringBuffer();
-    final raw = e['entry_date'];
-    if (raw != null) {
-      final dt = DateTime.tryParse(raw.toString());
-      if (dt != null) {
-        buf.write(DateFormat.yMMMd().format(dt));
-      }
+    final sid = e['supplier_id']?.toString();
+    final brid = e['broker_id']?.toString();
+    final sup = sid != null ? supplierNames[sid] : null;
+    final bro = brid != null ? brokerNames[brid] : null;
+
+    final line1 = StringBuffer();
+    if (sup != null) {
+      line1.write('Supplier: $sup');
     }
+    if (bro != null) {
+      if (line1.isNotEmpty) line1.write('  ·  ');
+      line1.write('Broker: $bro');
+    }
+
+    final mid = StringBuffer();
     if (lines is List && lines.isNotEmpty) {
       final first = lines.first;
       if (first is Map) {
         final q = first['qty'];
         final u = first['unit'];
+        final bp = first['buy_price'];
         if (q != null) {
-          if (buf.isNotEmpty) buf.write(' · ');
-          buf.write('$q ${u ?? ''}'.trim());
+          mid.write('$q ${u ?? ''}'.trim());
+        }
+        if (bp != null) {
+          if (mid.isNotEmpty) mid.write(' · ');
+          final bpv = (bp is num)
+              ? bp.toDouble()
+              : double.tryParse(bp.toString()) ?? 0;
+          mid.write(
+              'Buy ${NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(bpv)}');
         }
       }
     }
@@ -116,22 +160,29 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
         }
       }
     }
-    if (profit != 0) {
-      if (buf.isNotEmpty) buf.write(', ');
-      buf.write(
-          'P/L ${NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(profit)}');
+    final pl = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
+        .format(profit);
+    final mPct = _entryAvgMarginPct(e);
+    final profitBit = StringBuffer('Profit: $pl');
+    if (mPct != null) {
+      profitBit.write(' (${mPct.toStringAsFixed(1)}%)');
     }
-    final sid = e['supplier_id']?.toString();
-    final brid = e['broker_id']?.toString();
-    if (sid != null && supplierNames[sid] != null) {
-      if (buf.isNotEmpty) buf.write(' · ');
-      buf.write('Supplier: ${supplierNames[sid]}');
+
+    final raw = e['entry_date'];
+    var dateStr = '';
+    if (raw != null) {
+      final dt = DateTime.tryParse(raw.toString());
+      if (dt != null) {
+        dateStr = DateFormat.yMMMd().format(dt);
+      }
     }
-    if (brid != null && brokerNames[brid] != null) {
-      if (buf.isNotEmpty) buf.write(' · ');
-      buf.write('Broker: ${brokerNames[brid]}');
-    }
-    return buf.isEmpty ? 'n/a' : buf.toString();
+
+    final parts = <String>[];
+    if (line1.isNotEmpty) parts.add(line1.toString());
+    if (mid.isNotEmpty) parts.add(mid.toString());
+    parts.add(profitBit.toString());
+    if (dateStr.isNotEmpty) parts.add(dateStr);
+    return parts.join('\n');
   }
 
   Future<void> _showFiltersSheet(BuildContext context, WidgetRef ref) async {
@@ -446,34 +497,52 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
                       }
                       final e = row as Map<String, dynamic>;
                       final id = e['id']?.toString();
+                      final stripe = _marginStripeColor(e);
                       return Card(
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 4),
-                          leading: CircleAvatar(
-                            backgroundColor: Theme.of(context)
-                                .colorScheme
-                                .primaryContainer
-                                .withValues(alpha: 0.6),
-                            child: Icon(Icons.receipt_long_rounded,
-                                color: Theme.of(context).colorScheme.primary,
-                                size: 22),
-                          ),
-                          title: Text(_titleLine(e),
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w700)),
-                          subtitle: Text(_subtitle(
-                            e,
-                            supplierNames: supplierNames,
-                            brokerNames: brokerNames,
-                          )),
-                          trailing: const Icon(Icons.chevron_right_rounded),
+                        clipBehavior: Clip.antiAlias,
+                        margin: EdgeInsets.zero,
+                        child: InkWell(
                           onTap: id == null
                               ? null
                               : () {
                                   HapticFeedback.selectionClick();
                                   context.push('/entry/$id');
                                 },
+                          child: IntrinsicHeight(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                if (stripe != null)
+                                  Container(width: 4, color: stripe),
+                                Expanded(
+                                  child: ListTile(
+                                    contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 14, vertical: 8),
+                                    title: Text(
+                                      _titleLine(e),
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.w700),
+                                    ),
+                                    isThreeLine: true,
+                                    subtitle: Text(
+                                      _subtitle(
+                                        e,
+                                        supplierNames: supplierNames,
+                                        brokerNames: brokerNames,
+                                      ),
+                                      style: const TextStyle(
+                                        height: 1.35,
+                                        fontSize: 12,
+                                        color: HexaColors.textSecondary,
+                                      ),
+                                    ),
+                                    trailing: const Icon(
+                                        Icons.chevron_right_rounded),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       );
                     },

@@ -90,6 +90,7 @@ class Settings(BaseSettings):
     # Comma-separated OAuth 2.0 client IDs whose ID tokens we accept (usually one Web client used as serverClientId in Flutter).
     google_oauth_client_ids: str = ""
 
+    # Legacy BSP fields — super-admin platform integration / forks. Harisree app assistant uses /ai/chat only.
     dialog360_api_key: str | None = None
     dialog360_base_url: str = "https://waba-v2.360dialog.io"
     dialog360_phone_number_id: str | None = None

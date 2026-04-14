@@ -552,9 +552,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             color: context.adaptiveCard,
             child: ListTile(
               leading: Icon(Icons.chat_outlined, color: cs.primary),
-              title: const Text('WhatsApp'),
+              title: const Text('In-app assistant'),
               subtitle: const Text(
-                'WhatsApp Business is set up for your workspace by your administrator. This app does not store messaging passwords.',
+                'Purchase help and reports use the Assistant tab (/ai). API keys stay on the server — this app never stores LLM secrets.',
               ),
             ),
           ),
@@ -632,7 +632,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     Text(
                       _billing!['subscription'] == null
                           ? 'No subscription row yet — defaults apply until you pay.'
-                          : 'Status: ${_billing!['subscription']['status']} · WhatsApp: ${_billing!['subscription']['whatsapp_addon']} · AI: ${_billing!['subscription']['ai_addon']}',
+                          : 'Status: ${_billing!['subscription']['status']} · Bundle: ${_billing!['subscription']['whatsapp_addon']} · AI: ${_billing!['subscription']['ai_addon']}',
                       style: tt.bodySmall
                           ?.copyWith(color: cs.onSurfaceVariant),
                     ),
@@ -690,9 +690,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         const SizedBox(height: 8),
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
-                          title: const Text('WhatsApp add-on'),
+                          title: const Text('Bundle add-on (legacy)'),
                           subtitle: const Text(
-                              'Bundled with AI add-on in pricing when either is on.'),
+                              'Optional extra bundle line item; often paired with AI add-on in quotes.'),
                           value: _billingWa,
                           onChanged: (v) {
                             setState(() => _billingWa = v);

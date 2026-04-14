@@ -10,6 +10,12 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
+from app.services.assistant_system_prompt import REPORT_SYSTEM_PROMPT, SYSTEM_PROMPT
+from app.services.llm_failover import (
+    any_llm_key,
+    resolve_provider_keys,
+    run_ordered_failover,
+)
 from app.services.platform_credentials import (
     effective_google_ai_key,
     effective_groq_key,
@@ -18,24 +24,8 @@ from app.services.platform_credentials import (
 
 logger = logging.getLogger(__name__)
 
-_INTENT_JSON_INSTRUCTIONS = """You are Harisree Purchase Assistant. Classify the user message and extract fields.
-
-Return ONE JSON object only (no markdown) with exactly these keys:
-- "intent": one of:
-  - "create_entry" — record a purchase (qty, prices, item, supplier, …)
-  - "create_supplier" — new supplier (needs supplier_name or name)
-  - "create_category" — new top-level category only (category_name or name)
-  - "create_category_item" — category + first catalog item / "type" line, e.g. Rice → Biriyani (needs category_name and item_name)
-  - "create_catalog_item" — new item under existing category (needs item_name or name, and category_name)
-  - "create_variant" — variant under an item (variant_name, item_name)
-  - "update_entry", "delete_entry", "query_summary"
-- "data": object — include only relevant keys; use null for unknown (never guess numbers):
-  For purchases: item, variant, unit_type, bags, kg_per_bag, qty_kg, buy_price, landing_cost, selling_price_per_kg, broker, supplier, supplier_name, …
-  For entities: supplier_name, name, category_name, item_name, variant_name, default_unit, kg_per_bag
-- "missing_fields": array of strings for required fields still unknown
-- "reply_text": one short sentence if you need to clarify; else a neutral note
-
-Rules: Do not invent prices or quantities. Prefer create_category_item when the user gives "category X > Y" or "X under Y" for types. Short replies."""
+# Single source: app.services.assistant_system_prompt.SYSTEM_PROMPT
+_INTENT_JSON_INSTRUCTIONS = SYSTEM_PROMPT
 
 
 def _normalize_payload(raw: dict[str, Any]) -> dict[str, Any] | None:
@@ -62,40 +52,125 @@ def _normalize_payload(raw: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+def _strip_markdown_json_fence(s: str) -> str:
+    t = (s or "").strip()
+    if not t.startswith("```"):
+        return t
+    lines = t.split("\n")
+    if len(lines) >= 2:
+        lines = lines[1:]
+    if lines and lines[-1].strip().startswith("```"):
+        lines = lines[:-1]
+    return "\n".join(lines).strip()
+
+
+def _parse_json_loose(raw: str) -> Any | None:
+    """Parse JSON from LLM output; tolerate markdown fences and extra prose."""
+    s = _strip_markdown_json_fence(raw)
+    if not s:
+        return None
+    try:
+        out = json.loads(s)
+        return out
+    except json.JSONDecodeError:
+        pass
+    i = s.find("{")
+    j = s.rfind("}")
+    if i >= 0 and j > i:
+        try:
+            return json.loads(s[i : j + 1])
+        except json.JSONDecodeError:
+            pass
+    return None
+
+
+def _intent_user_payload(
+    user_text: str,
+    conversation_context: str | None,
+    business_snapshot: str | None = None,
+) -> str:
+    snap = (business_snapshot or "").strip()
+    head = ""
+    if snap:
+        head = f"Database snapshot (aggregates for this business; use for disambiguation, not invented numbers):\n{snap[:4500]}\n\n"
+    if not (conversation_context or "").strip():
+        return (head + user_text.strip())[:12000]
+    merged = (
+        head
+        + f"Conversation so far (context):\n{conversation_context.strip()[:6000]}\n\n"
+        + f"Latest user message:\n{user_text.strip()[:8000]}"
+    )
+    return merged[:12000]
+
+
+async def extract_intent_json_with_meta(
+    *,
+    user_text: str,
+    settings: Settings,
+    db: AsyncSession,
+    conversation_context: str | None = None,
+    business_snapshot: str | None = None,
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    """
+    Ordered failover: Gemini -> Groq -> OpenAI for structured intent JSON.
+    Returns (normalized dict or None, metadata with provider_used / failover attempts).
+    """
+    if not settings.enable_ai:
+        return None, {"reason": "enable_ai_false", "failover": []}
+
+    keys = await resolve_provider_keys(settings, db)
+    if not any_llm_key(keys):
+        return None, {"reason": "no_api_keys", "failover": []}
+
+    payload_text = _intent_user_payload(user_text, conversation_context, business_snapshot)
+    gk, qk, ok = keys.get("gemini"), keys.get("groq"), keys.get("openai")
+
+    async def try_gemini() -> dict[str, Any] | None:
+        if not (gk or "").strip():
+            return None
+        return await _gemini_json(payload_text, settings, gk.strip())
+
+    async def try_groq() -> dict[str, Any] | None:
+        if not (qk or "").strip():
+            return None
+        return await _groq_json(payload_text, settings, qk.strip())
+
+    async def try_openai() -> dict[str, Any] | None:
+        if not (ok or "").strip():
+            return None
+        return await _openai_json(payload_text, settings, ok.strip())
+
+    runners = [
+        ("gemini", gk, try_gemini),
+        ("groq", qk, try_groq),
+        ("openai", ok, try_openai),
+    ]
+
+    out, meta = await run_ordered_failover(runners=runners)
+    if out is None:
+        return None, meta
+    if not isinstance(out, dict):
+        return None, {**meta, "reason": "invalid_payload_type"}
+    return out, meta
+
+
 async def extract_intent_json(
     *,
     user_text: str,
     settings: Settings,
     db: AsyncSession,
+    conversation_context: str | None = None,
+    business_snapshot: str | None = None,
 ) -> dict[str, Any] | None:
     """Returns normalized dict or None if provider disabled / error."""
-    prov = (settings.ai_provider or "stub").strip().lower()
-    if prov == "stub":
-        return None
-
-    if prov == "openai":
-        key = await effective_openai_key(settings, db)
-        if not key:
-            logger.warning("ai_provider=openai but no API key")
-            return None
-        return await _openai_json(user_text, settings, key)
-
-    if prov == "groq":
-        key = await effective_groq_key(settings, db)
-        if not key:
-            logger.warning("ai_provider=groq but no API key")
-            return None
-        return await _groq_json(user_text, settings, key)
-
-    if prov == "gemini":
-        key = await effective_google_ai_key(settings, db)
-        if not key:
-            logger.warning("ai_provider=gemini but no GOOGLE_AI / DB key")
-            return None
-        return await _gemini_json(user_text, settings, key)
-
-    logger.warning("Unknown ai_provider=%s", prov)
-    return None
+    out, _meta = await extract_intent_json_with_meta(
+        user_text=user_text,
+        settings=settings,
+        db=db,
+        conversation_context=conversation_context,
+        business_snapshot=business_snapshot,
+    )
+    return out
 
 
 async def _openai_json(text: str, settings: Settings, api_key: str) -> dict[str, Any] | None:
@@ -145,9 +220,14 @@ async def _groq_json(text: str, settings: Settings, api_key: str) -> dict[str, A
 def _parse_openai_style_response(data: dict[str, Any]) -> dict[str, Any] | None:
     try:
         content = data["choices"][0]["message"]["content"]
-        raw = json.loads(content)
-    except (KeyError, IndexError, json.JSONDecodeError, TypeError) as e:
+        if not isinstance(content, str):
+            return None
+        raw = _parse_json_loose(content)
+    except (KeyError, IndexError, TypeError) as e:
         logger.warning("Bad LLM JSON: %s", e)
+        return None
+    if raw is None or not isinstance(raw, dict):
+        logger.warning("Bad LLM JSON: could not parse object")
         return None
     return _normalize_payload(raw)
 
@@ -168,9 +248,14 @@ async def _gemini_json(text: str, settings: Settings, api_key: str) -> dict[str,
         outer = res.json()
     try:
         raw_text = outer["candidates"][0]["content"]["parts"][0]["text"]
-        raw = json.loads(raw_text)
-    except (KeyError, IndexError, json.JSONDecodeError, TypeError) as e:
+        if not isinstance(raw_text, str):
+            return None
+        raw = _parse_json_loose(raw_text)
+    except (KeyError, IndexError, TypeError) as e:
         logger.warning("Bad Gemini JSON: %s", e)
+        return None
+    if raw is None or not isinstance(raw, dict):
+        logger.warning("Bad Gemini JSON: could not parse object")
         return None
     return _normalize_payload(raw)
 
@@ -511,3 +596,148 @@ def _finalize_whatsapp_reply(text: str | None) -> str | None:
     if len(t) > 3900:
         t = t[:3897] + "..."
     return t
+
+
+_APP_QUERY_SYSTEM = REPORT_SYSTEM_PROMPT
+
+
+def _finalize_app_reply(text: str | None) -> str | None:
+    if not text:
+        return None
+    t = text.strip()
+    if not t:
+        return None
+    if len(t) > 2800:
+        t = t[:2797] + "..."
+    return t
+
+
+async def _app_plain_openai(
+    sys_p: str, user_content: str, settings: Settings, api_key: str
+) -> str | None:
+    payload = {
+        "model": settings.openai_model_summary or settings.openai_model_parse,
+        "max_tokens": 450,
+        "messages": [
+            {"role": "system", "content": sys_p},
+            {"role": "user", "content": user_content},
+        ],
+    }
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        res = await client.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json=payload,
+        )
+        if res.status_code >= 400:
+            logger.warning("OpenAI app query synthesis failed %s", res.status_code)
+            return None
+        return _finalize_app_reply(_extract_openai_style_plain_text(res.json()))
+
+
+async def _app_plain_groq(
+    sys_p: str, user_content: str, settings: Settings, api_key: str
+) -> str | None:
+    payload = {
+        "model": settings.groq_model,
+        "max_tokens": 450,
+        "messages": [
+            {"role": "system", "content": sys_p},
+            {"role": "user", "content": user_content},
+        ],
+    }
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        res = await client.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json=payload,
+        )
+        if res.status_code >= 400:
+            logger.warning("Groq app query synthesis failed %s", res.status_code)
+            return None
+        return _finalize_app_reply(_extract_openai_style_plain_text(res.json()))
+
+
+async def _app_plain_gemini(
+    sys_p: str, user_content: str, settings: Settings, api_key: str
+) -> str | None:
+    model = settings.gemini_model.strip()
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    body = {
+        "systemInstruction": {"parts": [{"text": sys_p}]},
+        "contents": [{"parts": [{"text": user_content}]}],
+        "generationConfig": {"maxOutputTokens": 450, "temperature": 0.35},
+    }
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        res = await client.post(url, params={"key": api_key}, json=body)
+        if res.status_code >= 400:
+            logger.warning("Gemini app query synthesis failed %s", res.status_code)
+            return None
+        outer = res.json()
+    try:
+        raw_text = outer["candidates"][0]["content"]["parts"][0]["text"]
+        if isinstance(raw_text, str) and raw_text.strip():
+            return _finalize_app_reply(raw_text.strip())
+    except (KeyError, IndexError, TypeError):
+        pass
+    return None
+
+
+async def synthesize_app_query_reply(
+    *,
+    user_text: str,
+    facts_text: str,
+    settings: Settings,
+    db: AsyncSession,
+    business_snapshot: str | None = None,
+) -> tuple[str | None, dict[str, Any]]:
+    """
+    Optional LLM phrasing for grounded query replies (report/decision style only).
+    Failover: Gemini -> Groq -> OpenAI. Returns (text or None, meta).
+    """
+    if not settings.enable_ai:
+        return None, {"reason": "enable_ai_false", "failover": []}
+
+    keys = await resolve_provider_keys(settings, db)
+    if not any_llm_key(keys):
+        return None, {"reason": "no_api_keys", "failover": []}
+
+    ut = user_text.strip()[:2000]
+    facts = (facts_text or "").strip()[:6000]
+    if not facts:
+        return None, {"reason": "empty_facts", "failover": []}
+
+    sys_p = _APP_QUERY_SYSTEM.strip()
+    snap = (business_snapshot or "").strip()
+    snap_block = f"\n\nOVERVIEW (month-to-date aggregates):\n{snap[:2500]}" if snap else ""
+    user_block = f"USER MESSAGE:\n{ut}{snap_block}\n\nFACTS (from Harisree database):\n{facts}"
+
+    gk, qk, ok = keys.get("gemini"), keys.get("groq"), keys.get("openai")
+
+    async def try_gemini() -> str | None:
+        if not (gk or "").strip():
+            return None
+        return await _app_plain_gemini(sys_p, user_block, settings, gk.strip())
+
+    async def try_groq() -> str | None:
+        if not (qk or "").strip():
+            return None
+        return await _app_plain_groq(sys_p, user_block, settings, qk.strip())
+
+    async def try_openai() -> str | None:
+        if not (ok or "").strip():
+            return None
+        return await _app_plain_openai(sys_p, user_block, settings, ok.strip())
+
+    runners = [
+        ("gemini", gk, try_gemini),
+        ("groq", qk, try_groq),
+        ("openai", ok, try_openai),
+    ]
+
+    out, meta = await run_ordered_failover(runners=runners)
+    if out is None:
+        return None, meta
+    if not isinstance(out, str):
+        return None, {**meta, "reason": "invalid_text"}
+    return out, meta

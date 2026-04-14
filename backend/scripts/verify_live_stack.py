@@ -21,7 +21,7 @@ def main() -> None:
         hr = c.get(f"{base}/health")
         print("--- health ---", hr.status_code, hr.json() if hr.status_code == 200 else hr.text[:120])
         if hr.status_code != 200:
-            print("Hint: API must be up before testing WhatsApp webhooks (Authkey → same host).")
+            print("Hint: start the API first (uvicorn) so /health and login succeed.")
             sys.exit(1)
 
         r = c.post(f"{base}/v1/auth/login", json={"email": EMAIL, "password": PASSWORD})
