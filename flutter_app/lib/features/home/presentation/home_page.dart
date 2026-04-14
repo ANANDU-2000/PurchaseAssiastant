@@ -305,7 +305,7 @@ class _HomePageState extends ConsumerState<HomePage>
                         const SizedBox(height: 8),
                         _QuickActionRow(
                           onAddEntry: () => showEntryCreateSheet(context),
-                          onAssistant: () => context.push('/ai'),
+                          onAssistant: () => context.go('/assistant'),
                         ),
                       ],
                     );
@@ -783,6 +783,15 @@ class _QuickActionRow extends StatelessWidget {
   }
 }
 
+String _formatMomPercent(double? pct) {
+  if (pct == null) return '';
+  if (pct.abs() > 999) {
+    return pct > 0 ? '↑ new' : '↓ new';
+  }
+  final sign = pct >= 0 ? '+' : '';
+  return '$sign${pct.toStringAsFixed(1)}%';
+}
+
 class _HeroProfitCard extends StatelessWidget {
   const _HeroProfitCard({
     required this.profitText,
@@ -801,6 +810,7 @@ class _HeroProfitCard extends StatelessWidget {
     final tt = Theme.of(context).textTheme;
     final up = changePct != null && changePct! >= 0;
     final badgeColor = up ? HexaColors.profit : HexaColors.loss;
+    final pctLabel = _formatMomPercent(changePct);
 
     final cs = Theme.of(context).colorScheme;
     return SizedBox(
@@ -862,7 +872,7 @@ class _HeroProfitCard extends StatelessWidget {
                 ),
               ),
             ),
-            if (changePct != null)
+            if (changePct != null && pctLabel.isNotEmpty)
               Positioned(
                 top: 12,
                 right: 12,
@@ -875,7 +885,7 @@ class _HeroProfitCard extends StatelessWidget {
                     border: Border.all(color: badgeColor, width: 0.5),
                   ),
                   child: Text(
-                    '${up ? '+' : ''}${changePct!.toStringAsFixed(1)}%',
+                    pctLabel,
                     style: tt.labelSmall?.copyWith(
                         color: badgeColor,
                         fontWeight: FontWeight.w800,

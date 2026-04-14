@@ -1,0 +1,196 @@
+"""Unified search: catalog items, suppliers, entries (substring + fuzzy fallback)."""
+
+from __future__ import annotations
+
+import uuid
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, Field
+from sqlalchemy import exists, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.database import get_db
+from app.deps import require_membership
+from app.models import CatalogItem, CategoryType, Entry, EntryLineItem, ItemCategory, Membership, Supplier
+from app.schemas.entries import EntryLineOut, EntryOut
+from app.services.fuzzy_catalog import rank_ids_by_token_sort
+
+router = APIRouter(prefix="/v1/businesses/{business_id}", tags=["search"])
+
+_PAIR_CAP = 5000
+
+
+def _line_to_out(line: EntryLineItem) -> EntryLineOut:
+    return EntryLineOut(
+        id=line.id,
+        catalog_item_id=line.catalog_item_id,
+        catalog_variant_id=line.catalog_variant_id,
+        item_name=line.item_name,
+        category=line.category,
+        qty=float(line.qty),
+        unit=line.unit,
+        bags=float(line.bags) if line.bags is not None else None,
+        kg_per_bag=float(line.kg_per_bag) if line.kg_per_bag is not None else None,
+        qty_kg=float(line.qty_kg) if line.qty_kg is not None else None,
+        buy_price=float(line.buy_price),
+        landing_cost=float(line.landing_cost),
+        selling_price=float(line.selling_price) if line.selling_price is not None else None,
+        profit=float(line.profit) if line.profit is not None else None,
+        stock_note=line.stock_note.strip() if line.stock_note else None,
+    )
+
+
+def _entry_to_out(entry: Entry) -> EntryOut:
+    tc = float(entry.transport_cost) if entry.transport_cost is not None else None
+    ca = float(entry.commission_amount) if entry.commission_amount is not None else None
+    pl = entry.place.strip() if entry.place else None
+    return EntryOut(
+        id=entry.id,
+        business_id=entry.business_id,
+        entry_date=entry.entry_date,
+        supplier_id=entry.supplier_id,
+        broker_id=entry.broker_id,
+        invoice_no=entry.invoice_no,
+        place=pl,
+        transport_cost=tc,
+        commission_amount=ca,
+        lines=[_line_to_out(li) for li in entry.lines],
+    )
+
+
+class UnifiedSearchOut(BaseModel):
+    catalog_items: list[dict[str, Any]] = Field(default_factory=list)
+    suppliers: list[dict[str, Any]] = Field(default_factory=list)
+    entries: list[dict[str, Any]] = Field(default_factory=list)
+    fuzzy_catalog_used: bool = False
+    fuzzy_suppliers_used: bool = False
+
+
+def _hydrate_catalog_rows(
+    rows: list[tuple[Any, ...]],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": str(row[0]),
+            "name": row[1],
+            "category_name": row[2],
+            "type_name": row[3],
+        }
+        for row in rows
+    ]
+
+
+@router.get("/search", response_model=UnifiedSearchOut)
+async def unified_search(
+    business_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    q: str = Query(..., min_length=2, max_length=200),
+):
+    del _m
+
+    needle = q.strip().lower()
+    if len(needle) < 2:
+        return UnifiedSearchOut()
+
+    ct = CategoryType
+    ic = ItemCategory
+    sq_items = (
+        select(
+            CatalogItem.id,
+            CatalogItem.name,
+            ic.name.label("category_name"),
+            ct.name.label("type_name"),
+        )
+        .join(ic, ic.id == CatalogItem.category_id)
+        .outerjoin(ct, ct.id == CatalogItem.type_id)
+        .where(
+            CatalogItem.business_id == business_id,
+            func.lower(CatalogItem.name).contains(needle),
+        )
+        .order_by(func.lower(CatalogItem.name))
+        .limit(12)
+    )
+    ir = await db.execute(sq_items)
+    catalog_rows = list(ir.all())
+    fuzzy_catalog_used = False
+    if not catalog_rows:
+        pairs_r = await db.execute(
+            select(CatalogItem.id, CatalogItem.name).where(
+                CatalogItem.business_id == business_id
+            ).limit(_PAIR_CAP)
+        )
+        pairs = [(row[0], row[1]) for row in pairs_r.all() if row[1]]
+        ranked = rank_ids_by_token_sort(needle, pairs, limit=12, score_cutoff=52)
+        if ranked:
+            fuzzy_catalog_used = True
+            ids = [uid for uid, _sc in ranked]
+            sq_h = (
+                select(
+                    CatalogItem.id,
+                    CatalogItem.name,
+                    ic.name.label("category_name"),
+                    ct.name.label("type_name"),
+                )
+                .join(ic, ic.id == CatalogItem.category_id)
+                .outerjoin(ct, ct.id == CatalogItem.type_id)
+                .where(CatalogItem.id.in_(ids))
+            )
+            hr = await db.execute(sq_h)
+            by_id = {row[0]: row for row in hr.all()}
+            catalog_rows = [by_id[i] for i in ids if i in by_id]
+
+    catalog_items = _hydrate_catalog_rows(catalog_rows)
+
+    sq_sup = (
+        select(Supplier.id, Supplier.name)
+        .where(
+            Supplier.business_id == business_id,
+            func.lower(Supplier.name).contains(needle),
+        )
+        .order_by(func.lower(Supplier.name))
+        .limit(12)
+    )
+    sr = await db.execute(sq_sup)
+    sup_rows = list(sr.all())
+    fuzzy_suppliers_used = False
+    if not sup_rows:
+        pairs_r = await db.execute(
+            select(Supplier.id, Supplier.name).where(Supplier.business_id == business_id).limit(_PAIR_CAP)
+        )
+        pairs = [(row[0], row[1]) for row in pairs_r.all() if row[1]]
+        ranked = rank_ids_by_token_sort(needle, pairs, limit=12, score_cutoff=52)
+        if ranked:
+            fuzzy_suppliers_used = True
+            ids = [uid for uid, _sc in ranked]
+            hr = await db.execute(select(Supplier.id, Supplier.name).where(Supplier.id.in_(ids)))
+            by_id = {row[0]: row for row in hr.all()}
+            sup_rows = [by_id[i] for i in ids if i in by_id]
+    suppliers = [{"id": str(row[0]), "name": row[1]} for row in sup_rows]
+
+    line_match = exists(
+        select(EntryLineItem.id).where(
+            EntryLineItem.entry_id == Entry.id,
+            func.lower(EntryLineItem.item_name).contains(needle),
+        )
+    )
+    sq_ent = (
+        select(Entry)
+        .where(Entry.business_id == business_id, line_match)
+        .options(selectinload(Entry.lines))
+        .order_by(Entry.entry_date.desc(), Entry.created_at.desc())
+        .limit(12)
+    )
+    er = await db.execute(sq_ent)
+    entries = [e for e in er.scalars().unique().all()]
+    entries_out = [_entry_to_out(e).model_dump(mode="json") for e in entries]
+
+    return UnifiedSearchOut(
+        catalog_items=catalog_items,
+        suppliers=suppliers,
+        entries=entries_out,
+        fuzzy_catalog_used=fuzzy_catalog_used,
+        fuzzy_suppliers_used=fuzzy_suppliers_used,
+    )

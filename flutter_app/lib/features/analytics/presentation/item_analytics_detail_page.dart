@@ -1,3 +1,4 @@
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -32,6 +33,7 @@ class ItemAnalyticsDetailPage extends ConsumerStatefulWidget {
 
 class _ItemAnalyticsDetailPageState
     extends ConsumerState<ItemAnalyticsDetailPage> {
+  /// 0=name, 1=avg landing, 2=deals, 3=total profit
   int _sortColumn = 1;
   bool _asc = true;
 
@@ -95,13 +97,22 @@ class _ItemAnalyticsDetailPageState
               sup.map((e) => Map<String, dynamic>.from(e as Map)).toList();
           rows.sort((a, b) {
             int c;
-            if (_sortColumn == 0) {
-              c = (a['name']?.toString() ?? '')
-                  .compareTo(b['name']?.toString() ?? '');
-            } else {
-              final va = a['avg_landing'] as num? ?? 0;
-              final vb = b['avg_landing'] as num? ?? 0;
-              c = va.compareTo(vb);
+            switch (_sortColumn) {
+              case 0:
+                c = (a['name']?.toString() ?? '')
+                    .compareTo(b['name']?.toString() ?? '');
+                break;
+              case 1:
+                c = ((a['avg_landing'] as num?) ?? 0)
+                    .compareTo((b['avg_landing'] as num?) ?? 0);
+                break;
+              case 2:
+                c = ((a['deals'] as num?) ?? 0)
+                    .compareTo((b['deals'] as num?) ?? 0);
+                break;
+              default:
+                c = ((a['total_profit'] as num?) ?? 0)
+                    .compareTo((b['total_profit'] as num?) ?? 0);
             }
             return _asc ? c : -c;
           });
@@ -117,6 +128,30 @@ class _ItemAnalyticsDetailPageState
           final savings = (avg != null && bestAvg != null)
               ? (avg - bestAvg).clamp(-1e12, 1e12)
               : null;
+
+          Map<String, dynamic>? buyRow;
+          var maxProfit = -1e18;
+          for (final r in rows) {
+            final tp = (r['total_profit'] as num?)?.toDouble() ?? 0;
+            if (tp > maxProfit) {
+              maxProfit = tp;
+              buyRow = r;
+            }
+          }
+
+          final historyRaw = (p['price_history'] as List<dynamic>?) ?? [];
+          final historyPts = <({DateTime? d, double p})>[];
+          for (final e in historyRaw) {
+            if (e is! Map) continue;
+            final ds = e['d']?.toString();
+            final pv = (e['p'] as num?)?.toDouble();
+            if (ds == null || pv == null) continue;
+            DateTime? dt;
+            try {
+              dt = DateTime.parse(ds);
+            } catch (_) {}
+            historyPts.add((d: dt, p: pv));
+          }
 
           return RefreshIndicator(
             onRefresh: () async =>
@@ -141,7 +176,18 @@ class _ItemAnalyticsDetailPageState
                   inr: _inr,
                   onAddPurchase: () => showEntryCreateSheet(context),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
+                if (historyPts.length >= 2)
+                  _PriceHistoryLineChart(
+                    points: historyPts,
+                    inr: _inr,
+                  ),
+                if (historyPts.length >= 2) const SizedBox(height: 16),
+                if (rows.isNotEmpty)
+                  _SupplierDealsDonut(
+                    rows: rows,
+                  ),
+                if (rows.isNotEmpty) const SizedBox(height: 16),
                 Text(
                   'Price position (landing)',
                   style: tt.titleMedium?.copyWith(
@@ -245,16 +291,25 @@ class _ItemAnalyticsDetailPageState
                 ],
                 const SizedBox(height: 12),
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Suppliers',
-                      style: tt.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16,
-                        color: onSurf,
+                    Expanded(
+                      child: Text(
+                        'Suppliers',
+                        style: tt.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                          color: onSurf,
+                        ),
                       ),
                     ),
-                    const Spacer(),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
                     FilterChip(
                       label: const Text('Name'),
                       selected: _sortColumn == 0,
@@ -269,7 +324,6 @@ class _ItemAnalyticsDetailPageState
                       selectedColor: HexaColors.primaryLight,
                       checkmarkColor: HexaColors.primaryDeep,
                     ),
-                    const SizedBox(width: 8),
                     FilterChip(
                       label: const Text('Avg ₹'),
                       selected: _sortColumn == 1,
@@ -279,6 +333,34 @@ class _ItemAnalyticsDetailPageState
                         } else {
                           _sortColumn = 1;
                           _asc = true;
+                        }
+                      }),
+                      selectedColor: HexaColors.primaryLight,
+                      checkmarkColor: HexaColors.primaryDeep,
+                    ),
+                    FilterChip(
+                      label: const Text('Deals'),
+                      selected: _sortColumn == 2,
+                      onSelected: (_) => setState(() {
+                        if (_sortColumn == 2) {
+                          _asc = !_asc;
+                        } else {
+                          _sortColumn = 2;
+                          _asc = false;
+                        }
+                      }),
+                      selectedColor: HexaColors.primaryLight,
+                      checkmarkColor: HexaColors.primaryDeep,
+                    ),
+                    FilterChip(
+                      label: const Text('Profit'),
+                      selected: _sortColumn == 3,
+                      onSelected: (_) => setState(() {
+                        if (_sortColumn == 3) {
+                          _asc = !_asc;
+                        } else {
+                          _sortColumn = 3;
+                          _asc = false;
                         }
                       }),
                       selectedColor: HexaColors.primaryLight,
@@ -297,69 +379,17 @@ class _ItemAnalyticsDetailPageState
                                 .onSurfaceVariant)),
                   )
                 else
-                  Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: Theme.of(context).colorScheme.outlineVariant,
+                  ...rows.map(
+                    (m) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _SupplierCompareTile(
+                        row: m,
+                        inr: _inr,
+                        isTopProfit: buyRow != null &&
+                            m['supplier_id']?.toString() ==
+                                buyRow['supplier_id']?.toString(),
+                        onSurf: onSurf,
                       ),
-                    ),
-                    child: Column(
-                      children: rows.asMap().entries.map((e) {
-                        final m = e.value;
-                        final name = m['name']?.toString() ?? '—';
-                        final v = (m['avg_landing'] as num?)?.toDouble();
-                        final isBest =
-                            best != null && name == best['name']?.toString();
-                        return Column(
-                          children: [
-                            if (e.key > 0)
-                              Divider(
-                                height: 1,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .outlineVariant,
-                              ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 10),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      name,
-                                      style: tt.bodyMedium?.copyWith(
-                                        fontWeight: isBest
-                                            ? FontWeight.w800
-                                            : FontWeight.w600,
-                                        color: onSurf,
-                                      ),
-                                    ),
-                                  ),
-                                  if (isBest)
-                                    Padding(
-                                      padding:
-                                          const EdgeInsets.only(right: 8),
-                                      child: Text(
-                                        'Best',
-                                        style: tt.labelSmall?.copyWith(
-                                          color: HexaColors.profit,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                    ),
-                                  Text(
-                                    _inr(v),
-                                    style: tt.titleSmall?.copyWith(
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        );
-                      }).toList(),
                     ),
                   ),
               ],
@@ -511,11 +541,14 @@ class _MetricTable extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Text(
-                    rows[i].$2,
-                    style: tt.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: cs.onSurface,
+                  Flexible(
+                    child: Text(
+                      rows[i].$2,
+                      textAlign: TextAlign.end,
+                      style: tt.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: cs.onSurface,
+                      ),
                     ),
                   ),
                 ],
@@ -524,6 +557,414 @@ class _MetricTable extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// Oldest → newest daily avg landing (matches [HexaColors] chart line).
+class _PriceHistoryLineChart extends StatelessWidget {
+  const _PriceHistoryLineChart({
+    required this.points,
+    required this.inr,
+  });
+
+  final List<({DateTime? d, double p})> points;
+  final String Function(num?) inr;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final spots = <FlSpot>[];
+    var minY = points.first.p;
+    var maxY = points.first.p;
+    for (var i = 0; i < points.length; i++) {
+      final y = points[i].p;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+      spots.add(FlSpot(i.toDouble(), y));
+    }
+    final span = (maxY - minY).abs() < 1e-6 ? 1.0 : (maxY - minY);
+    final first = points.first.d;
+    final last = points.last.d;
+    final rangeLabel = first != null && last != null
+        ? '${DateFormat.MMMd().format(first)} → ${DateFormat.MMMd().format(last)}'
+        : 'Oldest → newest';
+
+    return Card(
+      color: cs.surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: cs.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Price trend ($rangeLabel)',
+              style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Oldest → newest · ${inr(minY)} – ${inr(maxY)}',
+              style: tt.labelSmall?.copyWith(
+                color: cs.onSurfaceVariant,
+                fontSize: 11,
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 132,
+              child: RepaintBoundary(
+                child: LayoutBuilder(
+                  builder: (context, c) {
+                    if (c.maxWidth <= 0) return const SizedBox.shrink();
+                    return LineChart(
+                      LineChartData(
+                        minY: minY - span * 0.08,
+                        maxY: maxY + span * 0.08,
+                        gridData: const FlGridData(show: false),
+                        titlesData: const FlTitlesData(show: false),
+                        borderData: FlBorderData(show: false),
+                        lineTouchData: const LineTouchData(enabled: false),
+                        lineBarsData: [
+                          LineChartBarData(
+                            spots: spots,
+                            isCurved: true,
+                            color: HexaColors.accentInfo,
+                            barWidth: 2.5,
+                            dotData: FlDotData(
+                              show: points.length <= 18,
+                              getDotPainter: (a, b, c, d) =>
+                                  FlDotCirclePainter(
+                                radius: 2.5,
+                                color: HexaColors.primaryNavy,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Donut: share of **deals** per supplier ([HexaColors.chartPalette]).
+class _SupplierDealsDonut extends StatelessWidget {
+  const _SupplierDealsDonut({required this.rows});
+
+  final List<Map<String, dynamic>> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final withDeals = <Map<String, dynamic>>[];
+    var total = 0;
+    for (final r in rows) {
+      final d = (r['deals'] as num?)?.toInt() ?? 0;
+      if (d > 0) {
+        withDeals.add(r);
+        total += d;
+      }
+    }
+    if (total <= 0) return const SizedBox.shrink();
+
+    final palette = HexaColors.chartPalette;
+    final sections = <PieChartSectionData>[];
+    for (var i = 0; i < withDeals.length; i++) {
+      final r = withDeals[i];
+      final deals = (r['deals'] as num?)?.toInt() ?? 0;
+      final pct = (deals / total * 100).clamp(0, 100);
+      sections.add(
+        PieChartSectionData(
+          color: palette[i % palette.length],
+          value: deals.toDouble(),
+          title: pct >= 8 ? '${pct.toStringAsFixed(0)}%' : '',
+          radius: 52,
+          titleStyle: tt.labelSmall?.copyWith(
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
+            fontSize: 10,
+          ),
+        ),
+      );
+    }
+    if (sections.isEmpty) return const SizedBox.shrink();
+
+    return Card(
+      color: cs.surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: cs.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Deals by supplier',
+              style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Share of purchase lines in this window',
+              style: tt.labelSmall?.copyWith(
+                color: cs.onSurfaceVariant,
+                fontSize: 11,
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 200,
+              child: RepaintBoundary(
+                child: LayoutBuilder(
+                  builder: (context, c) {
+                    if (c.maxWidth <= 0) return const SizedBox.shrink();
+                    return Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        PieChart(
+                          PieChartData(
+                            sectionsSpace: 1.2,
+                            centerSpaceRadius: 44,
+                            sections: sections,
+                            pieTouchData: PieTouchData(enabled: false),
+                          ),
+                        ),
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '$total',
+                              style: tt.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w900,
+                                color: HexaColors.primaryNavy,
+                              ),
+                            ),
+                            Text(
+                              'deals',
+                              style: tt.labelSmall?.copyWith(
+                                color: cs.onSurfaceVariant,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            ...withDeals.asMap().entries.map((e) {
+              final i = e.key;
+              final r = e.value;
+              final deals = (r['deals'] as num?)?.toInt() ?? 0;
+              final pct = deals / total * 100;
+              final name = r['name']?.toString() ?? '—';
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      margin: const EdgeInsets.only(top: 4),
+                      decoration: BoxDecoration(
+                        color: palette[i % palette.length],
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        name,
+                        style: tt.labelMedium?.copyWith(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Text(
+                      '$deals · ${pct.toStringAsFixed(0)}%',
+                      style: tt.labelSmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Full-width supplier row — no horizontal table scroll.
+class _SupplierCompareTile extends StatelessWidget {
+  const _SupplierCompareTile({
+    required this.row,
+    required this.inr,
+    required this.isTopProfit,
+    required this.onSurf,
+  });
+
+  final Map<String, dynamic> row;
+  final String Function(num?) inr;
+  final bool isTopProfit;
+  final Color onSurf;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final name = row['name']?.toString() ?? '—';
+    final sh = (row['profit_share_pct'] as num?)?.toDouble();
+    Color? bg;
+    if (sh != null && sh >= 10) {
+      bg = HexaColors.profit.withValues(alpha: 0.08);
+    } else if (((row['total_profit'] as num?)?.toDouble() ?? 0) < 0) {
+      bg = HexaColors.loss.withValues(alpha: 0.07);
+    }
+
+    return Material(
+      color: bg ?? cs.surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: cs.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    name,
+                    style: tt.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: onSurf,
+                      fontSize: 14,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (isTopProfit)
+                  Chip(
+                    label: const Text('Top profit'),
+                    padding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                    labelStyle: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                    ),
+                    backgroundColor: HexaColors.profit.withValues(alpha: 0.22),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: _MiniStat(
+                    label: 'Avg',
+                    value: inr((row['avg_landing'] as num?)?.toDouble()),
+                  ),
+                ),
+                Expanded(
+                  child: _MiniStat(
+                    label: 'Deals',
+                    value: '${row['deals'] ?? 0}',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: _MiniStat(
+                    label: 'Profit',
+                    value: inr((row['total_profit'] as num?)?.toDouble()),
+                  ),
+                ),
+                Expanded(
+                  child: _MiniStat(
+                    label: 'Share',
+                    value: row['profit_share_pct'] != null
+                        ? '${row['profit_share_pct']}%'
+                        : '—',
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniStat extends StatelessWidget {
+  const _MiniStat({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: tt.labelSmall?.copyWith(
+            fontSize: 10,
+            color: cs.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: tt.titleSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+            fontSize: 13,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
     );
   }
 }

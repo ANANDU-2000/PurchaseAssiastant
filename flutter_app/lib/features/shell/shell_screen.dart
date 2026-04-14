@@ -4,21 +4,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/providers/connectivity_provider.dart';
-import '../../core/providers/prefs_provider.dart';
 import '../../core/theme/hexa_colors.dart';
 import '../entries/presentation/entry_create_sheet.dart';
 
-/// Shell: [IndexedStack body] · [BottomAppBar] with center notch + FAB · Home | Entries | Catalog | Reports.
+/// Shell: [IndexedStack body] · bottom nav · Home | Entries | Catalog | Reports | Assistant.
 class ShellScreen extends ConsumerWidget {
   const ShellScreen({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
 
-  /// Branch indices: 0 home, 1 entries, 2 catalog (suppliers/items), 3 analytics (Reports)
+  /// Branch indices: 0 home, 1 entries, 2 catalog (suppliers/items), 3 analytics, 4 assistant
   static const branchHome = 0;
   static const branchEntries = 1;
   static const branchContacts = 2;
   static const branchAnalytics = 3;
+  static const branchAssistant = 4;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -33,80 +33,39 @@ class ShellScreen extends ConsumerWidget {
     }
 
     final cs = Theme.of(context).colorScheme;
-    final bottomInset = MediaQuery.paddingOf(context).bottom;
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: Stack(
-        clipBehavior: Clip.none,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (offline)
-                Material(
-                  color: const Color(0xFFF59E0B),
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.flash_on_rounded,
-                            size: 18, color: Color(0xFF1C1917)),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Offline — showing cached data where available. New purchases need a connection.',
-                            style:
-                                Theme.of(context).textTheme.labelMedium?.copyWith(
-                                      color: const Color(0xFF1C1917),
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 12,
-                                      height: 1.25,
-                                    ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              Expanded(child: navigationShell),
-            ],
-          ),
-          Positioned(
-            right: 12,
-            bottom: 72 + bottomInset + 8,
-            child: Tooltip(
-              message: 'Chat assistant — hold mic inside chat to dictate',
-              child: Material(
-                elevation: 4,
-                shadowColor: Colors.black12,
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                child: InkWell(
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    context.push('/ai');
-                  },
-                  borderRadius: BorderRadius.circular(14),
-                  child: Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: HexaColors.accentInfo.withValues(alpha: 0.4),
+          if (offline)
+            Material(
+              color: const Color(0xFFF59E0B),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                child: Row(
+                  children: [
+                    const Icon(Icons.flash_on_rounded,
+                        size: 18, color: Color(0xFF1C1917)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Offline — showing cached data where available. New purchases need a connection.',
+                        style:
+                            Theme.of(context).textTheme.labelMedium?.copyWith(
+                                  color: const Color(0xFF1C1917),
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                  height: 1.25,
+                                ),
                       ),
                     ),
-                    child: const Icon(
-                      Icons.chat_bubble_rounded,
-                      color: HexaColors.accentInfo,
-                      size: 24,
-                    ),
-                  ),
+                  ],
                 ),
               ),
             ),
-          ),
+          Expanded(child: navigationShell),
         ],
       ),
       floatingActionButton: Tooltip(
@@ -153,7 +112,7 @@ class ShellScreen extends ConsumerWidget {
           ),
         ),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: BottomAppBar(
         padding: EdgeInsets.zero,
         height: 72,
@@ -161,8 +120,6 @@ class ShellScreen extends ConsumerWidget {
         shadowColor: Colors.transparent,
         color: cs.surface,
         surfaceTintColor: Colors.transparent,
-        shape: const CircularNotchedRectangle(),
-        notchMargin: 10,
         child: DecoratedBox(
           decoration: BoxDecoration(
             border: Border(
@@ -197,7 +154,6 @@ class ShellScreen extends ConsumerWidget {
                     onTap: () => go(ShellScreen.branchEntries),
                   ),
                 ),
-                const SizedBox(width: 64),
                 Expanded(
                   child: _ShellTab(
                     selected: idx == ShellScreen.branchContacts,
@@ -214,6 +170,15 @@ class ShellScreen extends ConsumerWidget {
                     selectedIcon: Icons.bar_chart_rounded,
                     label: 'Reports',
                     onTap: () => go(ShellScreen.branchAnalytics),
+                  ),
+                ),
+                Expanded(
+                  child: _ShellTab(
+                    selected: idx == ShellScreen.branchAssistant,
+                    icon: Icons.chat_bubble_outline_rounded,
+                    selectedIcon: Icons.chat_bubble_rounded,
+                    label: 'Assistant',
+                    onTap: () => go(ShellScreen.branchAssistant),
                   ),
                 ),
               ],
@@ -275,7 +240,7 @@ class _ShellTab extends StatelessWidget {
                     ),
                     child: Icon(
                       selected ? selectedIcon : icon,
-                      size: 21,
+                      size: 20,
                       color: selected
                           ? HexaColors.accentInfo
                           : muted,
@@ -287,7 +252,7 @@ class _ShellTab extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: tt.labelSmall?.copyWith(
-                      fontSize: 10,
+                      fontSize: 9,
                       fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                       color: selected
                           ? HexaColors.accentInfo

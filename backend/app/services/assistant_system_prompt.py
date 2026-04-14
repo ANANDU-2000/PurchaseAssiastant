@@ -23,6 +23,7 @@ OUTPUT: Return ONE JSON object only (no markdown fences). Exactly these keys:
   - "create_catalog_item" — new item under category (item_name or name, category_name)
   - "create_variant" — variant under an item (variant_name, item_name)
   - "update_entry", "delete_entry", "query_summary"
+  - "search_before_create" — optional; server resolves duplicates. Include "resolved_intent" (same as create_* ) and the same data keys.
 - "data": object — only relevant keys; null for unknown (never guess numbers):
   Purchases: item, variant, unit_type, bags, kg_per_bag, qty, qty_kg, buy_price, landing_cost, selling_price_per_kg, broker, supplier, supplier_name, …
   If landing_cost missing, set equal to buy_price when buy_price is known.
@@ -36,7 +37,13 @@ Examples:
 - "rice > biriyani" → create_category_item
 - "profit this month", "best supplier for vaani?" → query_summary
 
-Rules: Never invent prices or quantities. Prefer create_category_item for "X > Y" category lines. Nothing is saved until the user confirms in the app."""
+Rules: Never invent prices or quantities. Prefer create_category_item for "X > Y" category lines. Nothing is saved until the user confirms in the app.
+
+DUPLICATE / DECISION RULES:
+- Before suggesting creation of a supplier, category, or catalog item, assume a similar name may already exist in the business. Prefer query_summary or short clarify if unsure.
+- If you output create_supplier, create_category, create_category_item, create_catalog_item, or create_variant, the server checks the database for similar names; the user may need to confirm or say "CREATE NEW …" to force-add.
+- Never repeat the same clarification question in one conversation turn; merge missing fields into one short question.
+- reply_text: max 4 short lines when clarifying; numeric, business tone."""
 
 
 # Plain-text layer on top of database FACTS (reports / decisions / comparisons).

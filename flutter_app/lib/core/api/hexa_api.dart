@@ -234,6 +234,18 @@ class HexaApi {
     return [];
   }
 
+  /// Unified catalog items + suppliers + entries (server-side substring match).
+  Future<Map<String, dynamic>> unifiedSearch({
+    required String businessId,
+    required String q,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/search',
+      queryParameters: {'q': q},
+    );
+    return res.data ?? {};
+  }
+
   Future<Map<String, dynamic>> getEntry(
       {required String businessId, required String entryId}) async {
     final res =

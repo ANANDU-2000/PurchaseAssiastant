@@ -11,6 +11,7 @@ from sqlalchemy.orm import joinedload
 
 from app.models import CatalogItem, CatalogVariant, ItemCategory
 from app.schemas.entries import EntryCreateRequest, EntryLineInput
+from app.services.fuzzy_catalog import fuzzy_find_catalog_item_for_entry_line
 
 
 async def resolve_catalog_items_on_entry(
@@ -21,6 +22,30 @@ async def resolve_catalog_items_on_entry(
     new_lines: list[EntryLineInput] = []
     for li in body.lines:
         if li.catalog_item_id is None and li.catalog_variant_id is None:
+            # Auto-link to catalog when item text closely matches an existing row (no duplicate free-text lines).
+            name = (li.item_name or "").strip()
+            if name:
+                cit = await fuzzy_find_catalog_item_for_entry_line(db, business_id, name)
+                if cit is not None:
+                    cat = cit.category
+                    unit = (
+                        cit.default_unit
+                        if cit.default_unit in ("kg", "box", "piece", "bag")
+                        else li.unit
+                    )
+                    upd: dict[str, Any] = {
+                        "catalog_item_id": cit.id,
+                        "item_name": cit.name.strip(),
+                        "category": cat.name.strip() if cat else None,
+                        "unit": unit,
+                    }
+                    if unit == "bag":
+                        kg_pb = li.kg_per_bag
+                        if kg_pb is None and cit.default_kg_per_bag is not None:
+                            kg_pb = float(cit.default_kg_per_bag)
+                        upd["kg_per_bag"] = kg_pb
+                    new_lines.append(li.model_copy(update=upd))
+                    continue
             new_lines.append(li)
             continue
 

@@ -10,7 +10,14 @@ from typing import Any, Literal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import CatalogItem, CatalogVariant, ItemCategory, Supplier
+from app.models import CatalogItem, CatalogVariant, CategoryType, ItemCategory, Supplier
+from app.services.fuzzy_catalog import (
+    best_token_sort_match,
+    fuzzy_find_similar_catalog_item_name_in_category,
+    fuzzy_find_similar_category_name,
+    fuzzy_find_similar_supplier_name,
+    fuzzy_find_similar_variant_name_for_item,
+)
 
 EntityKind = Literal["supplier", "category", "category_item", "catalog_item", "variant"]
 
@@ -164,6 +171,100 @@ async def _dup_supplier(db: AsyncSession, business_id: uuid.UUID, name: str) -> 
     return r.first() is not None
 
 
+def _force_create(payload: dict[str, Any]) -> bool:
+    return payload.get("force_create") is True
+
+
+def _parse_uuid_val(val: object) -> uuid.UUID | None:
+    if val is None:
+        return None
+    try:
+        return uuid.UUID(str(val).strip())
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+def resolve_catalog_type_id_for_payload(
+    cts: list[CategoryType],
+    payload: dict[str, Any],
+) -> uuid.UUID | None:
+    """
+    Pick CategoryType id from payload when category has multiple types.
+    Returns None if the user must still choose (no usable hint).
+    """
+    if not cts:
+        return None
+    if len(cts) == 1:
+        return cts[0].id
+    tid = _parse_uuid_val(payload.get("type_id"))
+    if tid is not None:
+        for t in cts:
+            if t.id == tid:
+                return t.id
+        return None
+    hint = (payload.get("type_name") or payload.get("type") or "").strip()
+    if not hint:
+        return None
+    for t in cts:
+        if t.name.strip().lower() == hint.lower():
+            return t.id
+    names = [t.name for t in cts]
+    matched, _sc = best_token_sort_match(hint, names)
+    if matched:
+        for t in cts:
+            if t.name == matched:
+                return t.id
+    return None
+
+
+async def catalog_types_for_category(
+    db: AsyncSession, category_id: uuid.UUID
+) -> list[CategoryType]:
+    r = await db.execute(
+        select(CategoryType)
+        .where(CategoryType.category_id == category_id)
+        .order_by(CategoryType.name)
+    )
+    return list(r.scalars().all())
+
+
+async def catalog_item_type_pick_clarify_if_needed(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    payload: dict[str, Any],
+) -> tuple[str | None, dict[str, Any] | None]:
+    cat_hint = payload.get("category_name")
+    if not cat_hint:
+        return None, None
+    r = await db.execute(
+        select(ItemCategory).where(
+            ItemCategory.business_id == business_id,
+            func.lower(ItemCategory.name) == str(cat_hint).lower().strip(),
+        )
+    )
+    cat = r.scalar_one_or_none()
+    if cat is None:
+        return None, None
+    cts = await catalog_types_for_category(db, cat.id)
+    if len(cts) <= 1:
+        return None, None
+    if resolve_catalog_type_id_for_payload(cts, payload) is not None:
+        return None, None
+    lines = [f"{i + 1}. {t.name}" for i, t in enumerate(cts)]
+    msg = (
+        "This category has more than one type — which one should the new item use?\n"
+        + "\n".join(lines)
+        + "\n\nReply with the number or the type name (e.g. 2 or the label above)."
+    )
+    pending = {
+        "kind": "catalog_item",
+        "payload": dict(payload),
+        "type_ids": [str(t.id) for t in cts],
+        "type_names": [t.name for t in cts],
+    }
+    return msg, pending
+
+
 async def commit_entity(
     db: AsyncSession,
     business_id: uuid.UUID,
@@ -175,6 +276,13 @@ async def commit_entity(
         name = str(payload["name"]).strip()
         if await _dup_supplier(db, business_id, name):
             raise ValueError("Supplier already exists")
+        if not _force_create(payload):
+            sim = await fuzzy_find_similar_supplier_name(db, business_id, name)
+            if sim and sim.strip().lower() != name.lower():
+                raise ValueError(
+                    f'Did you mean "{sim}"? A similar supplier already exists. '
+                    f'Say CREATE NEW to add "{name}" anyway.'
+                )
         s = Supplier(business_id=business_id, name=name)
         db.add(s)
         await db.flush()
@@ -184,6 +292,13 @@ async def commit_entity(
         name = str(payload["name"]).strip()
         if await _dup_category(db, business_id, name):
             raise ValueError("Category already exists")
+        if not _force_create(payload):
+            sim = await fuzzy_find_similar_category_name(db, business_id, name)
+            if sim and sim.strip().lower() != name.lower():
+                raise ValueError(
+                    f'Did you mean "{sim}"? A similar category already exists. '
+                    f'Say CREATE NEW to add "{name}" anyway.'
+                )
         c = ItemCategory(business_id=business_id, name=name)
         db.add(c)
         await db.flush()
@@ -212,6 +327,15 @@ async def commit_entity(
         )
         if dup.first():
             raise ValueError("Item already exists under this category")
+        if not _force_create(payload):
+            sim = await fuzzy_find_similar_catalog_item_name_in_category(
+                db, business_id, cat.id, item_name
+            )
+            if sim and sim.strip().lower() != item_name.lower():
+                raise ValueError(
+                    f'Did you mean "{sim}"? A similar item exists in this category. '
+                    f'Say CREATE NEW to add "{item_name}" anyway.'
+                )
         it = CatalogItem(
             business_id=business_id,
             category_id=cat.id,
@@ -249,6 +373,27 @@ async def commit_entity(
         )
         if dup.first():
             raise ValueError("Item already exists")
+        if not _force_create(payload):
+            sim = await fuzzy_find_similar_catalog_item_name_in_category(
+                db, business_id, cat.id, item_name
+            )
+            if sim and sim.strip().lower() != item_name.lower():
+                raise ValueError(
+                    f'Did you mean "{sim}"? A similar item exists in this category. '
+                    f'Say CREATE NEW to add "{item_name}" anyway.'
+                )
+        types_r = await db.execute(
+            select(CategoryType)
+            .where(CategoryType.category_id == cat.id)
+            .order_by(CategoryType.name)
+        )
+        cts = list(types_r.scalars().all())
+        type_id_resolved = resolve_catalog_type_id_for_payload(cts, payload)
+        if len(cts) > 1 and type_id_resolved is None:
+            raise ValueError(
+                "This category has multiple types — pick one in chat (number or type name), "
+                "or include type in the create request."
+            )
         unit = payload.get("default_unit") or "kg"
         if unit not in ("kg", "box", "piece", "bag"):
             unit = "kg"
@@ -256,6 +401,7 @@ async def commit_entity(
         it = CatalogItem(
             business_id=business_id,
             category_id=cat.id,
+            type_id=type_id_resolved,
             name=item_name,
             default_unit=unit,
             default_kg_per_bag=kgpb,
@@ -284,6 +430,15 @@ async def commit_entity(
         )
         if dup.first():
             raise ValueError("Variant already exists for this item")
+        if not _force_create(payload):
+            sim = await fuzzy_find_similar_variant_name_for_item(
+                db, business_id, it.id, vname
+            )
+            if sim and sim.strip().lower() != vname.lower():
+                raise ValueError(
+                    f'Did you mean "{sim}"? A similar variant exists for this item. '
+                    f'Say CREATE NEW to add "{vname}" anyway.'
+                )
         v = CatalogVariant(
             business_id=business_id,
             catalog_item_id=it.id,
@@ -297,6 +452,140 @@ async def commit_entity(
     raise ValueError("Unknown entity kind")
 
 
+async def preview_fuzzy_entity_block(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    kind: EntityKind,
+    payload: dict[str, Any],
+) -> str | None:
+    """
+    If a very similar name already exists, return a short clarify message (before showing preview).
+    Caller may set payload['force_create']=True after user says CREATE NEW.
+    """
+    if _force_create(payload):
+        return None
+    if kind == "supplier":
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            return None
+        if await _dup_supplier(db, business_id, name):
+            return "Supplier with this name already exists."
+        sim = await fuzzy_find_similar_supplier_name(db, business_id, name)
+        if sim and sim.strip().lower() != name.lower():
+            return (
+                f'Did you mean "{sim}"? A similar supplier exists. '
+                f'Say CREATE NEW to add "{name}" anyway.'
+            )
+        return None
+    if kind == "category":
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            return None
+        if await _dup_category(db, business_id, name):
+            return "Category with this name already exists."
+        sim = await fuzzy_find_similar_category_name(db, business_id, name)
+        if sim and sim.strip().lower() != name.lower():
+            return (
+                f'Did you mean "{sim}"? A similar category exists. '
+                f'Say CREATE NEW to add "{name}" anyway.'
+            )
+        return None
+    if kind == "category_item":
+        cn = str(payload.get("category_name") or "").strip()
+        item_name = str(payload.get("item_name") or "").strip()
+        if not cn or not item_name:
+            return None
+        r = await db.execute(
+            select(ItemCategory).where(
+                ItemCategory.business_id == business_id,
+                func.lower(ItemCategory.name) == cn.lower(),
+            )
+        )
+        cat = r.scalar_one_or_none()
+        if cat is None:
+            return None
+        dup = await db.execute(
+            select(CatalogItem.id).where(
+                CatalogItem.business_id == business_id,
+                CatalogItem.category_id == cat.id,
+                func.lower(CatalogItem.name) == item_name.lower(),
+            )
+        )
+        if dup.first():
+            return "Item already exists under this category."
+        sim = await fuzzy_find_similar_catalog_item_name_in_category(
+            db, business_id, cat.id, item_name
+        )
+        if sim and sim.strip().lower() != item_name.lower():
+            return (
+                f'Did you mean "{sim}"? A similar item exists. '
+                f'Say CREATE NEW to add "{item_name}" anyway.'
+            )
+        return None
+    if kind == "catalog_item":
+        item_name = str(payload.get("name") or "").strip()
+        cat_hint = payload.get("category_name")
+        if not item_name or not cat_hint:
+            return None
+        r = await db.execute(
+            select(ItemCategory).where(
+                ItemCategory.business_id == business_id,
+                func.lower(ItemCategory.name) == str(cat_hint).lower().strip(),
+            )
+        )
+        cat = r.scalar_one_or_none()
+        if cat is None:
+            return None
+        dup = await db.execute(
+            select(CatalogItem.id).where(
+                CatalogItem.business_id == business_id,
+                CatalogItem.category_id == cat.id,
+                func.lower(CatalogItem.name) == item_name.lower(),
+            )
+        )
+        if dup.first():
+            return "Item already exists."
+        sim = await fuzzy_find_similar_catalog_item_name_in_category(
+            db, business_id, cat.id, item_name
+        )
+        if sim and sim.strip().lower() != item_name.lower():
+            return (
+                f'Did you mean "{sim}"? A similar item exists. '
+                f'Say CREATE NEW to add "{item_name}" anyway.'
+            )
+        return None
+    if kind == "variant":
+        vname = str(payload.get("variant_name") or "").strip()
+        item_name = str(payload.get("item_name") or "").strip()
+        if not vname or not item_name:
+            return None
+        r = await db.execute(
+            select(CatalogItem).where(
+                CatalogItem.business_id == business_id,
+                func.lower(CatalogItem.name) == item_name.lower(),
+            )
+        )
+        it = r.scalar_one_or_none()
+        if it is None:
+            return None
+        dup = await db.execute(
+            select(CatalogVariant.id).where(
+                CatalogVariant.catalog_item_id == it.id,
+                func.lower(CatalogVariant.name) == vname.lower(),
+            )
+        )
+        if dup.first():
+            return "Variant already exists for this item."
+        sim = await fuzzy_find_similar_variant_name_for_item(db, business_id, it.id, vname)
+        if sim and sim.strip().lower() != vname.lower():
+            return (
+                f'Did you mean "{sim}"? A similar variant exists. '
+                f'Say CREATE NEW to add "{vname}" anyway.'
+            )
+        return None
+    return None
+
+
 def preview_lines_for(kind: EntityKind, payload: dict[str, Any]) -> str:
     if kind == "supplier":
         return f"Supplier: {payload['name']}"
@@ -308,6 +597,8 @@ def preview_lines_for(kind: EntityKind, payload: dict[str, Any]) -> str:
         lines = ""
         if payload.get("category_name"):
             lines = f"Category: {payload['category_name']}\n"
+        if payload.get("type_name"):
+            lines += f"Type: {payload['type_name']}\n"
         lines += f"Item: {payload['name']}"
         if payload.get("default_unit"):
             lines += f"\nUnit: {payload['default_unit']}"

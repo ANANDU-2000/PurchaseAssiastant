@@ -15,11 +15,13 @@ from app.models import Entry, EntryLineItem, Supplier
 from app.schemas.entries import EntryCreateRequest
 from app.services.assistant_entity import (
     EntityKind,
+    catalog_item_type_pick_clarify_if_needed,
     commit_entity,
     consume_entity_preview,
     get_entity_preview,
     issue_entity_preview,
     parse_entity_message,
+    preview_fuzzy_entity_block,
     preview_lines_for,
 )
 from app.services.assistant_business_context import build_compact_business_snapshot
@@ -27,6 +29,13 @@ from app.services.entry_create_pipeline import commit_create_entry_confirmed, pr
 from app.services.entry_preview_token import consume_preview_token
 from app.services.intent_stub import stub_intent_from_text
 from app.services.llm_intent import extract_intent_json_with_meta, synthesize_app_query_reply
+from app.services.chat_draft_store import (
+    clear_chat_draft,
+    load_chat_draft,
+    merge_chat_draft,
+    save_chat_draft,
+)
+from app.services.fuzzy_catalog import best_token_sort_match
 from app.services.entry_intent_resolution import build_entry_create_request, ist_today
 
 
@@ -99,6 +108,9 @@ def _map_llm_entity_intent(
             "name": str(raw_name).strip(),
             "category_name": str(cat).strip() if cat else None,
         }
+        tn = data.get("type_name") or data.get("catalog_type") or data.get("item_type")
+        if tn and str(tn).strip():
+            payload["type_name"] = str(tn).strip()
         du = data.get("default_unit") or data.get("unit")
         if du:
             payload["default_unit"] = str(du).strip().lower()
@@ -172,6 +184,15 @@ def _intent_data_to_transaction_dict(data: dict[str, Any]) -> dict[str, Any]:
 def _is_affirmation(text: str) -> bool:
     t = text.strip().lower()
     return t in ("yes", "y", "ok", "okay", "confirm", "save", "হ্যাঁ", "ஆம்") or t.startswith("yes ")
+
+
+def _strip_create_new_prefix(text: str) -> tuple[str, bool]:
+    """If user prefixes 'CREATE NEW', force-create catalog entities (skip fuzzy block)."""
+    t = text.strip()
+    m = re.match(r"(?i)^create\s+new\s+(.+)$", t)
+    if m:
+        return m.group(1).strip(), True
+    return t, False
 
 
 def _is_negation(text: str) -> bool:
@@ -368,6 +389,86 @@ async def _grounded_query_reply(
     return "\n".join(lines)
 
 
+async def _resume_pending_catalog_type_pick(
+    *,
+    db: AsyncSession,
+    settings: Settings,
+    business_id: uuid.UUID,
+    user_id: uuid.UUID,
+    text: str,
+    entry_eff: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """If user is answering 'which type?', merge choice and show catalog item preview."""
+    draft = entry_eff if entry_eff else await load_chat_draft(settings, user_id, business_id)
+    draft = dict(draft) if isinstance(draft, dict) else {}
+    pending = draft.get("__pending_types_pick__")
+    if not pending or pending.get("kind") != "catalog_item":
+        return None
+    payload = dict(pending["payload"])
+    ids_s = pending.get("type_ids") or []
+    names = pending.get("type_names") or []
+    if len(ids_s) != len(names) or not ids_s:
+        draft.pop("__pending_types_pick__", None)
+        await save_chat_draft(settings, user_id, business_id, draft)
+        return None
+    t = text.strip()
+    chosen_idx: int | None = None
+    if t.isdigit():
+        i = int(t) - 1
+        if 0 <= i < len(ids_s):
+            chosen_idx = i
+    if chosen_idx is None and t:
+        tl = t.lower()
+        for i, n in enumerate(names):
+            if n.strip().lower() == tl:
+                chosen_idx = i
+                break
+    if chosen_idx is None and t:
+        best, _ = best_token_sort_match(t, names)
+        if best:
+            for i, n in enumerate(names):
+                if n == best:
+                    chosen_idx = i
+                    break
+    if chosen_idx is None:
+        return {
+            "reply": "Reply with a number from the list or the exact type name.",
+            "intent": "clarify",
+            "preview_token": None,
+            "entry_draft": draft,
+            "saved_entry": None,
+            "missing_fields": [],
+            **_lm(),
+        }
+    payload["type_id"] = ids_s[chosen_idx]
+    payload["type_name"] = names[chosen_idx]
+    draft.pop("__pending_types_pick__", None)
+    await save_chat_draft(settings, user_id, business_id, draft)
+    kind: EntityKind = "catalog_item"
+    block = await preview_fuzzy_entity_block(db, business_id, kind, payload)
+    if block:
+        return {
+            "reply": block,
+            "intent": "clarify",
+            "preview_token": None,
+            "entry_draft": None,
+            "saved_entry": None,
+            "missing_fields": [],
+            **_lm(),
+        }
+    tok = issue_entity_preview(user_id=user_id, business_id=business_id, kind=kind, payload=payload)
+    prev = preview_lines_for(kind, payload)
+    return {
+        "reply": f"Preview (not saved):\n{prev}\n\nReply YES to save, NO to cancel.",
+        "intent": "entity_preview",
+        "preview_token": tok,
+        "entry_draft": {"__assistant__": "entity"},
+        "saved_entry": None,
+        "missing_fields": [],
+        **_lm(),
+    }
+
+
 async def run_app_assistant_turn(
     *,
     db: AsyncSession,
@@ -383,6 +484,21 @@ async def run_app_assistant_turn(
     Returns dict matching AppAssistantChatResponse fields (flat).
     """
     text = message.strip()
+    entry_eff = entry_draft if entry_draft is not None else await load_chat_draft(
+        settings, user_id, business_id
+    )
+
+    if not preview_token:
+        resumed = await _resume_pending_catalog_type_pick(
+            db=db,
+            settings=settings,
+            business_id=business_id,
+            user_id=user_id,
+            text=text,
+            entry_eff=entry_eff if isinstance(entry_eff, dict) else None,
+        )
+        if resumed is not None:
+            return resumed
 
     # Confirm / cancel — entity preview (supplier/category/item) or purchase entry
     if preview_token and _is_affirmation(text):
@@ -393,6 +509,7 @@ async def run_app_assistant_turn(
                 saved = await commit_entity(db, business_id, kind, payload)
                 await db.commit()
                 consume_entity_preview(preview_token)
+                await clear_chat_draft(settings, user_id, business_id)
                 return {
                     "reply": f"Saved ({saved.get('entity', 'ok')}).",
                     "intent": "entity_saved",
@@ -408,12 +525,12 @@ async def run_app_assistant_turn(
                     "reply": str(e),
                     "intent": "clarify",
                     "preview_token": preview_token,
-                    "entry_draft": entry_draft,
+                    "entry_draft": entry_eff,
                     "saved_entry": None,
                     "missing_fields": [],
                     **_lm(),
                 }
-        if not entry_draft:
+        if not entry_eff:
             return {
                 "reply": "Preview expired. Send the request again.",
                 "intent": "clarify",
@@ -424,7 +541,7 @@ async def run_app_assistant_turn(
                 **_lm(),
             }
         try:
-            body = EntryCreateRequest.model_validate(entry_draft)
+            body = EntryCreateRequest.model_validate(entry_eff)
         except Exception as e:  # noqa: BLE001
             return {
                 "reply": f"Invalid draft: {e!s}.",
@@ -452,6 +569,7 @@ async def run_app_assistant_turn(
             if has_profit:
                 sign = "+" if total_profit >= 0 else ""
                 reply += f"\nProfit impact: {sign}₹{total_profit:,.0f}"
+            await clear_chat_draft(settings, user_id, business_id)
             return {
                 "reply": reply,
                 "intent": "confirm_saved",
@@ -466,7 +584,7 @@ async def run_app_assistant_turn(
                 "reply": str(e) if str(e) else "Could not save. Preview again or fix fields.",
                 "intent": "clarify",
                 "preview_token": preview_token,
-                "entry_draft": entry_draft,
+                "entry_draft": entry_eff,
                 "saved_entry": None,
                 "missing_fields": [],
                 **_lm(),
@@ -475,6 +593,7 @@ async def run_app_assistant_turn(
     if preview_token and _is_negation(text):
         consume_entity_preview(preview_token)
         consume_preview_token(preview_token)
+        await clear_chat_draft(settings, user_id, business_id)
         return {
             "reply": "Cancelled.",
             "intent": "cancelled",
@@ -491,7 +610,7 @@ async def run_app_assistant_turn(
             "reply": "You have a pending preview. Reply YES to save or NO to cancel.",
             "intent": "clarify",
             "preview_token": preview_token,
-            "entry_draft": entry_draft,
+            "entry_draft": entry_eff,
             "saved_entry": None,
             "missing_fields": [],
             **_lm(),
@@ -514,9 +633,12 @@ async def run_app_assistant_turn(
             **_lm(),
         }
 
-    ent_parsed = parse_entity_message(text)
+    text_for_entity, force_new = _strip_create_new_prefix(text)
+    ent_parsed = parse_entity_message(text_for_entity)
     if ent_parsed:
         kind, payload = ent_parsed
+        if force_new:
+            payload = {**payload, "force_create": True}
         if kind == "catalog_item" and not payload.get("category_name"):
             return {
                 "reply": (
@@ -531,6 +653,34 @@ async def run_app_assistant_turn(
                 "missing_fields": ["category"],
                 **_lm(),
             }
+        block = await preview_fuzzy_entity_block(db, business_id, kind, payload)
+        if block:
+            return {
+                "reply": block,
+                "intent": "clarify",
+                "preview_token": None,
+                "entry_draft": None,
+                "saved_entry": None,
+                "missing_fields": [],
+                **_lm(),
+            }
+        if kind == "catalog_item":
+            clarify_tp, pending_tp = await catalog_item_type_pick_clarify_if_needed(
+                db, business_id, payload
+            )
+            if clarify_tp and pending_tp:
+                await merge_chat_draft(
+                    settings, user_id, business_id, {"__pending_types_pick__": pending_tp}
+                )
+                return {
+                    "reply": clarify_tp,
+                    "intent": "clarify",
+                    "preview_token": None,
+                    "entry_draft": None,
+                    "saved_entry": None,
+                    "missing_fields": ["type_name"],
+                    **_lm(),
+                }
         tok = issue_entity_preview(user_id=user_id, business_id=business_id, kind=kind, payload=payload)
         prev = preview_lines_for(kind, payload)
         return {
@@ -630,8 +780,21 @@ async def run_app_assistant_turn(
             }
 
         ent_llm = _map_llm_entity_intent(intent, data)
+        if intent.strip().lower() == "search_before_create":
+            rid = str(data.get("resolved_intent") or data.get("for_intent") or "").strip().lower()
+            if not rid:
+                if data.get("category_name") or data.get("category"):
+                    rid = "create_catalog_item"
+                elif data.get("supplier_name") or data.get("name"):
+                    rid = "create_supplier"
+                else:
+                    rid = "create_supplier"
+            rid = rid.replace("-", "_")
+            ent_llm = _map_llm_entity_intent(rid, data)
         if ent_llm is not None:
             ek, epayload = ent_llm
+            if data.get("force_create") is True:
+                epayload = {**epayload, "force_create": True}
             if ek == "catalog_item" and not epayload.get("category_name"):
                 return {
                     "reply": reply_text
@@ -643,6 +806,34 @@ async def run_app_assistant_turn(
                     "missing_fields": ["category_name"],
                     **intent_lm,
                 }
+            block = await preview_fuzzy_entity_block(db, business_id, ek, epayload)
+            if block:
+                return {
+                    "reply": block,
+                    "intent": "clarify",
+                    "preview_token": None,
+                    "entry_draft": None,
+                    "saved_entry": None,
+                    "missing_fields": [],
+                    **intent_lm,
+                }
+            if ek == "catalog_item":
+                clarify_tp, pending_tp = await catalog_item_type_pick_clarify_if_needed(
+                    db, business_id, epayload
+                )
+                if clarify_tp and pending_tp:
+                    await merge_chat_draft(
+                        settings, user_id, business_id, {"__pending_types_pick__": pending_tp}
+                    )
+                    return {
+                        "reply": clarify_tp,
+                        "intent": "clarify",
+                        "preview_token": None,
+                        "entry_draft": None,
+                        "saved_entry": None,
+                        "missing_fields": ["type_name"],
+                        **intent_lm,
+                    }
             tok = issue_entity_preview(
                 user_id=user_id, business_id=business_id, kind=ek, payload=epayload
             )
@@ -685,6 +876,7 @@ async def run_app_assistant_turn(
             f"Preview (not saved):\n{prev_lines}\n\n"
             f"Reply YES to save, or NO to cancel."
         )
+        await save_chat_draft(settings, user_id, business_id, draft)
         return {
             "reply": reply,
             "intent": "add_purchase_preview",
@@ -721,6 +913,7 @@ async def run_app_assistant_turn(
         for li in lines[:5]
     )
     reply = f"Preview (not saved):\n{prev_lines}\n\nReply YES to save, or NO to cancel."
+    await save_chat_draft(settings, user_id, business_id, draft)
     return {
         "reply": reply,
         "intent": "add_purchase_preview",

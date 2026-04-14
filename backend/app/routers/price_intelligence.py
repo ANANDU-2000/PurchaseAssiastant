@@ -1,5 +1,7 @@
+import math
 import uuid
-from datetime import date, timedelta
+from collections import defaultdict
+from datetime import date, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -26,6 +28,8 @@ class PriceIntelligence(BaseModel):
     confidence: float = 0.0
     supplier_compare: list[dict] = []
     decision_hints: list[str] = []
+    # Daily avg price for charts (oldest → newest); thinned for large windows
+    price_history: list[dict] = []
 
 
 @router.get("", response_model=PriceIntelligence)
@@ -66,6 +70,7 @@ async def price_intelligence(
             decision_hints=[
                 f"No {'selling' if price_field == 'selling' else 'landing'} history for this item in the selected window."
             ],
+            price_history=[],
         )
 
     avg = sum(landings) / len(landings)
@@ -82,6 +87,20 @@ async def price_intelligence(
     )
     ordered = [(r[0], float(r[1])) for r in dated_rows.all()]
     last_price = ordered[-1][1] if ordered else None
+
+    by_day: dict[date, list[float]] = defaultdict(list)
+    for ed, price in ordered:
+        d: date = ed.date() if isinstance(ed, datetime) else ed
+        by_day[d].append(price)
+    daily_series: list[dict] = []
+    for d in sorted(by_day.keys()):
+        vals = by_day[d]
+        daily_series.append({"d": d.isoformat(), "p": round(sum(vals) / len(vals), 4)})
+    max_pts = 42
+    if len(daily_series) > max_pts:
+        step = max(1, math.ceil(len(daily_series) / max_pts))
+        daily_series = daily_series[::step]
+    price_history = daily_series
 
     if len(ordered) >= 3:
         n = len(ordered)
@@ -108,6 +127,8 @@ async def price_intelligence(
             Supplier.id,
             Supplier.name,
             func.avg(price_col).label("avg_l"),
+            func.count(EntryLineItem.id).label("deals"),
+            func.coalesce(func.sum(EntryLineItem.profit), 0).label("profit_sum"),
         )
         .select_from(EntryLineItem)
         .join(Entry, Entry.id == EntryLineItem.entry_id)
@@ -116,9 +137,23 @@ async def price_intelligence(
         .group_by(Supplier.id, Supplier.name)
     )
     sr = await db.execute(sq)
-    supplier_compare = [
-        {"supplier_id": str(row[0]), "name": row[1], "avg_landing": float(row[2] or 0)} for row in sr.all()
-    ]
+    raw_rows = sr.all()
+    total_profit_all = sum(float(row[4] or 0) for row in raw_rows)
+    supplier_compare: list[dict] = []
+    for row in raw_rows:
+        pid, name, avg_l, deals, psum = row[0], row[1], row[2], row[3], row[4]
+        fp = float(psum or 0)
+        share = (fp / total_profit_all * 100.0) if total_profit_all > 0 else None
+        supplier_compare.append(
+            {
+                "supplier_id": str(pid),
+                "name": name,
+                "avg_landing": float(avg_l or 0),
+                "deals": int(deals or 0),
+                "total_profit": round(fp, 2),
+                "profit_share_pct": round(share, 1) if share is not None else None,
+            }
+        )
     supplier_compare.sort(key=lambda x: x["avg_landing"])
 
     hints: list[str] = []
@@ -145,4 +180,5 @@ async def price_intelligence(
         confidence=round(confidence, 2),
         supplier_compare=supplier_compare,
         decision_hints=hints,
+        price_history=price_history,
     )
