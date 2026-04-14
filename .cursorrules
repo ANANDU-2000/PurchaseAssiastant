@@ -4,7 +4,7 @@ CRITICAL: Prefer simplicity over new abstraction. Do not add complexity unless t
 CRITICAL: Do not break business logic in `entry_create_sheet.dart` — refactor UI around existing validation and save flows.
 CRITICAL: Monetary values: use `NumberFormat.currency(locale: 'en_IN', symbol: '₹')` (or existing project helpers).
 CRITICAL: Never show raw exceptions to users — use `friendlyApiError` / `FriendlyLoadError` with retry.
-CRITICAL: In-app `/ai` redirects to home — AI is server-side (WhatsApp bot, optional intent APIs). No in-app chat UI.
+CRITICAL: In-app `/ai` opens the Assistant chat (preview → YES → save). WhatsApp remains optional server-side; intent APIs stay on the server.
 
 When adding features:
 1. Ask whether it can be done in a few lines without new dependencies.

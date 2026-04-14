@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/entries_list_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../shared/widgets/app_settings_action.dart';
@@ -81,7 +82,11 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
     return DateFormat.yMMMd().format(day);
   }
 
-  static String _subtitle(Map<String, dynamic> e) {
+  static String _subtitle(
+    Map<String, dynamic> e, {
+    Map<String, String> supplierNames = const {},
+    Map<String, String> brokerNames = const {},
+  }) {
     final lines = e['lines'];
     final buf = StringBuffer();
     final raw = e['entry_date'];
@@ -115,6 +120,16 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
       if (buf.isNotEmpty) buf.write(', ');
       buf.write(
           'P/L ${NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(profit)}');
+    }
+    final sid = e['supplier_id']?.toString();
+    final brid = e['broker_id']?.toString();
+    if (sid != null && supplierNames[sid] != null) {
+      if (buf.isNotEmpty) buf.write(' · ');
+      buf.write('Sup: ${supplierNames[sid]}');
+    }
+    if (brid != null && brokerNames[brid] != null) {
+      if (buf.isNotEmpty) buf.write(' · ');
+      buf.write('Brk: ${brokerNames[brid]}');
     }
     return buf.isEmpty ? 'n/a' : buf.toString();
   }
@@ -268,6 +283,20 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(entriesListProvider);
+    final suppliersAsync = ref.watch(suppliersListProvider);
+    final brokersAsync = ref.watch(brokersListProvider);
+    final supplierNames = <String, String>{};
+    for (final s in suppliersAsync.valueOrNull ?? []) {
+      final id = s['id']?.toString();
+      final n = s['name'] as String?;
+      if (id != null && n != null) supplierNames[id] = n;
+    }
+    final brokerNames = <String, String>{};
+    for (final b in brokersAsync.valueOrNull ?? []) {
+      final id = b['id']?.toString();
+      final n = b['name'] as String?;
+      if (id != null && n != null) brokerNames[id] = n;
+    }
     final searchQ = ref.watch(entrySearchQueryProvider);
     final fFrom = ref.watch(entryListFromProvider);
     final fTo = ref.watch(entryListToProvider);
@@ -433,7 +462,11 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
                           title: Text(_titleLine(e),
                               style:
                                   const TextStyle(fontWeight: FontWeight.w700)),
-                          subtitle: Text(_subtitle(e)),
+                          subtitle: Text(_subtitle(
+                            e,
+                            supplierNames: supplierNames,
+                            brokerNames: brokerNames,
+                          )),
                           trailing: const Icon(Icons.chevron_right_rounded),
                           onTap: id == null
                               ? null

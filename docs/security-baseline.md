@@ -23,7 +23,8 @@ This document mirrors the **env-security-baseline** workstream: what must be tru
 
 ## Integrations
 
-- **WhatsApp webhook**: HMAC verification when `DIALOG360_WEBHOOK_SECRET` is set; idempotent processing via message id in Redis.
+- **WhatsApp webhook (360dialog)**: HMAC verification when `DIALOG360_WEBHOOK_SECRET` is set; idempotent processing via message id in Redis.
+- **WhatsApp webhook (Authkey)**: optional shared secret — when `AUTHKEY_WEBHOOK_SECRET` is set, inbound requests must send header `X-Authkey-Webhook-Secret` (or `X-Webhook-Secret`) with the same value.
 - **Future webhooks** (Razorpay, etc.): verify signatures before mutating state.
 
 ## Observability

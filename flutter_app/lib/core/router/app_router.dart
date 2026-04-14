@@ -9,6 +9,7 @@ import '../../features/analytics/presentation/item_analytics_detail_page.dart';
 import '../../features/catalog/presentation/catalog_category_detail_page.dart';
 import '../../features/catalog/presentation/catalog_item_detail_page.dart';
 import '../../features/catalog/presentation/catalog_page.dart';
+import '../../features/assistant/presentation/assistant_chat_page.dart';
 import '../../features/auth/presentation/login_page.dart';
 import '../../features/contacts/presentation/contacts_page.dart';
 import '../../features/contacts/presentation/broker_detail_page.dart';
@@ -179,11 +180,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           child: const SettingsPage(),
         ),
       ),
-      // AI stays on the server (WhatsApp + intent APIs). No in-app chat surface.
       GoRoute(
         path: '/ai',
         name: 'ai',
-        redirect: (context, state) => '/home',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const AssistantChatPage(),
+        ),
       ),
       GoRoute(
         path: '/notifications',

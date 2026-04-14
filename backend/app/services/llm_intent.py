@@ -167,7 +167,17 @@ async def _gemini_json(text: str, settings: Settings, api_key: str) -> dict[str,
 
 # --- WhatsApp transactional assistant (strict JSON; AI parses only; backend validates) ---
 
-WHATSAPP_TRANSACTIONAL_INSTRUCTIONS = """You are Harisree Purchase Assistant for WhatsApp. Output ONE JSON object only (no markdown).
+STRICT_WHATSAPP_LLM_PREFIX = """STRICT MODE (mandatory):
+- Never invent, guess, or round numbers, quantities, prices, dates, supplier names, or item names.
+- Copy numeric values from the user message exactly into JSON fields; use null only when absent.
+- Never change intent to match a guess; use out_of_scope or missing_fields when unclear.
+- You do not write to the database; the server validates and may reject saves.
+
+"""
+
+WHATSAPP_TRANSACTIONAL_INSTRUCTIONS = (
+    STRICT_WHATSAPP_LLM_PREFIX
+    + """You are Harisree Purchase Assistant for WhatsApp. Output ONE JSON object only (no markdown).
 
 Allowed intents ONLY:
 - "create_entry" — record a purchase line
@@ -196,6 +206,7 @@ Rules:
 - Purchases need buy + landing at minimum for create_entry (or list missing_fields).
 - If user chats about weather, news, jokes → intent out_of_scope.
 """
+)
 
 
 def _normalize_whatsapp_payload(raw: dict[str, Any]) -> dict[str, Any] | None:
@@ -338,3 +349,155 @@ async def extract_whatsapp_transactional_json(
         return _normalize_whatsapp_payload(raw)
 
     return None
+
+
+_WHATSAPP_FACTS_SYSTEM = (
+    STRICT_WHATSAPP_LLM_PREFIX
+    + """You are Harisree Purchase Assistant on WhatsApp.
+The user's message asks about their purchase business. A FACTS block was computed by Harisree's server from their database — it is the only source of truth for numbers and names.
+Write a short reply (max ~650 characters) in plain text for WhatsApp. Use ₹ for rupees.
+Copy every amount exactly from FACTS; never change digits. If FACTS are a help / hint message with suggested commands, keep that guidance.
+You may tighten wording; match English or a short mix if the user did. No markdown, no bullet stars."""
+)
+
+
+def _extract_openai_style_plain_text(data: dict[str, Any]) -> str | None:
+    try:
+        t = data["choices"][0]["message"]["content"]
+        if isinstance(t, str) and t.strip():
+            return t.strip()
+    except (KeyError, IndexError, TypeError):
+        pass
+    return None
+
+
+async def synthesize_whatsapp_plain_chat(
+    *,
+    system_prompt: str,
+    user_content: str,
+    settings: Settings,
+    db: AsyncSession,
+) -> str | None:
+    """
+    Generic plain-text completion for WhatsApp (no JSON). Same provider routing as intent parsing.
+    Returns None if stub, missing key, or API error.
+    """
+    prov = (settings.ai_provider or "stub").strip().lower()
+    if prov == "stub":
+        return None
+
+    uc = (user_content or "").strip()[:8000]
+    if not uc:
+        return None
+    sys_p = (system_prompt or "").strip()[:12000]
+    if not sys_p:
+        return None
+
+    if prov == "openai":
+        key = await effective_openai_key(settings, db)
+        if not key:
+            return None
+        payload = {
+            "model": settings.openai_model_summary or settings.openai_model_parse,
+            "max_tokens": 450,
+            "messages": [
+                {"role": "system", "content": sys_p},
+                {"role": "user", "content": uc},
+            ],
+        }
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            res = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json=payload,
+            )
+            if res.status_code >= 400:
+                logger.warning("OpenAI plain chat failed %s", res.status_code)
+                return None
+            return _finalize_whatsapp_reply(_extract_openai_style_plain_text(res.json()))
+
+    if prov == "groq":
+        key = await effective_groq_key(settings, db)
+        if not key:
+            return None
+        payload = {
+            "model": settings.groq_model,
+            "max_tokens": 450,
+            "messages": [
+                {"role": "system", "content": sys_p},
+                {"role": "user", "content": uc},
+            ],
+        }
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            res = await client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json=payload,
+            )
+            if res.status_code >= 400:
+                logger.warning("Groq plain chat failed %s", res.status_code)
+                return None
+            return _finalize_whatsapp_reply(_extract_openai_style_plain_text(res.json()))
+
+    if prov == "gemini":
+        key = await effective_google_ai_key(settings, db)
+        if not key:
+            return None
+        model = settings.gemini_model.strip()
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        body = {
+            "systemInstruction": {"parts": [{"text": sys_p}]},
+            "contents": [{"parts": [{"text": uc}]}],
+            "generationConfig": {"maxOutputTokens": 450, "temperature": 0.35},
+        }
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            res = await client.post(url, params={"key": key}, json=body)
+            if res.status_code >= 400:
+                logger.warning("Gemini plain chat failed %s", res.status_code)
+                return None
+            outer = res.json()
+        try:
+            raw_text = outer["candidates"][0]["content"]["parts"][0]["text"]
+            if isinstance(raw_text, str) and raw_text.strip():
+                return _finalize_whatsapp_reply(raw_text.strip())
+        except (KeyError, IndexError, TypeError):
+            pass
+        return None
+
+    return None
+
+
+async def synthesize_whatsapp_facts_reply(
+    *,
+    user_text: str,
+    facts_text: str,
+    settings: Settings,
+    db: AsyncSession,
+) -> str | None:
+    """
+    Optional natural-language layer on top of deterministic query reports.
+    Uses the same AI_PROVIDER + keys as transactional JSON parsing. Returns None on failure / stub.
+    """
+    ut = user_text.strip()[:2000]
+    facts = (facts_text or "").strip()[:6000]
+    if not facts:
+        return None
+    user_block = f"USER MESSAGE:\n{ut}\n\nFACTS (from Harisree database):\n{facts}"
+    return await synthesize_whatsapp_plain_chat(
+        system_prompt=_WHATSAPP_FACTS_SYSTEM,
+        user_content=user_block,
+        settings=settings,
+        db=db,
+    )
+
+
+def _finalize_whatsapp_reply(text: str | None) -> str | None:
+    if not text:
+        return None
+    t = text.strip()
+    if not t:
+        return None
+    # WhatsApp message max 4096; keep headroom
+    if len(t) > 3900:
+        t = t[:3897] + "..."
+    return t

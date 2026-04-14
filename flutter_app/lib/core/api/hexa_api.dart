@@ -770,14 +770,20 @@ class HexaApi {
     return res.data ?? {};
   }
 
-  /// Stub AI assistant — returns deterministic preview text; wire to LLM later.
+  /// In-app assistant — preview → confirm; optional [previewToken] + [entryDraft] for YES/NO.
   Future<Map<String, dynamic>> aiChat({
     required String businessId,
     required List<Map<String, dynamic>> messages,
+    String? previewToken,
+    Map<String, dynamic>? entryDraft,
   }) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/businesses/$businessId/ai/chat',
-      data: {'messages': messages},
+      data: {
+        'messages': messages,
+        if (previewToken != null) 'preview_token': previewToken,
+        if (entryDraft != null) 'entry_draft': entryDraft,
+      },
     );
     return res.data ?? {};
   }

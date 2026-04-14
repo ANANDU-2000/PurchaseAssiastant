@@ -1,12 +1,8 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/auth/session_notifier.dart';
 import '../../core/providers/connectivity_provider.dart';
 import '../../core/providers/prefs_provider.dart';
 import '../../core/theme/hexa_colors.dart';
@@ -80,19 +76,26 @@ class ShellScreen extends ConsumerWidget {
             right: 12,
             bottom: 72 + bottomInset + 8,
             child: Tooltip(
-              message: 'WhatsApp assistant',
+              message: 'Assistant',
               child: Material(
                 elevation: 6,
                 shadowColor: Colors.black26,
-                color: const Color(0xFF25D366),
+                color: HexaColors.surfaceCard,
                 borderRadius: BorderRadius.circular(14),
                 child: InkWell(
-                  onTap: () => unawaited(_openWhatsappAssistant(context, ref)),
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    context.push('/ai');
+                  },
                   borderRadius: BorderRadius.circular(14),
                   child: const SizedBox(
                     width: 48,
                     height: 48,
-                    child: Icon(Icons.chat_rounded, color: Colors.white, size: 24),
+                    child: Icon(
+                      Icons.smart_toy_outlined,
+                      color: HexaColors.accentInfo,
+                      size: 24,
+                    ),
                   ),
                 ),
               ),
@@ -213,45 +216,6 @@ class ShellScreen extends ConsumerWidget {
         ),
       ),
     );
-  }
-}
-
-Future<void> _openWhatsappAssistant(BuildContext context, WidgetRef ref) async {
-  try {
-    final m = await ref.read(hexaApiProvider).getWhatsappAssistantInfo();
-    // Device-saved number wins over API (matches Settings "Save on this device").
-    final prefs = ref.read(sharedPreferencesProvider);
-    final local =
-        prefs.getString(kWhatsappAssistantOverrideKey)?.trim() ?? '';
-    var raw = local.isNotEmpty
-        ? local
-        : (m['assistant_e164']?.toString().trim() ?? '');
-    if (raw.isEmpty) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Set your WhatsApp bot number in Settings'),
-          action: SnackBarAction(
-            label: 'Open',
-            onPressed: () {
-              if (context.mounted) context.push('/settings');
-            },
-          ),
-        ),
-      );
-      return;
-    }
-    final digits = raw.replaceAll(RegExp(r'\D'), '');
-    if (digits.isEmpty) return;
-    final uri = Uri.parse('https://wa.me/$digits');
-    if (!await canLaunchUrl(uri)) return;
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
-  } catch (_) {
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open WhatsApp')),
-      );
-    }
   }
 }
 

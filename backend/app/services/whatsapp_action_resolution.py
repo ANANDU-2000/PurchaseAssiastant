@@ -79,6 +79,32 @@ async def find_broker_id_by_name(
     return row[0] if row else None
 
 
+def merge_kv_into_create_data(base: dict[str, Any], kv: dict[str, str]) -> dict[str, Any]:
+    """Merge follow-up key:value lines into parser ``data`` (WhatsApp multi-turn draft)."""
+    out = dict(base)
+    for k, v in kv.items():
+        lk = str(k).strip().lower().replace(" ", "_")
+        if lk in ("item", "name", "product"):
+            out["item"] = v
+        elif lk in ("qty", "quantity"):
+            out["qty"] = v
+        elif lk == "unit":
+            out["unit"] = v
+        elif lk in ("buy", "buy_price", "rate", "bp"):
+            out["buy_price"] = v
+        elif lk in ("land", "landing", "landing_cost", "lc"):
+            out["landing_cost"] = v
+        elif lk in ("sell", "selling_price", "selling"):
+            out["selling_price"] = v
+        elif lk == "supplier":
+            out["supplier_name"] = v
+        elif lk == "broker":
+            out["broker_name"] = v
+        elif lk in ("date", "entry_date"):
+            out["entry_date"] = v
+    return out
+
+
 async def build_entry_create_request(
     db: AsyncSession,
     business_id: uuid.UUID,
@@ -104,9 +130,10 @@ async def build_entry_create_request(
     missing: list[str] = []
     if qty is None or qty <= 0:
         missing.append("qty")
-    if buy is None or buy < 0:
+    # Strict positive pricing for purchases (zero is invalid / likely mistake)
+    if buy is None or buy <= 0:
         missing.append("buy_price")
-    if land is None or land < 0:
+    if land is None or land <= 0:
         missing.append("landing_cost")
     if missing:
         return None, missing

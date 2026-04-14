@@ -242,6 +242,41 @@ class _HomePageState extends ConsumerState<HomePage>
                 ),
               ),
             ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Material(
+                  color: HexaColors.primaryMid.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => context.push('/ai'),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 12),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.smart_toy_outlined,
+                              color: HexaColors.accentInfo, size: 22),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Ask Assistant — purchases & reports',
+                              style: tt.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: cs.onSurface,
+                              ),
+                            ),
+                          ),
+                          Icon(Icons.chevron_right_rounded,
+                              color: cs.onSurfaceVariant, size: 20),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
             SliverPadding(
               padding: EdgeInsets.fromLTRB(
                 16,
@@ -272,9 +307,6 @@ class _HomePageState extends ConsumerState<HomePage>
                         : null;
                     final mom = hi?.profitChangePctPriorMtd;
                     final empty = d.purchaseCount == 0 && d.totalPurchase <= 0;
-                    final avgPurchase = d.purchaseCount > 0
-                        ? d.totalPurchase / d.purchaseCount
-                        : null;
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -287,11 +319,9 @@ class _HomePageState extends ConsumerState<HomePage>
                         const SizedBox(height: 16),
                         _StatsGrid(
                           purchase: empty ? null : d.totalPurchase,
-                          profit: empty ? null : d.totalProfit,
                           marginPct: empty ? null : marginPct,
                           count: d.purchaseCount,
                           qtyBase: empty ? null : d.totalQtyBase,
-                          avgPurchase: avgPurchase,
                           inr: _inr,
                         ),
                         if (!empty)
@@ -811,7 +841,7 @@ class _StatsGridSkeleton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        for (var i = 0; i < 3; i++) ...[
+        for (var i = 0; i < 2; i++) ...[
           Row(
             children: [
               Expanded(child: _statSkeletonCell(context)),
@@ -819,7 +849,7 @@ class _StatsGridSkeleton extends StatelessWidget {
               Expanded(child: _statSkeletonCell(context)),
             ],
           ),
-          if (i < 2) const SizedBox(height: 10),
+          if (i < 1) const SizedBox(height: 10),
         ],
       ],
     );
@@ -843,20 +873,16 @@ class _StatsGridSkeleton extends StatelessWidget {
 class _StatsGrid extends StatelessWidget {
   const _StatsGrid({
     required this.purchase,
-    required this.profit,
     required this.marginPct,
     required this.count,
     required this.qtyBase,
-    required this.avgPurchase,
     required this.inr,
   });
 
   final double? purchase;
-  final double? profit;
   final double? marginPct;
   final int count;
   final double? qtyBase;
-  final double? avgPurchase;
   final String Function(num n) inr;
 
   @override
@@ -877,20 +903,6 @@ class _StatsGrid extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: _StatCard(
-                label: 'Profit ₹',
-                value: profit != null ? inr(profit!) : inr(0),
-                stripe: HexaColors.profit,
-                icon: Icons.trending_up_rounded,
-                iconTint: HexaColors.profit,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: _StatCard(
                 label: 'Margin %',
                 value: marginPct != null
                     ? '${marginPct!.toStringAsFixed(1)}%'
@@ -900,16 +912,6 @@ class _StatsGrid extends StatelessWidget {
                 iconTint: HexaColors.accentAmber,
               ),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _StatCard(
-                label: 'Count',
-                value: '$count',
-                stripe: HexaColors.chartPurple,
-                icon: Icons.receipt_long_outlined,
-                iconTint: HexaColors.chartPurple,
-              ),
-            ),
           ],
         ),
         const SizedBox(height: 10),
@@ -917,21 +919,21 @@ class _StatsGrid extends StatelessWidget {
           children: [
             Expanded(
               child: _StatCard(
-                label: 'Qty (base)',
-                value: qtyBase != null ? qtyBase!.toStringAsFixed(1) : '0',
-                stripe: HexaColors.chartOrange,
-                icon: Icons.scale_outlined,
-                iconTint: HexaColors.chartOrange,
+                label: 'Entries',
+                value: '$count',
+                stripe: HexaColors.chartPurple,
+                icon: Icons.receipt_long_outlined,
+                iconTint: HexaColors.chartPurple,
               ),
             ),
             const SizedBox(width: 10),
             Expanded(
               child: _StatCard(
-                label: 'Avg/Purchase',
-                value: avgPurchase != null ? inr(avgPurchase!) : inr(0),
-                stripe: HexaColors.chartPink,
-                icon: Icons.bar_chart_rounded,
-                iconTint: HexaColors.chartPink,
+                label: 'Qty (base)',
+                value: qtyBase != null ? qtyBase!.toStringAsFixed(1) : '0',
+                stripe: HexaColors.chartOrange,
+                icon: Icons.scale_outlined,
+                iconTint: HexaColors.chartOrange,
               ),
             ),
           ],

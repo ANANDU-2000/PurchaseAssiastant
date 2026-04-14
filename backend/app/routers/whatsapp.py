@@ -10,13 +10,69 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings, get_settings
 from app.database import get_db
 from app.services.platform_credentials import effective_dialog360
-from app.services.webhook_rate_limit import allow as webhook_rate_allow
+from app.services.webhook_rate_limit import allow_whatsapp_inbound
 from app.services.whatsapp_flow import handle_inbound_nontext, handle_inbound_text
 from app.services.whatsapp_state import idempotent_message
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/webhooks", tags=["whatsapp"])
+
+
+def _authkey_inbound_phone(payload: dict[str, Any]) -> str:
+    return str(
+        payload.get("mobile")
+        or payload.get("Mobile")
+        or payload.get("from")
+        or payload.get("From")
+        or ""
+    ).strip()
+
+
+def _authkey_inbound_message_text(payload: dict[str, Any]) -> Any | None:
+    """Authkey may use `msg` (matches outbound) or query-string params per their webhook UI."""
+    return (
+        payload.get("message")
+        or payload.get("Message")
+        or payload.get("text")
+        or payload.get("body")
+        or payload.get("msg")
+        or payload.get("content")
+    )
+
+
+def _phone_tail(phone: str, n: int = 4) -> str:
+    d = "".join(c for c in phone if c.isdigit())
+    if len(d) >= n:
+        return d[-n:]
+    return d if d else "?"
+
+
+def _log_authkey_result(phone: str, payload: dict[str, Any]) -> None:
+    """Structured INFO log for operations (phone = last 4 digits only)."""
+    suf = _phone_tail(phone)
+    if payload.get("duplicate"):
+        logger.info("whatsapp_authkey phone_tail=%s duplicate=true", suf)
+        return
+    err = payload.get("error")
+    if err:
+        logger.info("whatsapp_authkey phone_tail=%s error=%s", suf, err)
+        return
+    inner = payload.get("result")
+    if not isinstance(inner, dict):
+        logger.info("whatsapp_authkey phone_tail=%s ok=%s", suf, payload.get("ok"))
+        return
+    handled = inner.get("handled")
+    reason = inner.get("reason")
+    tags = [k for k in ("query", "preview", "saved", "out_of_scope", "low_confidence", "missing") if inner.get(k)]
+    tag_s = ",".join(tags) if tags else "-"
+    logger.info(
+        "whatsapp_authkey phone_tail=%s handled=%s reason=%s tags=%s",
+        suf,
+        handled,
+        reason or "-",
+        tag_s,
+    )
 
 
 def _verify_signature(raw_body: bytes, secret: str, header_value: str | None) -> bool:
@@ -118,28 +174,66 @@ async def whatsapp_authkey_webhook(
     """
     Authkey.io (or compatible) inbound JSON. Expected keys: `mobile`, `message` (text).
     Optional: `id` for idempotency. Rate-limited per phone (in-process; use Redis in multi-worker).
+
+    Configure in Authkey dashboard: POST to `https://<API_HOST>/v1/webhooks/whatsapp/authkey`.
+    Verify deployment with GET `/health` on the same host.
+
+    Optional: set `AUTHKEY_WEBHOOK_SECRET` on the API and send the same value in header
+    `X-Authkey-Webhook-Secret` (or `X-Webhook-Secret`) from Authkey if supported.
     """
+    wh_secret = (settings.authkey_webhook_secret or "").strip()
+    if wh_secret:
+        got = request.headers.get("X-Authkey-Webhook-Secret") or request.headers.get(
+            "X-Webhook-Secret"
+        )
+        if got != wh_secret:
+            logger.warning("whatsapp_authkey rejected: invalid webhook secret")
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook secret")
+
     try:
         payload = await request.json()
     except Exception:  # noqa: BLE001
         payload = {}
     if not isinstance(payload, dict):
+        logger.info("whatsapp_authkey phone_tail=? error=invalid_json")
         return {"ok": False, "error": "invalid_json"}
 
-    phone = str(payload.get("mobile") or payload.get("from") or "").strip()
-    body = payload.get("message") or payload.get("text") or payload.get("body")
-    mid = payload.get("id") or payload.get("message_id")
+    q = request.query_params
+    merged: dict[str, Any] = {**payload}
+    # Authkey may append Mobile / message fields as query parameters (see dashboard hint).
+    for key in ("mobile", "Mobile", "from", "From", "message", "Message", "msg", "text", "body", "id", "message_id"):
+        if key in q and (merged.get(key) in (None, "")):
+            merged[key] = q.get(key)
+
+    phone = _authkey_inbound_phone(merged)
+    body = _authkey_inbound_message_text(merged)
+    mid = merged.get("id") or merged.get("message_id") or q.get("id") or q.get("Log_ID") or q.get("log_id")
 
     if not phone:
+        logger.info("whatsapp_authkey phone_tail=? error=missing_mobile")
         return {"ok": False, "error": "missing_mobile"}
 
-    if not webhook_rate_allow(f"authkey:{phone}", max_per_hour=120):
+    if body is None or (isinstance(body, str) and not str(body).strip()):
+        logger.info(
+            "whatsapp_authkey phone_tail=%s warn=empty_message_json_keys=%s",
+            _phone_tail(phone),
+            sorted({str(k) for k in merged.keys()})[:20],
+        )
+
+    if not allow_whatsapp_inbound(
+        f"authkey:{phone}",
+        max_per_minute=settings.webhook_max_per_minute,
+        max_per_hour=settings.webhook_max_per_hour,
+    ):
+        logger.info("whatsapp_authkey phone_tail=%s error=rate_limited", _phone_tail(phone))
         return {"ok": False, "error": "rate_limited"}
 
     if mid:
         first = await idempotent_message(settings, str(mid))
         if not first:
-            return {"ok": True, "duplicate": True}
+            out: dict[str, Any] = {"ok": True, "duplicate": True}
+            _log_authkey_result(phone, out)
+            return out
 
     try:
         res = await handle_inbound_text(
@@ -149,7 +243,10 @@ async def whatsapp_authkey_webhook(
             text=str(body) if body is not None else None,
             message_id=str(mid) if mid else None,
         )
-        return {"ok": True, "result": res}
+        out = {"ok": True, "result": res}
+        _log_authkey_result(phone, out)
+        return out
     except Exception as e:  # noqa: BLE001
         logger.exception("Authkey webhook handle failed: %s", e)
+        logger.info("whatsapp_authkey phone_tail=%s error=internal_error", _phone_tail(phone))
         return {"ok": False, "error": "internal_error"}

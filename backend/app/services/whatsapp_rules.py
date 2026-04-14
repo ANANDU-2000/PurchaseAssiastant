@@ -11,6 +11,11 @@ _QUERY_RE = re.compile(r"(?P<item>.+?)\s+(?P<price>\d+(?:\.\d+)?)\s*(?:ok|okay|g
 _LINE_KV = re.compile(r"^(\w[\w\s]*?):\s*(.+)$", re.M)
 
 
+def parse_whatsapp_kv_lines(text: str) -> dict[str, str]:
+    """Public: key:value lines from a WhatsApp message (same as internal multiline parser)."""
+    return _pick_kv(text)
+
+
 def _pick_kv(text: str) -> dict[str, str]:
     kv: dict[str, str] = {}
     for ln in text.splitlines():
@@ -32,6 +37,44 @@ def rule_parse_whatsapp(text: str) -> dict[str, Any] | None:
     if not raw:
         return None
     low = raw.lower()
+
+    # --- greeting (deterministic reply; no LLM required) ---
+    if low in (
+        "hi",
+        "hello",
+        "hey",
+        "hi there",
+        "hey there",
+        "good morning",
+        "good evening",
+        "good afternoon",
+    ) or (low.startswith("namaste") and len(low) <= 16):
+        return {
+            "intent": "query",
+            "data": {"query_kind": "greeting"},
+            "missing_fields": [],
+            "clarification_question": None,
+            "confidence": 0.9,
+            "preview_hint": "Greeting",
+        }
+
+    # --- help / commands ---
+    if low in (
+        "help",
+        "commands",
+        "menu",
+        "what can you do",
+        "how",
+        "start",
+    ) or low.startswith("help "):
+        return {
+            "intent": "query",
+            "data": {"query_kind": "help_menu"},
+            "missing_fields": [],
+            "clarification_question": None,
+            "confidence": 0.88,
+            "preview_hint": "Help",
+        }
 
     # --- multiline draft (same as legacy WhatsApp entry) ---
     kv = _pick_kv(raw)

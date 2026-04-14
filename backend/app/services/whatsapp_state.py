@@ -121,3 +121,45 @@ async def mark_reply_sent(settings: Settings, phone: str) -> None:
         await r.expire(consecutive_key, 86400)
     except Exception as e:  # noqa: BLE001
         logger.warning("WhatsApp mark reply sent failed: %s", e)
+
+
+# --- Multi-turn purchase draft (key:value follow-ups; requires REDIS_URL) ---
+_DRAFT_CREATE = f"{PREFIX}draft_create:"
+
+
+async def set_pending_create_fields(
+    settings: Settings, phone: str, fields: dict[str, Any], ttl_seconds: int = 1800
+) -> None:
+    """Remember partial create_entry ``data`` so the user can send more key:value lines."""
+    try:
+        r = await _redis_client(settings)
+        if r is None:
+            return
+        await r.setex(f"{_DRAFT_CREATE}{phone}", ttl_seconds, json.dumps(fields))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("WhatsApp draft write failed: %s", e)
+
+
+async def get_pending_create_fields(settings: Settings, phone: str) -> dict[str, Any] | None:
+    try:
+        r = await _redis_client(settings)
+        if r is None:
+            return None
+        raw = await r.get(f"{_DRAFT_CREATE}{phone}")
+        if not raw:
+            return None
+        out = json.loads(raw)
+        return out if isinstance(out, dict) else None
+    except Exception as e:  # noqa: BLE001
+        logger.warning("WhatsApp draft read failed: %s", e)
+        return None
+
+
+async def clear_pending_create_fields(settings: Settings, phone: str) -> None:
+    try:
+        r = await _redis_client(settings)
+        if r is None:
+            return
+        await r.delete(f"{_DRAFT_CREATE}{phone}")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("WhatsApp draft clear failed: %s", e)

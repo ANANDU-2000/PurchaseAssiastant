@@ -19,7 +19,13 @@ from app.services.entry_create_pipeline import commit_create_entry_confirmed, pr
 from app.services.entry_patch_service import fetch_last_entry_for_business, patch_first_line_prices
 from app.services.feature_flags import is_ai_parsing_enabled
 from app.services.llm_intent import extract_whatsapp_transactional_json
-from app.services.whatsapp_action_resolution import build_entry_create_request, find_broker_id_by_name, find_supplier_id_by_name
+from app.services.whatsapp_agent_reply import maybe_polish_whatsapp_reply
+from app.services.whatsapp_action_resolution import (
+    build_entry_create_request,
+    find_broker_id_by_name,
+    find_supplier_id_by_name,
+    merge_kv_into_create_data,
+)
 from app.services.whatsapp_master_write import insert_broker_if_new, insert_catalog_item_if_new, insert_supplier_if_new
 from app.services.whatsapp_notify import send_guarded_whatsapp
 from app.services.whatsapp_query_service import (
@@ -34,12 +40,20 @@ from app.services.whatsapp_query_service import (
     ist_today_date,
 )
 from app.services.whatsapp_legacy_entry_parse import parse_multiline_entry_create_request
-from app.services.whatsapp_rules import rule_parse_whatsapp
-from app.services.whatsapp_state import get_state, set_state
+from app.services.whatsapp_rules import parse_whatsapp_kv_lines, rule_parse_whatsapp
+from app.services.whatsapp_state import (
+    clear_pending_create_fields,
+    get_pending_create_fields,
+    get_state,
+    set_pending_create_fields,
+    set_state,
+)
 
 logger = logging.getLogger(__name__)
 
 CONFIDENCE_MIN = 0.38
+# When rule-based parse is this confident or higher, skip LLM extraction (cost + drift control).
+RULES_SKIP_LLM_MIN_CONFIDENCE = 0.68
 ALLOWED_INTENTS = frozenset(
     {
         "create_entry",
@@ -92,7 +106,16 @@ async def merge_parse_async(
 ) -> dict[str, Any]:
     rules = rule_parse_whatsapp(user_text)
     llm: dict[str, Any] | None = None
-    if await is_ai_parsing_enabled(db, settings):
+    skip_llm = bool(
+        rules is not None
+        and float(rules.get("confidence") or 0) >= RULES_SKIP_LLM_MIN_CONFIDENCE
+    )
+    if skip_llm:
+        logger.info(
+            "wa_parse skip_llm rules_conf=%.2f",
+            float(rules.get("confidence") or 0),
+        )
+    elif await is_ai_parsing_enabled(db, settings):
         prov = (settings.ai_provider or "stub").strip().lower()
         if prov != "stub":
             try:
@@ -202,6 +225,24 @@ async def _run_query(
         dr = dr.lower().strip()
     item = (data.get("item") or data.get("item_name") or "").strip()
 
+    if qk == "greeting":
+        return (
+            "Harisree Purchase Assistant — send *TODAY* or *OVERVIEW* for reports, "
+            "or a purchase draft:\n"
+            "item: …\nqty: …\nunit: kg|box|piece\nbuy: …\nland: …\n\n"
+            "After we send a preview, reply *YES* to save (nothing is stored until then)."
+        )
+
+    if qk == "help_menu":
+        return (
+            "*What I can do*\n"
+            "• Reports: *TODAY*, *OVERVIEW*, *BEST SUPPLIER*, *profit <item> week|month|today*\n"
+            "• Add purchase: send a multiline draft with item, qty, unit (kg|box|piece), buy, land\n"
+            "• Masters: *add supplier Name*, *add broker Name*, *add item Name*\n"
+            "• Nothing is saved until you reply *YES* to a preview.\n"
+            "Say *help* anytime."
+        )
+
     if qk in ("today_summary", "today"):
         return await format_today_summary(db, business_id)
     if qk in ("month_summary", "month", "overview", "mtd"):
@@ -280,15 +321,31 @@ async def handle_transactional_message(
     t = (text or "").strip()
     low = t.lower()
 
+    async def _wa(body: str, *, scene: str | None = None) -> None:
+        """Send outbound text; optionally polish with grounded LLM when enabled."""
+        out = body
+        if scene:
+            try:
+                polished = await maybe_polish_whatsapp_reply(
+                    scene=scene,  # type: ignore[arg-type]
+                    user_text=t,
+                    server_message=body,
+                    settings=settings,
+                    db=db,
+                )
+                if polished:
+                    out = polished
+            except Exception as e:  # noqa: BLE001
+                logger.warning("WhatsApp reply polish skipped: %s", e)
+        await send_guarded_whatsapp(settings, db, to_e164=to, body=out)
+
     state = await get_state(settings, to) or {"phase": "idle"}
 
     # --- pending confirmation (new engine state) ---
     if state.get("phase") == "pending_confirm":
         if _is_no(t):
             await set_state(settings, to, {"phase": "idle"})
-            await send_guarded_whatsapp(
-                settings, db, to_e164=to, body="Cancelled. Send a new message when ready."
-            )
+            await _wa("Cancelled. Send a new message when ready.", scene="action")
             return {"ok": True, "handled": True, "cancelled": True}
 
         kind = state.get("kind") or "legacy_entry"
@@ -371,7 +428,7 @@ async def handle_transactional_message(
                 )
                 return {"ok": False, "handled": True, "error": str(e.detail)}
             await set_state(settings, to, {"phase": "idle"})
-            await send_guarded_whatsapp(settings, db, to_e164=to, body="✅ Saved in Harisree.")
+            await _wa("✅ Saved in Harisree.", scene="action")
             return {"ok": True, "handled": True, "saved": True}
 
         if kind == "update_entry":
@@ -404,7 +461,7 @@ async def handle_transactional_message(
             )
             await set_state(settings, to, {"phase": "idle"})
             if ent:
-                await send_guarded_whatsapp(settings, db, to_e164=to, body="✅ Entry updated.")
+                await _wa("✅ Entry updated.", scene="action")
             else:
                 await send_guarded_whatsapp(settings, db, to_e164=to, body="Could not update — open the app.")
             return {"ok": True, "handled": True, "updated": bool(ent)}
@@ -445,7 +502,7 @@ async def handle_transactional_message(
                 logger.warning("master create failed: %s", e)
                 msg = "Could not save — open the app to add this."
             await set_state(settings, to, {"phase": "idle"})
-            await send_guarded_whatsapp(settings, db, to_e164=to, body=msg)
+            await _wa(msg, scene="action")
             return {"ok": True, "handled": True, "master": True}
 
         # legacy pending_confirm (draft only)
@@ -498,7 +555,7 @@ async def handle_transactional_message(
                 await send_guarded_whatsapp(settings, db, to_e164=to, body="Could not save — try the app.")
                 return {"ok": False, "handled": True}
             await set_state(settings, to, {"phase": "idle"})
-            await send_guarded_whatsapp(settings, db, to_e164=to, body="✅ Saved in Harisree.")
+            await _wa("✅ Saved in Harisree.", scene="action")
             return {"ok": True, "handled": True, "saved": True}
 
     # --- awaiting category for create_item ---
@@ -522,18 +579,56 @@ async def handle_transactional_message(
                 },
             },
         )
-        await send_guarded_whatsapp(
-            settings,
-            db,
-            to_e164=to,
-            body=(
+        await _wa(
+            (
                 f"*Create catalog item*\n"
                 f"Item: {item_name}\n"
                 f"Category: {cat}\n\n"
                 "Reply *YES* to create or *NO* to cancel."
             ),
+            scene="preview",
         )
         return {"ok": True, "handled": True, "preview": True}
+
+    # --- resume multi-turn purchase draft (Redis + key:value follow-ups) ---
+    pending_data = await get_pending_create_fields(settings, to)
+    if pending_data:
+        extra_kv = parse_whatsapp_kv_lines(t)
+        if extra_kv:
+            merged_data = merge_kv_into_create_data(pending_data, extra_kv)
+            req_slot, miss_slot = await build_entry_create_request(db, business_id, merged_data)
+            if req_slot and not miss_slot:
+                await clear_pending_create_fields(settings, to)
+                try:
+                    content, prepared = await prepare_create_entry_preview(
+                        db, business_id=business_id, user_id=user.id, body=req_slot
+                    )
+                except HTTPException as e:
+                    await send_guarded_whatsapp(
+                        settings,
+                        db,
+                        to_e164=to,
+                        body=str(e.detail) if isinstance(e.detail, str) else "Could not build preview — use the app.",
+                    )
+                    return {"ok": True, "handled": True, "error": "preview"}
+                preview_msg = _format_entry_preview_whatsapp(content)
+                await set_state(
+                    settings,
+                    to,
+                    {
+                        "phase": "pending_confirm",
+                        "kind": "create_entry",
+                        "serialized_entry": prepared.model_dump(mode="json"),
+                        "preview_token": content.get("preview_token"),
+                        "duplicate_pending": False,
+                    },
+                )
+                await _wa(preview_msg, scene="preview")
+                return {"ok": True, "handled": True, "preview": True, "draft_resume": True}
+            await set_pending_create_fields(settings, to, merged_data)
+            hint_slot = f"Still need: {', '.join(miss_slot)}. Add lines like qty: 10 or buy: 100"
+            await _wa(hint_slot, scene="clarify")
+            return {"ok": True, "handled": True, "missing": True, "draft": True}
 
     # --- fresh parse ---
     parsed = await merge_parse_async(user_text=t, settings=settings, db=db)
@@ -542,6 +637,9 @@ async def handle_transactional_message(
         intent = "out_of_scope"
     conf = float(parsed.get("confidence") or 0)
     data = parsed.get("data") if isinstance(parsed.get("data"), dict) else {}
+
+    if intent in ("query", "create_supplier", "create_broker", "create_item", "update_entry"):
+        await clear_pending_create_fields(settings, to)
 
     # Multiline draft fallback when LLM/rules missed
     if intent == "out_of_scope":
@@ -571,31 +669,29 @@ async def handle_transactional_message(
                     "duplicate_pending": False,
                 },
             )
-            await send_guarded_whatsapp(settings, db, to_e164=to, body=preview_msg)
+            await _wa(preview_msg, scene="preview")
             return {"ok": True, "handled": True, "preview": True}
 
     cq = parsed.get("clarification_question")
     if conf < CONFIDENCE_MIN and intent != "query":
         msg = cq if isinstance(cq, str) and cq.strip() else "Say that in one short purchase sentence, or use the multiline draft."
-        await send_guarded_whatsapp(settings, db, to_e164=to, body=msg)
+        await _wa(msg, scene="clarify")
         return {"ok": True, "handled": True, "low_confidence": True}
 
     if intent == "out_of_scope":
-        await send_guarded_whatsapp(
-            settings,
-            db,
-            to_e164=to,
-            body=(
+        await _wa(
+            (
                 "I only help with *purchases*, *suppliers/brokers/items*, and *reports*.\n"
                 "Try *OVERVIEW*, *TODAY*, or send a draft:\n"
                 "item: …\nqty: …\nunit: kg|box|piece\nbuy: …\nland: …"
             ),
+            scene="help",
         )
         return {"ok": True, "handled": True, "out_of_scope": True}
 
     if intent == "query":
         msg = await _run_query(db, business_id, data)
-        await send_guarded_whatsapp(settings, db, to_e164=to, body=msg)
+        await _wa(msg, scene="query")
         return {"ok": True, "handled": True, "query": True}
 
     if intent == "create_entry":
@@ -604,10 +700,13 @@ async def handle_transactional_message(
         if mf:
             missing = list(dict.fromkeys([*missing, *mf]))
         if missing or req is None:
+            await set_pending_create_fields(settings, to, dict(data))
             q = parsed.get("clarification_question")
             hint = q if isinstance(q, str) and q.strip() else f"Missing: {', '.join(missing)}"
-            await send_guarded_whatsapp(settings, db, to_e164=to, body=hint)
+            hint = hint + "\n\nSend more lines (e.g. qty: 10, buy: 100) or one full draft in a single message."
+            await _wa(hint, scene="clarify")
             return {"ok": True, "handled": True, "missing": True}
+        await clear_pending_create_fields(settings, to)
         try:
             content, prepared = await prepare_create_entry_preview(
                 db, business_id=business_id, user_id=user.id, body=req
@@ -632,7 +731,7 @@ async def handle_transactional_message(
                 "duplicate_pending": False,
             },
         )
-        await send_guarded_whatsapp(settings, db, to_e164=to, body=preview_msg)
+        await _wa(preview_msg, scene="preview")
         return {"ok": True, "handled": True, "preview": True}
 
     if intent == "update_entry":
@@ -703,7 +802,7 @@ async def handle_transactional_message(
                 "patch": patch,
             },
         )
-        await send_guarded_whatsapp(settings, db, to_e164=to, body=preview)
+        await _wa(preview, scene="preview")
         return {"ok": True, "handled": True, "preview": True}
 
     if intent == "create_supplier":
@@ -721,11 +820,9 @@ async def handle_transactional_message(
                 "pending_master": {"name": name, "phone": str(phone) if phone else None},
             },
         )
-        await send_guarded_whatsapp(
-            settings,
-            db,
-            to_e164=to,
-            body=f"*New supplier*\n{name}\nPhone: {phone or '—'}\n\nReply *YES* to add or *NO* to cancel.",
+        await _wa(
+            f"*New supplier*\n{name}\nPhone: {phone or '—'}\n\nReply *YES* to add or *NO* to cancel.",
+            scene="preview",
         )
         return {"ok": True, "handled": True, "preview": True}
 
@@ -748,11 +845,9 @@ async def handle_transactional_message(
                 "pending_master": {"name": name, "commission_flat": cflat},
             },
         )
-        await send_guarded_whatsapp(
-            settings,
-            db,
-            to_e164=to,
-            body=f"*New broker*\n{name}\nCommission: {cflat if cflat is not None else '—'}\n\nReply *YES* to add.",
+        await _wa(
+            f"*New broker*\n{name}\nCommission: {cflat if cflat is not None else '—'}\n\nReply *YES* to add.",
+            scene="preview",
         )
         return {"ok": True, "handled": True, "preview": True}
 
@@ -784,20 +879,16 @@ async def handle_transactional_message(
                 "pending_master": {"item_name": item_name, "category_name": str(cat).strip()},
             },
         )
-        await send_guarded_whatsapp(
-            settings,
-            db,
-            to_e164=to,
-            body=(
+        await _wa(
+            (
                 f"*New catalog item*\n{item_name}\nCategory: {cat}\n\nReply *YES* to create or *NO* to cancel."
             ),
+            scene="preview",
         )
         return {"ok": True, "handled": True, "preview": True}
 
-    await send_guarded_whatsapp(
-        settings,
-        db,
-        to_e164=to,
-        body="Could not understand. Send *OVERVIEW* or a purchase draft (item/qty/unit/buy/land).",
+    await _wa(
+        "Could not understand. Send *OVERVIEW* or a purchase draft (item/qty/unit/buy/land).",
+        scene="help",
     )
     return {"ok": True, "handled": True, "fallback": True}

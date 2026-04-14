@@ -14,6 +14,12 @@ from app.services.whatsapp_state import can_send_reply, mark_reply_sent
 
 logger = logging.getLogger(__name__)
 
+
+def _phone_tail(digits: str, n: int = 4) -> str:
+    d = "".join(c for c in digits if c.isdigit())
+    return d[-n:] if len(d) >= n else (d or "?")
+
+
 BOT_MAX_REPLIES_BEFORE_WAITING = 3
 BOT_MAX_PER_HOUR = 10
 BOT_QUIET_HOURS_IST = (22, 7)  # 10pm–7am IST — no outbound replies
@@ -43,4 +49,9 @@ async def send_guarded_whatsapp(
         return {"ok": False, "blocked": reason}
     res = await send_text_message(settings, db, to_e164=to_e164, body=body)
     await mark_reply_sent(settings, to_e164)
+    tail = _phone_tail(to_e164)
+    if isinstance(res, dict) and res.get("error"):
+        logger.warning("whatsapp_outbound phone_tail=%s failed=%s", tail, str(res.get("error"))[:200])
+    else:
+        logger.info("whatsapp_outbound phone_tail=%s ok=1", tail)
     return res

@@ -109,6 +109,15 @@ class Settings(BaseSettings):
     openai_model_summary: str = "gpt-4.1-mini"
     # stub | openai | groq | gemini — intent extraction uses matching key (env or platform_integration DB).
     ai_provider: str = "stub"
+    # Second LLM call for WhatsApp *query* replies: rephrase server-computed FACTS (adds API cost).
+    whatsapp_llm_reply: bool = False
+    # Broader agent polish: previews, save/update acks, clarify/help (adds API cost per message when enabled).
+    whatsapp_llm_agent: bool = False
+    # Optional shared secret: Authkey must send header X-Authkey-Webhook-Secret matching this value (empty = disabled).
+    authkey_webhook_secret: str | None = None
+    # Inbound Authkey webhook rate limits (per phone; in-process — use Redis + single worker or tune for multi-instance).
+    webhook_max_per_minute: int = 20
+    webhook_max_per_hour: int = 120
     groq_model: str = "llama-3.3-70b-versatile"
     gemini_model: str = "gemini-2.0-flash"
     groq_api_key: str | None = None

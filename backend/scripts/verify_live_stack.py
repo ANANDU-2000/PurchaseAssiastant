@@ -18,6 +18,12 @@ def main() -> None:
     fd = today - timedelta(days=120)
 
     with httpx.Client(timeout=60.0) as c:
+        hr = c.get(f"{base}/health")
+        print("--- health ---", hr.status_code, hr.json() if hr.status_code == 200 else hr.text[:120])
+        if hr.status_code != 200:
+            print("Hint: API must be up before testing WhatsApp webhooks (Authkey → same host).")
+            sys.exit(1)
+
         r = c.post(f"{base}/v1/auth/login", json={"email": EMAIL, "password": PASSWORD})
         if r.status_code != 200:
             print("LOGIN_FAIL", r.status_code, r.text[:300])

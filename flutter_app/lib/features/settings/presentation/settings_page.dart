@@ -453,6 +453,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         'Save the assistant number in your contacts. Message from the phone you use to sign in. Purchases need a preview and YES — never auto-saved from chat alone.',
                     style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                   ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'The name shown in WhatsApp chat is set in Meta Business / your provider (WABA), not in this app.',
+                    style: tt.bodySmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
+                  ),
                   if ((_whatsappAssistant?['assistant_e164']?.toString() ?? '')
                       .trim()
                       .isNotEmpty) ...[
