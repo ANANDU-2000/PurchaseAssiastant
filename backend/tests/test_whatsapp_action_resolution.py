@@ -2,7 +2,7 @@ import asyncio
 import uuid
 from unittest.mock import AsyncMock
 
-from app.services.whatsapp_action_resolution import (
+from app.services.entry_intent_resolution import (
     build_entry_create_request,
     merge_kv_into_create_data,
 )

@@ -26,15 +26,14 @@ async def health(settings: Settings = Depends(get_settings)):
         or (settings.groq_api_key or "").strip()
         or (settings.google_ai_api_key or "").strip()
     )
+    # App assistant: rule-based flows work with stub; LLM needs a provider key.
+    ai_ready = prov == "stub" or ai_key_env
     return {
         "status": "ok",
         "app_env": settings.app_env,
         "ai_provider": prov,
         "ai_keys_set_in_env": ai_key_env,
-        "whatsapp_outbound_authkey": bool((settings.authkey_api_key or "").strip()),
+        "ai_ready": ai_ready,
+        "assistant_ready": True,
         "redis_url_set": bool((settings.redis_url or "").strip()),
-        "whatsapp_llm_reply": settings.whatsapp_llm_reply,
-        "whatsapp_llm_agent": settings.whatsapp_llm_agent,
-        "webhook_max_per_minute": settings.webhook_max_per_minute,
-        "webhook_max_per_hour": settings.webhook_max_per_hour,
     }

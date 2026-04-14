@@ -1,9 +1,10 @@
-"""Map WhatsApp transactional `data` dict → EntryCreateRequest and resolve supplier/broker IDs."""
+"""Map transactional parser `data` dict → EntryCreateRequest and resolve supplier/broker IDs (in-app assistant + legacy parsers)."""
 
 from __future__ import annotations
 
 import uuid
 from datetime import date, datetime, timedelta, timezone
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -80,7 +81,7 @@ async def find_broker_id_by_name(
 
 
 def merge_kv_into_create_data(base: dict[str, Any], kv: dict[str, str]) -> dict[str, Any]:
-    """Merge follow-up key:value lines into parser ``data`` (WhatsApp multi-turn draft)."""
+    """Merge follow-up key:value lines into parser ``data`` (multi-turn draft)."""
     out = dict(base)
     for k, v in kv.items():
         lk = str(k).strip().lower().replace(" ", "_")

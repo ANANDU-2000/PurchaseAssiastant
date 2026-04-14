@@ -7,11 +7,9 @@ Owner/Staff → Flutter App ──────────────→ FastAP
                     │                         │
                     │                         ├→ Redis (cache, pub/sub, sessions)
                     │                         │
-User → WhatsApp → 360dialog Webhook ─────────┘
-                    │
-                    ├→ AI layer (parse/format only)
-                    ├→ OCR / STT workers (async)
-                    └→ Object storage (media)
+                    │                         ├→ AI assistant (`/ai/chat`, intent)
+                    │                         ├→ OCR / STT workers (async)
+                    │                         └→ Object storage (media)
 
 Super Admin → Web App → FastAPI (admin routes, RBAC)
 ```
@@ -26,7 +24,7 @@ Super Admin → Web App → FastAPI (admin routes, RBAC)
 | API                       | FastAPI (Python 3.11+)                     |
 | DB                        | PostgreSQL 15+                             |
 | Cache / realtime          | Redis 7+                                   |
-| WhatsApp                  | 360dialog                                  |
+| Assistant (in-app)        | FastAPI `POST .../ai/chat` + optional LLM   |
 | AI parsing                | OpenAI (or compatible API)                 |
 | OCR / STT                 | Pluggable (Vision API / Azure / Whisper)   |
 
@@ -43,7 +41,7 @@ Super Admin → Web App → FastAPI (admin routes, RBAC)
 | `analytics`          | Aggregates, filtered reports                    |
 | `price_intelligence` | PIP metrics, history, trends                    |
 | `contacts`           | Suppliers, brokers                              |
-| `whatsapp`           | Webhook verify, inbound/outbound, state machine |
+| `ai_chat` / assistant | In-app chat, previews, optional LLM entity mapping |
 | `voice`              | Upload, STT job, handoff to parse               |
 | `ocr`                | Upload, OCR job, handoff to parse               |
 | `admin`              | Super admin APIs                                |
@@ -62,7 +60,7 @@ Super Admin → Web App → FastAPI (admin routes, RBAC)
 
 - TLS everywhere in production.
 - JWT short-lived access + refresh rotation.
-- Webhook signature verification (360dialog).
+- Webhook signature verification for third-party billing (e.g. Razorpay) where used.
 - Secrets only via environment / secret manager — never in repo.
 
 ## See Also

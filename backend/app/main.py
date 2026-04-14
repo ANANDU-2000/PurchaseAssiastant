@@ -13,7 +13,7 @@ from sqlalchemy import inspect
 
 from app.database import engine
 from app.models import Base
-from app.routers import admin, ai_chat, analytics, auth, billing, catalog, contacts, entries, health, me, media, price_intelligence, razorpay_webhook, realtime, whatsapp
+from app.routers import admin, ai_chat, analytics, auth, billing, catalog, contacts, entries, health, me, media, price_intelligence, razorpay_webhook, realtime
 
 logger = logging.getLogger(__name__)
 
@@ -200,4 +200,3 @@ app.include_router(realtime.router)
 app.include_router(admin.router)
 app.include_router(billing.router)
 app.include_router(razorpay_webhook.router)
-app.include_router(whatsapp.router)

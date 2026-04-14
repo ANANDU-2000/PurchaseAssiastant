@@ -1,12 +1,13 @@
+import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/auth/session_notifier.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/providers/analytics_breakdown_providers.dart';
 import '../../../core/providers/analytics_kpi_provider.dart'
@@ -88,74 +89,6 @@ int _trendSortKey(Map<String, dynamic> r) {
   }
 }
 
-Widget _trendCell(String? t) {
-  switch (t) {
-    case 'up':
-      return const Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.trending_up_rounded, size: 18, color: HexaColors.profit),
-          SizedBox(width: 4),
-          Text('Up',
-              style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  color: HexaColors.profit,
-                  fontSize: 12)),
-        ],
-      );
-    case 'down':
-      return const Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.trending_down_rounded, size: 18, color: HexaColors.loss),
-          SizedBox(width: 4),
-          Text('Down',
-              style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  color: HexaColors.loss,
-                  fontSize: 12)),
-        ],
-      );
-    case 'flat':
-      return const Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.trending_flat_rounded,
-              size: 18, color: HexaColors.textSecondary),
-          SizedBox(width: 4),
-          Text('Flat',
-              style: TextStyle(color: HexaColors.textSecondary, fontSize: 12)),
-        ],
-      );
-    default:
-      return Text(
-        'n/a',
-        style: TextStyle(
-            color: HexaColors.textSecondary.withValues(alpha: 0.85),
-            fontSize: 12),
-      );
-  }
-}
-
-Widget _categoryBestChip(String? name, TextTheme tt) {
-  if (name == null || name.isEmpty) {
-    return Text('n/a',
-        style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary));
-  }
-  return Chip(
-    padding: const EdgeInsets.symmetric(horizontal: 8),
-    label: Text(
-      name,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: tt.labelSmall?.copyWith(fontWeight: FontWeight.w700),
-    ),
-    visualDensity: VisualDensity.compact,
-    backgroundColor: HexaColors.primaryLight.withValues(alpha: 0.85),
-    side: BorderSide(color: HexaColors.primaryMid.withValues(alpha: 0.35)),
-  );
-}
-
 List<Map<String, dynamic>> _sortedRows(
   List<Map<String, dynamic>> rows,
   String mode,
@@ -169,6 +102,10 @@ List<Map<String, dynamic>> _sortedRows(
         return (a['best_item_name'] ?? '')
             .toString()
             .compareTo((b['best_item_name'] ?? '').toString());
+      case 'type':
+        return (a['type_name'] ?? '')
+            .toString()
+            .compareTo((b['type_name'] ?? '').toString());
       case 'name':
         return (a['item_name'] ??
                 a['category'] ??
@@ -255,6 +192,47 @@ List<Map<String, dynamic>> _filterQuery(
       .toList();
 }
 
+List<Map<String, dynamic>> _filterItemsRows(
+    List<Map<String, dynamic>> rows, String q) {
+  final t = q.trim().toLowerCase();
+  if (t.isEmpty) return rows;
+  return rows.where((r) {
+    for (final k in [
+      'item_name',
+      'category_name',
+      'type_name',
+      'supplier_name',
+      'broker_name',
+    ]) {
+      if ((r[k]?.toString() ?? '').toLowerCase().contains(t)) return true;
+    }
+    final sim = r['similar_item_names'];
+    if (sim is List) {
+      for (final x in sim) {
+        if (x.toString().toLowerCase().contains(t)) return true;
+      }
+    }
+    return false;
+  }).toList();
+}
+
+List<Map<String, dynamic>> _filterCategoryRows(
+    List<Map<String, dynamic>> rows, String q) {
+  final t = q.trim().toLowerCase();
+  if (t.isEmpty) return rows;
+  return rows.where((r) {
+    for (final k in [
+      'category',
+      'type_name',
+      'best_item_name',
+      'best_supplier_name',
+    ]) {
+      if ((r[k]?.toString() ?? '').toLowerCase().contains(t)) return true;
+    }
+    return false;
+  }).toList();
+}
+
 DateTime _analyticsDayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
 /// Which preset matches the current range, or `custom`.
@@ -297,36 +275,6 @@ class _AnalyticsPageState extends ConsumerState<AnalyticsPage> {
   String _inr(num n) =>
       NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
           .format(n);
-
-  Future<void> _pickFrom(BuildContext context) async {
-    final range = ref.read(analyticsDateRangeProvider);
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: range.from,
-      firstDate: DateTime(2020),
-      lastDate: range.to,
-    );
-    if (picked != null) {
-      ref.read(analyticsDateRangeProvider.notifier).state =
-          (from: picked, to: range.to);
-      _invalidateTables();
-    }
-  }
-
-  Future<void> _pickTo(BuildContext context) async {
-    final range = ref.read(analyticsDateRangeProvider);
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: range.to,
-      firstDate: range.from,
-      lastDate: DateTime.now(),
-    );
-    if (picked != null) {
-      ref.read(analyticsDateRangeProvider.notifier).state =
-          (from: range.from, to: picked);
-      _invalidateTables();
-    }
-  }
 
   void _preset({required DateTime from, required DateTime to}) {
     ref.read(analyticsDateRangeProvider.notifier).state = (from: from, to: to);
@@ -437,38 +385,10 @@ class _AnalyticsPageState extends ConsumerState<AnalyticsPage> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '${fmt.format(range.from)} – ${fmt.format(range.to)}',
-                          style: tt.bodySmall?.copyWith(
-                              color: cs.onSurfaceVariant,
-                              fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                      TextButton.icon(
-                        onPressed: () => _pickFrom(context),
-                        icon:
-                            const Icon(Icons.calendar_month_rounded, size: 18),
-                        label: const Text('From'),
-                        style: TextButton.styleFrom(
-                            foregroundColor: HexaColors.primaryMid),
-                      ),
-                      TextButton.icon(
-                        onPressed: () => _pickTo(context),
-                        icon: const Icon(Icons.event_rounded, size: 18),
-                        label: const Text('To'),
-                        style: TextButton.styleFrom(
-                            foregroundColor: HexaColors.primaryMid),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
                   DropdownButton<String>(
                     value: presetId,
                     isExpanded: true,
@@ -485,6 +405,15 @@ class _AnalyticsPageState extends ConsumerState<AnalyticsPage> {
                       if (v == null || v == 'custom') return;
                       _applyPresetId(v, now);
                     },
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${fmt.format(range.from)} – ${fmt.format(range.to)}',
+                    style: tt.bodySmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 12,
+                    ),
                   ),
                 ],
               ),
@@ -521,8 +450,6 @@ class _OverviewTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final onSurf = Theme.of(context).colorScheme.onSurface;
     final kpi = ref.watch(analyticsKpiProvider);
-    final daily = ref.watch(analyticsDailyProfitProvider);
-    final items = ref.watch(analyticsItemsTableProvider);
     final cats = ref.watch(analyticsCategoriesTableProvider);
     final sup = ref.watch(analyticsSuppliersTableProvider);
     return kpi.when(
@@ -552,94 +479,17 @@ class _OverviewTab extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
             children: [
               Text('Overview',
-                  style: tt.titleMedium?.copyWith(
+                  style: tt.titleSmall?.copyWith(
                       fontWeight: FontWeight.w800,
-                      color: onSurf)),
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 112,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: [
-                    SizedBox(
-                      width: 168,
-                      child: _OverviewStatCard(
-                        label: 'Total purchase',
-                        value: inr(d.totalPurchase),
-                        stripe: HexaColors.chartLandingCost,
-                        icon: Icons.shopping_bag_outlined,
-                        iconTint: HexaColors.chartLandingCost,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    SizedBox(
-                      width: 168,
-                      child: _OverviewStatCard(
-                        label: 'Total profit',
-                        value: inr(d.totalProfit),
-                        stripe: HexaColors.profit,
-                        icon: Icons.trending_up_rounded,
-                        iconTint: HexaColors.profit,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    SizedBox(
-                      width: 168,
-                      child: _OverviewStatCard(
-                        label: 'Purchase count',
-                        value: '${d.purchaseCount}',
-                        stripe: HexaColors.chartPurple,
-                        icon: Icons.receipt_long_outlined,
-                        iconTint: HexaColors.chartPurple,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    SizedBox(
-                      width: 168,
-                      child: _OverviewStatCard(
-                        label: 'Total qty',
-                        value: d.totalQtyBase.toStringAsFixed(1),
-                        stripe: HexaColors.chartOrange,
-                        icon: Icons.scale_outlined,
-                        iconTint: HexaColors.chartOrange,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              daily.when(
-                loading: () => const SizedBox.shrink(),
-                error: (_, __) => _overviewSliceError(
-                    context,
-                    'Daily profit trend',
-                    () => ref.invalidate(analyticsDailyProfitProvider)),
-                data: (points) => _ProfitTrendCard(
-                  points: points,
-                  tt: tt,
-                  inr: inr,
-                  onAddPurchase: () => showEntryCreateSheet(context),
-                ),
-              ),
-              const SizedBox(height: 12),
-              items.when(
-                loading: () => const SizedBox.shrink(),
-                error: (_, __) => _overviewSliceError(
-                    context,
-                    'Item costs & revenue',
-                    () => ref.invalidate(analyticsItemsTableProvider)),
-                data: (rows) =>
-                    _ItemCostRevenueBars(rows: rows, tt: tt, inr: inr),
-              ),
-              const SizedBox(height: 12),
-              cats.when(
-                loading: () => const SizedBox.shrink(),
-                error: (_, __) => _overviewSliceError(
-                    context,
-                    'Category split',
-                    () => ref.invalidate(analyticsCategoriesTableProvider)),
-                data: (rows) =>
-                    _CategoryProfitDonut(rows: rows, tt: tt, inr: inr),
+                      color: onSurf,
+                      fontSize: 15)),
+              const SizedBox(height: 8),
+              _ProfitMixBar(
+                totalPurchase: d.totalPurchase,
+                totalProfit: d.totalProfit,
+                purchaseCount: d.purchaseCount,
+                totalQtyBase: d.totalQtyBase,
+                inr: inr,
               ),
               const SizedBox(height: 12),
               sup.when(
@@ -648,7 +498,17 @@ class _OverviewTab extends ConsumerWidget {
                     context,
                     'Supplier performance',
                     () => ref.invalidate(analyticsSuppliersTableProvider)),
-                data: (rows) => _SupplierMarginPerformers(rows: rows, tt: tt),
+                data: (rows) => _SupplierShareBars(rows: rows, tt: tt, inr: inr),
+              ),
+              const SizedBox(height: 10),
+              cats.when(
+                loading: () => const SizedBox.shrink(),
+                error: (_, __) => _overviewSliceError(
+                    context,
+                    'Category split',
+                    () => ref.invalidate(analyticsCategoriesTableProvider)),
+                data: (rows) =>
+                    _CategoryShareBars(rows: rows, tt: tt, inr: inr),
               ),
             ],
           ),
@@ -658,736 +518,243 @@ class _OverviewTab extends ConsumerWidget {
   }
 }
 
-class _OverviewStatCard extends StatelessWidget {
-  const _OverviewStatCard({
-    required this.label,
-    required this.value,
-    required this.stripe,
-    required this.icon,
-    required this.iconTint,
+class _ProfitMixBar extends StatelessWidget {
+  const _ProfitMixBar({
+    required this.totalPurchase,
+    required this.totalProfit,
+    required this.purchaseCount,
+    required this.totalQtyBase,
+    required this.inr,
   });
 
-  final String label;
-  final String value;
-  final Color stripe;
-  final IconData icon;
-  final Color iconTint;
+  final double totalPurchase;
+  final double totalProfit;
+  final int purchaseCount;
+  final double totalQtyBase;
+  final String Function(num) inr;
 
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
-    return Material(
-      color: cs.surface,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-              color: cs.outlineVariant.withValues(alpha: 0.65)),
-          boxShadow: HexaColors.cardShadow(context),
-        ),
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 4,
-              height: 40,
-              decoration: BoxDecoration(
-                  color: stripe, borderRadius: BorderRadius.circular(4)),
+    final purchase = totalPurchase <= 0 ? 0.0 : totalPurchase;
+    final profit = totalProfit;
+    final costLike = (purchase - profit);
+    final c = costLike < 0 ? 0.0 : costLike;
+    final p = profit < 0 ? 0.0 : profit;
+    final denom = purchase > 0 ? purchase : (c + p > 0 ? c + p : 1.0);
+    final flexC = ((c / denom) * 1000).round().clamp(0, 1000);
+    final flexP = ((p / denom) * 1000).round().clamp(0, 1000);
+    final fc = flexC <= 0 && flexP <= 0 ? 1 : flexC;
+    final fp = flexC <= 0 && flexP <= 0 ? 0 : flexP;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.75)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Buy value · retained · margin',
+            style: tt.labelSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: cs.onSurfaceVariant,
+              fontSize: 11,
             ),
-            const SizedBox(width: 10),
-            Container(
-              width: 34,
-              height: 34,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                  color: iconTint.withValues(alpha: 0.1),
-                  shape: BoxShape.circle),
-              child: Icon(icon, size: 18, color: iconTint),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: SizedBox(
+              height: 12,
+              child: Row(
                 children: [
-                  Text(
-                    label.toUpperCase(),
-                    style: tt.labelSmall?.copyWith(
-                      fontSize: 11,
-                      color: HexaColors.textSecondary,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.4,
-                    ),
+                  Expanded(
+                    flex: fc,
+                    child: Container(color: HexaColors.chartLandingCost),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    value,
-                    style: tt.titleMedium?.copyWith(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: HexaColors.primaryNavy),
+                  Expanded(
+                    flex: fp < 1 ? 1 : fp,
+                    child: Container(color: HexaColors.profit),
                   ),
                 ],
               ),
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${inr(purchase)} buy · ${inr(profit)} profit · '
+            '$purchaseCount deals · ${totalQtyBase.toStringAsFixed(1)} qty',
+            style: tt.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontSize: 12,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _ProfitTrendCard extends StatelessWidget {
-  const _ProfitTrendCard({
-    required this.points,
+class _SupplierShareBars extends StatelessWidget {
+  const _SupplierShareBars({
+    required this.rows,
     required this.tt,
     required this.inr,
-    required this.onAddPurchase,
   });
 
-  final List<AnalyticsDailyProfitPoint> points;
-  final TextTheme tt;
-  final String Function(num n) inr;
-  final VoidCallback onAddPurchase;
-
-  @override
-  Widget build(BuildContext context) {
-    final allZero = points.isEmpty || points.every((p) => p.profit == 0);
-    final spots = <FlSpot>[
-      for (var i = 0; i < points.length; i++)
-        FlSpot(i.toDouble(), points[i].profit),
-    ];
-    final maxY = spots.isEmpty ? 1.0 : spots.map((s) => s.y).reduce(math.max);
-    final padY = maxY <= 0 ? 1.0 : maxY * 0.12;
-    final fmt = DateFormat.MMMd();
-
-    String yLabel(double v) {
-      if (v >= 100000) return '₹${(v / 1000).toStringAsFixed(0)}K';
-      if (v >= 1000) return '₹${(v / 1000).toStringAsFixed(1)}K';
-      return '₹${v.toStringAsFixed(0)}';
-    }
-
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: HexaColors.surfaceCardLight,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.85)),
-        boxShadow: HexaColors.cardShadow(context),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Profit trend (30 days)',
-              style: tt.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800, color: HexaColors.primaryNavy)),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 140,
-            child: allZero
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'No profit in this range yet',
-                          textAlign: TextAlign.center,
-                          style: tt.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: HexaColors.primaryNavy,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Add a purchase or widen the date range.',
-                          textAlign: TextAlign.center,
-                          style: tt.bodySmall?.copyWith(
-                            color: HexaColors.neutral,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        FilledButton(
-                          onPressed: onAddPurchase,
-                          child: const Text('Add purchase'),
-                        ),
-                      ],
-                    ),
-                  )
-                : RepaintBoundary(
-                    child: LineChart(
-                      LineChartData(
-                      minY: 0,
-                      maxY: maxY + padY,
-                      gridData: FlGridData(
-                        show: true,
-                        drawVerticalLine: false,
-                        horizontalInterval: math.max((maxY + padY) / 4, 1),
-                        getDrawingHorizontalLine: (v) => FlLine(
-                            color: HexaColors.border.withValues(alpha: 0.5),
-                            strokeWidth: 1),
-                      ),
-                      borderData: FlBorderData(show: false),
-                      lineTouchData: LineTouchData(
-                        enabled: true,
-                        touchTooltipData: LineTouchTooltipData(
-                          getTooltipItems: (touched) {
-                            return touched.map((t) {
-                              final i = t.x.toInt().clamp(0, points.length - 1);
-                              final p = points[i];
-                              return LineTooltipItem(
-                                '${fmt.format(p.day)}\n${inr(p.profit)}',
-                                const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 12),
-                              );
-                            }).toList();
-                          },
-                          getTooltipColor: (_) => HexaColors.surfaceElevated,
-                        ),
-                        handleBuiltInTouches: true,
-                        getTouchedSpotIndicator: (bar, spot) => [
-                          TouchedSpotIndicatorData(
-                            const FlLine(
-                                color: HexaColors.primaryMid, strokeWidth: 1),
-                            FlDotData(
-                              show: true,
-                              getDotPainter: (s, p, bar, i) =>
-                                  FlDotCirclePainter(
-                                radius: 4,
-                                color: HexaColors.primaryMid,
-                                strokeWidth: 2,
-                                strokeColor: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      titlesData: FlTitlesData(
-                        topTitles: const AxisTitles(
-                            sideTitles: SideTitles(showTitles: false)),
-                        rightTitles: const AxisTitles(
-                            sideTitles: SideTitles(showTitles: false)),
-                        bottomTitles: AxisTitles(
-                          sideTitles: SideTitles(
-                            showTitles: true,
-                            reservedSize: 28,
-                            interval: math.max(
-                                1, (points.length / 5).floorToDouble()),
-                            getTitlesWidget: (v, _) {
-                              final i = v.toInt();
-                              if (i < 0 || i >= points.length) {
-                                return const SizedBox.shrink();
-                              }
-                              return Padding(
-                                padding: const EdgeInsets.only(top: 6),
-                                child: Text(
-                                  fmt.format(points[i].day),
-                                  style: tt.labelSmall?.copyWith(
-                                      fontSize: 9,
-                                      color: HexaColors.textSecondary),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                        leftTitles: AxisTitles(
-                          sideTitles: SideTitles(
-                            showTitles: true,
-                            reservedSize: 44,
-                            getTitlesWidget: (v, _) => Text(
-                              yLabel(v),
-                              style: tt.labelSmall?.copyWith(
-                                  fontSize: 9, color: HexaColors.textSecondary),
-                            ),
-                          ),
-                        ),
-                      ),
-                      lineBarsData: [
-                        LineChartBarData(
-                          spots: spots,
-                          isCurved: true,
-                          color: HexaColors.primaryMid,
-                          barWidth: 2.5,
-                          dotData: const FlDotData(show: false),
-                          belowBarData: BarAreaData(
-                            show: true,
-                            gradient: LinearGradient(
-                              colors: [
-                                HexaColors.primaryMid.withValues(alpha: 0.15),
-                                HexaColors.primaryMid.withValues(alpha: 0.02),
-                              ],
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    ),
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Top 6 items by estimated purchase (avg_landing × qty): landing cost vs selling revenue.
-class _ItemCostRevenueBars extends StatelessWidget {
-  const _ItemCostRevenueBars(
-      {required this.rows, required this.tt, required this.inr});
-
   final List<Map<String, dynamic>> rows;
   final TextTheme tt;
-  final String Function(num n) inr;
+  final String Function(num) inr;
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     if (rows.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-              color: cs.outlineVariant.withValues(alpha: 0.65)),
-        ),
-        child: Text('No items in range',
-            style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary)),
+      return Text(
+        'No supplier-linked purchases in this range.',
+        style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary),
       );
     }
-    final ranked = List<Map<String, dynamic>>.from(rows);
-    ranked.sort((a, b) {
-      final av = ((a['avg_landing'] as num?) ?? 0).toDouble() *
-          ((a['total_qty'] as num?) ?? 0).toDouble();
-      final bv = ((b['avg_landing'] as num?) ?? 0).toDouble() *
-          ((b['total_qty'] as num?) ?? 0).toDouble();
-      return bv.compareTo(av);
-    });
-    final top = ranked.take(6).toList();
-    var maxY = 1.0;
-    for (final r in top) {
-      final al = (r['avg_landing'] as num?)?.toDouble() ?? 0;
-      final tq = (r['total_qty'] as num?)?.toDouble() ?? 0;
-      final tp = (r['total_profit'] as num?)?.toDouble() ?? 0;
-      final land = al * tq;
-      final sell = land + tp;
-      final profitRod = (sell - land).clamp(0.0, double.maxFinite);
-      maxY = math.max(maxY, math.max(land, math.max(sell, profitRod)));
-    }
-    final groups = <BarChartGroupData>[];
-    for (var i = 0; i < top.length; i++) {
-      final r = top[i];
-      final al = (r['avg_landing'] as num?)?.toDouble() ?? 0;
-      final tq = (r['total_qty'] as num?)?.toDouble() ?? 0;
-      final tp = (r['total_profit'] as num?)?.toDouble() ?? 0;
-      final land = al * tq;
-      final sell = land + tp;
-      final profitRod = (sell - land).clamp(0.0, double.maxFinite);
-      groups.add(
-        BarChartGroupData(
-          x: i,
-          barsSpace: 4,
-          barRods: [
-            BarChartRodData(
-              toY: land,
-              width: 10,
-              color: HexaColors.chartLandingCost,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(4)),
-            ),
-            BarChartRodData(
-              toY: sell,
-              width: 10,
-              color: HexaColors.chartSellingCost,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(4)),
-            ),
-            BarChartRodData(
-              toY: profitRod,
-              width: 8,
-              color: HexaColors.chartProfit,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(4)),
-            ),
-          ],
-        ),
-      );
-    }
-    return Container(
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-            color: cs.outlineVariant.withValues(alpha: 0.65)),
-        boxShadow: HexaColors.cardShadow(context),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Landing vs selling (top 6 items)',
-              style: tt.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800, color: HexaColors.primaryNavy)),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              Container(
-                  width: 10,
-                  height: 10,
-                  decoration: const BoxDecoration(
-                      color: HexaColors.chartLandingCost,
-                      shape: BoxShape.circle)),
-              const SizedBox(width: 6),
-              Text('Landing cost',
-                  style:
-                      tt.labelSmall?.copyWith(color: HexaColors.textSecondary)),
-              const SizedBox(width: 16),
-              Container(
-                  width: 10,
-                  height: 10,
-                  decoration: const BoxDecoration(
-                      color: HexaColors.chartSellingCost,
-                      shape: BoxShape.circle)),
-              const SizedBox(width: 6),
-              Text('Selling revenue',
-                  style:
-                      tt.labelSmall?.copyWith(color: HexaColors.textSecondary)),
-              const SizedBox(width: 16),
-              Container(
-                  width: 10,
-                  height: 10,
-                  decoration: const BoxDecoration(
-                      color: HexaColors.chartProfit, shape: BoxShape.circle)),
-              const SizedBox(width: 6),
-              Text('Profit',
-                  style:
-                      tt.labelSmall?.copyWith(color: HexaColors.textSecondary)),
-            ],
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 160,
-            child: RepaintBoundary(
-              child: BarChart(
-              BarChartData(
-                maxY: maxY * 1.08,
-                gridData: FlGridData(
-                    show: true,
-                    drawVerticalLine: false,
-                    getDrawingHorizontalLine: (v) => FlLine(
-                        color: HexaColors.border.withValues(alpha: 0.4))),
-                borderData: FlBorderData(show: false),
-                titlesData: FlTitlesData(
-                  topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false)),
-                  rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false)),
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      reservedSize: 40,
-                      showTitles: true,
-                      getTitlesWidget: (v, _) => Text(
-                        v >= 100000
-                            ? '₹${(v / 1000).toStringAsFixed(0)}k'
-                            : '₹${v.toStringAsFixed(0)}',
-                        style: tt.labelSmall?.copyWith(
-                            fontSize: 9, color: HexaColors.textSecondary),
-                      ),
-                    ),
-                  ),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 32,
-                      getTitlesWidget: (v, _) {
-                        final i = v.toInt();
-                        if (i < 0 || i >= top.length) {
-                          return const SizedBox.shrink();
-                        }
-                        final raw = top[i]['item_name']?.toString() ?? '';
-                        final t =
-                            raw.length > 8 ? '${raw.substring(0, 8)}…' : raw;
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(t,
-                              style: tt.labelSmall?.copyWith(
-                                  fontSize: 9,
-                                  color: HexaColors.textSecondary)),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-                barGroups: groups,
-                alignment: BarChartAlignment.spaceAround,
-                groupsSpace: 20,
-              ),
-            ),
-            ),
-          ),
-        ],
-      ),
+    final top = rows.take(5).toList();
+    final totalP = top.fold<double>(
+      0,
+      (a, r) => a + ((r['total_profit'] as num?)?.toDouble() ?? 0),
     );
-  }
-}
-
-class _CategoryProfitDonut extends StatelessWidget {
-  const _CategoryProfitDonut(
-      {required this.rows, required this.tt, required this.inr});
-
-  final List<Map<String, dynamic>> rows;
-  final TextTheme tt;
-  final String Function(num n) inr;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    if (rows.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-              color: cs.outlineVariant.withValues(alpha: 0.65)),
+    final denom = totalP > 0 ? totalP : 1.0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Top suppliers (profit)',
+          style: tt.labelSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+            color: HexaColors.primaryNavy,
+          ),
         ),
-        child: Text('No categories in this range',
-            style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary)),
-      );
-    }
-    final profits = rows
-        .map((r) => (r['total_profit'] as num?)?.toDouble() ?? 0.0)
-        .toList();
-    final sumProfit = profits.fold<double>(0, (a, b) => a + b);
-    final n = math.min(8, rows.length);
-    if (sumProfit <= 0) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-              color: cs.outlineVariant.withValues(alpha: 0.65)),
-        ),
-        child: Text('No profit in categories for this range',
-            style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary)),
-      );
-    }
-    final sliceVals = [for (var i = 0; i < n; i++) profits[i].clamp(0.0, 1e18)];
-    final sumSlices = sliceVals.fold<double>(0, (a, b) => a + b);
-    if (sumSlices <= 0) return const SizedBox.shrink();
-
-    return Container(
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-            color: cs.outlineVariant.withValues(alpha: 0.65)),
-        boxShadow: HexaColors.cardShadow(context),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Category profit',
-              style: tt.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800, color: HexaColors.primaryNavy)),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 140,
-            child: Stack(
-              alignment: Alignment.center,
+        const SizedBox(height: 6),
+        for (final r in top)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
               children: [
-                PieChart(
-                  PieChartData(
-                    sectionsSpace: 2,
-                    centerSpaceRadius: 52,
-                    sections: [
-                      for (var i = 0; i < n; i++)
-                        PieChartSectionData(
-                          color: HexaColors
-                              .chartPalette[i % HexaColors.chartPalette.length],
-                          value: sliceVals[i],
-                          title:
-                              '${((sliceVals[i] / sumSlices) * 100).toStringAsFixed(0)}%',
-                          radius: 54,
-                          titleStyle: tt.labelSmall?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 11),
-                        ),
-                    ],
+                SizedBox(
+                  width: 110,
+                  child: Text(
+                    r['supplier_name']?.toString() ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: tt.bodySmall?.copyWith(fontSize: 12),
                   ),
                 ),
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('Total profit',
-                        style: tt.labelSmall
-                            ?.copyWith(color: HexaColors.textSecondary)),
-                    Text(
-                      inr(sumProfit),
-                      style: tt.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          color: HexaColors.primaryNavy),
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: (((r['total_profit'] as num?)?.toDouble() ?? 0) /
+                              denom)
+                          .clamp(0.0, 1.0),
+                      minHeight: 8,
+                      backgroundColor: HexaColors.primaryLight,
+                      color: HexaColors.accentInfo,
                     ),
-                  ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  inr((r['total_profit'] as num?)?.toDouble() ?? 0),
+                  style: tt.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11,
+                  ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            children: [
-              for (var i = 0; i < n; i++)
-                Chip(
-                  avatar: CircleAvatar(
-                    backgroundColor: HexaColors
-                        .chartPalette[i % HexaColors.chartPalette.length],
-                    radius: 6,
-                  ),
-                  label: Text(
-                    rows[i]['category']?.toString() ?? '',
-                    style: tt.labelSmall?.copyWith(color: Colors.white),
-                  ),
-                  backgroundColor: HexaColors.surfaceElevated,
-                  side: const BorderSide(color: HexaColors.border),
-                ),
-            ],
-          ),
-        ],
-      ),
+      ],
     );
   }
 }
 
-class _SupplierMarginPerformers extends StatelessWidget {
-  const _SupplierMarginPerformers({required this.rows, required this.tt});
+class _CategoryShareBars extends StatelessWidget {
+  const _CategoryShareBars({
+    required this.rows,
+    required this.tt,
+    required this.inr,
+  });
 
   final List<Map<String, dynamic>> rows;
   final TextTheme tt;
+  final String Function(num) inr;
 
   @override
   Widget build(BuildContext context) {
-    if (rows.isEmpty) return const SizedBox.shrink();
-    final ranked = List<Map<String, dynamic>>.from(rows);
-    ranked.sort((a, b) => ((b['margin_pct'] as num?) ?? 0)
-        .compareTo((a['margin_pct'] as num?) ?? 0));
-    final top = ranked.take(5).toList();
-    final maxM = top
-        .map((r) => (r['margin_pct'] as num?)?.toDouble() ?? 0)
-        .fold<double>(0, math.max);
-    final scale = maxM > 0 ? maxM : 1.0;
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-            color: cs.outlineVariant.withValues(alpha: 0.65)),
-        boxShadow: HexaColors.cardShadow(context),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text('Supplier margin',
-                  style: tt.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: HexaColors.primaryNavy)),
-              const Spacer(),
-              if (top.isNotEmpty)
-                Chip(
-                  avatar: Icon(Icons.emoji_events_rounded,
-                      size: 16, color: HexaColors.warning),
-                  label: Text(top.first['supplier_name']?.toString() ?? '',
-                      style: tt.labelSmall),
-                  backgroundColor:
-                      HexaColors.primaryLight.withValues(alpha: 0.9),
-                  side: BorderSide(
-                      color: HexaColors.primaryMid.withValues(alpha: 0.4)),
-                ),
-            ],
+    if (rows.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final top = rows.take(5).toList();
+    final totalP = top.fold<double>(
+      0,
+      (a, r) => a + ((r['total_profit'] as num?)?.toDouble() ?? 0),
+    );
+    final denom = totalP > 0 ? totalP : 1.0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Categories (profit)',
+          style: tt.labelSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+            color: HexaColors.primaryNavy,
           ),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 180,
-            child: Column(
+        ),
+        const SizedBox(height: 6),
+        for (final r in top)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
               children: [
-                for (var i = 0; i < top.length; i++) ...[
-                  if (i > 0) const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      SizedBox(
-                        width: 120,
-                        child: Text(
-                          top[i]['supplier_name']?.toString() ?? '—',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: tt.labelSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: HexaColors.primaryNavy),
-                        ),
-                      ),
-                      Expanded(
-                        child: Stack(
-                          alignment: Alignment.centerLeft,
-                          children: [
-                            Container(
-                              height: 24,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(6),
-                                color: HexaColors.surfaceElevated,
-                              ),
-                            ),
-                            FractionallySizedBox(
-                              widthFactor: (((top[i]['margin_pct'] as num?)
-                                              ?.toDouble() ??
-                                          0) /
-                                      scale)
-                                  .clamp(0.0, 1.0),
-                              child: Container(
-                                height: 24,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(6),
-                                  gradient: const LinearGradient(colors: [
-                                    HexaColors.primaryMid,
-                                    HexaColors.primaryDeep
-                                  ]),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${((top[i]['margin_pct'] as num?) ?? 0).toStringAsFixed(1)}%',
-                        style: tt.labelSmall?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            color: HexaColors.primaryMid),
-                      ),
-                    ],
+                SizedBox(
+                  width: 110,
+                  child: Text(
+                    r['category']?.toString() ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: tt.bodySmall?.copyWith(fontSize: 12),
                   ),
-                ],
+                ),
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: (((r['total_profit'] as num?)?.toDouble() ?? 0) /
+                              denom)
+                          .clamp(0.0, 1.0),
+                      minHeight: 8,
+                      backgroundColor: HexaColors.primaryLight,
+                      color: HexaColors.brandTeal,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  inr((r['total_profit'] as num?)?.toDouble() ?? 0),
+                  style: tt.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11,
+                  ),
+                ),
               ],
             ),
           ),
-        ],
-      ),
+      ],
     );
   }
 }
+
 
 class _ItemsTab extends ConsumerStatefulWidget {
   const _ItemsTab({required this.inr});
@@ -1402,22 +769,18 @@ class _ItemsTabState extends ConsumerState<_ItemsTab> {
   static const _modes = [
     'name',
     'qty',
-    'lines',
     'avg',
     'margin',
-    'trend',
-    'profit'
+    'profit',
   ];
   static const _modeLabels = [
     'Name',
     'Qty',
-    'Lines',
     'Avg',
     'Margin',
-    'Trend',
-    'Profit'
+    'Profit',
   ];
-  int _sortColumnIndex = 6;
+  int _sortColumnIndex = 4;
   bool _asc = false;
   final _search = TextEditingController();
 
@@ -1455,7 +818,7 @@ class _ItemsTabState extends ConsumerState<_ItemsTab> {
           _asc,
           (r) => (r['total_profit'] as num?) ?? 0,
         );
-        final filtered = _filterQuery(sorted, _search.text, 'item_name');
+        final filtered = _filterItemsRows(sorted, _search.text);
         final tt = Theme.of(context).textTheme;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1465,22 +828,23 @@ class _ItemsTabState extends ConsumerState<_ItemsTab> {
               child: TextField(
                 controller: _search,
                 onChanged: (_) => setState(() {}),
-                style: tt.bodyMedium?.copyWith(color: HexaColors.primaryNavy),
+                style: tt.bodyMedium?.copyWith(
+                    color: HexaColors.primaryNavy, fontSize: 14),
                 decoration: InputDecoration(
                   isDense: true,
-                  hintText: 'Search items…',
+                  hintText: 'Search item, category, supplier…',
                   hintStyle: TextStyle(
                       color: HexaColors.textSecondary.withValues(alpha: 0.85)),
                   prefixIcon: const Icon(Icons.search_rounded,
                       color: HexaColors.primaryMid, size: 22),
                   filled: true,
-                  fillColor: HexaColors.surfaceElevated,
+                  fillColor: const Color(0xFFF1F5F9),
                   border: const OutlineInputBorder(
                       borderRadius: BorderRadius.all(Radius.circular(14)),
-                      borderSide: BorderSide(color: HexaColors.border)),
+                      borderSide: BorderSide(color: Color(0xFFE2E8F0))),
                   enabledBorder: const OutlineInputBorder(
                       borderRadius: BorderRadius.all(Radius.circular(14)),
-                      borderSide: BorderSide(color: HexaColors.border)),
+                      borderSide: BorderSide(color: Color(0xFFE2E8F0))),
                   focusedBorder: const OutlineInputBorder(
                       borderRadius: BorderRadius.all(Radius.circular(14)),
                       borderSide:
@@ -1534,25 +898,29 @@ class _ItemsTabState extends ConsumerState<_ItemsTab> {
                           '${AppConfig.appName} Items ${fmt.format(range.from)}–${fmt.format(range.to)}',
                       headers: const [
                         'Item',
+                        'Category',
+                        'Type',
+                        'Supplier',
+                        'Broker',
                         'Qty',
-                        'Lines',
-                        'Avg landing',
+                        'Avg price',
+                        'Profit',
                         'Margin %',
-                        'Trend',
-                        'Profit'
                       ],
                       rows: filtered,
                       columns: [
                         (r) => r['item_name']?.toString() ?? '',
+                        (r) => r['category_name']?.toString() ?? '',
+                        (r) => r['type_name']?.toString() ?? '',
+                        (r) => r['supplier_name']?.toString() ?? '',
+                        (r) => r['broker_name']?.toString() ?? '',
                         (r) => ((r['total_qty'] as num?) ?? 0).toString(),
-                        (r) => ((r['line_count'] as num?) ?? 0).toString(),
                         (r) => ((r['avg_landing'] as num?) ?? 0)
+                            .toStringAsFixed(2),
+                        (r) => ((r['total_profit'] as num?) ?? 0)
                             .toStringAsFixed(2),
                         (r) =>
                             ((r['margin_pct'] as num?) ?? 0).toStringAsFixed(1),
-                        (r) => r['trend']?.toString() ?? '',
-                        (r) => ((r['total_profit'] as num?) ?? 0)
-                            .toStringAsFixed(2),
                       ],
                     ),
                   ),
@@ -1577,158 +945,230 @@ class _ItemsTabState extends ConsumerState<_ItemsTab> {
                                       color: HexaColors.textSecondary))),
                         ],
                       )
-                    : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 88),
-                        itemCount: filtered.length,
-                        itemBuilder: (context, i) {
-                          final r = filtered[i];
-                          final al =
-                              (r['avg_landing'] as num?)?.toDouble() ?? 0;
-                          final tq = (r['total_qty'] as num?)?.toDouble() ?? 0;
-                          final tp =
-                              (r['total_profit'] as num?)?.toDouble() ?? 0;
-                          final land = al * tq;
-                          final sell = land + tp;
-                          final maxBar = math.max(land, sell);
-                          final fLand = maxBar > 0
-                              ? (land / maxBar).clamp(0.0, 1.0)
-                              : 0.0;
-                          final fProfit = maxBar > 0
-                              ? ((sell - land).abs() / maxBar).clamp(0.0, 1.0)
-                              : 0.0;
-                          final name = r['item_name']?.toString() ?? '';
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: Material(
-                              color: Theme.of(context).colorScheme.surface,
-                              borderRadius: BorderRadius.circular(16),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(16),
-                                onTap: name.isEmpty
-                                    ? null
-                                    : () => context.push(
-                                        '/item-analytics/${Uri.encodeComponent(name)}'),
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(16),
-                                    border:
-                                        Border.all(color: HexaColors.border),
-                                    boxShadow: HexaColors.cardShadow(context),
+                    : LayoutBuilder(
+                        builder: (context, constraints) {
+                          void openItem(Map<String, dynamic> r) {
+                            final name = r['item_name']?.toString() ?? '';
+                            if (name.isEmpty) return;
+                            context.push(
+                                '/item-analytics/${Uri.encodeComponent(name)}');
+                          }
+
+                          DataCell itemCell(Map<String, dynamic> r, Widget child) {
+                            return DataCell(
+                              child,
+                              onTap: () => openItem(r),
+                            );
+                          }
+
+                          return SingleChildScrollView(
+                            physics: const AlwaysScrollableScrollPhysics(
+                              parent: BouncingScrollPhysics(),
+                            ),
+                            padding: const EdgeInsets.fromLTRB(0, 0, 0, 88),
+                            child: Scrollbar(
+                              thumbVisibility: true,
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    minWidth: math.max(
+                                      780,
+                                      constraints.maxWidth,
+                                    ),
                                   ),
-                                  padding: const EdgeInsets.all(14),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Container(
-                                            width: 4,
-                                            height: 40,
-                                            decoration: BoxDecoration(
-                                              color: _marginStripeColor(
-                                                  (r['margin_pct'] as num?)
-                                                      ?.toDouble()),
-                                              borderRadius:
-                                                  BorderRadius.circular(3),
+                                  child: Theme(
+                                    data: Theme.of(context).copyWith(
+                                      dividerColor: const Color(0xFFE2E8F0),
+                                      dataTableTheme: DataTableThemeData(
+                                        headingRowHeight: 36,
+                                        dataRowMinHeight: 40,
+                                        dataRowMaxHeight: 52,
+                                        horizontalMargin: 10,
+                                        columnSpacing: 12,
+                                        headingTextStyle: tt.labelSmall
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w800,
+                                              fontSize: 11,
+                                              color: HexaColors.textSecondary,
                                             ),
-                                          ),
-                                          const SizedBox(width: 10),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  name.isEmpty ? '—' : name,
-                                                  style: tt.titleSmall
-                                                      ?.copyWith(
-                                                          fontWeight:
-                                                              FontWeight.w800,
-                                                          color: HexaColors
-                                                              .textPrimary),
-                                                ),
-                                                const SizedBox(height: 6),
+                                      ),
+                                    ),
+                                    child: DataTable(
+                                      showCheckboxColumn: false,
+                                      border: const TableBorder(
+                                        horizontalInside: BorderSide(
+                                            color: Color(0xFFE2E8F0)),
+                                      ),
+                                      columns: const [
+                                        DataColumn(label: Text('Item')),
+                                        DataColumn(label: Text('Category')),
+                                        DataColumn(label: Text('Type')),
+                                        DataColumn(label: Text('Supplier')),
+                                        DataColumn(label: Text('Broker')),
+                                        DataColumn(
+                                            label: Text('Qty'),
+                                            numeric: true),
+                                        DataColumn(
+                                            label: Text('Avg'),
+                                            numeric: true),
+                                        DataColumn(
+                                            label: Text('Profit'),
+                                            numeric: true),
+                                        DataColumn(
+                                            label: Text('Margin'),
+                                            numeric: true),
+                                      ],
+                                      rows: [
+                                        for (final r in filtered)
+                                          DataRow(
+                                            cells: [
+                                              itemCell(
+                                                r,
                                                 Row(
                                                   children: [
-                                                    _trendCell(
-                                                        r['trend']?.toString()),
-                                                    const SizedBox(width: 10),
-                                                    Text(
-                                                      '${((r['margin_pct'] as num?) ?? 0).toStringAsFixed(1)}% margin',
-                                                      style: tt.labelSmall
-                                                          ?.copyWith(
-                                                              color: HexaColors
-                                                                  .textSecondary,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w600),
+                                                    Container(
+                                                      width: 3,
+                                                      height: 28,
+                                                      decoration:
+                                                          BoxDecoration(
+                                                        color:
+                                                            _marginStripeColor(
+                                                          (r['margin_pct']
+                                                                  as num?)
+                                                              ?.toDouble(),
+                                                        ),
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(2),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    Expanded(
+                                                      child: Text(
+                                                        (r['item_name']
+                                                                    ?.toString() ??
+                                                                '')
+                                                            .isEmpty
+                                                            ? '—'
+                                                            : r['item_name']
+                                                                .toString(),
+                                                        style: tt.bodySmall
+                                                            ?.copyWith(
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                          fontSize: 12,
+                                                        ),
+                                                      ),
                                                     ),
                                                   ],
                                                 ),
-                                              ],
-                                            ),
-                                          ),
-                                          Text(
-                                            widget.inr(tp),
-                                            style: tt.titleSmall?.copyWith(
-                                              fontWeight: FontWeight.w900,
-                                              color: tp >= 0
-                                                  ? HexaColors.profit
-                                                  : HexaColors.loss,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 10),
-                                      ClipRRect(
-                                        borderRadius: BorderRadius.circular(8),
-                                        child: SizedBox(
-                                          height: 10,
-                                          child: Row(
-                                            children: [
-                                              Expanded(
-                                                flex: math.max(
-                                                    1, (fLand * 1000).round()),
-                                                child: Container(
-                                                    color: HexaColors
-                                                        .chartLandingCost),
                                               ),
-                                              Expanded(
-                                                flex: math.max(1,
-                                                    (fProfit * 1000).round()),
-                                                child: Container(
-                                                    color: HexaColors
-                                                        .chartSellingCost),
+                                              itemCell(
+                                                r,
+                                                Text(
+                                                  r['category_name']
+                                                          ?.toString() ??
+                                                      '—',
+                                                  maxLines: 2,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: tt.bodySmall
+                                                      ?.copyWith(fontSize: 12),
+                                                ),
+                                              ),
+                                              itemCell(
+                                                r,
+                                                Text(
+                                                  r['type_name']?.toString() ??
+                                                      '—',
+                                                  maxLines: 2,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: tt.bodySmall
+                                                      ?.copyWith(fontSize: 12),
+                                                ),
+                                              ),
+                                              itemCell(
+                                                r,
+                                                Text(
+                                                  r['supplier_name']
+                                                          ?.toString() ??
+                                                      '—',
+                                                  maxLines: 2,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: tt.bodySmall
+                                                      ?.copyWith(fontSize: 12),
+                                                ),
+                                              ),
+                                              itemCell(
+                                                r,
+                                                Text(
+                                                  r['broker_name']
+                                                          ?.toString() ??
+                                                      '—',
+                                                  maxLines: 2,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: tt.bodySmall
+                                                      ?.copyWith(fontSize: 12),
+                                                ),
+                                              ),
+                                              itemCell(
+                                                r,
+                                                Text(
+                                                  ((r['total_qty'] as num?) ??
+                                                          0)
+                                                      .toStringAsFixed(1),
+                                                  style: tt.bodySmall
+                                                      ?.copyWith(fontSize: 12),
+                                                ),
+                                              ),
+                                              itemCell(
+                                                r,
+                                                Text(
+                                                  widget.inr(
+                                                    (r['avg_landing'] as num?)
+                                                            ?.toDouble() ??
+                                                        0,
+                                                  ),
+                                                  style: tt.bodySmall
+                                                      ?.copyWith(fontSize: 12),
+                                                ),
+                                              ),
+                                              itemCell(
+                                                r,
+                                                Text(
+                                                  widget.inr(
+                                                    (r['total_profit'] as num?)
+                                                            ?.toDouble() ??
+                                                        0,
+                                                  ),
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.w700,
+                                                    fontSize: 12,
+                                                    color: ((r['total_profit']
+                                                                    as num?) ??
+                                                                0) >=
+                                                            0
+                                                        ? HexaColors.profit
+                                                        : HexaColors.loss,
+                                                  ),
+                                                ),
+                                              ),
+                                              itemCell(
+                                                r,
+                                                Text(
+                                                  '${((r['margin_pct'] as num?) ?? 0).toStringAsFixed(1)}%',
+                                                  style: tt.bodySmall
+                                                      ?.copyWith(fontSize: 12),
+                                                ),
                                               ),
                                             ],
                                           ),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Row(
-                                        children: [
-                                          Text('Qty ${tq.toStringAsFixed(1)}',
-                                              style: tt.labelSmall?.copyWith(
-                                                  color: HexaColors
-                                                      .textSecondary)),
-                                          const SizedBox(width: 12),
-                                          Text(
-                                              '${r['line_count'] ?? '—'} lines',
-                                              style: tt.labelSmall?.copyWith(
-                                                  color: HexaColors
-                                                      .textSecondary)),
-                                          const Spacer(),
-                                          Text('Avg ${widget.inr(al)}',
-                                              style: tt.labelSmall?.copyWith(
-                                                  fontWeight: FontWeight.w700,
-                                                  color:
-                                                      HexaColors.primaryNavy)),
-                                        ],
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
@@ -1755,15 +1195,16 @@ class _CategoriesTab extends ConsumerStatefulWidget {
 }
 
 class _CategoriesTabState extends ConsumerState<_CategoriesTab> {
-  static const _modes = ['name', 'best', 'qty', 'lines', 'profit'];
+  static const _modes = ['name', 'type', 'best', 'qty', 'lines', 'profit'];
   static const _modeLabels = [
     'Category',
+    'Type',
     'Best item',
     'Qty',
     'Lines',
     'Profit'
   ];
-  int _sortColumnIndex = 4;
+  int _sortColumnIndex = 5;
   bool _asc = false;
   final _search = TextEditingController();
 
@@ -1790,11 +1231,7 @@ class _CategoriesTabState extends ConsumerState<_CategoriesTab> {
         final mode = _modes[_sortColumnIndex.clamp(0, _modes.length - 1)];
         final sorted = _sortedRows(
             rows, mode, _asc, (r) => (r['total_profit'] as num?) ?? 0);
-        final filtered = _filterQuery(sorted, _search.text, 'category');
-        final profits = sorted
-            .map((r) => (r['total_profit'] as num?)?.toDouble() ?? 0.0)
-            .toList();
-        final maxP = profits.fold<double>(0, math.max);
+        final filtered = _filterCategoryRows(sorted, _search.text);
         final tt = Theme.of(context).textTheme;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1804,22 +1241,23 @@ class _CategoriesTabState extends ConsumerState<_CategoriesTab> {
               child: TextField(
                 controller: _search,
                 onChanged: (_) => setState(() {}),
-                style: tt.bodyMedium?.copyWith(color: HexaColors.primaryNavy),
+                style: tt.bodyMedium?.copyWith(
+                    color: HexaColors.primaryNavy, fontSize: 14),
                 decoration: InputDecoration(
                   isDense: true,
-                  hintText: 'Search categories…',
+                  hintText: 'Search category, type, best item…',
                   hintStyle: TextStyle(
                       color: HexaColors.textSecondary.withValues(alpha: 0.85)),
                   prefixIcon: const Icon(Icons.search_rounded,
                       color: HexaColors.primaryMid, size: 22),
                   filled: true,
-                  fillColor: HexaColors.surfaceElevated,
+                  fillColor: const Color(0xFFF1F5F9),
                   border: const OutlineInputBorder(
                       borderRadius: BorderRadius.all(Radius.circular(14)),
-                      borderSide: BorderSide(color: HexaColors.border)),
+                      borderSide: BorderSide(color: Color(0xFFE2E8F0))),
                   enabledBorder: const OutlineInputBorder(
                       borderRadius: BorderRadius.all(Radius.circular(14)),
-                      borderSide: BorderSide(color: HexaColors.border)),
+                      borderSide: BorderSide(color: Color(0xFFE2E8F0))),
                   focusedBorder: const OutlineInputBorder(
                       borderRadius: BorderRadius.all(Radius.circular(14)),
                       borderSide:
@@ -1844,7 +1282,7 @@ class _CategoriesTabState extends ConsumerState<_CategoriesTab> {
                             _asc = !_asc;
                           } else {
                             _sortColumnIndex = i;
-                            _asc = i == 0;
+                            _asc = i == 0 || i == 1;
                           }
                         }),
                         selectedColor:
@@ -1861,7 +1299,7 @@ class _CategoriesTabState extends ConsumerState<_CategoriesTab> {
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
               child: Row(
                 children: [
-                  Text('${filtered.length} categories',
+                  Text('${filtered.length} rows',
                       style: tt.labelMedium
                           ?.copyWith(color: HexaColors.textSecondary)),
                   const Spacer(),
@@ -1873,19 +1311,23 @@ class _CategoriesTabState extends ConsumerState<_CategoriesTab> {
                           '${AppConfig.appName} Categories ${fmt.format(range.from)}–${fmt.format(range.to)}',
                       headers: const [
                         'Category',
+                        'Type',
+                        'Total qty',
+                        'Total profit',
                         'Best item',
-                        'Qty',
+                        'Best supplier',
                         'Lines',
-                        'Profit'
                       ],
                       rows: filtered,
                       columns: [
                         (r) => r['category']?.toString() ?? '',
-                        (r) => r['best_item_name']?.toString() ?? '',
+                        (r) => r['type_name']?.toString() ?? '',
                         (r) => ((r['total_qty'] as num?) ?? 0).toString(),
-                        (r) => ((r['line_count'] as num?) ?? 0).toString(),
                         (r) => ((r['total_profit'] as num?) ?? 0)
                             .toStringAsFixed(2),
+                        (r) => r['best_item_name']?.toString() ?? '',
+                        (r) => r['best_supplier_name']?.toString() ?? '',
+                        (r) => ((r['line_count'] as num?) ?? 0).toString(),
                       ],
                     ),
                   ),
@@ -1910,117 +1352,134 @@ class _CategoriesTabState extends ConsumerState<_CategoriesTab> {
                                       color: HexaColors.textSecondary))),
                         ],
                       )
-                    : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 88),
-                        itemCount: filtered.length,
-                        itemBuilder: (context, idx) {
-                          final r = filtered[idx];
-                          final cat = r['category']?.toString() ?? '—';
-                          final profit =
-                              ((r['total_profit'] as num?) ?? 0).toDouble();
-                          final share =
-                              maxP > 0 ? (profit / maxP).clamp(0.0, 1.0) : 0.0;
-                          final color = HexaColors.chartPalette[
-                              idx % HexaColors.chartPalette.length];
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.surface,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .outlineVariant
-                                        .withValues(alpha: 0.65)),
-                                boxShadow: HexaColors.cardShadow(context),
-                              ),
-                              child: Theme(
-                                data: Theme.of(context)
-                                    .copyWith(dividerColor: Colors.transparent),
-                                child: ExpansionTile(
-                                  tilePadding: const EdgeInsets.symmetric(
-                                      horizontal: 14, vertical: 4),
-                                  childrenPadding:
-                                      const EdgeInsets.fromLTRB(14, 0, 14, 14),
-                                  leading: CircleAvatar(
-                                    radius: 18,
-                                    backgroundColor:
-                                        color.withValues(alpha: 0.25),
-                                    child: Text(
-                                      cat.isNotEmpty
-                                          ? cat[0].toUpperCase()
-                                          : '?',
-                                      style: tt.titleSmall?.copyWith(
-                                          fontWeight: FontWeight.w900,
-                                          color: color),
+                    : LayoutBuilder(
+                        builder: (context, constraints) {
+                          return SingleChildScrollView(
+                            physics: const AlwaysScrollableScrollPhysics(
+                              parent: BouncingScrollPhysics(),
+                            ),
+                            padding: const EdgeInsets.fromLTRB(0, 0, 0, 88),
+                            child: Scrollbar(
+                              thumbVisibility: true,
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    minWidth: math.max(
+                                      800,
+                                      constraints.maxWidth,
                                     ),
                                   ),
-                                  title: Text(cat,
-                                      style: tt.titleSmall?.copyWith(
-                                          fontWeight: FontWeight.w800,
-                                          color: HexaColors.primaryNavy)),
-                                  subtitle: Padding(
-                                    padding: const EdgeInsets.only(top: 6),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(6),
-                                      child: LinearProgressIndicator(
-                                        value: share,
-                                        minHeight: 8,
-                                        backgroundColor:
-                                            HexaColors.surfaceElevated,
-                                        color: color,
+                                  child: Theme(
+                                    data: Theme.of(context).copyWith(
+                                      dividerColor: const Color(0xFFE2E8F0),
+                                      dataTableTheme: DataTableThemeData(
+                                        headingRowHeight: 36,
+                                        dataRowMinHeight: 40,
+                                        dataRowMaxHeight: 48,
+                                        horizontalMargin: 10,
+                                        columnSpacing: 12,
+                                        headingTextStyle: tt.labelSmall
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w800,
+                                              fontSize: 11,
+                                              color: HexaColors.textSecondary,
+                                            ),
                                       ),
                                     ),
-                                  ),
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                            child: Text('Profit',
-                                                style: tt.labelSmall?.copyWith(
-                                                    color: HexaColors
-                                                        .textSecondary))),
-                                        Text(
-                                          widget.inr(profit),
-                                          style: tt.titleSmall?.copyWith(
-                                            fontWeight: FontWeight.w900,
-                                            color: profit >= 0
-                                                ? HexaColors.profit
-                                                : HexaColors.loss,
+                                    child: DataTable(
+                                      showCheckboxColumn: false,
+                                      border: const TableBorder(
+                                        horizontalInside: BorderSide(
+                                            color: Color(0xFFE2E8F0)),
+                                      ),
+                                      columns: const [
+                                        DataColumn(label: Text('Category')),
+                                        DataColumn(label: Text('Type')),
+                                        DataColumn(
+                                            label: Text('Qty'),
+                                            numeric: true),
+                                        DataColumn(
+                                            label: Text('Profit'),
+                                            numeric: true),
+                                        DataColumn(label: Text('Best item')),
+                                        DataColumn(
+                                            label: Text('Best supplier')),
+                                        DataColumn(
+                                            label: Text('Lines'),
+                                            numeric: true),
+                                      ],
+                                      rows: [
+                                        for (final r in filtered)
+                                          DataRow(
+                                            cells: [
+                                              DataCell(Text(
+                                                r['category']?.toString() ??
+                                                    '—',
+                                                style: tt.bodySmall?.copyWith(
+                                                    fontWeight: FontWeight.w700,
+                                                    fontSize: 12),
+                                              )),
+                                              DataCell(Text(
+                                                r['type_name']?.toString() ??
+                                                    '—',
+                                                style: tt.bodySmall
+                                                    ?.copyWith(fontSize: 12),
+                                              )),
+                                              DataCell(Text(
+                                                ((r['total_qty'] as num?) ?? 0)
+                                                    .toStringAsFixed(1),
+                                                style: tt.bodySmall
+                                                    ?.copyWith(fontSize: 12),
+                                              )),
+                                              DataCell(Text(
+                                                widget.inr(
+                                                  ((r['total_profit']
+                                                              as num?) ??
+                                                          0)
+                                                      .toDouble(),
+                                                ),
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 12,
+                                                  color: ((r['total_profit']
+                                                                  as num?) ??
+                                                              0) >=
+                                                          0
+                                                      ? HexaColors.profit
+                                                      : HexaColors.loss,
+                                                ),
+                                              )),
+                                              DataCell(Text(
+                                                r['best_item_name']
+                                                        ?.toString() ??
+                                                    '—',
+                                                maxLines: 2,
+                                                overflow:
+                                                    TextOverflow.ellipsis,
+                                                style: tt.bodySmall
+                                                    ?.copyWith(fontSize: 12),
+                                              )),
+                                              DataCell(Text(
+                                                r['best_supplier_name']
+                                                        ?.toString() ??
+                                                    '—',
+                                                maxLines: 2,
+                                                overflow:
+                                                    TextOverflow.ellipsis,
+                                                style: tt.bodySmall
+                                                    ?.copyWith(fontSize: 12),
+                                              )),
+                                              DataCell(Text(
+                                                '${(r['line_count'] as num?) ?? 0}',
+                                                style: tt.bodySmall
+                                                    ?.copyWith(fontSize: 12),
+                                              )),
+                                            ],
                                           ),
-                                        ),
                                       ],
                                     ),
-                                    const SizedBox(height: 8),
-                                    Row(
-                                      children: [
-                                        const Icon(Icons.star_rounded,
-                                            size: 18,
-                                            color: HexaColors.accentAmber),
-                                        const SizedBox(width: 6),
-                                        Text('Best mover',
-                                            style: tt.labelSmall?.copyWith(
-                                                color:
-                                                    HexaColors.textSecondary)),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    _categoryBestChip(
-                                        r['best_item_name']?.toString(), tt),
-                                    const SizedBox(height: 12),
-                                    Row(
-                                      children: [
-                                        _catMiniStat(Icons.scale_outlined,
-                                            'Qty ${r['total_qty'] ?? '—'}', tt),
-                                        const SizedBox(width: 12),
-                                        _catMiniStat(
-                                            Icons.receipt_long_outlined,
-                                            '${r['line_count'] ?? '—'} lines',
-                                            tt),
-                                      ],
-                                    ),
-                                  ],
+                                  ),
                                 ),
                               ),
                             ),
@@ -2036,28 +1495,6 @@ class _CategoriesTabState extends ConsumerState<_CategoriesTab> {
   }
 }
 
-Widget _catMiniStat(IconData icon, String text, TextTheme tt) {
-  return Expanded(
-    child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: HexaColors.surfaceElevated,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: HexaColors.border),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 16, color: HexaColors.primaryMid),
-          const SizedBox(width: 6),
-          Expanded(
-              child: Text(text,
-                  style: tt.labelSmall?.copyWith(fontWeight: FontWeight.w600))),
-        ],
-      ),
-    ),
-  );
-}
-
 class _SuppliersTab extends ConsumerStatefulWidget {
   const _SuppliersTab({required this.inr});
 
@@ -2068,16 +1505,54 @@ class _SuppliersTab extends ConsumerStatefulWidget {
 }
 
 class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
-  static const _modes = ['name', 'deals', 'avg', 'margin', 'profit'];
-  static const _modeLabels = ['Name', 'Deals', 'Avg ₹', 'Margin', 'Profit'];
-  int _sortColumnIndex = 4;
+  static const _modes = [
+    'name',
+    'deals',
+    'qty',
+    'avg',
+    'margin',
+    'profit',
+  ];
+  static const _modeLabels = [
+    'Name',
+    'Deals',
+    'Qty',
+    'Avg ₹',
+    'Margin',
+    'Profit',
+  ];
+  int _sortColumnIndex = 5;
   bool _asc = false;
   final _search = TextEditingController();
+
+  /// Loaded per supplier when a row expands (same date range as parent).
+  final Map<String, List<Map<String, dynamic>>?> _supplierItemsCache = {};
 
   @override
   void dispose() {
     _search.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadSupplierItems(String sid) async {
+    if (_supplierItemsCache[sid] != null) return;
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    final range = ref.read(analyticsDateRangeProvider);
+    final fmt = DateFormat('yyyy-MM-dd');
+    try {
+      final rows = await ref.read(hexaApiProvider).analyticsSupplierItems(
+            businessId: session.primaryBusiness.id,
+            supplierId: sid,
+            from: fmt.format(range.from),
+            to: fmt.format(range.to),
+          );
+      if (!mounted) return;
+      setState(() => _supplierItemsCache[sid] = rows);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _supplierItemsCache[sid] = []);
+    }
   }
 
   @override
@@ -2098,21 +1573,6 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
           return const Center(
               child: Text('No supplier-linked entries in this range'));
         }
-        final profitRank = <String, int>{};
-        final ranked = List<Map<String, dynamic>>.from(rows);
-        ranked.sort((a, b) => ((b['total_profit'] as num?) ?? 0)
-            .compareTo((a['total_profit'] as num?) ?? 0));
-        for (var j = 0; j < ranked.length && j < 3; j++) {
-          final id = ranked[j]['supplier_id']?.toString();
-          if (id != null) profitRank[id] = j;
-        }
-        String medalFor(String? sid) {
-          final r = profitRank[sid];
-          if (r == null) return '';
-          if (r == 0) return '🥇 ';
-          if (r == 1) return '🥈 ';
-          return '🥉 ';
-        }
 
         final mode = _modes[_sortColumnIndex.clamp(0, _modes.length - 1)];
         final sorted = _sortedRows(
@@ -2123,59 +1583,25 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Supplier Intelligence',
-                      style: tt.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          color: HexaColors.primaryNavy)),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Which supplier gives best price for each item?',
-                    style:
-                        tt.bodySmall?.copyWith(color: HexaColors.textSecondary),
-                  ),
-                ],
-              ),
-            ),
             insight.when(
               data: (msg) {
                 if (msg == null || msg.isEmpty) return const SizedBox.shrink();
                 return Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      gradient: const LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          HexaColors.heroGradientEnd,
-                          HexaColors.primaryDeep,
-                          HexaColors.primaryMid
-                        ],
-                      ),
-                      border: Border.all(
-                          color: HexaColors.primaryMid.withValues(alpha: 0.35)),
-                    ),
-                    child: Text(
-                      msg,
-                      style: tt.bodySmall?.copyWith(
-                          color: HexaColors.primaryNavy,
-                          fontWeight: FontWeight.w700,
-                          height: 1.35),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                  child: Text(
+                    msg,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: tt.bodySmall?.copyWith(
+                      color: HexaColors.textSecondary,
+                      height: 1.25,
                     ),
                   ),
                 );
               },
               loading: () => const SizedBox.shrink(),
               error: (_, __) => Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                 child: _overviewSliceError(
                   context,
                   'Supplier insight',
@@ -2188,7 +1614,8 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
               child: TextField(
                 controller: _search,
                 onChanged: (_) => setState(() {}),
-                style: tt.bodyMedium?.copyWith(color: HexaColors.primaryNavy),
+                style: tt.bodyMedium?.copyWith(
+                    color: HexaColors.primaryNavy, fontSize: 14),
                 decoration: InputDecoration(
                   isDense: true,
                   hintText: 'Search suppliers…',
@@ -2197,13 +1624,13 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
                   prefixIcon: const Icon(Icons.search_rounded,
                       color: HexaColors.primaryMid, size: 22),
                   filled: true,
-                  fillColor: HexaColors.surfaceElevated,
+                  fillColor: const Color(0xFFF1F5F9),
                   border: const OutlineInputBorder(
                       borderRadius: BorderRadius.all(Radius.circular(14)),
-                      borderSide: BorderSide(color: HexaColors.border)),
+                      borderSide: BorderSide(color: Color(0xFFE2E8F0))),
                   enabledBorder: const OutlineInputBorder(
                       borderRadius: BorderRadius.all(Radius.circular(14)),
-                      borderSide: BorderSide(color: HexaColors.border)),
+                      borderSide: BorderSide(color: Color(0xFFE2E8F0))),
                   focusedBorder: const OutlineInputBorder(
                       borderRadius: BorderRadius.all(Radius.circular(14)),
                       borderSide:
@@ -2258,6 +1685,7 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
                       headers: const [
                         'Supplier',
                         'Deals',
+                        'Total qty',
                         'Avg landing',
                         'Margin %',
                         'Profit'
@@ -2266,6 +1694,7 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
                       columns: [
                         (r) => r['supplier_name']?.toString() ?? '',
                         (r) => ((r['deals'] as num?) ?? 0).toString(),
+                        (r) => ((r['total_qty'] as num?) ?? 0).toString(),
                         (r) => ((r['avg_landing'] as num?) ?? 0)
                             .toStringAsFixed(2),
                         (r) =>
@@ -2281,6 +1710,7 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
             Expanded(
               child: RefreshIndicator(
                 onRefresh: () async {
+                  _supplierItemsCache.clear();
                   ref.invalidate(analyticsSuppliersTableProvider);
                   await ref.read(analyticsSuppliersTableProvider.future);
                 },
@@ -2296,137 +1726,226 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
                                       color: HexaColors.textSecondary))),
                         ],
                       )
-                    : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 88),
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 88),
                         itemCount: filtered.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 6),
                         itemBuilder: (context, i) {
                           final r = filtered[i];
                           final sid = r['supplier_id']?.toString();
                           final m = (r['margin_pct'] as num?)?.toDouble() ?? 0;
                           final profit =
                               ((r['total_profit'] as num?) ?? 0).toDouble();
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: Material(
-                              color: Theme.of(context).colorScheme.surface,
-                              borderRadius: BorderRadius.circular(16),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(16),
-                                onTap: sid == null
-                                    ? null
-                                    : () => context.push('/supplier/$sid'),
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(16),
-                                    border:
-                                        Border.all(color: HexaColors.border),
-                                    boxShadow: HexaColors.cardShadow(context),
+                          final deals = (r['deals'] as num?) ?? 0;
+                          final tq =
+                              ((r['total_qty'] as num?) ?? 0).toDouble();
+                          final name =
+                              r['supplier_name']?.toString() ?? 'Supplier';
+                          return Material(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: const Color(0xFFE2E8F0)),
+                              ),
+                              child: Theme(
+                                data: Theme.of(context).copyWith(
+                                  dividerColor: Colors.transparent,
+                                  splashColor: HexaColors.primaryLight
+                                      .withValues(alpha: 0.3),
+                                ),
+                                child: ExpansionTile(
+                                  key: ValueKey('sup_$sid'),
+                                  onExpansionChanged: (expanded) {
+                                    if (expanded &&
+                                        sid != null &&
+                                        sid.isNotEmpty) {
+                                      unawaited(_loadSupplierItems(sid));
+                                    }
+                                  },
+                                  tilePadding: const EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 2),
+                                  childrenPadding:
+                                      const EdgeInsets.fromLTRB(8, 0, 8, 10),
+                                  leading: IconButton(
+                                    tooltip: 'Supplier profile',
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(
+                                        minWidth: 36, minHeight: 36),
+                                    icon: const Icon(Icons.open_in_new_rounded,
+                                        size: 20, color: HexaColors.primaryMid),
+                                    onPressed: sid == null || sid.isEmpty
+                                        ? null
+                                        : () =>
+                                            context.push('/supplier/$sid'),
                                   ),
-                                  child: Theme(
-                                    data: Theme.of(context).copyWith(
-                                        dividerColor: Colors.transparent),
-                                    child: ExpansionTile(
-                                      tilePadding: const EdgeInsets.symmetric(
-                                          horizontal: 14, vertical: 4),
-                                      childrenPadding:
-                                          const EdgeInsets.fromLTRB(
-                                              14, 0, 14, 14),
-                                      title: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            '${medalFor(sid)}${r['supplier_name']?.toString() ?? 'Supplier'}',
-                                            style: tt.bodyMedium?.copyWith(
-                                                fontWeight: FontWeight.w700),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Row(
-                                            children: [
-                                              Text(
-                                                '${(r['deals'] as num?) ?? 0} deals, ',
-                                                style: tt.bodySmall?.copyWith(
-                                                  color: HexaColors
-                                                      .textSecondary,
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                              ),
-                                              Text(
-                                                widget.inr(profit),
-                                                style: tt.bodySmall?.copyWith(
-                                                  fontWeight: FontWeight.w900,
-                                                  color: profit >= 0
-                                                      ? HexaColors.profit
-                                                      : HexaColors.loss,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
-                                      children: [
-                                        Text('Margin profile',
-                                            style: tt.labelSmall?.copyWith(
-                                                color: HexaColors.textSecondary,
-                                                fontWeight: FontWeight.w700)),
-                                        const SizedBox(height: 6),
-                                        ClipRRect(
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                          child: LinearProgressIndicator(
-                                            value: (m / 30).clamp(0.0, 1.0),
-                                            minHeight: 10,
-                                            backgroundColor:
-                                                HexaColors.surfaceElevated,
-                                            color: m >= 15
-                                                ? HexaColors.profit
-                                                : (m >= 5
-                                                    ? HexaColors.accentAmber
-                                                    : HexaColors.loss),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 6),
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Text(
-                                                '${m.toStringAsFixed(1)}% margin',
-                                                style: tt.labelSmall?.copyWith(
-                                                    fontWeight:
-                                                        FontWeight.w700)),
-                                            Text(
-                                                'Avg ${widget.inr(((r['avg_landing'] as num?) ?? 0).toDouble())}',
-                                                style: tt.labelSmall?.copyWith(
-                                                    color: HexaColors
-                                                        .textSecondary)),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 12),
-                                        Text('Activity (relative)',
-                                            style: tt.labelSmall?.copyWith(
-                                                color: HexaColors.textSecondary,
-                                                fontWeight: FontWeight.w700)),
-                                        const SizedBox(height: 8),
-                                        SizedBox(
-                                          height: 48,
-                                          child: Row(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.end,
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceEvenly,
-                                            children: [
-                                              for (var k = 0; k < 5; k++)
-                                                _SupplierSparkBar(
-                                                    seed: '${sid}_$k',
-                                                    marginHint: m,
-                                                    index: k),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
+                                  title: Text(
+                                    name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: tt.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13,
                                     ),
                                   ),
+                                  subtitle: Text(
+                                    '$deals deals · Qty ${tq.toStringAsFixed(1)} · '
+                                    'Avg ${widget.inr(((r['avg_landing'] as num?) ?? 0).toDouble())} · '
+                                    '${m.toStringAsFixed(1)}% · ${widget.inr(profit)}',
+                                    maxLines: 2,
+                                    style: tt.labelSmall?.copyWith(
+                                      color: HexaColors.textSecondary,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                  children: [
+                                    if (sid == null || sid.isEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.all(8),
+                                        child: Text(
+                                          'No supplier id',
+                                          style: tt.bodySmall?.copyWith(
+                                              color: HexaColors.textSecondary),
+                                        ),
+                                      )
+                                    else
+                                      Builder(
+                                        builder: (ctx) {
+                                          final items = _supplierItemsCache[sid];
+                                          if (items == null) {
+                                            return const Padding(
+                                              padding: EdgeInsets.symmetric(
+                                                  vertical: 12),
+                                              child: Center(
+                                                child:
+                                                    CircularProgressIndicator(
+                                                        strokeWidth: 2),
+                                              ),
+                                            );
+                                          }
+                                          if (items.isEmpty) {
+                                            return Padding(
+                                              padding: const EdgeInsets.all(8),
+                                              child: Text(
+                                                'No line items in range',
+                                                style: tt.bodySmall?.copyWith(
+                                                    color: HexaColors
+                                                        .textSecondary),
+                                              ),
+                                            );
+                                          }
+                                          return Scrollbar(
+                                            thumbVisibility: true,
+                                            child: SingleChildScrollView(
+                                              scrollDirection: Axis.horizontal,
+                                              child: DataTable(
+                                                headingRowHeight: 32,
+                                                dataRowMinHeight: 36,
+                                                dataRowMaxHeight: 44,
+                                                horizontalMargin: 8,
+                                                columnSpacing: 10,
+                                                headingTextStyle: tt.labelSmall
+                                                    ?.copyWith(
+                                                  fontWeight: FontWeight.w800,
+                                                  fontSize: 10,
+                                                ),
+                                                columns: const [
+                                                  DataColumn(
+                                                      label: Text('Item')),
+                                                  DataColumn(
+                                                      label: Text('Category')),
+                                                  DataColumn(
+                                                      label: Text('Type')),
+                                                  DataColumn(
+                                                      label: Text('Qty'),
+                                                      numeric: true),
+                                                  DataColumn(
+                                                      label: Text('Avg'),
+                                                      numeric: true),
+                                                  DataColumn(
+                                                      label: Text('Profit'),
+                                                      numeric: true),
+                                                  DataColumn(
+                                                      label: Text('Margin'),
+                                                      numeric: true),
+                                                ],
+                                                rows: [
+                                                  for (final it in items)
+                                                    DataRow(
+                                                      cells: [
+                                                        DataCell(Text(
+                                                          it['item_name']
+                                                                  ?.toString() ??
+                                                              '—',
+                                                          style: tt.bodySmall
+                                                              ?.copyWith(
+                                                                  fontSize: 12),
+                                                        )),
+                                                        DataCell(Text(
+                                                          it['category']
+                                                                  ?.toString() ??
+                                                              '—',
+                                                          style: tt.bodySmall
+                                                              ?.copyWith(
+                                                                  fontSize: 12),
+                                                        )),
+                                                        DataCell(Text(
+                                                          it['type_name']
+                                                                  ?.toString() ??
+                                                              '—',
+                                                          style: tt.bodySmall
+                                                              ?.copyWith(
+                                                                  fontSize: 12),
+                                                        )),
+                                                        DataCell(Text(
+                                                          ((it['total_qty']
+                                                                      as num?) ??
+                                                                  0)
+                                                              .toStringAsFixed(
+                                                                  1),
+                                                        )),
+                                                        DataCell(Text(
+                                                          widget.inr(
+                                                            (it['avg_landing']
+                                                                        as num?)
+                                                                    ?.toDouble() ??
+                                                                0,
+                                                          ),
+                                                        )),
+                                                        DataCell(Text(
+                                                          widget.inr(
+                                                            (it['total_profit']
+                                                                        as num?)
+                                                                    ?.toDouble() ??
+                                                                0,
+                                                          ),
+                                                          style: TextStyle(
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                            fontSize: 12,
+                                                            color: ((it['total_profit']
+                                                                            as num?) ??
+                                                                        0) >=
+                                                                    0
+                                                                ? HexaColors
+                                                                    .profit
+                                                                : HexaColors
+                                                                    .loss,
+                                                          ),
+                                                        )),
+                                                        DataCell(Text(
+                                                          '${((it['margin_pct'] as num?) ?? 0).toStringAsFixed(1)}%',
+                                                        )),
+                                                      ],
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                  ],
                                 ),
                               ),
                             ),
@@ -2438,46 +1957,6 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
           ],
         );
       },
-    );
-  }
-}
-
-/// Decorative mini bars (no per-day API); deterministic from supplier id.
-class _SupplierSparkBar extends StatelessWidget {
-  const _SupplierSparkBar(
-      {required this.seed, required this.marginHint, required this.index});
-
-  final String seed;
-  final double marginHint;
-  final int index;
-
-  @override
-  Widget build(BuildContext context) {
-    var h = 0;
-    for (final c in seed.codeUnits) {
-      h = (h * 31 + c) & 0x7fffffff;
-    }
-    final jitter = ((h >> (index * 5)) & 0xff) / 255.0;
-    final base = (marginHint / 25).clamp(0.15, 1.0);
-    final fh = (28 * base * (0.65 + 0.35 * jitter)).clamp(8.0, 44.0);
-    return Expanded(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2),
-        child: Container(
-          height: fh,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(6),
-            gradient: LinearGradient(
-              begin: Alignment.bottomCenter,
-              end: Alignment.topCenter,
-              colors: [
-                HexaColors.primaryDeep.withValues(alpha: 0.5),
-                HexaColors.primaryMid
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 }
@@ -2536,36 +2015,16 @@ class _BrokersTabState extends ConsumerState<_BrokersTab> {
             rows, mode, _asc, (r) => (r['total_profit'] as num?) ?? 0);
         final filtered = _filterQuery(sorted, _search.text, 'broker_name');
         final tt = Theme.of(context).textTheme;
-        final chartRows = List<Map<String, dynamic>>.from(sorted)
-          ..sort((a, b) {
-            final ca = ((a['total_commission'] as num?) ?? 0).toDouble() +
-                ((a['total_profit'] as num?) ?? 0).toDouble();
-            final cb = ((b['total_commission'] as num?) ?? 0).toDouble() +
-                ((b['total_profit'] as num?) ?? 0).toDouble();
-            return cb.compareTo(ca);
-          });
-        final top6 = chartRows.take(6).toList();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-              child: Text(
-                'Commission vs profit (top 6)',
-                style: tt.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800, color: HexaColors.primaryNavy),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _BrokerStackedCompare(top: top6, tt: tt),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
               child: TextField(
                 controller: _search,
                 onChanged: (_) => setState(() {}),
-                style: tt.bodyMedium?.copyWith(color: HexaColors.primaryNavy),
+                style: tt.bodyMedium?.copyWith(
+                    color: HexaColors.primaryNavy, fontSize: 14),
                 decoration: InputDecoration(
                   isDense: true,
                   hintText: 'Search brokers…',
@@ -2574,13 +2033,13 @@ class _BrokersTabState extends ConsumerState<_BrokersTab> {
                   prefixIcon: const Icon(Icons.search_rounded,
                       color: HexaColors.primaryMid, size: 22),
                   filled: true,
-                  fillColor: HexaColors.surfaceElevated,
+                  fillColor: const Color(0xFFF1F5F9),
                   border: const OutlineInputBorder(
                       borderRadius: BorderRadius.all(Radius.circular(14)),
-                      borderSide: BorderSide(color: HexaColors.border)),
+                      borderSide: BorderSide(color: Color(0xFFE2E8F0))),
                   enabledBorder: const OutlineInputBorder(
                       borderRadius: BorderRadius.all(Radius.circular(14)),
-                      borderSide: BorderSide(color: HexaColors.border)),
+                      borderSide: BorderSide(color: Color(0xFFE2E8F0))),
                   focusedBorder: const OutlineInputBorder(
                       borderRadius: BorderRadius.all(Radius.circular(14)),
                       borderSide:
@@ -2637,7 +2096,7 @@ class _BrokersTabState extends ConsumerState<_BrokersTab> {
                         'Deals',
                         'Commission',
                         'Comm % of profit',
-                        'Profit'
+                        'Profit impact',
                       ],
                       rows: filtered,
                       columns: [
@@ -2673,133 +2132,147 @@ class _BrokersTabState extends ConsumerState<_BrokersTab> {
                                       color: HexaColors.textSecondary))),
                         ],
                       )
-                    : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 88),
-                        itemCount: filtered.length,
-                        itemBuilder: (context, i) {
-                          final r = filtered[i];
-                          final comm =
-                              ((r['total_commission'] as num?) ?? 0).toDouble();
-                          final profit =
-                              ((r['total_profit'] as num?) ?? 0).toDouble();
-                          final cp =
-                              ((r['commission_pct_of_profit'] as num?) ?? 0)
-                                  .toDouble();
-                          final warn = cp > 10;
-                          final bid = r['broker_id']?.toString();
-                          final name = r['broker_name']?.toString() ?? '—';
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: Material(
-                              color: Theme.of(context).colorScheme.surface,
-                              borderRadius: BorderRadius.circular(16),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(16),
-                                onTap: bid == null
-                                    ? null
-                                    : () => context.push('/broker/$bid'),
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(16),
-                                    border:
-                                        Border.all(color: HexaColors.border),
-                                    boxShadow: HexaColors.cardShadow(context),
+                    : LayoutBuilder(
+                        builder: (context, constraints) {
+                          return SingleChildScrollView(
+                            physics: const AlwaysScrollableScrollPhysics(
+                              parent: BouncingScrollPhysics(),
+                            ),
+                            padding: const EdgeInsets.fromLTRB(0, 0, 0, 88),
+                            child: Scrollbar(
+                              thumbVisibility: true,
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    minWidth: math.max(
+                                      640,
+                                      constraints.maxWidth,
+                                    ),
                                   ),
-                                  padding: const EdgeInsets.all(14),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          const Icon(Icons.handshake_outlined,
-                                              color: HexaColors.primaryMid,
-                                              size: 22),
-                                          const SizedBox(width: 10),
-                                          Expanded(
-                                            child: Text(name,
-                                                style: tt.titleSmall?.copyWith(
-                                                    fontWeight: FontWeight.w800,
-                                                    color: HexaColors
-                                                        .textPrimary)),
-                                          ),
-                                          Text(
-                                            widget.inr(profit),
-                                            style: tt.titleSmall?.copyWith(
-                                              fontWeight: FontWeight.w900,
-                                              color: profit >= 0
-                                                  ? HexaColors.profit
-                                                  : HexaColors.loss,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 10),
-                                      ClipRRect(
-                                        borderRadius: BorderRadius.circular(8),
-                                        child: SizedBox(
-                                          height: 10,
-                                          child: Builder(
-                                            builder: (context) {
-                                              final a = comm.abs();
-                                              final b = profit.abs();
-                                              final sum = a + b;
-                                              final fa =
-                                                  sum > 0 ? a / sum : 0.5;
-                                              return Row(
-                                                children: [
-                                                  Expanded(
-                                                    flex: math.max(
-                                                        1, (fa * 1000).round()),
-                                                    child: Container(
-                                                        color: HexaColors
-                                                            .chartOrange),
-                                                  ),
-                                                  Expanded(
-                                                    flex: math.max(
-                                                        1,
-                                                        ((1 - fa) * 1000)
-                                                            .round()),
-                                                    child: Container(
-                                                        color: HexaColors.profit
-                                                            .withValues(
-                                                                alpha: 0.85)),
-                                                  ),
-                                                ],
-                                              );
-                                            },
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Row(
-                                        children: [
-                                          Text('${r['deals'] ?? '—'} deals',
-                                              style: tt.labelSmall?.copyWith(
-                                                  color: HexaColors
-                                                      .textSecondary)),
-                                          const Spacer(),
-                                          Text(
-                                            'Comm ${widget.inr(comm)}',
-                                            style: tt.labelSmall?.copyWith(
-                                                fontWeight: FontWeight.w700,
-                                                color: HexaColors.chartOrange),
-                                          ),
-                                          const SizedBox(width: 10),
-                                          Text(
-                                            '${cp.toStringAsFixed(1)}% of profit',
-                                            style: tt.labelSmall?.copyWith(
+                                  child: Theme(
+                                    data: Theme.of(context).copyWith(
+                                      dividerColor: const Color(0xFFE2E8F0),
+                                      dataTableTheme: DataTableThemeData(
+                                        headingRowHeight: 36,
+                                        dataRowMinHeight: 40,
+                                        dataRowMaxHeight: 48,
+                                        horizontalMargin: 10,
+                                        columnSpacing: 12,
+                                        headingTextStyle: tt.labelSmall
+                                            ?.copyWith(
                                               fontWeight: FontWeight.w800,
-                                              color: warn
-                                                  ? HexaColors.accentAmber
-                                                  : HexaColors.textSecondary,
+                                              fontSize: 11,
+                                              color: HexaColors.textSecondary,
                                             ),
-                                          ),
-                                        ],
                                       ),
-                                    ],
+                                    ),
+                                    child: DataTable(
+                                      showCheckboxColumn: false,
+                                      border: const TableBorder(
+                                        horizontalInside: BorderSide(
+                                            color: Color(0xFFE2E8F0)),
+                                      ),
+                                      columns: const [
+                                        DataColumn(label: Text('Broker')),
+                                        DataColumn(
+                                            label: Text('Deals'),
+                                            numeric: true),
+                                        DataColumn(
+                                            label: Text('Commission'),
+                                            numeric: true),
+                                        DataColumn(
+                                            label: Text('Comm %'),
+                                            numeric: true),
+                                        DataColumn(
+                                            label: Text('Profit impact'),
+                                            numeric: true),
+                                      ],
+                                      rows: [
+                                        for (final r in filtered)
+                                          DataRow(
+                                            cells: [
+                                              DataCell(
+                                                Row(
+                                                  children: [
+                                                    const Icon(
+                                                      Icons
+                                                          .handshake_outlined,
+                                                      size: 18,
+                                                      color: HexaColors
+                                                          .primaryMid,
+                                                    ),
+                                                    const SizedBox(width: 6),
+                                                    Expanded(
+                                                      child: Text(
+                                                        r['broker_name']
+                                                                ?.toString() ??
+                                                            '—',
+                                                        style: tt.bodySmall
+                                                            ?.copyWith(
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                          fontSize: 12,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                                onTap: () {
+                                                  final bid = r['broker_id']
+                                                      ?.toString();
+                                                  if (bid != null &&
+                                                      bid.isNotEmpty) {
+                                                    context.push(
+                                                        '/broker/$bid');
+                                                  }
+                                                },
+                                              ),
+                                              DataCell(Text(
+                                                '${(r['deals'] as num?) ?? 0}',
+                                                style: tt.bodySmall
+                                                    ?.copyWith(fontSize: 12),
+                                              )),
+                                              DataCell(Text(
+                                                widget.inr(
+                                                  ((r['total_commission']
+                                                              as num?) ??
+                                                          0)
+                                                      .toDouble(),
+                                                ),
+                                                style: tt.bodySmall?.copyWith(
+                                                  fontSize: 12,
+                                                  color:
+                                                      HexaColors.chartOrange,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              )),
+                                              DataCell(Text(
+                                                '${((r['commission_pct_of_profit'] as num?) ?? 0).toStringAsFixed(1)}%',
+                                                style: tt.bodySmall
+                                                    ?.copyWith(fontSize: 12),
+                                              )),
+                                              DataCell(Text(
+                                                widget.inr(
+                                                  ((r['total_profit'] as num?) ??
+                                                          0)
+                                                      .toDouble(),
+                                                ),
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 12,
+                                                  color: ((r['total_profit']
+                                                                  as num?) ??
+                                                              0) >=
+                                                          0
+                                                      ? HexaColors.profit
+                                                      : HexaColors.loss,
+                                                ),
+                                              )),
+                                            ],
+                                          ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
@@ -2812,152 +2285,6 @@ class _BrokersTabState extends ConsumerState<_BrokersTab> {
           ],
         );
       },
-    );
-  }
-}
-
-class _BrokerStackedCompare extends StatelessWidget {
-  const _BrokerStackedCompare({required this.top, required this.tt});
-
-  final List<Map<String, dynamic>> top;
-  final TextTheme tt;
-
-  @override
-  Widget build(BuildContext context) {
-    if (top.isEmpty) {
-      return const SizedBox.shrink();
-    }
-    final cs = Theme.of(context).colorScheme;
-    var maxY = 1.0;
-    for (final r in top) {
-      final c = ((r['total_commission'] as num?) ?? 0).toDouble().abs();
-      final p = ((r['total_profit'] as num?) ?? 0).toDouble().abs();
-      maxY = math.max(maxY, math.max(c, p));
-    }
-    final groups = <BarChartGroupData>[];
-    for (var i = 0; i < top.length; i++) {
-      final r = top[i];
-      final c = ((r['total_commission'] as num?) ?? 0).toDouble();
-      final p = ((r['total_profit'] as num?) ?? 0).toDouble();
-      groups.add(
-        BarChartGroupData(
-          x: i,
-          barsSpace: 4,
-          barRods: [
-            BarChartRodData(
-              toY: c.abs(),
-              width: 10,
-              color: HexaColors.chartOrange,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(4)),
-            ),
-            BarChartRodData(
-              toY: p.abs(),
-              width: 10,
-              color: HexaColors.profit,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(4)),
-            ),
-          ],
-        ),
-      );
-    }
-    return Container(
-      height: 200,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-            color: cs.outlineVariant.withValues(alpha: 0.65)),
-        boxShadow: HexaColors.cardShadow(context),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                  width: 10,
-                  height: 10,
-                  decoration: const BoxDecoration(
-                      color: HexaColors.chartOrange, shape: BoxShape.circle)),
-              const SizedBox(width: 6),
-              Text('Commission',
-                  style:
-                      tt.labelSmall?.copyWith(color: HexaColors.textSecondary)),
-              const SizedBox(width: 14),
-              Container(
-                  width: 10,
-                  height: 10,
-                  decoration: const BoxDecoration(
-                      color: HexaColors.profit, shape: BoxShape.circle)),
-              const SizedBox(width: 6),
-              Text('Profit',
-                  style:
-                      tt.labelSmall?.copyWith(color: HexaColors.textSecondary)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Expanded(
-            child: BarChart(
-              BarChartData(
-                maxY: maxY * 1.1,
-                gridData: FlGridData(
-                    show: true,
-                    drawVerticalLine: false,
-                    getDrawingHorizontalLine: (v) => FlLine(
-                        color: HexaColors.border.withValues(alpha: 0.4))),
-                borderData: FlBorderData(show: false),
-                titlesData: FlTitlesData(
-                  topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false)),
-                  rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false)),
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      reservedSize: 36,
-                      showTitles: true,
-                      getTitlesWidget: (v, _) => Text(
-                        v >= 100000
-                            ? '₹${(v / 1000).toStringAsFixed(0)}k'
-                            : '₹${v.toStringAsFixed(0)}',
-                        style: tt.labelSmall?.copyWith(
-                            fontSize: 8, color: HexaColors.textSecondary),
-                      ),
-                    ),
-                  ),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 28,
-                      getTitlesWidget: (v, _) {
-                        final idx = v.toInt();
-                        if (idx < 0 || idx >= top.length) {
-                          return const SizedBox.shrink();
-                        }
-                        final raw = top[idx]['broker_name']?.toString() ?? '';
-                        final t =
-                            raw.length > 6 ? '${raw.substring(0, 6)}…' : raw;
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(t,
-                              style: tt.labelSmall?.copyWith(
-                                  fontSize: 8,
-                                  color: HexaColors.textSecondary)),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-                barGroups: groups,
-                alignment: BarChartAlignment.spaceAround,
-                groupsSpace: 12,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

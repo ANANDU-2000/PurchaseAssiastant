@@ -54,7 +54,7 @@ ThemeData buildHexaTheme(Brightness brightness) {
       },
     ),
     scaffoldBackgroundColor:
-        isDark ? HexaColors.canvas : HexaColors.surfaceApp,
+        isDark ? HexaColors.canvas : const Color(0xFFFFFFFF),
     textTheme: textTheme.copyWith(
       titleLarge: textTheme.titleLarge?.copyWith(
         fontWeight: FontWeight.w800,

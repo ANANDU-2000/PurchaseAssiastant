@@ -12,10 +12,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.models import Entry, EntryLineItem, Supplier
 from app.schemas.entries import EntryCreateRequest
+from app.services.assistant_entity import (
+    EntityKind,
+    commit_entity,
+    consume_entity_preview,
+    get_entity_preview,
+    issue_entity_preview,
+    parse_entity_message,
+    preview_lines_for,
+)
 from app.services.entry_create_pipeline import commit_create_entry_confirmed, prepare_create_entry_preview
+from app.services.entry_preview_token import consume_preview_token
 from app.services.intent_stub import stub_intent_from_text
 from app.services.llm_intent import extract_intent_json
-from app.services.whatsapp_action_resolution import build_entry_create_request, ist_today
+from app.services.entry_intent_resolution import build_entry_create_request, ist_today
 
 
 def _month_to_date_range() -> tuple[date, date]:
@@ -36,6 +46,62 @@ def _parse_float(v: object) -> float | None:
         return float(s)
     except ValueError:
         return None
+
+
+def _map_llm_entity_intent(
+    intent: str, data: dict[str, Any]
+) -> tuple[EntityKind, dict[str, Any]] | None:
+    """Map LLM intent+data to assistant_entity kind/payload; None → not an entity action."""
+    key = (intent or "").strip().lower()
+    if key == "create_supplier":
+        name = data.get("supplier_name") or data.get("name")
+        if not name or not str(name).strip():
+            return None
+        return ("supplier", {"name": str(name).strip()})
+    if key == "create_category":
+        name = data.get("category_name") or data.get("name")
+        if not name or not str(name).strip():
+            return None
+        return ("category", {"name": str(name).strip()})
+    if key in ("create_category_item", "create_category_type"):
+        cat = data.get("category_name") or data.get("category")
+        item = data.get("item_name") or data.get("type_name") or data.get("name")
+        if not cat or not item:
+            return None
+        return (
+            "category_item",
+            {"category_name": str(cat).strip(), "item_name": str(item).strip()},
+        )
+    if key in ("create_catalog_item", "create_item"):
+        raw_name = data.get("item_name") or data.get("name") or data.get("item")
+        if not raw_name or not str(raw_name).strip():
+            return None
+        cat = data.get("category_name") or data.get("category")
+        payload: dict[str, Any] = {
+            "name": str(raw_name).strip(),
+            "category_name": str(cat).strip() if cat else None,
+        }
+        du = data.get("default_unit") or data.get("unit")
+        if du:
+            payload["default_unit"] = str(du).strip().lower()
+        kgpb = _parse_float(data.get("default_kg_per_bag") or data.get("kg_per_bag"))
+        if kgpb is not None:
+            payload["default_kg_per_bag"] = kgpb
+        return ("catalog_item", payload)
+    if key == "create_variant":
+        vn = data.get("variant_name") or data.get("name")
+        itn = data.get("item_name") or data.get("item")
+        if not vn or not itn:
+            return None
+        out: dict[str, Any] = {
+            "variant_name": str(vn).strip(),
+            "item_name": str(itn).strip(),
+        }
+        kgpb = _parse_float(data.get("default_kg_per_bag") or data.get("kg_per_bag"))
+        if kgpb is not None:
+            out["default_kg_per_bag"] = kgpb
+        return ("variant", out)
+    return None
 
 
 def _intent_data_to_transaction_dict(data: dict[str, Any]) -> dict[str, Any]:
@@ -92,7 +158,7 @@ def _is_affirmation(text: str) -> bool:
 
 def _is_negation(text: str) -> bool:
     t = text.strip().lower()
-    return t in ("no", "n", "cancel", "stop", "abort")
+    return t in ("no", "n", "nope", "cancel", "stop", "abort")
 
 
 def _detect_help(text: str) -> bool:
@@ -217,13 +283,47 @@ async def run_app_assistant_turn(
     """
     text = message.strip()
 
-    # Confirm / cancel using prior preview
-    if preview_token and entry_draft and _is_affirmation(text):
+    # Confirm / cancel — entity preview (supplier/category/item) or purchase entry
+    if preview_token and _is_affirmation(text):
+        ent = get_entity_preview(preview_token, user_id=user_id, business_id=business_id)
+        if ent is not None:
+            kind, payload = ent
+            try:
+                saved = await commit_entity(db, business_id, kind, payload)
+                await db.commit()
+                consume_entity_preview(preview_token)
+                return {
+                    "reply": f"Saved ({saved.get('entity', 'ok')}).",
+                    "intent": "entity_saved",
+                    "preview_token": None,
+                    "entry_draft": None,
+                    "saved_entry": saved,
+                    "missing_fields": [],
+                }
+            except ValueError as e:
+                await db.rollback()
+                return {
+                    "reply": str(e),
+                    "intent": "clarify",
+                    "preview_token": preview_token,
+                    "entry_draft": entry_draft,
+                    "saved_entry": None,
+                    "missing_fields": [],
+                }
+        if not entry_draft:
+            return {
+                "reply": "Preview expired. Send the request again.",
+                "intent": "clarify",
+                "preview_token": None,
+                "entry_draft": None,
+                "saved_entry": None,
+                "missing_fields": [],
+            }
         try:
             body = EntryCreateRequest.model_validate(entry_draft)
         except Exception as e:  # noqa: BLE001
             return {
-                "reply": f"Invalid saved draft: {e!s}. Start a new purchase message.",
+                "reply": f"Invalid draft: {e!s}.",
                 "intent": "clarify",
                 "preview_token": None,
                 "entry_draft": None,
@@ -253,12 +353,25 @@ async def run_app_assistant_turn(
                 "missing_fields": [],
             }
 
-    if preview_token and entry_draft and _is_negation(text):
+    if preview_token and _is_negation(text):
+        consume_entity_preview(preview_token)
+        consume_preview_token(preview_token)
         return {
-            "reply": "Cancelled. Send a new purchase when ready.",
+            "reply": "Cancelled.",
             "intent": "cancelled",
             "preview_token": None,
             "entry_draft": None,
+            "saved_entry": None,
+            "missing_fields": [],
+        }
+
+    # Pending preview: do not start a new intent or re-ask unrelated questions.
+    if preview_token:
+        return {
+            "reply": "You have a pending preview. Reply YES to save or NO to cancel.",
+            "intent": "clarify",
+            "preview_token": preview_token,
+            "entry_draft": entry_draft,
             "saved_entry": None,
             "missing_fields": [],
         }
@@ -267,13 +380,41 @@ async def run_app_assistant_turn(
         return {
             "reply": (
                 "Harisree assistant\n"
-                "• Add purchase: e.g. “100 kg rice from Surag, buy ₹700 land ₹720”\n"
-                "• I’ll show a preview — reply YES to save.\n"
-                "• Ask: profit this month, best supplier, top item."
+                "• Purchase: “100 kg rice from Surag, buy ₹700 land ₹720” → preview → YES.\n"
+                "• create supplier Ravi | create category Rice > Biriyani\n"
+                "• create item Basmati 50kg bag under Rice\n"
+                "• Reports: profit this month, best supplier."
             ),
             "intent": "help",
             "preview_token": None,
             "entry_draft": None,
+            "saved_entry": None,
+            "missing_fields": [],
+        }
+
+    ent_parsed = parse_entity_message(text)
+    if ent_parsed:
+        kind, payload = ent_parsed
+        if kind == "catalog_item" and not payload.get("category_name"):
+            return {
+                "reply": (
+                    "To add an item, use one of:\n"
+                    "• create item Basmati 50kg bag under Rice\n"
+                    "• create category Rice > Basmati"
+                ),
+                "intent": "clarify",
+                "preview_token": None,
+                "entry_draft": None,
+                "saved_entry": None,
+                "missing_fields": ["category"],
+            }
+        tok = issue_entity_preview(user_id=user_id, business_id=business_id, kind=kind, payload=payload)
+        prev = preview_lines_for(kind, payload)
+        return {
+            "reply": f"Preview (not saved):\n{prev}\n\nReply YES to save, NO to cancel.",
+            "intent": "entity_preview",
+            "preview_token": tok,
+            "entry_draft": {"__assistant__": "entity"},
             "saved_entry": None,
             "missing_fields": [],
         }
@@ -316,6 +457,32 @@ async def run_app_assistant_turn(
                 "intent": "clarify",
                 "preview_token": None,
                 "entry_draft": None,
+                "saved_entry": None,
+                "missing_fields": [],
+            }
+
+        ent_llm = _map_llm_entity_intent(intent, data)
+        if ent_llm is not None:
+            ek, epayload = ent_llm
+            if ek == "catalog_item" and not epayload.get("category_name"):
+                return {
+                    "reply": reply_text
+                    or "Which category should this item go under? Example: create item Basmati under Rice",
+                    "intent": "clarify",
+                    "preview_token": None,
+                    "entry_draft": None,
+                    "saved_entry": None,
+                    "missing_fields": ["category_name"],
+                }
+            tok = issue_entity_preview(
+                user_id=user_id, business_id=business_id, kind=ek, payload=epayload
+            )
+            prev = preview_lines_for(ek, epayload)
+            return {
+                "reply": f"Preview (not saved):\n{prev}\n\nReply YES to save, NO to cancel.",
+                "intent": "entity_preview",
+                "preview_token": tok,
+                "entry_draft": {"__assistant__": "entity"},
                 "saved_entry": None,
                 "missing_fields": [],
             }

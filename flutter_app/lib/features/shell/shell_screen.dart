@@ -76,11 +76,11 @@ class ShellScreen extends ConsumerWidget {
             right: 12,
             bottom: 72 + bottomInset + 8,
             child: Tooltip(
-              message: 'Assistant',
+              message: 'Chat assistant — hold mic inside chat to dictate',
               child: Material(
-                elevation: 6,
-                shadowColor: Colors.black26,
-                color: HexaColors.surfaceCard,
+                elevation: 4,
+                shadowColor: Colors.black12,
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(14),
                 child: InkWell(
                   onTap: () {
@@ -88,11 +88,17 @@ class ShellScreen extends ConsumerWidget {
                     context.push('/ai');
                   },
                   borderRadius: BorderRadius.circular(14),
-                  child: const SizedBox(
+                  child: Container(
                     width: 48,
                     height: 48,
-                    child: Icon(
-                      Icons.smart_toy_outlined,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: HexaColors.accentInfo.withValues(alpha: 0.4),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.chat_bubble_rounded,
                       color: HexaColors.accentInfo,
                       size: 24,
                     ),

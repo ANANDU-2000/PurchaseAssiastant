@@ -474,7 +474,14 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
           categoryNames: catName,
           recentLines: quickPicks?.recentLines ?? const [],
           topLines: quickPicks?.topLines ?? const [],
-          onPick: (it) {
+          loadVariants: (itemId) async {
+            if (session == null) return [];
+            return ref.read(hexaApiProvider).listCatalogVariants(
+                  businessId: session.primaryBusiness.id,
+                  itemId: itemId,
+                );
+          },
+          onPick: (it, {String? catalogVariantId, Map<String, dynamic>? variant}) {
             final name = it['name']?.toString() ?? '';
             final cid = it['category_id']?.toString() ?? '';
             final du = it['default_unit']?.toString();
@@ -483,7 +490,15 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
               l.catalogItemId = it['id']?.toString();
               l.item.text = name;
               l.category.text = catName[cid] ?? '';
-              l.catalogVariantId = null;
+              l.catalogVariantId =
+                  (catalogVariantId != null && catalogVariantId.isNotEmpty)
+                      ? catalogVariantId
+                      : null;
+              final kg = variant?['default_kg_per_bag'];
+              if (kg != null) {
+                l.kgPerBag.text =
+                    kg is num ? kg.toString() : kg.toString();
+              }
               if (du != null &&
                   (du == 'kg' ||
                       du == 'box' ||
@@ -2674,7 +2689,17 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                   ),
               ],
             ),
-            const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Flow: Category → Item (catalog) → Type/variant if needed → Qty & unit (${l.unit}).',
+                style: tt.bodySmall?.copyWith(
+                  color: HexaColors.textSecondary,
+                  fontSize: 12,
+                  height: 1.25,
+                ),
+              ),
+            ),
             if (!l.manualItemEntry) ...[
               Material(
                 color: HexaColors.primaryLight,
@@ -3284,7 +3309,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
   }
 }
 
-/// Category chips + search — opens as white bottom sheet (cash-register flow).
+/// Category chips → item list → variant/type when multiple (cash-register flow).
 class _CatalogItemPickModal extends StatefulWidget {
   const _CatalogItemPickModal({
     required this.categories,
@@ -3292,6 +3317,7 @@ class _CatalogItemPickModal extends StatefulWidget {
     required this.categoryNames,
     required this.recentLines,
     required this.topLines,
+    required this.loadVariants,
     required this.onPick,
   });
 
@@ -3300,7 +3326,13 @@ class _CatalogItemPickModal extends StatefulWidget {
   final Map<String, String> categoryNames;
   final List<Map<String, dynamic>> recentLines;
   final List<Map<String, dynamic>> topLines;
-  final void Function(Map<String, dynamic> item) onPick;
+  final Future<List<Map<String, dynamic>>> Function(String itemId)
+      loadVariants;
+  final void Function(
+    Map<String, dynamic> item, {
+    String? catalogVariantId,
+    Map<String, dynamic>? variant,
+  }) onPick;
 
   @override
   State<_CatalogItemPickModal> createState() => _CatalogItemPickModalState();
@@ -3309,11 +3341,58 @@ class _CatalogItemPickModal extends StatefulWidget {
 class _CatalogItemPickModalState extends State<_CatalogItemPickModal> {
   final _search = TextEditingController();
   String? _filterCategoryId;
+  bool _variantsLoading = false;
+  Map<String, dynamic>? _itemForVariantStep;
+  List<Map<String, dynamic>>? _variantsForItem;
 
   @override
   void dispose() {
     _search.dispose();
     super.dispose();
+  }
+
+  Future<void> _selectCatalogItem(Map<String, dynamic> it) async {
+    final id = it['id']?.toString();
+    if (id == null || id.isEmpty) {
+      widget.onPick(it);
+      return;
+    }
+    setState(() => _variantsLoading = true);
+    try {
+      final vars = await widget.loadVariants(id);
+      if (!mounted) return;
+      if (vars.isEmpty) {
+        widget.onPick(it);
+        return;
+      }
+      if (vars.length == 1) {
+        final v = vars.first;
+        widget.onPick(
+          it,
+          catalogVariantId: v['id']?.toString(),
+          variant: v,
+        );
+        return;
+      }
+      setState(() {
+        _variantsLoading = false;
+        _itemForVariantStep = it;
+        _variantsForItem = vars;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _variantsLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not load types for this item')),
+      );
+    }
+  }
+
+  void _leaveVariantStep() {
+    setState(() {
+      _itemForVariantStep = null;
+      _variantsForItem = null;
+    });
   }
 
   Map<String, dynamic> _resolveHistoryLine(Map<String, dynamic> line) {
@@ -3372,7 +3451,14 @@ class _CatalogItemPickModalState extends State<_CatalogItemPickModal> {
                 borderRadius: BorderRadius.circular(12),
                 child: InkWell(
                   borderRadius: BorderRadius.circular(12),
-                  onTap: () => widget.onPick(pick),
+                  onTap: () {
+                    final vid = line['catalog_variant_id']?.toString();
+                    if (vid != null && vid.isNotEmpty) {
+                      widget.onPick(pick, catalogVariantId: vid);
+                    } else {
+                      widget.onPick(pick);
+                    }
+                  },
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 8),
@@ -3411,6 +3497,80 @@ class _CatalogItemPickModalState extends State<_CatalogItemPickModal> {
 
   @override
   Widget build(BuildContext context) {
+    final variants = _variantsForItem;
+    final itemStep = _itemForVariantStep;
+    if (itemStep != null && variants != null) {
+      final itemName = itemStep['name']?.toString() ?? 'Item';
+      final h = MediaQuery.sizeOf(context).height * 0.72;
+      final cs = Theme.of(context).colorScheme;
+      return SafeArea(
+        child: SizedBox(
+          height: h,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 4, 12, 8),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: _leaveVariantStep,
+                      icon: const Icon(Icons.arrow_back_rounded),
+                    ),
+                    Expanded(
+                      child: Text(
+                        'Type / variant · $itemName',
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 28),
+                  itemCount: variants.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, i) {
+                    final v = variants[i];
+                    final id = v['id']?.toString() ?? '';
+                    final n = v['name']?.toString() ?? '';
+                    final kg = v['default_kg_per_bag'];
+                    return ListTile(
+                      title: Text(
+                        n,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: kg != null
+                          ? Text(
+                              'Default $kg kg/bag',
+                              style: TextStyle(
+                                color: cs.onSurfaceVariant,
+                                fontSize: 12,
+                              ),
+                            )
+                          : null,
+                      onTap: () {
+                        widget.onPick(
+                          itemStep,
+                          catalogVariantId: id.isNotEmpty ? id : null,
+                          variant: v,
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final q = _search.text.trim().toLowerCase();
     final filtered = widget.items.where((it) {
       final cid = it['category_id']?.toString() ?? '';
@@ -3494,35 +3654,60 @@ class _CatalogItemPickModalState extends State<_CatalogItemPickModal> {
             ),
             const Divider(height: 1),
             Expanded(
-              child: filtered.isEmpty
-                  ? Center(
-                      child: Text(
-                        'No items match — try All or another category',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Theme.of(context).colorScheme.outline,
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: AbsorbPointer(
+                      absorbing: _variantsLoading,
+                      child: filtered.isEmpty
+                          ? Center(
+                              child: Text(
+                                'No items match — try All or another category',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .outline,
+                                    ),
+                              ),
+                            )
+                          : ListView.builder(
+                              padding: const EdgeInsets.fromLTRB(8, 0, 8, 28),
+                              itemCount: filtered.length,
+                              itemBuilder: (context, i) {
+                                final it = filtered[i];
+                                final name = it['name']?.toString() ?? '';
+                                final cid = it['category_id']?.toString() ?? '';
+                                final du = it['default_unit']?.toString();
+                                final sub =
+                                    '${widget.categoryNames[cid] ?? ''}${du != null && du.isNotEmpty ? ' · $du' : ''}';
+                                return ListTile(
+                                  title: Text(
+                                    name,
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w600),
+                                  ),
+                                  subtitle: Text(sub),
+                                  onTap: () =>
+                                      unawaited(_selectCatalogItem(it)),
+                                );
+                              },
                             ),
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 28),
-                      itemCount: filtered.length,
-                      itemBuilder: (context, i) {
-                        final it = filtered[i];
-                        final name = it['name']?.toString() ?? '';
-                        final cid = it['category_id']?.toString() ?? '';
-                        final du = it['default_unit']?.toString();
-                        final sub =
-                            '${widget.categoryNames[cid] ?? ''}${du != null && du.isNotEmpty ? ' · $du' : ''}';
-                        return ListTile(
-                          title: Text(
-                            name,
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          subtitle: Text(sub),
-                          onTap: () => widget.onPick(it),
-                        );
-                      },
                     ),
+                  ),
+                  if (_variantsLoading)
+                    Positioned.fill(
+                      child: ColoredBox(
+                        color: Colors.white.withValues(alpha: 0.65),
+                        child: const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ],
         ),

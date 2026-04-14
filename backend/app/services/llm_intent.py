@@ -18,14 +18,24 @@ from app.services.platform_credentials import (
 
 logger = logging.getLogger(__name__)
 
-_INTENT_JSON_INSTRUCTIONS = """You are Harisree Purchase Assistant. Extract fields from the user's message for a purchase entry.
-Return ONE JSON object only (no markdown) with exactly these keys:
-- "intent": one of "create_entry", "update_entry", "delete_entry", "query_summary"
-- "data": object with keys: item, variant, unit_type, bags, kg_per_bag, qty_kg, purchase_price_per_bag, landed_cost_per_bag, selling_price_per_kg, transport, loading, broker, broker_percent, supplier, location — use JSON null for unknown (never guess numbers)
-- "missing_fields": array of strings listing required fields still unknown
-- "reply_text": one short helpful sentence for the user
+_INTENT_JSON_INSTRUCTIONS = """You are Harisree Purchase Assistant. Classify the user message and extract fields.
 
-Rules: Do not invent prices or quantities. If unclear, null and list in missing_fields."""
+Return ONE JSON object only (no markdown) with exactly these keys:
+- "intent": one of:
+  - "create_entry" — record a purchase (qty, prices, item, supplier, …)
+  - "create_supplier" — new supplier (needs supplier_name or name)
+  - "create_category" — new top-level category only (category_name or name)
+  - "create_category_item" — category + first catalog item / "type" line, e.g. Rice → Biriyani (needs category_name and item_name)
+  - "create_catalog_item" — new item under existing category (needs item_name or name, and category_name)
+  - "create_variant" — variant under an item (variant_name, item_name)
+  - "update_entry", "delete_entry", "query_summary"
+- "data": object — include only relevant keys; use null for unknown (never guess numbers):
+  For purchases: item, variant, unit_type, bags, kg_per_bag, qty_kg, buy_price, landing_cost, selling_price_per_kg, broker, supplier, supplier_name, …
+  For entities: supplier_name, name, category_name, item_name, variant_name, default_unit, kg_per_bag
+- "missing_fields": array of strings for required fields still unknown
+- "reply_text": one short sentence if you need to clarify; else a neutral note
+
+Rules: Do not invent prices or quantities. Prefer create_category_item when the user gives "category X > Y" or "X under Y" for types. Short replies."""
 
 
 def _normalize_payload(raw: dict[str, Any]) -> dict[str, Any] | None:

@@ -125,11 +125,11 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
     final brid = e['broker_id']?.toString();
     if (sid != null && supplierNames[sid] != null) {
       if (buf.isNotEmpty) buf.write(' · ');
-      buf.write('Sup: ${supplierNames[sid]}');
+      buf.write('Supplier: ${supplierNames[sid]}');
     }
     if (brid != null && brokerNames[brid] != null) {
       if (buf.isNotEmpty) buf.write(' · ');
-      buf.write('Brk: ${brokerNames[brid]}');
+      buf.write('Broker: ${brokerNames[brid]}');
     }
     return buf.isEmpty ? 'n/a' : buf.toString();
   }

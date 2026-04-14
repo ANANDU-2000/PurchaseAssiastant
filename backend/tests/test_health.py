@@ -13,4 +13,6 @@ def test_health_ok():
     data = response.json()
     assert data.get("status") == "ok"
     assert "ai_provider" in data
-    assert "webhook_max_per_minute" in data
+    assert "ai_ready" in data
+    assert "assistant_ready" in data
+    assert "redis_url_set" in data

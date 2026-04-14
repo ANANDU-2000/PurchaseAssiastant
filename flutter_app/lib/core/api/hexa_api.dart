@@ -64,6 +64,12 @@ class HexaApi {
 
   Dio get raw => _dio;
 
+  /// Public health check (no auth). Used for AI status indicator.
+  Future<Map<String, dynamic>> health() async {
+    final res = await _plain.get<Map<String, dynamic>>('/health');
+    return res.data ?? <String, dynamic>{};
+  }
+
   void setAuthToken(String? token) {
     if (token == null || token.isEmpty) {
       _dio.options.headers.remove('Authorization');
@@ -134,12 +140,6 @@ class HexaApi {
     return data
         .map((e) => BusinessBrief.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
-  }
-
-  /// Assistant number hint for Settings (same gates as WhatsApp: linked account phone).
-  Future<Map<String, dynamic>> getWhatsappAssistantInfo() async {
-    final res = await _dio.get<Map<String, dynamic>>('/v1/me/whatsapp-assistant');
-    return Map<String, dynamic>.from(res.data ?? {});
   }
 
   /// Owner: optional in-app title + logo URL (HTTPS recommended).
@@ -711,6 +711,22 @@ class HexaApi {
       required String to}) async {
     final res = await _dio.get<dynamic>(
       '/v1/businesses/$businessId/analytics/suppliers',
+      queryParameters: {'from': from, 'to': to},
+    );
+    final data = res.data;
+    if (data is! List) return [];
+    return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  /// Per-supplier item breakdown (for expandable supplier rows in Reports).
+  Future<List<Map<String, dynamic>>> analyticsSupplierItems({
+    required String businessId,
+    required String supplierId,
+    required String from,
+    required String to,
+  }) async {
+    final res = await _dio.get<dynamic>(
+      '/v1/businesses/$businessId/analytics/suppliers/$supplierId/items',
       queryParameters: {'from': from, 'to': to},
     );
     final data = res.data;

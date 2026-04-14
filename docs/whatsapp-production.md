@@ -1,5 +1,7 @@
 # WhatsApp on production (Render + Authkey + Supabase)
 
+**Note:** The stock Harisree product build routes the assistant through the Flutter app (`POST /v1/businesses/{id}/ai/chat`) and does not register WhatsApp HTTP routes. Keep this page only if you maintain a fork that wires Meta/Authkey webhooks again.
+
 ## Where the webhook URL comes from (read this first)
 
 You **do not** copy the webhook URL from Authkey, Vercel, or Supabase. You **construct** it:

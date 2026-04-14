@@ -23,9 +23,8 @@ This document mirrors the **env-security-baseline** workstream: what must be tru
 
 ## Integrations
 
-- **WhatsApp webhook (360dialog)**: HMAC verification when `DIALOG360_WEBHOOK_SECRET` is set; idempotent processing via message id in Redis.
-- **WhatsApp webhook (Authkey)**: optional shared secret — when `AUTHKEY_WEBHOOK_SECRET` is set, inbound requests must send header `X-Authkey-Webhook-Secret` (or `X-Webhook-Secret`) with the same value.
-- **Future webhooks** (Razorpay, etc.): verify signatures before mutating state.
+- **In-app assistant**: authenticated `POST /v1/businesses/{id}/ai/chat`; same JWT/session rules as other business APIs; no anonymous chat surface.
+- **Third-party webhooks** (e.g. Razorpay billing): verify signatures before mutating state.
 
 ## Observability
 

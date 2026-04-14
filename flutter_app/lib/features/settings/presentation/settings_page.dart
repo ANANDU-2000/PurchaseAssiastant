@@ -9,8 +9,6 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
-
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/config/app_config.dart';
@@ -18,17 +16,6 @@ import '../../../core/models/session.dart';
 import '../../../core/providers/prefs_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/theme/theme_context_ext.dart';
-
-/// Authkey dashboard often shows a hex app id — not dialable. Block obvious mistakes.
-bool _looksLikeAuthkeyAppId(String raw) {
-  final t = raw.trim();
-  if (t.isEmpty) return false;
-  if (t.contains('+')) return false;
-  if (RegExp(r'^[\d\s\-()]+$').hasMatch(t) && RegExp(r'\d').hasMatch(t)) {
-    return false;
-  }
-  return t.length >= 8 && RegExp(r'^[0-9a-fA-F]+$').hasMatch(t);
-}
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -40,8 +27,6 @@ class SettingsPage extends ConsumerStatefulWidget {
 class _SettingsPageState extends ConsumerState<SettingsPage> {
   Map<String, dynamic>? _billing;
   String? _billingErr;
-  Map<String, dynamic>? _whatsappAssistant;
-  late final TextEditingController _waOverrideCtrl;
   late final TextEditingController _brandingTitleCtrl;
   Uint8List? _pendingLogoBytes;
   String _pendingLogoFilename = 'logo.jpg';
@@ -58,7 +43,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   @override
   void initState() {
     super.initState();
-    _waOverrideCtrl = TextEditingController();
     _brandingTitleCtrl = TextEditingController();
     if (!kIsWeb) {
       _razorpay = Razorpay();
@@ -78,7 +62,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refreshBilling();
-      unawaited(_loadWhatsappAssistant());
       final s = ref.read(sessionProvider);
       final pb = s?.primaryBusiness;
       if (pb != null && mounted) {
@@ -92,7 +75,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   @override
   void dispose() {
     _razorpay?.clear();
-    _waOverrideCtrl.dispose();
     _brandingTitleCtrl.dispose();
     super.dispose();
   }
@@ -273,66 +255,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
   }
 
-  Future<void> _loadWhatsappAssistant() async {
-    final session = ref.read(sessionProvider);
-    if (session == null) return;
-    final prefs = ref.read(sharedPreferencesProvider);
-    final local = prefs.getString(kWhatsappAssistantOverrideKey)?.trim() ?? '';
-    _waOverrideCtrl.text = local;
-    try {
-      final m = await ref.read(hexaApiProvider).getWhatsappAssistantInfo();
-      if (mounted) {
-        setState(() {
-          _whatsappAssistant = m;
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _whatsappAssistant = null;
-        });
-      }
-    }
-  }
-
-  Future<void> _saveWhatsappOverride() async {
-    final prefs = ref.read(sharedPreferencesProvider);
-    final t = _waOverrideCtrl.text.trim();
-    if (t.isNotEmpty && _looksLikeAuthkeyAppId(t)) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Use your WhatsApp Business phone in E.164 (e.g. +15559276064). '
-            'Do not paste the Authkey app id from the dashboard.',
-          ),
-        ),
-      );
-      return;
-    }
-    if (t.isEmpty) {
-      await prefs.remove(kWhatsappAssistantOverrideKey);
-    } else {
-      await prefs.setString(kWhatsappAssistantOverrideKey, t);
-    }
-    if (mounted) {
-      setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Saved on this device')),
-      );
-    }
-  }
-
-  /// Draft in field → saved on device → API (so Copy/Open match what you typed).
-  String _effectiveAssistantE164() {
-    final draft = _waOverrideCtrl.text.trim();
-    if (draft.isNotEmpty) return draft;
-    final prefs = ref.read(sharedPreferencesProvider);
-    final saved = prefs.getString(kWhatsappAssistantOverrideKey)?.trim() ?? '';
-    if (saved.isNotEmpty) return saved;
-    return _whatsappAssistant?['assistant_e164']?.toString().trim() ?? '';
-  }
-
   Future<void> _refreshBilling() async {
     final session = ref.read(sessionProvider);
     if (session == null) return;
@@ -427,144 +349,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ),
           const SizedBox(height: 12),
-          Card(
-            color: context.adaptiveCard,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.chat_rounded, color: cs.primary),
-                      const SizedBox(width: 8),
-                      Text(
-                        'WhatsApp assistant',
-                        style: tt.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          color: cs.onSurface,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _whatsappAssistant?['instructions']?.toString() ??
-                        'Save the assistant number in your contacts. Message from the phone you use to sign in. Purchases need a preview and YES — never auto-saved from chat alone.',
-                    style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'The name shown in WhatsApp chat is set in Meta Business / your provider (WABA), not in this app.',
-                    style: tt.bodySmall?.copyWith(
-                      color: cs.onSurfaceVariant,
-                      fontSize: 12,
-                    ),
-                  ),
-                  if ((_whatsappAssistant?['assistant_e164']?.toString() ?? '')
-                      .trim()
-                      .isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      'Server',
-                      style: tt.labelSmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    SelectableText(
-                      _whatsappAssistant!['assistant_e164'].toString().trim(),
-                      style: tt.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.2,
-                        color: cs.onSurface,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                  ],
-                  Text(
-                    'On this device',
-                    style: tt.labelSmall?.copyWith(
-                      color: cs.onSurfaceVariant,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  TextField(
-                    controller: _waOverrideCtrl,
-                    keyboardType: TextInputType.phone,
-                    decoration: InputDecoration(
-                      labelText: 'WhatsApp Business number (E.164)',
-                      hintText: '+15559276064',
-                      helperText:
-                          'Use the phone number assigned to WhatsApp — not the Authkey app id.',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      isDense: true,
-                    ),
-                    onSubmitted: (_) => unawaited(_saveWhatsappOverride()),
-                  ),
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: OutlinedButton(
-                      onPressed: () => unawaited(_saveWhatsappOverride()),
-                      child: const Text('Save on this device'),
-                    ),
-                  ),
-                  if (_effectiveAssistantE164().isNotEmpty) ...[
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: () async {
-                            final t = _effectiveAssistantE164();
-                            await Clipboard.setData(ClipboardData(text: t));
-                            if (!context.mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Number copied')),
-                            );
-                          },
-                          icon: const Icon(Icons.copy_rounded, size: 18),
-                          label: const Text('Copy'),
-                        ),
-                        FilledButton.icon(
-                          onPressed: () async {
-                            final raw = _effectiveAssistantE164();
-                            final digits =
-                                raw.replaceAll(RegExp(r'\D'), '');
-                            if (digits.isEmpty) return;
-                            final uri = Uri.parse('https://wa.me/$digits');
-                            if (!await canLaunchUrl(uri)) return;
-                            await launchUrl(uri,
-                                mode: LaunchMode.externalApplication);
-                          },
-                          icon: const Icon(Icons.chat_rounded, size: 18),
-                          label: const Text('Open WhatsApp'),
-                        ),
-                      ],
-                    ),
-                  ],
-                  if (_whatsappAssistant?['linked_phone_last4'] != null &&
-                      _whatsappAssistant!['linked_phone_last4']
-                          .toString()
-                          .isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Text(
-                        'Linked account phone ends in ···${_whatsappAssistant!['linked_phone_last4']}',
-                        style: tt.labelSmall
-                            ?.copyWith(color: cs.onSurfaceVariant),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
           Text('Business',
               style: tt.titleSmall?.copyWith(
                   color: cs.onSurfaceVariant,

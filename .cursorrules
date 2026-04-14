@@ -43,6 +43,5 @@ Entry form (`entry_create_sheet.dart`):
 - Purchase place / market lives under **Advanced options**, not the main scroll.
 - Do not resurrect removed fields (e.g. stock notes) without an explicit product ask.
 
-WhatsApp:
-- Webhook: `POST /v1/webhooks/whatsapp/authkey`; outbound optional via `AUTHKEY_API_KEY` + `authkey_send.py`.
-- Respect quiet hours / rate limits in `whatsapp_flow.py`; no bulk unsolicited sends.
+Server-side channels:
+- Primary assistant path: Flutter → `POST /v1/businesses/{id}/ai/chat` (preview → YES/NO). Optional legacy WhatsApp modules may remain in the repo for forks; this product build does not expose WhatsApp HTTP routes.

@@ -31,6 +31,7 @@ dependencies:
   image_picker: ^1.1.2
   razorpay_flutter: ^1.4.4
   http_parser: ^4.1.2
+  speech_to_text: ^7.0.0
 
 dev_dependencies:
   flutter_test:

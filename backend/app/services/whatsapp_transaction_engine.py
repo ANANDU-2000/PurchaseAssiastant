@@ -20,7 +20,7 @@ from app.services.entry_patch_service import fetch_last_entry_for_business, patc
 from app.services.feature_flags import is_ai_parsing_enabled
 from app.services.llm_intent import extract_whatsapp_transactional_json
 from app.services.whatsapp_agent_reply import maybe_polish_whatsapp_reply
-from app.services.whatsapp_action_resolution import (
+from app.services.entry_intent_resolution import (
     build_entry_create_request,
     find_broker_id_by_name,
     find_supplier_id_by_name,
