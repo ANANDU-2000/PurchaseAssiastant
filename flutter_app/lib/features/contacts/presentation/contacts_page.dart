@@ -1270,20 +1270,6 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
     final tt = Theme.of(context).textTheme;
     final isOwner = ref.watch(sessionProvider)?.primaryBusiness.role == 'owner';
     return Scaffold(
-      floatingActionButton: AnimatedBuilder(
-        animation: _tabController,
-        builder: (context, _) {
-          const labels = ['Supplier', 'Broker', 'Category', 'Item'];
-          return FloatingActionButton.extended(
-            onPressed: _addForCurrentTab,
-            icon: const Icon(Icons.add_rounded),
-            label: Text('Add ${labels[_tabController.index.clamp(0, 3)]}'),
-            backgroundColor: HexaColors.primaryMid,
-            foregroundColor: Colors.white,
-          );
-        },
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       appBar: AppBar(
         toolbarHeight: 72,
         titleSpacing: 16,
@@ -1307,8 +1293,13 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
             ),
           ],
         ),
-        actions: const [
-          AppSettingsAction(),
+        actions: [
+          IconButton(
+            tooltip: 'Add',
+            onPressed: _addForCurrentTab,
+            icon: const Icon(Icons.add_rounded),
+          ),
+          const AppSettingsAction(),
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),

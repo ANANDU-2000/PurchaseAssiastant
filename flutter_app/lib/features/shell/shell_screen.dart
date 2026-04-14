@@ -33,12 +33,9 @@ class ShellScreen extends ConsumerWidget {
     }
 
     final cs = Theme.of(context).colorScheme;
-    // Avoid double FAB on catalog and assistant screens.
-    // Use both index and URL — on web/deep-link, currentIndex can briefly desync from path.
-    final hideFabByIndex = idx == ShellScreen.branchContacts;
-    final hideFabByPath =
-        routePath.startsWith('/contacts') || routePath.startsWith('/assistant');
-    final showShellPurchaseFab = !hideFabByIndex && !hideFabByPath;
+    // Keep one global primary action (+) across shell pages.
+    // Hide only on assistant route (full-screen compose).
+    final showShellPurchaseFab = !routePath.startsWith('/assistant');
 
     return Scaffold(
       key: ValueKey<String>('shell_${routePath}_$idx'),

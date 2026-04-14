@@ -235,8 +235,8 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
         final llm = m['intent_llm_active'] == true;
         final prov = (m['ai_provider'] ?? 'stub').toString();
         final label = llm
-            ? 'LLM ($prov)'
-            : (prov == 'stub' ? 'Rules (demo)' : 'Add API key');
+            ? 'Assistant ready'
+            : (prov == 'stub' ? 'Basic mode' : 'Setup required');
         final color = llm
             ? const Color(0xFF16A34A)
             : (prov == 'stub' ? const Color(0xFFF59E0B) : Colors.red.shade700);
