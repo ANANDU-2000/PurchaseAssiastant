@@ -500,11 +500,14 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                     kg is num ? kg.toString() : kg.toString();
               }
               if (du != null &&
-                  (du == 'kg' ||
-                      du == 'box' ||
-                      du == 'piece' ||
-                      du == 'bag')) {
+                  (du == 'kg' || du == 'box' || du == 'piece' || du == 'bag')) {
                 l.unit = du;
+              } else {
+                // Avoid stale previous unit (e.g., old bag flow leaking into box/piece item).
+                l.unit = 'kg';
+              }
+              if (l.unit != 'bag') {
+                l.kgPerBag.clear();
               }
             });
             unawaited(_applyDefaultSupplierForCatalog(l.catalogItemId));
@@ -868,6 +871,11 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
           if (du != null &&
               (du == 'kg' || du == 'box' || du == 'piece' || du == 'bag')) {
             l.unit = du;
+          } else {
+            l.unit = 'kg';
+          }
+          if (l.unit != 'bag') {
+            l.kgPerBag.clear();
           }
         });
       }
@@ -2825,7 +2833,12 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                   onSelectionChanged: _busy
                       ? null
                       : (Set<String> next) {
-                          setState(() => l.unit = next.first);
+                          setState(() {
+                            l.unit = next.first;
+                            if (l.unit != 'bag') {
+                              l.kgPerBag.clear();
+                            }
+                          });
                         },
                 ),
               ),
@@ -2890,9 +2903,12 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                 onChanged: (_) => setState(() {}),
                 decoration: InputDecoration(
                   labelText: l.unit == 'bag'
-                      ? 'Selling price / kg'
+                      ? 'Selling price / bag'
                       : 'Selling price / unit',
                   prefixIcon: const Icon(Icons.sell_outlined),
+                  helperText: l.unit == 'bag'
+                      ? 'Use per-bag selling to match landed / bag and get correct margin.'
+                      : null,
                   filled: true,
                   fillColor: const Color(0xFFF1F5F9),
                 ),
@@ -3116,7 +3132,12 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                     ? null
                     : (Set<String> next) {
                         final v = next.first;
-                        setState(() => l.unit = v);
+                        setState(() {
+                          l.unit = v;
+                          if (l.unit != 'bag') {
+                            l.kgPerBag.clear();
+                          }
+                        });
                       },
               ),
             ),

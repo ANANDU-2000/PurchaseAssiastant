@@ -37,6 +37,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   final _focus = FocusNode();
   Timer? _debounce;
   String _debounced = '';
+  String _section = 'all';
 
   @override
   void initState() {
@@ -151,6 +152,13 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                         ?.map((e) => Map<String, dynamic>.from(e as Map))
                         .toList() ??
                     [];
+                final sectionCounts = <String, int>{
+                  'items': items.length,
+                  'suppliers': suppliers.length,
+                  'entries': entries.length,
+                };
+                final hasAnyResult =
+                    items.isNotEmpty || suppliers.isNotEmpty || entries.isNotEmpty;
 
                 final suggestDidYouMean = items.isEmpty &&
                     entries.isNotEmpty &&
@@ -190,6 +198,40 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                           ),
                         ),
                       ),
+                    if (hasAnyResult) ...[
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          ChoiceChip(
+                            label: const Text('All'),
+                            selected: _section == 'all',
+                            onSelected: (_) => setState(() => _section = 'all'),
+                          ),
+                          ChoiceChip(
+                            label: Text('Items (${sectionCounts['items']})'),
+                            selected: _section == 'items',
+                            onSelected: (_) =>
+                                setState(() => _section = 'items'),
+                          ),
+                          ChoiceChip(
+                            label:
+                                Text('Suppliers (${sectionCounts['suppliers']})'),
+                            selected: _section == 'suppliers',
+                            onSelected: (_) =>
+                                setState(() => _section = 'suppliers'),
+                          ),
+                          ChoiceChip(
+                            label: Text('Entries (${sectionCounts['entries']})'),
+                            selected: _section == 'entries',
+                            onSelected: (_) =>
+                                setState(() => _section = 'entries'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    if (_section == 'all' || _section == 'items') ...[
                     Text(
                       'Items',
                       style: tt.titleSmall?.copyWith(
@@ -232,6 +274,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                         );
                       }),
                     const SizedBox(height: 24),
+                    ],
+                    if (_section == 'all' || _section == 'suppliers') ...[
                     Text(
                       'Suppliers',
                       style: tt.titleSmall?.copyWith(
@@ -263,6 +307,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                         );
                       }),
                     const SizedBox(height: 24),
+                    ],
+                    if (_section == 'all' || _section == 'entries') ...[
                     Text(
                       'Entries',
                       style: tt.titleSmall?.copyWith(
@@ -296,6 +342,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                               : () => context.push('/entry/$id'),
                         );
                       }),
+                    ],
                   ],
                 );
               },

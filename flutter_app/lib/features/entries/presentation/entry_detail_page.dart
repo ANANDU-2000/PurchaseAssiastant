@@ -42,6 +42,23 @@ class EntryDetailPage extends ConsumerWidget {
               ? DateFormat.yMMMd().format(DateTime.parse(rawDate.toString()))
               : '—';
           final lines = data['lines'];
+          double totalProfit = 0;
+          double totalRevenue = 0;
+          int lineCount = 0;
+          if (lines is List) {
+            for (final line in lines) {
+              if (line is! Map) continue;
+              lineCount++;
+              final m = Map<String, dynamic>.from(line);
+              final qty = (m['qty'] as num?)?.toDouble() ?? 0;
+              final sp = (m['selling_price'] as num?)?.toDouble();
+              final p = (m['profit'] as num?)?.toDouble() ?? 0;
+              totalProfit += p;
+              if (sp != null && qty > 0) totalRevenue += qty * sp;
+            }
+          }
+          final marginPct =
+              totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : null;
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
             children: [
@@ -57,6 +74,36 @@ class EntryDetailPage extends ConsumerWidget {
                 Text(
                     'Commission: ${_inr((data['commission_amount'] as num?)?.toDouble())}',
                     style: tt.bodyMedium),
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _MetricCell(
+                          label: 'Lines',
+                          value: '$lineCount',
+                        ),
+                      ),
+                      Expanded(
+                        child: _MetricCell(
+                          label: 'Profit',
+                          value: _inr(totalProfit),
+                        ),
+                      ),
+                      Expanded(
+                        child: _MetricCell(
+                          label: 'Margin',
+                          value: marginPct == null
+                              ? '—'
+                              : '${marginPct.toStringAsFixed(1)}%',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
               const SizedBox(height: 16),
               Text('Lines',
                   style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
@@ -68,6 +115,9 @@ class EntryDetailPage extends ConsumerWidget {
                   final linked = m['catalog_item_id'] != null;
                   return Card(
                     child: ListTile(
+                      onTap: linked
+                          ? () => context.push('/catalog/item/${m['catalog_item_id']}')
+                          : null,
                       leading: linked
                           ? Icon(Icons.bookmark_outline,
                               color: Theme.of(context).colorScheme.primary)
@@ -79,6 +129,9 @@ class EntryDetailPage extends ConsumerWidget {
                         'P/L ${_inr((m['profit'] as num?)?.toDouble())}'
                         '${linked ? ' · catalog' : ''}',
                       ),
+                      trailing: linked
+                          ? const Icon(Icons.chevron_right_rounded)
+                          : null,
                     ),
                   );
                 }),
@@ -86,6 +139,34 @@ class EntryDetailPage extends ConsumerWidget {
           );
         },
       ),
+    );
+  }
+}
+
+class _MetricCell extends StatelessWidget {
+  const _MetricCell({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          value,
+          style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: tt.labelSmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
     );
   }
 }

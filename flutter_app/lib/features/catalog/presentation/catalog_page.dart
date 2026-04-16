@@ -22,6 +22,7 @@ class CatalogPage extends ConsumerStatefulWidget {
 class _CatalogPageState extends ConsumerState<CatalogPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
+  final _searchCtrl = TextEditingController();
   String _searchQuery = '';
 
   @override
@@ -33,6 +34,7 @@ class _CatalogPageState extends ConsumerState<CatalogPage>
 
   @override
   void dispose() {
+    _searchCtrl.dispose();
     _tabs.dispose();
     super.dispose();
   }
@@ -112,9 +114,19 @@ class _CatalogPageState extends ConsumerState<CatalogPage>
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: TextField(
+              controller: _searchCtrl,
               decoration: InputDecoration(
                 hintText: 'Search by name',
                 prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: _searchQuery.trim().isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () {
+                          _searchCtrl.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      ),
                 border:
                     OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 isDense: true,
@@ -220,6 +232,17 @@ class _CatalogPageState extends ConsumerState<CatalogPage>
                     final ins = ref.watch(categoryInsightsProvider(insKey));
                     return Card(
                       margin: const EdgeInsets.only(bottom: 10),
+                      elevation: 0,
+                      shadowColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        side: BorderSide(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .outlineVariant
+                              .withValues(alpha: 0.85),
+                        ),
+                      ),
                       child: InkWell(
                         onTap: () => context.push('/catalog/category/$id'),
                         borderRadius: BorderRadius.circular(12),
@@ -228,6 +251,16 @@ class _CatalogPageState extends ConsumerState<CatalogPage>
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              Container(
+                                width: 8,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: HexaColors.primaryMid
+                                      .withValues(alpha: 0.85),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -400,6 +433,17 @@ class _CatalogPageState extends ConsumerState<CatalogPage>
                             ref.watch(catalogItemInsightsProvider(insKey));
                         return Card(
                           margin: const EdgeInsets.only(bottom: 10),
+                      elevation: 0,
+                      shadowColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        side: BorderSide(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .outlineVariant
+                              .withValues(alpha: 0.85),
+                        ),
+                      ),
                           child: InkWell(
                             onTap: () => context.push('/catalog/item/$id'),
                             borderRadius: BorderRadius.circular(12),
@@ -408,6 +452,16 @@ class _CatalogPageState extends ConsumerState<CatalogPage>
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  Container(
+                                    width: 8,
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      color: HexaColors.accentAmber
+                                          .withValues(alpha: 0.9),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment:
@@ -465,6 +519,10 @@ class _CatalogPageState extends ConsumerState<CatalogPage>
                                         ),
                                       ],
                                     ),
+                                  ),
+                                  const Padding(
+                                    padding: EdgeInsets.only(left: 8),
+                                    child: Icon(Icons.chevron_right_rounded),
                                   ),
                                   PopupMenuButton<String>(
                                     onSelected: (v) {

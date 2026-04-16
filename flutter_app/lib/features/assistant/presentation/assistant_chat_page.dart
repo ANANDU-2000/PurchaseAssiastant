@@ -468,9 +468,23 @@ class _BubbleTile extends StatelessWidget {
   final VoidCallback? onConfirm;
   final VoidCallback? onCancel;
 
+  String _normalizeAssistantText(String text, {required bool previewStyle}) {
+    var out = text.replaceAll('\r\n', '\n').trim();
+    if (previewStyle) {
+      // Keep field previews scannable: one field per line.
+      out = out.replaceAll(' · ', '\n');
+    }
+    out = out.replaceAllMapped(RegExp(r'[ \t]{2,}'), (_) => ' ');
+    return out;
+  }
+
   @override
   Widget build(BuildContext context) {
     final previewStyle = bubble.showPreviewActions && !bubble.user;
+    final shownText = _normalizeAssistantText(
+      bubble.text,
+      previewStyle: previewStyle,
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Align(
@@ -519,7 +533,7 @@ class _BubbleTile extends StatelessWidget {
                       ),
                     ),
                   SelectableText(
-                    bubble.text,
+                    shownText,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           height: 1.35,
                           fontSize: 14,

@@ -389,6 +389,12 @@ class _ItemAnalyticsDetailPageState
                             m['supplier_id']?.toString() ==
                                 buyRow['supplier_id']?.toString(),
                         onSurf: onSurf,
+                        onTap: () {
+                          final sid = m['supplier_id']?.toString();
+                          if (sid != null && sid.isNotEmpty) {
+                            context.push('/supplier/$sid');
+                          }
+                        },
                       ),
                     ),
                   ),
@@ -830,12 +836,14 @@ class _SupplierCompareTile extends StatelessWidget {
     required this.inr,
     required this.isTopProfit,
     required this.onSurf,
+    this.onTap,
   });
 
   final Map<String, dynamic> row;
   final String Function(num?) inr;
   final bool isTopProfit;
   final Color onSurf;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -857,11 +865,14 @@ class _SupplierCompareTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(color: cs.outlineVariant),
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -887,6 +898,11 @@ class _SupplierCompareTile extends StatelessWidget {
                       fontWeight: FontWeight.w800,
                     ),
                     backgroundColor: HexaColors.profit.withValues(alpha: 0.22),
+                  ),
+                if (onTap != null)
+                  const Padding(
+                    padding: EdgeInsets.only(left: 6, top: 2),
+                    child: Icon(Icons.chevron_right_rounded, size: 18),
                   ),
               ],
             ),
@@ -926,7 +942,8 @@ class _SupplierCompareTile extends StatelessWidget {
                 ),
               ],
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );

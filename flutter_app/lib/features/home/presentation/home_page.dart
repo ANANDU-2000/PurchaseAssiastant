@@ -1,10 +1,13 @@
 import 'dart:async';
 
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/auth/session_notifier.dart';
+import '../../../core/providers/analytics_breakdown_providers.dart';
 import '../../../core/providers/tenant_branding_provider.dart';
 import '../../../core/providers/notifications_provider.dart';
 import '../../../core/providers/dashboard_period_provider.dart';
@@ -258,54 +261,87 @@ class _HomePageState extends ConsumerState<HomePage>
                   ),
                   data: (d) {
                     final mom = hi?.profitChangePctPriorMtd;
-                    final empty = d.purchaseCount == 0 && d.totalPurchase <= 0;
+                    final trendAsync = ref.watch(homeSevenDayProfitProvider);
+                    final topItemsAsync = ref.watch(_homeTopItemsProvider(period));
+                    final topSuppliersAsync =
+                        ref.watch(_homeTopSuppliersProvider(period));
+                    final topCategoriesAsync =
+                        ref.watch(_homeTopCategoriesProvider(period));
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        _CompactHeader(
+                          ownerName: branding.title,
+                          periodLabel: dashboardPeriodLabel(period),
+                        ),
+                        const SizedBox(height: 8),
+                        _CompactProfitHead(
+                          profitText: _inr(d.totalProfit),
+                          changePct: mom,
+                          topItem: hi?.topItem,
+                          bestSupplier: hi?.bestSupplierName,
+                        ),
+                        const SizedBox(height: 8),
+                        _ThinSparkline(
+                          trend: trendAsync,
+                          stroke: HexaColors.accentInfo,
+                        ),
+                        const SizedBox(height: 8),
+                        _CompactInsightsStrip(
+                          alerts: hi?.alerts ?? const [],
+                          negativeLines: hi?.negativeLineCount ?? 0,
+                        ),
+                        const SizedBox(height: 8),
+                        _SmallActions(
+                          onAdd: () => showEntryCreateSheet(context),
+                          onAssistant: () => context.go('/assistant'),
+                        ),
+                        const SizedBox(height: 8),
+                        _CompactEntityList(
+                          title: 'Top items',
+                          rows: topItemsAsync.maybeWhen(
+                            data: (v) => v,
+                            orElse: () => const <Map<String, dynamic>>[],
+                          ),
+                          nameOf: (r) => r['item_name']?.toString() ?? '—',
+                          valueOf: (r) =>
+                              _inr(((r['total_profit'] as num?) ?? 0).round()),
+                          metaOf: (r) => ((r['margin_pct'] as num?) ?? 0) >= 0
+                              ? 'up'
+                              : 'down',
+                        ),
+                        const SizedBox(height: 8),
+                        _CompactEntityList(
+                          title: 'Suppliers',
+                          rows: topSuppliersAsync.maybeWhen(
+                            data: (v) => v,
+                            orElse: () => const <Map<String, dynamic>>[],
+                          ),
+                          nameOf: (r) => r['supplier_name']?.toString() ?? '—',
+                          valueOf: (r) => _inr(
+                              ((r['avg_landing'] as num?) ?? 0).round()),
+                          metaOf: (r) => ((r['margin_pct'] as num?) ?? 0) >= 8
+                              ? 'high margin'
+                              : 'best price',
+                        ),
+                        const SizedBox(height: 8),
+                        _CompactEntityList(
+                          title: 'Categories',
+                          rows: topCategoriesAsync.maybeWhen(
+                            data: (v) => v,
+                            orElse: () => const <Map<String, dynamic>>[],
+                          ),
+                          nameOf: (r) => r['category']?.toString() ?? '—',
+                          valueOf: (r) =>
+                              '${((r['total_qty'] as num?) ?? 0).toStringAsFixed(0)}%',
+                          metaOf: (_) => 'share',
+                        ),
+                        const SizedBox(height: 10),
                         _HeroProfitCard(
-                          profitText: empty ? _inr(0) : _inr(d.totalProfit),
+                          profitText: _inr(d.totalProfit),
                           changePct: mom,
                           periodLabel: dashboardPeriodLabel(period),
                           rangeCaption: _rangeCaption(period),
-                        ),
-                        const SizedBox(height: 10),
-                        if (empty)
-                          _SignalsEmptyState(
-                              onAdd: () => showEntryCreateSheet(context))
-                        else
-                          insights.when(
-                            loading: () => const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 12),
-                              child: Center(
-                                child: SizedBox(
-                                  width: 22,
-                                  height: 22,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2),
-                                ),
-                              ),
-                            ),
-                            error: (_, __) => FriendlyLoadError(
-                              message: 'Could not load signals',
-                              onRetry: () =>
-                                  ref.invalidate(homeInsightsProvider),
-                            ),
-                            data: (ins) =>
-                                _SignalsContent(insights: ins, inr: _inr),
-                          ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Quick actions',
-                          style: tt.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: cs.onSurface,
-                            fontSize: 13,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        _QuickActionRow(
-                          onAddEntry: () => showEntryCreateSheet(context),
-                          onAssistant: () => context.go('/assistant'),
                         ),
                       ],
                     );
@@ -320,6 +356,57 @@ class _HomePageState extends ConsumerState<HomePage>
     );
   }
 }
+
+final _homeTopItemsProvider = FutureProvider.autoDispose
+    .family<List<Map<String, dynamic>>, DashboardPeriod>((ref, period) async {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return const [];
+  final range = dashboardDateRange(period);
+  final fmt = DateFormat('yyyy-MM-dd');
+  final rows = await ref.read(hexaApiProvider).analyticsItems(
+        businessId: session.primaryBusiness.id,
+        from: fmt.format(range.$1),
+        to: fmt.format(range.$2),
+      );
+  final out = List<Map<String, dynamic>>.from(rows);
+  out.sort((a, b) =>
+      ((b['total_profit'] as num?) ?? 0).compareTo((a['total_profit'] as num?) ?? 0));
+  return out.take(3).toList();
+});
+
+final _homeTopSuppliersProvider = FutureProvider.autoDispose
+    .family<List<Map<String, dynamic>>, DashboardPeriod>((ref, period) async {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return const [];
+  final range = dashboardDateRange(period);
+  final fmt = DateFormat('yyyy-MM-dd');
+  final rows = await ref.read(hexaApiProvider).analyticsSuppliers(
+        businessId: session.primaryBusiness.id,
+        from: fmt.format(range.$1),
+        to: fmt.format(range.$2),
+      );
+  final out = List<Map<String, dynamic>>.from(rows);
+  out.sort((a, b) =>
+      ((b['total_profit'] as num?) ?? 0).compareTo((a['total_profit'] as num?) ?? 0));
+  return out.take(3).toList();
+});
+
+final _homeTopCategoriesProvider = FutureProvider.autoDispose
+    .family<List<Map<String, dynamic>>, DashboardPeriod>((ref, period) async {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return const [];
+  final range = dashboardDateRange(period);
+  final fmt = DateFormat('yyyy-MM-dd');
+  final rows = await ref.read(hexaApiProvider).analyticsCategories(
+        businessId: session.primaryBusiness.id,
+        from: fmt.format(range.$1),
+        to: fmt.format(range.$2),
+      );
+  final out = List<Map<String, dynamic>>.from(rows);
+  out.sort((a, b) =>
+      ((b['total_profit'] as num?) ?? 0).compareTo((a['total_profit'] as num?) ?? 0));
+  return out.take(3).toList();
+});
 
 class _HomeNotificationsButton extends ConsumerWidget {
   const _HomeNotificationsButton();
@@ -349,6 +436,303 @@ class _HomeNotificationsButton extends ConsumerWidget {
                   color: Color(0xFFEF4444),
                   shape: BoxShape.circle,
                 ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _CompactHeader extends StatelessWidget {
+  const _CompactHeader({
+    required this.ownerName,
+    required this.periodLabel,
+  });
+
+  final String ownerName;
+  final String periodLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            '$ownerName 👋',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: tt.titleLarge?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: cs.onSurface,
+            ),
+          ),
+        ),
+        Text(
+          '$periodLabel ▾',
+          style: tt.labelLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: cs.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CompactProfitHead extends StatelessWidget {
+  const _CompactProfitHead({
+    required this.profitText,
+    required this.changePct,
+    required this.topItem,
+    required this.bestSupplier,
+  });
+
+  final String profitText;
+  final double? changePct;
+  final String? topItem;
+  final String? bestSupplier;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final up = (changePct ?? 0) >= 0;
+    final pctText = changePct == null ? '' : _formatMomPercent(changePct);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              profitText,
+              style: tt.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w900,
+                color: cs.onSurface,
+              ),
+            ),
+            if (pctText.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Text(
+                '${up ? '↑' : '↓'} $pctText',
+                style: tt.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: up ? HexaColors.profit : HexaColors.loss,
+                ),
+              ),
+            ],
+          ],
+        ),
+        Text(
+          'Profit today',
+          style: tt.labelSmall?.copyWith(
+            color: cs.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Top: ${topItem ?? '—'}  •  Best: ${bestSupplier ?? '—'}',
+          style: tt.bodySmall?.copyWith(
+            color: cs.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ThinSparkline extends StatelessWidget {
+  const _ThinSparkline({
+    required this.trend,
+    required this.stroke,
+  });
+
+  final AsyncValue<List<AnalyticsDailyProfitPoint>> trend;
+  final Color stroke;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 72,
+      child: trend.when(
+        loading: () => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        error: (_, __) => const Center(child: Text('Trend unavailable')),
+        data: (pts) {
+          if (pts.length < 2) return const Center(child: Text('Add entries'));
+          final spots = <FlSpot>[];
+          var minY = pts.first.profit;
+          var maxY = pts.first.profit;
+          for (var i = 0; i < pts.length; i++) {
+            final y = pts[i].profit;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+            spots.add(FlSpot(i.toDouble(), y));
+          }
+          final span = (maxY - minY).abs() < 1e-6 ? 1.0 : (maxY - minY);
+          return LineChart(
+            LineChartData(
+              minY: minY - span * 0.08,
+              maxY: maxY + span * 0.08,
+              gridData: const FlGridData(show: false),
+              titlesData: const FlTitlesData(show: false),
+              borderData: FlBorderData(show: false),
+              lineTouchData: const LineTouchData(enabled: false),
+              lineBarsData: [
+                LineChartBarData(
+                  spots: spots,
+                  isCurved: true,
+                  color: stroke,
+                  barWidth: 1.8,
+                  dotData: const FlDotData(show: false),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _CompactInsightsStrip extends StatelessWidget {
+  const _CompactInsightsStrip({
+    required this.alerts,
+    required this.negativeLines,
+  });
+
+  final List<Map<String, dynamic>> alerts;
+  final int negativeLines;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final base = <String>[
+      if (negativeLines > 0) 'Risk: $negativeLines lines below cost',
+      for (final a in alerts.take(4)) (a['message']?.toString() ?? '').trim(),
+    ].where((e) => e.isNotEmpty).toList();
+    final items = base.isEmpty
+        ? <String>['Insight: Keep adding entries to improve recommendations']
+        : base;
+    return SizedBox(
+      height: 36,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: items.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: HexaColors.primaryLight.withValues(alpha: 0.7),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              items[i],
+              style: tt.labelSmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _SmallActions extends StatelessWidget {
+  const _SmallActions({
+    required this.onAdd,
+    required this.onAssistant,
+  });
+
+  final VoidCallback onAdd;
+  final VoidCallback onAssistant;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        TextButton.icon(
+          onPressed: onAdd,
+          icon: const Icon(Icons.add_rounded, size: 18),
+          label: const Text('Add'),
+        ),
+        const SizedBox(width: 6),
+        TextButton.icon(
+          onPressed: onAssistant,
+          icon: const Icon(Icons.smart_toy_outlined, size: 18),
+          label: const Text('AI'),
+        ),
+      ],
+    );
+  }
+}
+
+class _CompactEntityList extends StatelessWidget {
+  const _CompactEntityList({
+    required this.title,
+    required this.rows,
+    required this.nameOf,
+    required this.valueOf,
+    required this.metaOf,
+  });
+
+  final String title;
+  final List<Map<String, dynamic>> rows;
+  final String Function(Map<String, dynamic>) nameOf;
+  final String Function(Map<String, dynamic>) valueOf;
+  final String Function(Map<String, dynamic>) metaOf;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: tt.titleSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+            color: cs.onSurface,
+          ),
+        ),
+        const SizedBox(height: 4),
+        if (rows.isEmpty)
+          Text(
+            'No data yet',
+            style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+          )
+        else
+          ...rows.map(
+            (r) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      nameOf(r),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    valueOf(r),
+                    style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    metaOf(r),
+                    style: tt.labelSmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -779,6 +1163,175 @@ class _QuickActionRow extends StatelessWidget {
           accent: HexaColors.accentInfo,
         ),
       ],
+    );
+  }
+}
+
+class _HomeChartsPanel extends StatelessWidget {
+  const _HomeChartsPanel({
+    required this.dash,
+    required this.trend,
+    required this.inr,
+  });
+
+  final DashboardData dash;
+  final AsyncValue<List<AnalyticsDailyProfitPoint>> trend;
+  final String Function(num n) inr;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final maxBase = [
+      dash.totalPurchase.abs(),
+      dash.totalProfit.abs(),
+      dash.totalQtyBase.abs(),
+    ].fold<double>(0, (p, c) => c > p ? c : p);
+    final m = maxBase <= 0 ? 1.0 : maxBase;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Card(
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: BorderSide(color: cs.outlineVariant),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'KPI bars',
+                  style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 8),
+                _homeBar(context, 'Purchase', dash.totalPurchase / m,
+                    inr(dash.totalPurchase.round()), HexaColors.primaryMid),
+                _homeBar(context, 'Profit', dash.totalProfit / m,
+                    inr(dash.totalProfit.round()), HexaColors.profit),
+                _homeBar(context, 'Qty', dash.totalQtyBase / m,
+                    dash.totalQtyBase.toStringAsFixed(1), HexaColors.accentAmber),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Card(
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: BorderSide(color: cs.outlineVariant),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  '7-day profit line',
+                  style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 8),
+                trend.when(
+                  loading: () => const SizedBox(
+                    height: 120,
+                    child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                  ),
+                  error: (_, __) => const SizedBox(
+                    height: 120,
+                    child: Center(child: Text('Could not load trend')),
+                  ),
+                  data: (pts) {
+                    if (pts.length < 2) {
+                      return const SizedBox(
+                        height: 120,
+                        child: Center(child: Text('Add more entries for trend')),
+                      );
+                    }
+                    final spots = <FlSpot>[];
+                    var minY = pts.first.profit;
+                    var maxY = pts.first.profit;
+                    for (var i = 0; i < pts.length; i++) {
+                      final y = pts[i].profit;
+                      if (y < minY) minY = y;
+                      if (y > maxY) maxY = y;
+                      spots.add(FlSpot(i.toDouble(), y));
+                    }
+                    final span = (maxY - minY).abs() < 1e-6 ? 1.0 : (maxY - minY);
+                    return SizedBox(
+                      height: 120,
+                      child: LineChart(
+                        LineChartData(
+                          minY: minY - span * 0.08,
+                          maxY: maxY + span * 0.08,
+                          gridData: const FlGridData(show: false),
+                          titlesData: const FlTitlesData(show: false),
+                          borderData: FlBorderData(show: false),
+                          lineTouchData: const LineTouchData(enabled: false),
+                          lineBarsData: [
+                            LineChartBarData(
+                              spots: spots,
+                              isCurved: true,
+                              color: HexaColors.accentInfo,
+                              barWidth: 2.5,
+                              dotData: FlDotData(
+                                show: true,
+                                getDotPainter: (a, b, c, d) =>
+                                    FlDotCirclePainter(radius: 2.5, color: HexaColors.primaryNavy),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _homeBar(
+    BuildContext context,
+    String label,
+    double rawPct,
+    String value,
+    Color color,
+  ) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(label,
+                    style: tt.labelMedium?.copyWith(fontWeight: FontWeight.w600)),
+              ),
+              Text(value,
+                  style: tt.labelMedium?.copyWith(fontWeight: FontWeight.w700)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: rawPct.clamp(0.0, 1.0),
+              minHeight: 7,
+              color: color,
+              backgroundColor: cs.surfaceContainerHighest,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

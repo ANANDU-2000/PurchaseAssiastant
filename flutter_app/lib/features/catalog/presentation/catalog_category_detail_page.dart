@@ -154,6 +154,17 @@ class _CatalogCategoryDetailPageState
               ),
               data: (ins) {
                 return Card(
+                  elevation: 0,
+                  shadowColor: Colors.transparent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    side: BorderSide(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .outlineVariant
+                          .withValues(alpha: 0.85),
+                    ),
+                  ),
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(
@@ -250,6 +261,17 @@ class _CatalogCategoryDetailPageState
   }) {
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
+      elevation: 0,
+      shadowColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: Theme.of(context)
+              .colorScheme
+              .outlineVariant
+              .withValues(alpha: 0.8),
+        ),
+      ),
       child: InkWell(
         onTap: () => context.push(
           '/catalog/category/${widget.categoryId}/type/$typeId',
@@ -259,6 +281,15 @@ class _CatalogCategoryDetailPageState
           padding: const EdgeInsets.all(14),
           child: Row(
             children: [
+              Container(
+                width: 8,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: HexaColors.primaryMid.withValues(alpha: 0.85),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+              ),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

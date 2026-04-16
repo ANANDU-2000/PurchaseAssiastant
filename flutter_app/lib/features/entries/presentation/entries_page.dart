@@ -108,81 +108,62 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
     final day = DateTime(d.year, d.month, d.day);
     if (day == today) return 'Today';
     if (day == today.subtract(const Duration(days: 1))) return 'Yesterday';
+    if (day.isAfter(today.subtract(const Duration(days: 7)))) return 'This week';
     return DateFormat.yMMMd().format(day);
   }
 
-  static String _subtitle(
-    Map<String, dynamic> e, {
-    Map<String, String> supplierNames = const {},
-    Map<String, String> brokerNames = const {},
-  }) {
+  static double _entryProfit(Map<String, dynamic> e) {
     final lines = e['lines'];
-    final sid = e['supplier_id']?.toString();
-    final brid = e['broker_id']?.toString();
-    final sup = sid != null ? supplierNames[sid] : null;
-    final bro = brid != null ? brokerNames[brid] : null;
-
-    final line1 = StringBuffer();
-    if (sup != null) {
-      line1.write('Supplier: $sup');
-    }
-    if (bro != null) {
-      if (line1.isNotEmpty) line1.write('  ·  ');
-      line1.write('Broker: $bro');
-    }
-
-    final mid = StringBuffer();
-    if (lines is List && lines.isNotEmpty) {
-      final first = lines.first;
-      if (first is Map) {
-        final q = first['qty'];
-        final u = first['unit'];
-        final bp = first['buy_price'];
-        if (q != null) {
-          mid.write('$q ${u ?? ''}'.trim());
-        }
-        if (bp != null) {
-          if (mid.isNotEmpty) mid.write(' · ');
-          final bpv = (bp is num)
-              ? bp.toDouble()
-              : double.tryParse(bp.toString()) ?? 0;
-          mid.write(
-              'Buy ${NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(bpv)}');
-        }
-      }
-    }
+    if (lines is! List) return 0;
     var profit = 0.0;
-    if (lines is List) {
-      for (final li in lines) {
-        if (li is Map) {
-          final p = li['profit'];
-          if (p is num) profit += p.toDouble();
-        }
+    for (final li in lines) {
+      if (li is! Map) continue;
+      final p = (li['profit'] as num?)?.toDouble();
+      if (p != null) profit += p;
+    }
+    return profit;
+  }
+
+  static ({double? buy, double? sell, String unit}) _entryBuySell(
+      Map<String, dynamic> e) {
+    final lines = e['lines'];
+    if (lines is! List || lines.isEmpty) return (buy: null, sell: null, unit: 'unit');
+    var buyTotal = 0.0;
+    var buyQty = 0.0;
+    var sellTotal = 0.0;
+    var sellQty = 0.0;
+    var unit = 'unit';
+    for (final li in lines) {
+      if (li is! Map) continue;
+      final q = (li['qty'] as num?)?.toDouble() ?? 0;
+      final u = li['unit']?.toString();
+      if (u != null && u.isNotEmpty) unit = u;
+      final b = ((li['landing_cost'] as num?) ?? (li['buy_price'] as num?))
+          ?.toDouble();
+      final s = (li['selling_price'] as num?)?.toDouble();
+      if (b != null && q > 0) {
+        buyTotal += q * b;
+        buyQty += q;
+      }
+      if (s != null && q > 0) {
+        sellTotal += q * s;
+        sellQty += q;
       }
     }
-    final pl = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
-        .format(profit);
-    final mPct = _entryAvgMarginPct(e);
-    final profitBit = StringBuffer('Profit: $pl');
-    if (mPct != null) {
-      profitBit.write(' (${mPct.toStringAsFixed(1)}%)');
-    }
+    final buyAvg = buyQty > 0 ? buyTotal / buyQty : null;
+    final sellAvg = sellQty > 0 ? sellTotal / sellQty : null;
+    return (buy: buyAvg, sell: sellAvg, unit: unit);
+  }
 
-    final raw = e['entry_date'];
-    var dateStr = '';
-    if (raw != null) {
-      final dt = DateTime.tryParse(raw.toString());
-      if (dt != null) {
-        dateStr = DateFormat.yMMMd().format(dt);
-      }
+  static ({String label, Color color}) _insightTag(Map<String, dynamic> e) {
+    final m = _entryAvgMarginPct(e);
+    if (m == null) {
+      return (label: 'No sell price', color: const Color(0xFF64748B));
     }
-
-    final parts = <String>[];
-    if (line1.isNotEmpty) parts.add(line1.toString());
-    if (mid.isNotEmpty) parts.add(mid.toString());
-    parts.add(profitBit.toString());
-    if (dateStr.isNotEmpty) parts.add(dateStr);
-    return parts.join('\n');
+    if (m >= 12) return (label: 'Best deal', color: const Color(0xFF16A34A));
+    if (m < 0) return (label: 'High price', color: const Color(0xFFDC2626));
+    if (m < 5) return (label: 'Low margin', color: const Color(0xFFF59E0B));
+    return (label: 'Stable', color: const Color(0xFF0EA5E9));
   }
 
   Future<void> _showFiltersSheet(BuildContext context, WidgetRef ref) async {
@@ -293,6 +274,15 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
         );
       },
     );
+  }
+
+  void _applyQuickDateRange(int days) {
+    final today = DateTime.now();
+    final end = DateTime(today.year, today.month, today.day);
+    final start = end.subtract(Duration(days: days - 1));
+    ref.read(entryListFromProvider.notifier).state = start;
+    ref.read(entryListToProvider.notifier).state = end;
+    ref.invalidate(entriesListProvider);
   }
 
   void _showSearchDialog(BuildContext context, WidgetRef ref) {
@@ -419,6 +409,39 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
               },
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  ActionChip(
+                    label: const Text('Today'),
+                    onPressed: () => _applyQuickDateRange(1),
+                  ),
+                  const SizedBox(width: 8),
+                  ActionChip(
+                    label: const Text('Last 7d'),
+                    onPressed: () => _applyQuickDateRange(7),
+                  ),
+                  const SizedBox(width: 8),
+                  ActionChip(
+                    label: const Text('Last 30d'),
+                    onPressed: () => _applyQuickDateRange(30),
+                  ),
+                  const SizedBox(width: 8),
+                  ActionChip(
+                    label: const Text('Clear dates'),
+                    onPressed: () {
+                      ref.read(entryListFromProvider.notifier).state = null;
+                      ref.read(entryListToProvider.notifier).state = null;
+                      ref.invalidate(entriesListProvider);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
           Expanded(
             child: async.when(
               loading: () => const Center(child: CircularProgressIndicator()),
@@ -498,47 +521,121 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
                       final e = row as Map<String, dynamic>;
                       final id = e['id']?.toString();
                       final stripe = _marginStripeColor(e);
-                      return Card(
-                        clipBehavior: Clip.antiAlias,
-                        margin: EdgeInsets.zero,
+                      final supplierId = e['supplier_id']?.toString();
+                      final supplier =
+                          supplierId != null ? supplierNames[supplierId] : null;
+                      final m = _entryAvgMarginPct(e);
+                      final profit = _entryProfit(e);
+                      final bs = _entryBuySell(e);
+                      final tag = _insightTag(e);
+                      final profitColor =
+                          profit >= 0 ? const Color(0xFF16A34A) : const Color(0xFFDC2626);
+                      final cs = Theme.of(context).colorScheme;
+                      return Material(
+                        color: Colors.white,
                         child: InkWell(
+                          borderRadius: BorderRadius.circular(10),
                           onTap: id == null
                               ? null
                               : () {
                                   HapticFeedback.selectionClick();
                                   context.push('/entry/$id');
                                 },
-                          child: IntrinsicHeight(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(10),
+                              color: cs.surface,
+                            ),
                             child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                if (stripe != null)
-                                  Container(width: 4, color: stripe),
-                                Expanded(
-                                  child: ListTile(
-                                    contentPadding: const EdgeInsets.symmetric(
-                                        horizontal: 14, vertical: 8),
-                                    title: Text(
-                                      _titleLine(e),
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.w700),
-                                    ),
-                                    isThreeLine: true,
-                                    subtitle: Text(
-                                      _subtitle(
-                                        e,
-                                        supplierNames: supplierNames,
-                                        brokerNames: brokerNames,
-                                      ),
-                                      style: const TextStyle(
-                                        height: 1.35,
-                                        fontSize: 12,
-                                        color: HexaColors.textSecondary,
-                                      ),
-                                    ),
-                                    trailing: const Icon(
-                                        Icons.chevron_right_rounded),
+                                Container(
+                                  width: 6,
+                                  height: 44,
+                                  margin: const EdgeInsets.only(top: 2),
+                                  decoration: BoxDecoration(
+                                    color: stripe ?? cs.outlineVariant,
+                                    borderRadius: BorderRadius.circular(6),
                                   ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _titleLine(e),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '${bs.buy == null ? '—' : NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(bs.buy)}'
+                                        ' → ${bs.sell == null ? '—' : NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(bs.sell)}'
+                                        ' / ${bs.unit}',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: HexaColors.textSecondary,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '${supplier ?? 'No supplier'} · Margin ${m == null ? '—' : '${m.toStringAsFixed(1)}%'}',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: HexaColors.textSecondary,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: tag.color.withValues(alpha: 0.14),
+                                          borderRadius: BorderRadius.circular(999),
+                                        ),
+                                        child: Text(
+                                          tag.label,
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: tag.color,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      NumberFormat.currency(
+                                        locale: 'en_IN',
+                                        symbol: '₹',
+                                        decimalDigits: 0,
+                                      ).format(profit),
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 16,
+                                        color: profitColor,
+                                      ),
+                                    ),
+                                    Icon(
+                                      profit >= 0
+                                          ? Icons.trending_up_rounded
+                                          : Icons.trending_down_rounded,
+                                      size: 16,
+                                      color: profitColor,
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),

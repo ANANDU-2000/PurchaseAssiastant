@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -181,6 +182,250 @@ Color _marginStripeColor(double? m) {
   if (m >= 15) return HexaColors.profit.withValues(alpha: 0.85);
   if (m >= 5) return HexaColors.accentAmber.withValues(alpha: 0.9);
   return HexaColors.loss.withValues(alpha: 0.75);
+}
+
+class _TopBarsCard extends StatelessWidget {
+  const _TopBarsCard({
+    required this.title,
+    required this.rows,
+    required this.labelOf,
+    required this.valueOf,
+    required this.inr,
+    this.color = HexaColors.primaryMid,
+  });
+
+  final String title;
+  final List<Map<String, dynamic>> rows;
+  final String Function(Map<String, dynamic>) labelOf;
+  final num Function(Map<String, dynamic>) valueOf;
+  final String Function(num n) inr;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final top = List<Map<String, dynamic>>.from(rows)
+      ..sort((a, b) => valueOf(b).compareTo(valueOf(a)));
+    final pick = top.take(4).toList();
+    if (pick.isEmpty) return const SizedBox.shrink();
+    final maxVal = pick
+        .map((r) => valueOf(r).toDouble())
+        .fold<double>(0, (p, c) => c > p ? c : p);
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: cs.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            ...pick.map((r) {
+              final v = valueOf(r).toDouble();
+              final p = maxVal <= 0 ? 0.0 : (v / maxVal).clamp(0.0, 1.0);
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            labelOf(r),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: tt.labelMedium?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        Text(
+                          inr(v),
+                          style: tt.labelMedium?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        value: p,
+                        minHeight: 7,
+                        backgroundColor: cs.surfaceContainerHighest,
+                        color: color,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SharePieCard extends StatelessWidget {
+  const _SharePieCard({
+    required this.title,
+    required this.rows,
+    required this.labelOf,
+    required this.valueOf,
+  });
+
+  final String title;
+  final List<Map<String, dynamic>> rows;
+  final String Function(Map<String, dynamic>) labelOf;
+  final num Function(Map<String, dynamic>) valueOf;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final usable = rows
+        .where((r) => valueOf(r).toDouble() > 0)
+        .take(6)
+        .map((r) => Map<String, dynamic>.from(r))
+        .toList();
+    final total = usable.fold<double>(
+      0,
+      (sum, r) => sum + valueOf(r).toDouble(),
+    );
+    if (usable.isEmpty || total <= 0) return const SizedBox.shrink();
+    final palette = HexaColors.chartPalette;
+    final sections = <PieChartSectionData>[];
+    for (var i = 0; i < usable.length; i++) {
+      final v = valueOf(usable[i]).toDouble();
+      final pct = (v / total) * 100;
+      sections.add(
+        PieChartSectionData(
+          color: palette[i % palette.length],
+          value: v,
+          radius: 34,
+          title: pct >= 10 ? '${pct.toStringAsFixed(0)}%' : '',
+          titleStyle: tt.labelSmall?.copyWith(
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
+            fontSize: 10,
+          ),
+        ),
+      );
+    }
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: cs.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(title, style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 140,
+              child: PieChart(
+                PieChartData(
+                  sectionsSpace: 1.5,
+                  centerSpaceRadius: 26,
+                  sections: sections,
+                  pieTouchData: PieTouchData(enabled: false),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RankLineCard extends StatelessWidget {
+  const _RankLineCard({
+    required this.title,
+    required this.rows,
+    required this.valueOf,
+  });
+
+  final String title;
+  final List<Map<String, dynamic>> rows;
+  final num Function(Map<String, dynamic>) valueOf;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final values = rows
+        .map((r) => valueOf(r).toDouble())
+        .where((v) => v > 0)
+        .toList()
+      ..sort((a, b) => b.compareTo(a));
+    if (values.length < 2) return const SizedBox.shrink();
+    final top = values.take(8).toList();
+    var minY = top.first;
+    var maxY = top.first;
+    final spots = <FlSpot>[];
+    for (var i = 0; i < top.length; i++) {
+      final y = top[i];
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+      spots.add(FlSpot(i.toDouble(), y));
+    }
+    final span = (maxY - minY).abs() < 1e-6 ? 1.0 : (maxY - minY);
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: cs.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(title, style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 140,
+              child: LineChart(
+                LineChartData(
+                  minY: minY - span * 0.08,
+                  maxY: maxY + span * 0.08,
+                  gridData: const FlGridData(show: false),
+                  titlesData: const FlTitlesData(show: false),
+                  borderData: FlBorderData(show: false),
+                  lineTouchData: const LineTouchData(enabled: false),
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: spots,
+                      isCurved: true,
+                      color: HexaColors.accentInfo,
+                      barWidth: 2.5,
+                      dotData: FlDotData(
+                        show: top.length <= 8,
+                        getDotPainter: (a, b, c, d) => FlDotCirclePainter(
+                          radius: 2.5,
+                          color: HexaColors.primaryNavy,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 List<Map<String, dynamic>> _filterQuery(
@@ -374,7 +619,7 @@ class _AnalyticsPageState extends ConsumerState<AnalyticsPage> {
             indicatorColor: cs.primary,
             tabs: const [
               Tab(text: 'Items'),
-              Tab(text: 'Cats'),
+              Tab(text: 'Categories'),
               Tab(text: 'Suppliers'),
               Tab(text: 'Brokers'),
               Tab(text: 'Summary'),
@@ -927,6 +1172,33 @@ class _ItemsTabState extends ConsumerState<_ItemsTab> {
                 ],
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: _TopBarsCard(
+                title: 'Top items (profit)',
+                rows: filtered,
+                labelOf: (r) => r['item_name']?.toString() ?? '—',
+                valueOf: (r) => (r['total_profit'] as num?) ?? 0,
+                inr: widget.inr,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: _SharePieCard(
+                title: 'Item profit share',
+                rows: filtered,
+                labelOf: (r) => r['item_name']?.toString() ?? '—',
+                valueOf: (r) => (r['total_profit'] as num?) ?? 0,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: _RankLineCard(
+                title: 'Profit by item rank',
+                rows: filtered,
+                valueOf: (r) => (r['total_profit'] as num?) ?? 0,
+              ),
+            ),
             Expanded(
               child: RefreshIndicator(
                 onRefresh: () async {
@@ -1195,16 +1467,9 @@ class _CategoriesTab extends ConsumerStatefulWidget {
 }
 
 class _CategoriesTabState extends ConsumerState<_CategoriesTab> {
-  static const _modes = ['name', 'type', 'best', 'qty', 'lines', 'profit'];
-  static const _modeLabels = [
-    'Category',
-    'Type',
-    'Best item',
-    'Qty',
-    'Lines',
-    'Profit'
-  ];
-  int _sortColumnIndex = 5;
+  static const _modes = ['profit', 'qty', 'trend'];
+  static const _modeLabels = ['Profit', 'Volume', 'Growth'];
+  int _sortColumnIndex = 0;
   bool _asc = false;
   final _search = TextEditingController();
 
@@ -1233,6 +1498,16 @@ class _CategoriesTabState extends ConsumerState<_CategoriesTab> {
             rows, mode, _asc, (r) => (r['total_profit'] as num?) ?? 0);
         final filtered = _filterCategoryRows(sorted, _search.text);
         final tt = Theme.of(context).textTheme;
+        final cs = Theme.of(context).colorScheme;
+        final totalProfit = filtered.fold<double>(
+          0,
+          (a, r) => a + ((r['total_profit'] as num?)?.toDouble() ?? 0),
+        );
+        final totalQty = filtered.fold<double>(
+          0,
+          (a, r) => a + ((r['total_qty'] as num?)?.toDouble() ?? 0),
+        );
+        final top = filtered.isEmpty ? null : filtered.first;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -1282,7 +1557,7 @@ class _CategoriesTabState extends ConsumerState<_CategoriesTab> {
                             _asc = !_asc;
                           } else {
                             _sortColumnIndex = i;
-                            _asc = i == 0 || i == 1;
+                            _asc = false;
                           }
                         }),
                         selectedColor:
@@ -1299,7 +1574,7 @@ class _CategoriesTabState extends ConsumerState<_CategoriesTab> {
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
               child: Row(
                 children: [
-                  Text('${filtered.length} rows',
+                  Text('${filtered.length} categories',
                       style: tt.labelMedium
                           ?.copyWith(color: HexaColors.textSecondary)),
                   const Spacer(),
@@ -1334,6 +1609,49 @@ class _CategoriesTabState extends ConsumerState<_CategoriesTab> {
                 ],
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        widget.inr(totalProfit),
+                        style: tt.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          color: cs.onSurface,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'total profit',
+                        style: tt.labelSmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Split by category · Volume ${totalQty.toStringAsFixed(0)}',
+                    style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+                  ),
+                  if (top != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        'Top: ${top['category'] ?? '—'} · ${widget.inr(((top['total_profit'] as num?) ?? 0).toDouble())}',
+                        style: tt.labelSmall?.copyWith(
+                          color: HexaColors.accentInfo,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
             Expanded(
               child: RefreshIndicator(
                 onRefresh: () async {
@@ -1345,142 +1663,107 @@ class _CategoriesTabState extends ConsumerState<_CategoriesTab> {
                         physics: const BouncingScrollPhysics(
                             parent: AlwaysScrollableScrollPhysics()),
                         children: [
-                          const SizedBox(height: 48),
+                          const SizedBox(height: 28),
                           Center(
-                              child: Text('No matches',
+                              child: Text('Adjust search/filter',
                                   style: tt.bodyMedium?.copyWith(
                                       color: HexaColors.textSecondary))),
                         ],
                       )
-                    : LayoutBuilder(
-                        builder: (context, constraints) {
-                          return SingleChildScrollView(
-                            physics: const AlwaysScrollableScrollPhysics(
-                              parent: BouncingScrollPhysics(),
+                    : ListView.separated(
+                        physics: const BouncingScrollPhysics(
+                            parent: AlwaysScrollableScrollPhysics()),
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 88),
+                        itemCount: filtered.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 6),
+                        itemBuilder: (context, i) {
+                          final r = filtered[i];
+                          final name = r['category']?.toString() ?? '—';
+                          final bestItem = r['best_item_name']?.toString() ?? '—';
+                          final profit =
+                              ((r['total_profit'] as num?) ?? 0).toDouble();
+                          final qty = ((r['total_qty'] as num?) ?? 0).toDouble();
+                          final trend = r['trend']?.toString() ?? (profit >= 0 ? 'up' : 'down');
+                          final contribution = totalProfit.abs() <= 0.01
+                              ? 0.0
+                              : (profit.abs() / totalProfit.abs()).clamp(0.0, 1.0);
+                          final pctText = '${(contribution * 100).toStringAsFixed(1)}%';
+                          final profitColor =
+                              profit >= 0 ? HexaColors.profit : HexaColors.loss;
+                          return InkWell(
+                            onTap: () => context.push(
+                              '/contacts/category?name=${Uri.encodeComponent(name)}',
                             ),
-                            padding: const EdgeInsets.fromLTRB(0, 0, 0, 88),
-                            child: Scrollbar(
-                              thumbVisibility: true,
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: ConstrainedBox(
-                                  constraints: BoxConstraints(
-                                    minWidth: math.max(
-                                      800,
-                                      constraints.maxWidth,
-                                    ),
-                                  ),
-                                  child: Theme(
-                                    data: Theme.of(context).copyWith(
-                                      dividerColor: const Color(0xFFE2E8F0),
-                                      dataTableTheme: DataTableThemeData(
-                                        headingRowHeight: 36,
-                                        dataRowMinHeight: 40,
-                                        dataRowMaxHeight: 48,
-                                        horizontalMargin: 10,
-                                        columnSpacing: 12,
-                                        headingTextStyle: tt.labelSmall
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.w800,
-                                              fontSize: 11,
-                                              color: HexaColors.textSecondary,
-                                            ),
-                                      ),
-                                    ),
-                                    child: DataTable(
-                                      showCheckboxColumn: false,
-                                      border: const TableBorder(
-                                        horizontalInside: BorderSide(
-                                            color: Color(0xFFE2E8F0)),
-                                      ),
-                                      columns: const [
-                                        DataColumn(label: Text('Category')),
-                                        DataColumn(label: Text('Type')),
-                                        DataColumn(
-                                            label: Text('Qty'),
-                                            numeric: true),
-                                        DataColumn(
-                                            label: Text('Profit'),
-                                            numeric: true),
-                                        DataColumn(label: Text('Best item')),
-                                        DataColumn(
-                                            label: Text('Best supplier')),
-                                        DataColumn(
-                                            label: Text('Lines'),
-                                            numeric: true),
-                                      ],
-                                      rows: [
-                                        for (final r in filtered)
-                                          DataRow(
-                                            cells: [
-                                              DataCell(Text(
-                                                r['category']?.toString() ??
-                                                    '—',
-                                                style: tt.bodySmall?.copyWith(
-                                                    fontWeight: FontWeight.w700,
-                                                    fontSize: 12),
-                                              )),
-                                              DataCell(Text(
-                                                r['type_name']?.toString() ??
-                                                    '—',
-                                                style: tt.bodySmall
-                                                    ?.copyWith(fontSize: 12),
-                                              )),
-                                              DataCell(Text(
-                                                ((r['total_qty'] as num?) ?? 0)
-                                                    .toStringAsFixed(1),
-                                                style: tt.bodySmall
-                                                    ?.copyWith(fontSize: 12),
-                                              )),
-                                              DataCell(Text(
-                                                widget.inr(
-                                                  ((r['total_profit']
-                                                              as num?) ??
-                                                          0)
-                                                      .toDouble(),
-                                                ),
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.w700,
-                                                  fontSize: 12,
-                                                  color: ((r['total_profit']
-                                                                  as num?) ??
-                                                              0) >=
-                                                          0
-                                                      ? HexaColors.profit
-                                                      : HexaColors.loss,
-                                                ),
-                                              )),
-                                              DataCell(Text(
-                                                r['best_item_name']
-                                                        ?.toString() ??
-                                                    '—',
-                                                maxLines: 2,
-                                                overflow:
-                                                    TextOverflow.ellipsis,
-                                                style: tt.bodySmall
-                                                    ?.copyWith(fontSize: 12),
-                                              )),
-                                              DataCell(Text(
-                                                r['best_supplier_name']
-                                                        ?.toString() ??
-                                                    '—',
-                                                maxLines: 2,
-                                                overflow:
-                                                    TextOverflow.ellipsis,
-                                                style: tt.bodySmall
-                                                    ?.copyWith(fontSize: 12),
-                                              )),
-                                              DataCell(Text(
-                                                '${(r['line_count'] as num?) ?? 0}',
-                                                style: tt.bodySmall
-                                                    ?.copyWith(fontSize: 12),
-                                              )),
-                                            ],
+                            borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: const Color(0xFFE2E8F0)),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          name,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: tt.bodyMedium?.copyWith(
+                                            fontWeight: FontWeight.w800,
                                           ),
-                                      ],
+                                        ),
+                                      ),
+                                      Text(
+                                        widget.inr(profit),
+                                        style: tt.bodyMedium?.copyWith(
+                                          fontWeight: FontWeight.w900,
+                                          color: profitColor,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Icon(
+                                        trend == 'down'
+                                            ? Icons.south_rounded
+                                            : Icons.north_rounded,
+                                        size: 16,
+                                        color: trend == 'down'
+                                            ? HexaColors.loss
+                                            : HexaColors.profit,
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Top item: $bestItem · $pctText contribution',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: tt.labelSmall?.copyWith(
+                                      color: cs.onSurfaceVariant,
+                                      fontWeight: FontWeight.w600,
                                     ),
                                   ),
-                                ),
+                                  const SizedBox(height: 4),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(999),
+                                    child: LinearProgressIndicator(
+                                      value: contribution,
+                                      minHeight: 6,
+                                      backgroundColor: cs.surfaceContainerHighest,
+                                      color: profitColor,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Qty ${qty.toStringAsFixed(1)} · ${trend == 'down' ? 'growth down' : 'growth up'}',
+                                    style: tt.labelSmall?.copyWith(
+                                      color: cs.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           );
@@ -1705,6 +1988,33 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
                     ),
                   ),
                 ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: _TopBarsCard(
+                title: 'Supplier comparison (profit)',
+                rows: filtered,
+                labelOf: (r) => r['supplier_name']?.toString() ?? '—',
+                valueOf: (r) => (r['total_profit'] as num?) ?? 0,
+                inr: widget.inr,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: _SharePieCard(
+                title: 'Supplier profit share',
+                rows: filtered,
+                labelOf: (r) => r['supplier_name']?.toString() ?? '—',
+                valueOf: (r) => (r['total_profit'] as num?) ?? 0,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: _RankLineCard(
+                title: 'Profit by supplier rank',
+                rows: filtered,
+                valueOf: (r) => (r['total_profit'] as num?) ?? 0,
               ),
             ),
             Expanded(
@@ -2112,6 +2422,34 @@ class _BrokersTabState extends ConsumerState<_BrokersTab> {
                     ),
                   ),
                 ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: _TopBarsCard(
+                title: 'Broker comparison (profit impact)',
+                rows: filtered,
+                labelOf: (r) => r['broker_name']?.toString() ?? '—',
+                valueOf: (r) => (r['total_profit'] as num?) ?? 0,
+                inr: widget.inr,
+                color: HexaColors.accentAmber,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: _SharePieCard(
+                title: 'Broker profit share',
+                rows: filtered,
+                labelOf: (r) => r['broker_name']?.toString() ?? '—',
+                valueOf: (r) => (r['total_profit'] as num?) ?? 0,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: _RankLineCard(
+                title: 'Profit by broker rank',
+                rows: filtered,
+                valueOf: (r) => (r['total_profit'] as num?) ?? 0,
               ),
             ),
             Expanded(

@@ -708,6 +708,12 @@ class _EntryTable extends StatelessWidget {
 
   final List<dynamic> entries;
 
+  String _inr(num v) => NumberFormat.currency(
+        locale: 'en_IN',
+        symbol: '₹',
+        decimalDigits: 0,
+      ).format(v);
+
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
@@ -722,6 +728,7 @@ class _EntryTable extends StatelessWidget {
             DataColumn(label: Text('Qty')),
             DataColumn(label: Text('Avg ₹')),
             DataColumn(label: Text('Profit')),
+            DataColumn(label: Text('Margin %')),
           ],
           rows: [
             for (final raw in entries)
@@ -738,6 +745,7 @@ class _EntryTable extends StatelessWidget {
     final d = e['entry_date']?.toString().split('T').first ?? '';
     final lines = e['lines'];
     double q = 0, profit = 0;
+    double sales = 0;
     final names = <String>[];
     if (lines is List) {
       for (final ln in lines) {
@@ -745,6 +753,10 @@ class _EntryTable extends StatelessWidget {
         final m = Map<String, dynamic>.from(ln);
         q += (m['qty'] as num?)?.toDouble() ?? 0;
         profit += (m['profit'] as num?)?.toDouble() ?? 0;
+        final sp = (m['selling_price'] as num?)?.toDouble();
+        if (sp != null) {
+          sales += ((m['qty'] as num?)?.toDouble() ?? 0) * sp;
+        }
         names.add(m['item_name']?.toString() ?? '');
       }
     }
@@ -760,6 +772,7 @@ class _EntryTable extends StatelessWidget {
       avgL = s / lines.length;
     }
     final id = e['id']?.toString();
+    final margin = sales > 0 ? (profit / sales) * 100 : null;
     return DataRow(
       onSelectChanged: id == null
           ? null
@@ -773,8 +786,13 @@ class _EntryTable extends StatelessWidget {
             child: Text(names.take(3).join(', '),
                 overflow: TextOverflow.ellipsis))),
         DataCell(Text(q.toStringAsFixed(1))),
-        DataCell(Text(avgL.toStringAsFixed(1))),
-        DataCell(Text(profit.toStringAsFixed(0))),
+        DataCell(Text(_inr(avgL))),
+        DataCell(Text(_inr(profit),
+            style: tt.labelMedium?.copyWith(fontWeight: FontWeight.w700))),
+        DataCell(Text(
+          margin == null ? '—' : '${margin.toStringAsFixed(1)}%',
+          style: tt.labelMedium?.copyWith(fontWeight: FontWeight.w700),
+        )),
       ],
     );
   }
