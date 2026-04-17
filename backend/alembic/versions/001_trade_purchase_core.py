@@ -27,4 +27,5 @@ def downgrade() -> None:
     op.execute("DROP TABLE IF EXISTS trade_purchase_lines")
     op.execute("DROP TABLE IF EXISTS trade_purchase_drafts")
     op.execute("DROP TABLE IF EXISTS trade_purchases")
+    op.execute("DROP TABLE IF EXISTS broker_supplier_m2m")
     op.execute("DROP TABLE IF EXISTS broker_supplier_links")

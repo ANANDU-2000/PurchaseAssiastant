@@ -16,8 +16,10 @@ def utcnow():
 class BrokerSupplierLink(Base):
     """M2M: broker can serve multiple suppliers (beyond legacy single broker_id on supplier)."""
 
-    __tablename__ = "broker_supplier_links"
-    __table_args__ = (UniqueConstraint("broker_id", "supplier_id", name="uq_broker_supplier_links_pair"),)
+    # Physical name avoids clashing with an existing pg_type named broker_supplier_links
+    # (e.g. stray ENUM) on some managed Postgres instances.
+    __tablename__ = "broker_supplier_m2m"
+    __table_args__ = (UniqueConstraint("broker_id", "supplier_id", name="uq_broker_supplier_m2m_pair"),)
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     broker_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("brokers.id"), index=True)
