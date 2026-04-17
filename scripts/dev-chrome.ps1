@@ -10,7 +10,7 @@ Write-Host "Starting API: $py -m uvicorn ... (new window)" -ForegroundColor Cyan
 Write-Host "Tip: uses HEXA_USE_SQLITE=1 so the API starts without Supabase. For Postgres, run in a shell without that var." -ForegroundColor DarkGray
 Start-Process powershell -WorkingDirectory $backend -ArgumentList @(
     "-NoExit", "-Command",
-    "`$env:HEXA_USE_SQLITE='1'; & '$py' -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000"
+    "`$env:HEXA_USE_SQLITE='1'; & '$py' -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
 )
 
 Start-Sleep -Seconds 3

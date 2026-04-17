@@ -16,7 +16,7 @@ $py = if (Test-Path $venvPy) { $venvPy } else { "python" }
 Write-Host "Starting API on http://127.0.0.1:8000 ..." -ForegroundColor Cyan
 Start-Process powershell -WorkingDirectory $backend -ArgumentList @(
     "-NoExit", "-Command",
-    "& '$py' -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000"
+    "& '$py' -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
 )
 
 Start-Sleep -Seconds 2

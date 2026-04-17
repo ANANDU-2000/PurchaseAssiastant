@@ -19,14 +19,14 @@ class HexaApi {
       : _onUnauthorizedRefresh = onUnauthorizedRefresh,
         _dio = Dio(
           BaseOptions(
-            baseUrl: baseUrl ?? AppConfig.apiBaseUrl,
+            baseUrl: baseUrl ?? AppConfig.resolvedApiBaseUrl,
             connectTimeout: const Duration(seconds: 20),
             receiveTimeout: const Duration(seconds: 30),
           ),
         ),
         _plain = Dio(
           BaseOptions(
-            baseUrl: baseUrl ?? AppConfig.apiBaseUrl,
+            baseUrl: baseUrl ?? AppConfig.resolvedApiBaseUrl,
             connectTimeout: const Duration(seconds: 20),
             receiveTimeout: const Duration(seconds: 30),
           ),
