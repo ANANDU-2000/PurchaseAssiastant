@@ -175,7 +175,7 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
         _msgs.add(
           ChatMessage(
             id: aid,
-            text: reply,
+                    text: reply.trim(),
             isUser: false,
             at: DateTime.now(),
             showPreviewActions: previewUi,
@@ -390,7 +390,7 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
                   child: ListView.builder(
                     controller: _scroll,
                     physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+                padding: const EdgeInsets.fromLTRB(14, 16, 14, 12),
                     itemCount: _msgs.length + (_loading ? 1 : 0),
                     itemBuilder: (context, i) {
                       if (_loading && i == _msgs.length) {
@@ -439,7 +439,11 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
                               onSwipeReply: () {
                                 if (m.type != MessageType.text) return;
                                 setState(() {
-                                  _replySnippet = m.text.split('\n').first;
+                                  _replySnippet = m.text
+                                      .replaceAll('\r\n', '\n')
+                                      .trim()
+                                      .split('\n')
+                                      .first;
                                 });
                                 HapticFeedback.lightImpact();
                               },
@@ -537,7 +541,7 @@ class _GradientAppBar extends StatelessWidget {
     final top = MediaQuery.paddingOf(context).top;
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.fromLTRB(12, top + 8, 12, 14),
+      padding: EdgeInsets.fromLTRB(12, top + 10, 12, 16),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           colors: [AssistantChatTheme.primary, AssistantChatTheme.primaryLight],
@@ -618,8 +622,8 @@ class _GradientAppBar extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: AssistantChatTheme.jakarta(18, w: FontWeight.w700, c: Colors.white)),
-                const SizedBox(height: 2),
+                Text(title, style: AssistantChatTheme.jakarta(17, w: FontWeight.w700, c: Colors.white)),
+                const SizedBox(height: 3),
                 subtitle,
               ],
             ),

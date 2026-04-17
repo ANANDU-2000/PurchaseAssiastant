@@ -6,7 +6,7 @@ abstract final class AssistantChatTheme {
   static const Color primary = Color(0xFF075E54);
   static const Color primaryLight = Color(0xFF128C7E);
   static const Color accent = Color(0xFF25D366);
-  static const Color background = Color(0xFFEFE5DD);
+  static const Color background = Color(0xFFF4F1EC);
   static const Color bubbleAi = Color(0xFFFFFFFF);
   static const Color bubbleUser = Color(0xFFDCF8C6);
   static const Color bubbleAiBorder = Color(0x14075E54);

@@ -107,8 +107,8 @@ class _ChatBubbleState extends State<ChatBubble> with SingleTickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
-    final maxW = MediaQuery.sizeOf(context).width * 0.78;
-    const r = 18.0;
+    final maxW = MediaQuery.sizeOf(context).width * 0.74;
+    const r = 20.0;
 
     final body = AnimatedBuilder(
       animation: _entrance,
@@ -139,7 +139,7 @@ class _ChatBubbleState extends State<ChatBubble> with SingleTickerProviderStateM
           children: [
             Container(
               constraints: BoxConstraints(maxWidth: maxW),
-              padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+              padding: const EdgeInsets.fromLTRB(14, 11, 14, 10),
               decoration: BoxDecoration(
                 color: widget.isUser ? AssistantChatTheme.bubbleUser : AssistantChatTheme.bubbleAi,
                 borderRadius: BorderRadius.only(
@@ -150,9 +150,9 @@ class _ChatBubbleState extends State<ChatBubble> with SingleTickerProviderStateM
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.07),
-                    blurRadius: 14,
-                    offset: const Offset(0, 3),
+                    color: Colors.black.withValues(alpha: 0.045),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
                   ),
                 ],
                 border: Border.all(
@@ -188,10 +188,10 @@ class _ChatBubbleState extends State<ChatBubble> with SingleTickerProviderStateM
                   SelectableText(
                     _shown.isEmpty ? widget.text : _shown,
                     style: AssistantChatTheme.inter(
-                      14.5,
+                      14,
                       w: FontWeight.w500,
                       c: const Color(0xFF111B21),
-                      h: 1.35,
+                      h: 1.45,
                     ),
                   ),
                   if (widget.showMeta) ...[
@@ -204,7 +204,7 @@ class _ChatBubbleState extends State<ChatBubble> with SingleTickerProviderStateM
                           Text(
                             _timeLabel(),
                             style: AssistantChatTheme.inter(
-                              11,
+                              10.5,
                               w: FontWeight.w500,
                               c: const Color(0xFF8696A0),
                             ),
@@ -252,7 +252,7 @@ class _ChatBubbleState extends State<ChatBubble> with SingleTickerProviderStateM
     return Align(
       alignment: widget.isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Padding(
-        padding: EdgeInsets.only(top: widget.tightGroupTop ? 2 : 4, bottom: 6),
+        padding: EdgeInsets.only(top: widget.tightGroupTop ? 3 : 8, bottom: 8),
         child: body,
       ),
     );
