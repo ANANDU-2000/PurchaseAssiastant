@@ -1,6 +1,6 @@
 /// API base URL. Override at run time:
 /// `flutter run --dart-define=API_BASE_URL=http://192.168.1.10:8000`
-/// - Web/desktop: http://localhost:8000
+/// - Web/desktop: http://127.0.0.1:8000 (default; override with API_BASE_URL)
 /// - Android emulator: http://10.0.2.2:8000
 class AppConfig {
   AppConfig._();
@@ -9,9 +9,11 @@ class AppConfig {
   static const String appName = 'Harisree Purchases';
 
   /// Vercel web builds: set `API_BASE_URL` in project env (see `scripts/vercel-flutter-build.sh`).
+  /// Default uses 127.0.0.1 (not `localhost`) so Windows resolves IPv4 consistently with uvicorn
+  /// bound to 127.0.0.1 and avoids ERR_CONNECTION_REFUSED when `localhost` maps to ::1 only.
   static const String apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://localhost:8000',
+    defaultValue: 'http://127.0.0.1:8000',
   );
 
   /// Web OAuth 2.0 client ID from Google Cloud Console (used as `serverClientId` on iOS/Android so

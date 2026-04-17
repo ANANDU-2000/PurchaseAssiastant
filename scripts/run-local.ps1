@@ -10,10 +10,13 @@ if (-not (Test-Path (Join-Path $web "index.html"))) {
     exit 1
 }
 
+$venvPy = Join-Path $backend ".venv\Scripts\python.exe"
+$py = if (Test-Path $venvPy) { $venvPy } else { "python" }
+
 Write-Host "Starting API on http://127.0.0.1:8000 ..." -ForegroundColor Cyan
 Start-Process powershell -WorkingDirectory $backend -ArgumentList @(
     "-NoExit", "-Command",
-    "python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000"
+    "& '$py' -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000"
 )
 
 Start-Sleep -Seconds 2

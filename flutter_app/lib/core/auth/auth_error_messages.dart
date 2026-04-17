@@ -42,6 +42,19 @@ String friendlyAuthError(
   required AuthErrorContext context,
 }) {
   if (error is DioException) {
+    // Reachability first: no HTTP body / wrong host / API stopped — not "wrong password".
+    if (_isNetworkError(error)) {
+      final hint = _connectionUnreachableHint(error);
+      if (hint != null) return hint;
+      if (kIsWeb) {
+        final web = _webBrowserNetworkHint(error);
+        if (web != null) return web;
+        return "Sign-in couldn't reach the API from this browser. "
+            "Confirm the backend is running on http://127.0.0.1:8000 and that CORS allows this origin (CORS_ORIGINS on the server).";
+      }
+      return "Can't connect right now. Check your internet and try again.";
+    }
+
     final sc = error.response?.statusCode;
     if (sc == 401) {
       return context == AuthErrorContext.register
@@ -62,33 +75,12 @@ String friendlyAuthError(
     if (sc != null && sc >= 500) {
       return 'Something went wrong on our side. Please try again in a moment.';
     }
-    if (_isNetworkError(error)) {
-      final hint = _connectionUnreachableHint(error);
-      if (hint != null) return hint;
-      if (kIsWeb) {
-        final web = _webBrowserNetworkHint(error);
-        if (web != null) return web;
-        return "Sign-in couldn't reach the API from this browser. "
-            "Confirm the backend is running and that CORS allows this site's origin (see CORS_ORIGINS on the server).";
-      }
-      return "Can't connect right now. Check your internet and try again.";
-    }
   }
   return 'Something went wrong. Please try again.';
 }
 
 String friendlyGoogleSignInError(Object error) {
   if (error is DioException) {
-    final sc = error.response?.statusCode;
-    if (sc == 401) {
-      return 'Google sign-in could not be verified. Try email sign-in instead.';
-    }
-    if (sc == 503) {
-      return 'Sign-in is temporarily unavailable. Try again in a moment.';
-    }
-    if (sc != null && sc >= 500) {
-      return 'Something went wrong on our side. Please try again in a moment.';
-    }
     if (_isNetworkError(error)) {
       final hint = _connectionUnreachableHint(error);
       if (hint != null) return '$hint You can try email sign-in instead.';
@@ -98,6 +90,17 @@ String friendlyGoogleSignInError(Object error) {
         return "Google sign-in couldn't reach the server from this page. Try email sign-in after the API is running.";
       }
       return "Can't connect right now. Check your internet and try again.";
+    }
+
+    final sc = error.response?.statusCode;
+    if (sc == 401) {
+      return 'Google sign-in could not be verified. Try email sign-in instead.';
+    }
+    if (sc == 503) {
+      return 'Sign-in is temporarily unavailable. Try again in a moment.';
+    }
+    if (sc != null && sc >= 500) {
+      return 'Something went wrong on our side. Please try again in a moment.';
     }
   }
   return 'Google sign-in did not work. Try again or use email sign-in.';
@@ -148,10 +151,18 @@ String friendlyApiError(Object error, {bool forAssistant = false}) {
           : 'Something went wrong on our side. Please try again.';
     }
     if (_isNetworkError(error)) {
-      if (forAssistant && kIsWeb) {
+      final hint = _connectionUnreachableHint(error);
+      if (hint != null) {
+        return forAssistant
+            ? "Assistant couldn't reach the server. $hint"
+            : hint;
+      }
+      if (kIsWeb) {
         final web = _webBrowserNetworkHint(error);
         if (web != null) {
-          return "Assistant couldn't reach the server. $web";
+          return forAssistant
+              ? "Assistant couldn't reach the server. $web"
+              : web;
         }
       }
       return forAssistant
