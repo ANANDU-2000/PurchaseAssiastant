@@ -1,11 +1,13 @@
-import 'dart:async' show unawaited;
+import 'dart:async';
+import 'dart:math';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
@@ -13,10 +15,12 @@ import '../../../core/providers/health_provider.dart';
 import 'assistant_chat_theme.dart';
 import 'models/chat_message.dart';
 import 'widgets/chat_background_pattern.dart';
+import 'widgets/audio_message_bubble.dart';
 import 'widgets/chat_bubble.dart';
 import 'widgets/input_bar.dart';
 import 'widgets/preview_card.dart';
 import 'widgets/quick_prompts_bar.dart';
+import 'widgets/recording_overlay.dart';
 import 'widgets/typing_indicator.dart';
 
 /// In-app assistant — preview → YES → save; health shows LLM vs rules mode.
@@ -32,14 +36,18 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
   final _inputFocus = FocusNode();
   final _scroll = ScrollController();
   final _msgs = <ChatMessage>[];
+  final _recorder = AudioRecorder();
+  final _rng = Random();
+
   bool _loading = false;
+  bool _recording = false;
+  bool _recordReady = false;
+  bool _recordCanceled = false;
+  Duration _recordElapsed = Duration.zero;
+  Timer? _recordTicker;
 
   String? _pendingPreviewToken;
   Map<String, dynamic>? _pendingEntryDraft;
-
-  stt.SpeechToText? _speech;
-  bool _speechOn = false;
-  bool _listening = false;
 
   String? _replySnippet;
   final Set<String> _typewriterActive = {};
@@ -54,34 +62,20 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
         id: 'welcome',
         text: 'Describe a purchase or say e.g. “create supplier Ravi”. '
             'You’ll get a preview first — reply YES to save, NO to cancel.\n'
-            'Hold the mic to dictate (Malayalam / English on device).',
+            'Hold the mic to record a voice note.',
         isUser: false,
         at: DateTime.now(),
       ),
     );
-    if (!kIsWeb) {
-      _speech = stt.SpeechToText();
-      _initSpeech();
-    }
+    unawaited(_initRecorder());
   }
 
-  Future<void> _initSpeech() async {
-    final s = _speech;
-    if (s == null) return;
+  Future<void> _initRecorder() async {
     try {
-      final ok = await s.initialize(
-        onStatus: (st) {
-          if (st == 'done' || st == 'notListening') {
-            if (mounted) setState(() => _listening = false);
-          }
-        },
-        onError: (_) {
-          if (mounted) setState(() => _listening = false);
-        },
-      );
-      if (mounted) setState(() => _speechOn = ok);
+      final ok = await _recorder.hasPermission();
+      if (mounted) setState(() => _recordReady = ok);
     } catch (_) {
-      if (mounted) setState(() => _speechOn = false);
+      if (mounted) setState(() => _recordReady = false);
     }
   }
 
@@ -90,6 +84,8 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
     _ctrl.dispose();
     _inputFocus.dispose();
     _scroll.dispose();
+    _recordTicker?.cancel();
+    _recorder.dispose();
     super.dispose();
   }
 
@@ -110,10 +106,11 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
         : _msgs;
     return [
       for (final b in slice)
-        {
-          'role': b.isUser ? 'user' : 'assistant',
-          'content': b.text,
-        },
+        if (b.type == MessageType.text)
+          {
+            'role': b.isUser ? 'user' : 'assistant',
+            'content': b.text,
+          },
     ];
   }
 
@@ -178,7 +175,7 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
         _msgs.add(
           ChatMessage(
             id: aid,
-            text: reply,
+                    text: reply.trim(),
             isUser: false,
             at: DateTime.now(),
             showPreviewActions: previewUi,
@@ -226,34 +223,83 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
     }
   }
 
-  Future<void> _startListen() async {
-    if (kIsWeb || _speech == null || !_speechOn) return;
-    setState(() => _listening = true);
+  Future<void> _startRecording() async {
+    if (_recording || _loading) return;
+    final permitted = await _recorder.hasPermission();
+    if (!permitted) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Microphone permission is required.')),
+      );
+      return;
+    }
+
     HapticFeedback.mediumImpact();
-    await _speech!.listen(
-      onResult: (r) {
-        if (r.finalResult) {
-          final t = r.recognizedWords.trim();
-          if (t.isNotEmpty) {
-            _ctrl.text = t;
-            _ctrl.selection = TextSelection.collapsed(offset: t.length);
-          }
-        }
-      },
-      listenOptions: stt.SpeechListenOptions(
-        listenMode: stt.ListenMode.dictation,
-        partialResults: true,
+    _recordCanceled = false;
+    _recordElapsed = Duration.zero;
+    _recordTicker?.cancel();
+    _recordTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || !_recording) return;
+      setState(() => _recordElapsed += const Duration(seconds: 1));
+    });
+    final path = await _recordingPath();
+    await _recorder.start(
+      const RecordConfig(
+        encoder: AudioEncoder.aacLc,
+        sampleRate: 44100,
+        bitRate: 128000,
       ),
+      path: path,
     );
+    if (mounted) setState(() => _recording = true);
   }
 
-  Future<void> _stopListen() async {
-    if (_speech == null) return;
-    await _speech!.stop();
-    if (mounted) setState(() => _listening = false);
+  Future<void> _stopRecording() async {
+    if (!_recording) return;
+    _recordTicker?.cancel();
+    final p = await _recorder.stop();
+    final elapsed = _recordElapsed < const Duration(seconds: 1)
+        ? const Duration(seconds: 1)
+        : _recordElapsed;
+    if (!mounted) return;
+    setState(() {
+      _recording = false;
+      _recordElapsed = Duration.zero;
+    });
+    if (_recordCanceled || p == null || p.isEmpty) return;
+    setState(() {
+      _msgs.add(
+        ChatMessage(
+          id: DateTime.now().microsecondsSinceEpoch.toString(),
+          isUser: true,
+          at: DateTime.now(),
+          type: MessageType.audio,
+          audioPath: p,
+          audioDuration: elapsed,
+          waveform: _staticWaveform(),
+        ),
+      );
+    });
+    _scrollEnd();
   }
 
-  void _onBubbleLongPress(String t, bool isUser) {
+  Future<void> _cancelRecording() async {
+    _recordCanceled = true;
+    await _stopRecording();
+  }
+
+  List<double> _staticWaveform() {
+    return List.generate(24, (_) => 0.2 + (_rng.nextDouble() * 0.75));
+  }
+
+  Future<String> _recordingPath() async {
+    final name = 'voice_${DateTime.now().microsecondsSinceEpoch}.m4a';
+    if (kIsWeb) return name;
+    final dir = await getTemporaryDirectory();
+    return '${dir.path}/$name';
+  }
+
+  void _onMessageLongPress(ChatMessage m) {
     HapticFeedback.selectionClick();
     showModalBottomSheet<void>(
       context: context,
@@ -265,25 +311,26 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
-              leading: const Icon(Icons.copy_rounded),
-              title: Text('Copy', style: AssistantChatTheme.inter(16, w: FontWeight.w600)),
-              onTap: () {
-                Clipboard.setData(ClipboardData(text: t));
-                Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Copied')),
-                );
-              },
-            ),
-            if (isUser)
+            if (m.type == MessageType.text)
+              ListTile(
+                leading: const Icon(Icons.copy_rounded),
+                title: Text('Copy', style: AssistantChatTheme.inter(16, w: FontWeight.w600)),
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: m.text));
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Copied')),
+                  );
+                },
+              ),
+            if (m.isUser)
               ListTile(
                 leading: Icon(Icons.delete_outline_rounded, color: Colors.red.shade700),
                 title: Text('Delete', style: AssistantChatTheme.inter(16, w: FontWeight.w600, c: Colors.red.shade800)),
                 onTap: () {
                   Navigator.pop(ctx);
                   setState(() {
-                    _msgs.removeWhere((m) => m.isUser && m.text == t);
+                    _msgs.removeWhere((x) => x.id == m.id);
                   });
                 },
               ),
@@ -331,125 +378,151 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
         ),
       ),
       body: ChatBackgroundPattern(
-        child: Column(
+        child: Stack(
           children: [
-            _GradientAppBar(
-              title: 'Purchase Assistant',
-              subtitle: _subtitleRow(),
-            ),
-            Expanded(
-              child: ListView.builder(
-                controller: _scroll,
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
-                itemCount: _msgs.length + (_loading ? 1 : 0),
-                itemBuilder: (context, i) {
-                  if (_loading && i == _msgs.length) {
-                    return const Padding(
-                      padding: EdgeInsets.only(left: 4, bottom: 8),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: TypingIndicator(),
-                      ),
-                    );
-                  }
-                  final m = _msgs[i];
-                  final prev = i > 0 ? _msgs[i - 1] : null;
-                  final next = i < _msgs.length - 1 ? _msgs[i + 1] : null;
-                  final tightGroupTop = prev != null && prev.isUser == m.isUser;
-                  final showMeta = next == null || next.isUser != m.isUser;
-                  final parsed = m.draftSnapshot != null
-                      ? PreviewCard.parse(m.draftSnapshot!)
-                      : null;
-                  final showCard =
-                      m.showPreviewActions && m.draftSnapshot != null && parsed != null;
-                  return Column(
-                    crossAxisAlignment:
-                        m.isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                    children: [
-                      if (i == 0) const _DayDivider(label: 'TODAY'),
-                      ChatBubble(
-                        text: m.text,
-                        isUser: m.isUser,
-                        time: m.at,
-                        showMeta: showMeta,
-                        tightGroupTop: tightGroupTop,
-                        typewriter: !m.isUser && _typewriterActive.contains(m.id),
-                        onLongPress: _onBubbleLongPress,
-                        onSwipeReply: () {
-                          setState(() {
-                            _replySnippet = m.text.split('\n').first;
-                          });
-                          HapticFeedback.lightImpact();
-                        },
-                        replySnippet: null,
-                        onTypewriterComplete: () {
-                          if (_typewriterActive.remove(m.id)) {
-                            setState(() {});
-                          }
-                        },
-                      ),
-                      if (showCard)
-                        PreviewCard(
-                          entryDraft: m.draftSnapshot!,
-                          onCancel: () => unawaited(_sendWithText('NO')),
-                          onSave: () => unawaited(_sendWithText('YES')),
-                        )
-                      else if (m.showPreviewActions)
-                        Padding(
-                          padding: const EdgeInsets.only(left: 4, right: 48, bottom: 8),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton(
-                                  onPressed: () => unawaited(_sendWithText('NO')),
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: const Color(0xFFDC2626),
-                                    side: const BorderSide(color: Color(0xFFDC2626)),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                  ),
-                                  child: Text('Cancel',
-                                      style: AssistantChatTheme.inter(14, w: FontWeight.w600)),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: FilledButton(
-                                  onPressed: () => unawaited(_sendWithText('YES')),
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: AssistantChatTheme.accent,
-                                    foregroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                  ),
-                                  child: Text('Save',
-                                      style: AssistantChatTheme.inter(14, w: FontWeight.w700)),
-                                ),
-                              ),
-                            ],
+            Column(
+              children: [
+                _GradientAppBar(
+                  title: 'Purchase Assistant',
+                  subtitle: _subtitleRow(),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    controller: _scroll,
+                    physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(14, 16, 14, 12),
+                    itemCount: _msgs.length + (_loading ? 1 : 0),
+                    itemBuilder: (context, i) {
+                      if (_loading && i == _msgs.length) {
+                        return const Padding(
+                          padding: EdgeInsets.only(left: 4, bottom: 8),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: TypingIndicator(),
                           ),
-                        ),
-                    ],
-                  );
-                },
+                        );
+                      }
+                      final m = _msgs[i];
+                      final prev = i > 0 ? _msgs[i - 1] : null;
+                      final next = i < _msgs.length - 1 ? _msgs[i + 1] : null;
+                      final tightGroupTop = prev != null && prev.isUser == m.isUser;
+                      final showMeta = next == null || next.isUser != m.isUser;
+                      final parsed = m.draftSnapshot != null
+                          ? PreviewCard.parse(m.draftSnapshot!)
+                          : null;
+                      final showCard =
+                          m.showPreviewActions && m.draftSnapshot != null && parsed != null;
+                      return Column(
+                        crossAxisAlignment:
+                            m.isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                        children: [
+                          if (i == 0) const _DayDivider(label: 'TODAY'),
+                          if (m.type == MessageType.audio)
+                            AudioMessageBubble(
+                              audioPath: m.audioPath!,
+                              isUser: m.isUser,
+                              time: m.at,
+                              duration: m.audioDuration,
+                              waveform: m.waveform,
+                              showMeta: showMeta,
+                              tightGroupTop: tightGroupTop,
+                            )
+                          else
+                            ChatBubble(
+                              text: m.text,
+                              isUser: m.isUser,
+                              time: m.at,
+                              showMeta: showMeta,
+                              tightGroupTop: tightGroupTop,
+                              typewriter: !m.isUser && _typewriterActive.contains(m.id),
+                              onLongPress: (_, __) => _onMessageLongPress(m),
+                              onSwipeReply: () {
+                                if (m.type != MessageType.text) return;
+                                setState(() {
+                                  _replySnippet = m.text
+                                      .replaceAll('\r\n', '\n')
+                                      .trim()
+                                      .split('\n')
+                                      .first;
+                                });
+                                HapticFeedback.lightImpact();
+                              },
+                              replySnippet: null,
+                              onTypewriterComplete: () {
+                                if (_typewriterActive.remove(m.id)) {
+                                  setState(() {});
+                                }
+                              },
+                            ),
+                          if (showCard)
+                            PreviewCard(
+                              entryDraft: m.draftSnapshot!,
+                              onCancel: () => unawaited(_sendWithText('NO')),
+                              onSave: () => unawaited(_sendWithText('YES')),
+                            )
+                          else if (m.showPreviewActions)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 4, right: 48, bottom: 8),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: OutlinedButton(
+                                      onPressed: () => unawaited(_sendWithText('NO')),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: const Color(0xFFDC2626),
+                                        side: const BorderSide(color: Color(0xFFDC2626)),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(14),
+                                        ),
+                                      ),
+                                      child: Text('Cancel',
+                                          style: AssistantChatTheme.inter(14, w: FontWeight.w600)),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: FilledButton(
+                                      onPressed: () => unawaited(_sendWithText('YES')),
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: AssistantChatTheme.accent,
+                                        foregroundColor: Colors.white,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(14),
+                                        ),
+                                      ),
+                                      child: Text('Save',
+                                          style: AssistantChatTheme.inter(14, w: FontWeight.w700)),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+                QuickPromptsBar(onPrompt: (msg) => unawaited(_sendWithText(msg))),
+                InputBar(
+                  controller: _ctrl,
+                  focusNode: _inputFocus,
+                  onSend: _send,
+                  loading: _loading,
+                  speechReady: _recordReady,
+                  listening: _recording,
+                  onMicDown: _startRecording,
+                  onMicUp: _stopRecording,
+                  onMicCancel: _cancelRecording,
+                  replySnippet: _replySnippet,
+                  onDismissReply: () => setState(() => _replySnippet = null),
+                ),
+              ],
+            ),
+            if (_recording)
+              RecordingOverlay(
+                elapsed: _recordElapsed,
+                onCancelTap: () => unawaited(_cancelRecording()),
               ),
-            ),
-            QuickPromptsBar(onPrompt: (msg) => unawaited(_sendWithText(msg))),
-            InputBar(
-              controller: _ctrl,
-              focusNode: _inputFocus,
-              onSend: _send,
-              loading: _loading,
-              speechReady: _speechOn,
-              listening: _listening,
-              onMicDown: _startListen,
-              onMicUp: _stopListen,
-              replySnippet: _replySnippet,
-              onDismissReply: () => setState(() => _replySnippet = null),
-            ),
           ],
         ),
       ),
@@ -468,7 +541,7 @@ class _GradientAppBar extends StatelessWidget {
     final top = MediaQuery.paddingOf(context).top;
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.fromLTRB(12, top + 8, 12, 14),
+      padding: EdgeInsets.fromLTRB(12, top + 10, 12, 16),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           colors: [AssistantChatTheme.primary, AssistantChatTheme.primaryLight],
@@ -549,8 +622,8 @@ class _GradientAppBar extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: AssistantChatTheme.jakarta(18, w: FontWeight.w700, c: Colors.white)),
-                const SizedBox(height: 2),
+                Text(title, style: AssistantChatTheme.jakarta(17, w: FontWeight.w700, c: Colors.white)),
+                const SizedBox(height: 3),
                 subtitle,
               ],
             ),
