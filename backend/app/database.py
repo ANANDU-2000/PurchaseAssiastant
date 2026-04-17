@@ -1,4 +1,5 @@
 import logging
+import os
 import ssl
 from collections.abc import AsyncGenerator
 
@@ -33,58 +34,76 @@ def _normalize_postgres_async_url(url: str) -> str:
     return url
 
 
-_sqlite = settings.database_url.startswith("sqlite")
-_pooler = (settings.database_pooler_url or "").strip()
-if _pooler:
-    _pl = _pooler.lower()
-    if "[your-password]" in _pl or "your-password" in _pl:
-        logger.error(
-            "DATABASE_POOLER_URL still contains the Supabase placeholder [YOUR-PASSWORD]. "
-            "Set DATABASE_POOLER_PASSWORD to your real DB password and use a URI with no password in the string "
-            "(postgresql+asyncpg://postgres.PROJECT_REF@HOST:6543/postgres)."
-        )
-    if "postgres.[" in _pooler or "postgres:[" in _pooler:
-        logger.error(
-            "Invalid URI: do not wrap the password in square brackets. "
-            "Use postgres.PROJECT_REF@host (see DATABASE_POOLER_PASSWORD)."
-        )
-_effective_url = _pooler if _pooler else settings.database_url
-if not _sqlite:
-    _effective_url = _normalize_postgres_async_url(_effective_url)
+# Bypass .env pooler/postgres when Supabase is unreachable (e.g. SSL hang). Set HEXA_USE_SQLITE=1.
+if os.environ.get("HEXA_USE_SQLITE", "").strip().lower() in ("1", "true", "yes"):
+    _default_sqlite = "sqlite+aiosqlite:///./hexa_dev.db"
+    raw = (os.environ.get("DATABASE_URL") or "").strip()
+    if raw.startswith("sqlite"):
+        _sqlite_url = raw
+    else:
+        if raw:
+            logger.warning(
+                "HEXA_USE_SQLITE is set but DATABASE_URL is not sqlite; using %s",
+                _default_sqlite,
+            )
+        _sqlite_url = _default_sqlite
+    _sqlite = True
+    _pooler = ""
+    _effective_url = _sqlite_url
+    logger.info("HEXA_USE_SQLITE: using local SQLite (%s)", _sqlite_url)
+else:
+    _sqlite = settings.database_url.startswith("sqlite")
+    _pooler = (settings.database_pooler_url or "").strip()
+    if _pooler:
+        _pl = _pooler.lower()
+        if "[your-password]" in _pl or "your-password" in _pl:
+            logger.error(
+                "DATABASE_POOLER_URL still contains the Supabase placeholder [YOUR-PASSWORD]. "
+                "Set DATABASE_POOLER_PASSWORD to your real DB password and use a URI with no password in the string "
+                "(postgresql+asyncpg://postgres.PROJECT_REF@HOST:6543/postgres)."
+            )
+        if "postgres.[" in _pooler or "postgres:[" in _pooler:
+            logger.error(
+                "Invalid URI: do not wrap the password in square brackets. "
+                "Use postgres.PROJECT_REF@host (see DATABASE_POOLER_PASSWORD)."
+            )
+    _effective_url = _pooler if _pooler else settings.database_url
+    if not _sqlite:
+        _effective_url = _normalize_postgres_async_url(_effective_url)
 
-# Optional: password only in DATABASE_POOLER_PASSWORD — keeps @/#/ etc. out of the URI string.
-if _pooler and settings.database_pooler_password and settings.database_pooler_password.strip():
-    try:
-        _u = make_url(_effective_url)
-        _effective_url = str(_u.set(password=settings.database_pooler_password.strip()))
-        logger.info("Applied DATABASE_POOLER_PASSWORD (URI should omit password; userinfo user@host only).")
-    except Exception as e:  # noqa: BLE001
-        logger.warning("Could not merge DATABASE_POOLER_PASSWORD into pooler URL: %s", e)
+    # Optional: password only in DATABASE_POOLER_PASSWORD — keeps @/#/ etc. out of the URI string.
+    if _pooler and settings.database_pooler_password and settings.database_pooler_password.strip():
+        try:
+            _u = make_url(_effective_url)
+            _effective_url = str(_u.set(password=settings.database_pooler_password.strip()))
+            logger.info("Applied DATABASE_POOLER_PASSWORD (URI should omit password; userinfo user@host only).")
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Could not merge DATABASE_POOLER_PASSWORD into pooler URL: %s", e)
 
-if _pooler:
-    logger.info("Using DATABASE_POOLER_URL for SQLAlchemy engine")
-    if not _pooler.startswith(("postgresql+asyncpg://", "postgres+asyncpg://")) and (
-        _pooler.startswith("postgresql://") or _pooler.startswith("postgres://")
-    ):
-        logger.info(
-            "Normalized DATABASE_POOLER_URL to postgresql+asyncpg:// (Supabase often pastes postgresql://)."
-        )
-    elif not _pooler.startswith(("postgresql+asyncpg://", "postgres+asyncpg://")):
-        logger.warning(
-            "DATABASE_POOLER_URL should use postgresql+asyncpg:// (or plain postgresql://, which we normalize)."
-        )
-    # Direct host + 5432 is NOT the pooler — Render often gets Errno 101 to db.*.supabase.co.
-    if (
-        "db." in _pooler
-        and ".supabase.co" in _pooler
-        and ":5432" in _pooler
-        and "pooler.supabase.com" not in _pooler
-    ):
-        logger.warning(
-            "DATABASE_POOLER_URL looks like a direct Supabase URL (db.*.supabase.co:5432). "
-            "Copy the pooler string from Supabase Dashboard → Connect → "
-            "Transaction pooler (host aws-0-*.pooler.supabase.com, port 6543) or Session pooler."
-        )
+    if _pooler:
+        logger.info("Using DATABASE_POOLER_URL for SQLAlchemy engine")
+        if not _pooler.startswith(("postgresql+asyncpg://", "postgres+asyncpg://")) and (
+            _pooler.startswith("postgresql://") or _pooler.startswith("postgres://")
+        ):
+            logger.info(
+                "Normalized DATABASE_POOLER_URL to postgresql+asyncpg:// (Supabase often pastes postgresql://)."
+            )
+        elif not _pooler.startswith(("postgresql+asyncpg://", "postgres+asyncpg://")):
+            logger.warning(
+                "DATABASE_POOLER_URL should use postgresql+asyncpg:// (or plain postgresql://, which we normalize)."
+            )
+        # Direct host + 5432 is NOT the pooler — Render often gets Errno 101 to db.*.supabase.co.
+        if (
+            "db." in _pooler
+            and ".supabase.co" in _pooler
+            and ":5432" in _pooler
+            and "pooler.supabase.com" not in _pooler
+        ):
+            logger.warning(
+                "DATABASE_POOLER_URL looks like a direct Supabase URL (db.*.supabase.co:5432). "
+                "Copy the pooler string from Supabase Dashboard → Connect → "
+                "Transaction pooler (host aws-0-*.pooler.supabase.com, port 6543) or Session pooler."
+            )
 
 _connect_args: dict = {"check_same_thread": False} if _sqlite else {}
 # asyncpg caches prepared statements per connection. PgBouncer (transaction mode) and
