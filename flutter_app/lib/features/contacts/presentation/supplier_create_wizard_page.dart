@@ -66,7 +66,9 @@ bool _validPhoneDigits(String raw) {
 }
 
 class SupplierCreateWizardPage extends ConsumerStatefulWidget {
-  const SupplierCreateWizardPage({super.key});
+  const SupplierCreateWizardPage({super.key, this.supplierId});
+
+  final String? supplierId;
 
   @override
   ConsumerState<SupplierCreateWizardPage> createState() =>
@@ -145,7 +147,76 @@ class _SupplierCreateWizardPageState
         });
       }
     } catch (_) {}
-    await _loadDraft(session.primaryBusiness.id);
+    if (widget.supplierId != null && widget.supplierId!.isNotEmpty) {
+      try {
+        final s = await ref.read(hexaApiProvider).getSupplier(
+              businessId: session.primaryBusiness.id,
+              supplierId: widget.supplierId!,
+            );
+        if (mounted && s.isNotEmpty) {
+          setState(() {
+            _name.text = s['name']?.toString() ?? '';
+            _phone.text = s['phone']?.toString() ?? '';
+            _wa.text = s['whatsapp_number']?.toString() ?? '';
+            _loc.text = s['location']?.toString() ?? '';
+            _gst.text = s['gst_number']?.toString() ?? '';
+            _addr.text = s['address']?.toString() ?? '';
+            _notes.text = s['notes']?.toString() ?? '';
+            _delivered.text =
+                (s['default_delivered_rate']?.toString() ?? '').trim();
+            _billty.text = (s['default_billty_rate']?.toString() ?? '').trim();
+            final pd = (s['default_payment_days'] as num?)?.toInt();
+            if (pd != null && (pd == 7 || pd == 14 || pd == 30)) {
+              _payChip = pd;
+              _payCustom = false;
+            } else if (pd != null) {
+              _payCustom = true;
+              _customPay.text = '$pd';
+            }
+            final dd = (s['default_discount'] as num?)?.toDouble();
+            if (dd != null && (dd == 0 || dd == 1 || dd == 1.5 || dd == 2)) {
+              _discChip = dd;
+              _discCustom = false;
+            } else if (dd != null) {
+              _discCustom = true;
+              _customDisc.text = '$dd';
+            }
+            final ft = s['freight_type']?.toString();
+            _freightIncluded = ft != 'separate';
+            _aiMemory = s['ai_memory_enabled'] == true;
+            _brokerIds
+              ..clear()
+              ..addAll(
+                ((s['broker_ids'] as List?) ?? const [])
+                    .map((e) => e.toString())
+                    .where((e) => e.isNotEmpty),
+              );
+            try {
+              final raw = s['preferences_json']?.toString();
+              if (raw != null && raw.trim().isNotEmpty) {
+                final p = jsonDecode(raw) as Map<String, dynamic>;
+                _categoryIds
+                  ..clear()
+                  ..addAll((p['category_ids'] as List? ?? const [])
+                      .map((e) => e.toString()));
+                _typeIds
+                  ..clear()
+                  ..addAll((p['type_ids'] as List? ?? const [])
+                      .map((e) => e.toString()));
+                _itemIds
+                  ..clear()
+                  ..addAll((p['item_ids'] as List? ?? const [])
+                      .map((e) => e.toString()));
+              }
+            } catch (_) {}
+            _dirty = false;
+          });
+        }
+      } catch (_) {}
+    }
+    if (widget.supplierId == null || widget.supplierId!.isEmpty) {
+      await _loadDraft(session.primaryBusiness.id);
+    }
   }
 
   void _syncWaFromPhone() {
@@ -410,26 +481,50 @@ class _SupplierCreateWizardPageState
       'item_ids': _itemIds.toList(),
     };
     try {
-      final created = await ref.read(hexaApiProvider).createSupplier(
-            businessId: bid,
-            name: _name.text.trim(),
-            phone: _phone.text.trim(),
-            whatsappNumber:
-                _wa.text.trim().isEmpty ? null : _wa.text.trim(),
-            location: _loc.text.trim().isEmpty ? null : _loc.text.trim(),
-            brokerIds: _brokerIds.isEmpty ? null : _brokerIds.toList(),
-            gstNumber: _gst.text.trim().isEmpty ? null : _gst.text.trim(),
-            address: _addr.text.trim().isEmpty ? null : _addr.text.trim(),
-            notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
-            defaultPaymentDays: _resolvedPaymentDays(),
-            defaultDiscount: _resolvedDiscount(),
-            defaultDeliveredRate: double.tryParse(_delivered.text.trim()),
-            defaultBilltyRate: double.tryParse(_billty.text.trim()),
-            freightType: _freightIncluded ? 'included' : 'separate',
-            aiMemoryEnabled: _aiMemory,
-            preferences: prefsMap,
-          );
-      final id = created['id']?.toString();
+      String? id;
+      if (widget.supplierId != null && widget.supplierId!.isNotEmpty) {
+        final updated = await ref.read(hexaApiProvider).updateSupplier(
+              businessId: bid,
+              supplierId: widget.supplierId!,
+              name: _name.text.trim(),
+              phone: _phone.text.trim(),
+              whatsappNumber: _wa.text.trim().isEmpty ? null : _wa.text.trim(),
+              location: _loc.text.trim().isEmpty ? null : _loc.text.trim(),
+              brokerIds: _brokerIds.toList(),
+              brokerId: _brokerIds.isEmpty ? null : _brokerIds.first,
+              gstNumber: _gst.text.trim().isEmpty ? null : _gst.text.trim(),
+              address: _addr.text.trim().isEmpty ? null : _addr.text.trim(),
+              notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+              defaultPaymentDays: _resolvedPaymentDays(),
+              defaultDiscount: _resolvedDiscount(),
+              defaultDeliveredRate: double.tryParse(_delivered.text.trim()),
+              defaultBilltyRate: double.tryParse(_billty.text.trim()),
+              freightType: _freightIncluded ? 'included' : 'separate',
+              aiMemoryEnabled: _aiMemory,
+              preferences: prefsMap,
+            );
+        id = updated['id']?.toString() ?? widget.supplierId;
+      } else {
+        final created = await ref.read(hexaApiProvider).createSupplier(
+              businessId: bid,
+              name: _name.text.trim(),
+              phone: _phone.text.trim(),
+              whatsappNumber: _wa.text.trim().isEmpty ? null : _wa.text.trim(),
+              location: _loc.text.trim().isEmpty ? null : _loc.text.trim(),
+              brokerIds: _brokerIds.isEmpty ? null : _brokerIds.toList(),
+              gstNumber: _gst.text.trim().isEmpty ? null : _gst.text.trim(),
+              address: _addr.text.trim().isEmpty ? null : _addr.text.trim(),
+              notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+              defaultPaymentDays: _resolvedPaymentDays(),
+              defaultDiscount: _resolvedDiscount(),
+              defaultDeliveredRate: double.tryParse(_delivered.text.trim()),
+              defaultBilltyRate: double.tryParse(_billty.text.trim()),
+              freightType: _freightIncluded ? 'included' : 'separate',
+              aiMemoryEnabled: _aiMemory,
+              preferences: prefsMap,
+            );
+        id = created['id']?.toString();
+      }
       await _clearDraft(bid);
       ref.invalidate(suppliersListProvider);
       ref.invalidate(contactsSuppliersEnrichedProvider);
@@ -440,7 +535,8 @@ class _SupplierCreateWizardPageState
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Supplier saved'),
+          content: Text(
+              widget.supplierId != null ? 'Supplier updated' : 'Supplier saved'),
           action: SnackBarAction(
             label: 'New purchase',
             onPressed: () {
@@ -1091,92 +1187,283 @@ class _SupplierCreateWizardPageState
     );
   }
 
-  String _fmtBrokers() {
-    if (_brokerIds.isEmpty) return '—';
-    // Names from current broker list
-    final rows = ref.read(brokersListProvider).valueOrNull ?? [];
-    final names = <String>[];
-    for (final b in rows) {
-      final id = b['id']?.toString();
-      if (id != null && _brokerIds.contains(id)) {
-        names.add(b['name']?.toString() ?? id);
-      }
-    }
-    return names.isEmpty ? _brokerIds.join(', ') : names.join(', ');
-  }
-
-  String _fmtCats() {
-    final rows = ref.read(itemCategoriesListProvider).valueOrNull ?? [];
-    final names = <String>[];
-    for (final c in rows) {
-      final id = c['id']?.toString();
-      if (id != null && _categoryIds.contains(id)) {
-        names.add(c['name']?.toString() ?? id);
-      }
-    }
-    return names.isEmpty ? '—' : names.join(', ');
-  }
-
   Widget _buildStep6() {
     final disc = _resolvedDiscount();
     final pay = _resolvedPaymentDays();
+    final brokers = ref.watch(brokersListProvider).valueOrNull ?? const [];
+    final brokerRows = brokers
+        .where((b) => _brokerIds.contains(b['id']?.toString() ?? ''))
+        .toList();
+    final cats = ref.watch(itemCategoriesListProvider).valueOrNull ?? const [];
+    final catNames = cats
+        .where((c) => _categoryIds.contains(c['id']?.toString() ?? ''))
+        .map((c) => c['name']?.toString() ?? '')
+        .where((n) => n.trim().isNotEmpty)
+        .toList();
+    final itemNames = _itemIds
+        .map((id) => _itemLabels[id])
+        .whereType<String>()
+        .where((n) => n.trim().isNotEmpty)
+        .toList();
+    final notes = _notes.text.trim();
+    final notesPreview =
+        notes.length > 96 ? '${notes.substring(0, 96)}…' : notes;
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
       children: [
-        _stepHeader('Review'),
-        _summaryRow(
-          'Flow',
-          'Supplier \u2192 ${_brokerIds.isEmpty ? 'No broker' : '${_brokerIds.length} broker(s)'} \u2192 ${_itemIds.length} item(s)',
+        _stepHeader('Review Supplier'),
+        Text(
+          'Final check before save',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
         ),
-        _summaryRow('Name', _name.text.trim().isEmpty ? '—' : _name.text.trim()),
-        _summaryRow('Phone', _phone.text.trim().isEmpty ? '—' : _phone.text.trim()),
-        _summaryRow('WhatsApp', _wa.text.trim().isEmpty ? '—' : _wa.text.trim()),
-        _summaryRow('Location', _loc.text.trim().isEmpty ? '—' : _loc.text.trim()),
-        _summaryRow('GST', _gst.text.trim().isEmpty ? '—' : _gst.text.trim()),
-        _summaryRow('Payment days', pay?.toString() ?? '—'),
-        _summaryRow('Discount %', disc?.toString() ?? '—'),
-        _summaryRow('Delivered / billty',
-            '${_delivered.text.trim().isEmpty ? '—' : _delivered.text} / ${_billty.text.trim().isEmpty ? '—' : _billty.text}'),
-        _summaryRow(
-          'Freight',
-          _freightIncluded ? 'Included' : 'Separate',
+        const SizedBox(height: 8),
+        _reviewCard(
+          title: 'Supplier Summary',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _name.text.trim().isEmpty ? '—' : _name.text.trim(),
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              if (_loc.text.trim().isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    _loc.text.trim(),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: _miniFact('Phone',
+                        _phone.text.trim().isEmpty ? '—' : _phone.text.trim()),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _miniFact('WhatsApp',
+                        _wa.text.trim().isEmpty ? '—' : _wa.text.trim()),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: _miniFact(
+                        'GST', _gst.text.trim().isEmpty ? '—' : _gst.text.trim()),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(child: _miniFact('Status', 'Active')),
+                ],
+              ),
+            ],
+          ),
         ),
-        _summaryRow('Brokers', _fmtBrokers()),
-        _summaryRow('Categories', _fmtCats()),
-        _summaryRow(
-          'Items',
-          _itemIds.isEmpty
-              ? '—'
-              : _itemIds.map((id) => _itemLabels[id] ?? id).join(', '),
+        _reviewCard(
+          title: 'Business Info',
+          child: Column(
+            children: [
+              _kvRow('GST Number', _gst.text.trim().isEmpty ? '—' : _gst.text.trim()),
+              _kvRow('Address', _addr.text.trim().isEmpty ? 'Not configured yet' : _addr.text.trim()),
+              _kvRow('Notes', notesPreview.isEmpty ? 'Not configured yet' : notesPreview),
+            ],
+          ),
         ),
-        _summaryRow('AI memory', _aiMemory ? 'On' : 'Off'),
+        _reviewCard(
+          title: 'Purchase Defaults',
+          child: Column(
+            children: [
+              _kvRow('Payment Days', pay == null ? 'Not configured yet' : '$pay days'),
+              _kvRow('Discount', disc == null ? 'Not configured yet' : '$disc%'),
+              _kvRow('Delivered', _fmtMoney(_delivered.text)),
+              _kvRow('Billty', _fmtMoney(_billty.text)),
+              _kvRow('Freight', _freightIncluded ? 'Included' : 'Separate'),
+            ],
+          ),
+        ),
+        _reviewCard(
+          title: 'Brokers',
+          child: brokerRows.isEmpty
+              ? Text(
+                  'No brokers linked',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                )
+              : Column(
+                  children: brokerRows.map((b) {
+                    final n = b['name']?.toString().trim();
+                    final cv = b['commission_value']?.toString().trim();
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              n == null || n.isEmpty ? 'Broker' : n,
+                              style: const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                          Text(
+                            (cv == null || cv.isEmpty)
+                                ? 'Commission: —'
+                                : 'Commission: $cv%',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+        ),
+        _reviewCard(
+          title: 'Items & Categories',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _kvRow('Categories',
+                  catNames.isEmpty ? 'Not configured yet' : '${catNames.length} linked'),
+              _kvRow('Items',
+                  itemNames.isEmpty ? 'Not configured yet' : '${itemNames.length} linked'),
+              if (itemNames.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Recent preview',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+                const SizedBox(height: 4),
+                ...itemNames.take(3).map(
+                      (n) => Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: Text('• $n'),
+                      ),
+                    ),
+              ] else
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    'Not configured yet',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        _reviewCard(
+          title: 'Relation Flow',
+          child: Text(
+            '${_name.text.trim().isEmpty ? 'Supplier' : _name.text.trim()} \u2192 ${brokerRows.length} Broker${brokerRows.length == 1 ? '' : 's'} \u2192 ${itemNames.length} Item${itemNames.length == 1 ? '' : 's'}',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+        ),
+        _reviewCard(
+          title: 'AI Memory',
+          child: _kvRow('Remember behavior', _aiMemory ? 'On' : 'Off'),
+        ),
       ],
     );
   }
 
-  Widget _summaryRow(String k, String v) {
+  Widget _reviewCard({required String title, required Widget child}) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.7),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+          const SizedBox(height: 8),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _kvRow(String k, String v) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 120,
+            width: 108,
             child: Text(
               k,
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
                   ),
             ),
           ),
           Expanded(
             child: Text(
               v,
-              style: Theme.of(context).textTheme.bodyLarge,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  String _fmtMoney(String raw) {
+    final n = double.tryParse(raw.trim());
+    if (n == null) return 'Not configured yet';
+    if (n == n.roundToDouble()) return '₹${n.toStringAsFixed(0)}';
+    return '₹${n.toStringAsFixed(2)}';
+  }
+
+  static Widget _miniFact(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Color(0xFF6B7280),
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
     );
   }
 
@@ -1205,23 +1492,18 @@ class _SupplierCreateWizardPageState
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       child: Row(
         children: [
-          if (isSummary)
-            TextButton(
-              onPressed: _handleExitRequest,
-              child: const Text('Close'),
-            )
-          else
+          if (!isSummary)
             TextButton(
               onPressed: _handleExitRequest,
               child: const Text('Cancel'),
             ),
-          const Spacer(),
+          if (!isSummary) const Spacer(),
           if (isSummary) ...[
             TextButton(
               onPressed: () => setState(() => _step = 0),
               child: const Text('Edit'),
             ),
-            const SizedBox(width: 8),
+            const Spacer(),
             FilledButton(
               onPressed: _saveSupplier,
               child: const Text('Save'),
@@ -1274,7 +1556,7 @@ class _SupplierCreateWizardPageState
         await _handleExitRequest();
       },
       child: FullScreenFormScaffold(
-        title: 'New supplier',
+        title: widget.supplierId != null ? 'Edit supplier' : 'New supplier',
         subtitle: '${_stepTitles[_step]} · Step ${_step + 1} of 7',
         onBackPressed: () {
           if (_step > 0) {

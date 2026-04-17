@@ -58,6 +58,9 @@ class CatalogItem(Base):
     tax_percent: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
     default_landing_cost: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
     default_selling_cost: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
+    default_purchase_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    default_sale_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    last_purchase_price: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     category = relationship("ItemCategory", back_populates="items")

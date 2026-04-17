@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -52,6 +52,7 @@ class SupplierOut(BaseModel):
     whatsapp_number: str | None = None
     location: str | None = None
     broker_id: uuid.UUID | None = None
+    broker_ids: list[uuid.UUID] = Field(default_factory=list)
     gst_number: str | None = None
     address: str | None = None
     notes: str | None = None
@@ -72,6 +73,7 @@ class SupplierUpdate(BaseModel):
     whatsapp_number: str | None = Field(default=None, max_length=32)
     location: str | None = None
     broker_id: uuid.UUID | None = None
+    broker_ids: list[uuid.UUID] | None = None
     gst_number: str | None = Field(default=None, max_length=20)
     address: str | None = None
     notes: str | None = None
@@ -97,6 +99,15 @@ async def _supplier_dup(
     return r.first() is not None
 
 
+async def _supplier_out(db: AsyncSession, s: Supplier) -> SupplierOut:
+    base = SupplierOut.model_validate(s).model_dump()
+    rb = await db.execute(
+        select(BrokerSupplierLink.broker_id).where(BrokerSupplierLink.supplier_id == s.id)
+    )
+    base["broker_ids"] = list(rb.scalars().all())
+    return SupplierOut.model_validate(base)
+
+
 @router.get("/suppliers", response_model=list[SupplierOut])
 async def list_suppliers(
     business_id: uuid.UUID,
@@ -106,7 +117,10 @@ async def list_suppliers(
     del _m
     r = await db.execute(select(Supplier).where(Supplier.business_id == business_id))
     rows = r.scalars().all()
-    return [SupplierOut.model_validate(s) for s in rows]
+    out: list[SupplierOut] = []
+    for s in rows:
+        out.append(await _supplier_out(db, s))
+    return out
 
 
 @router.post("/suppliers", response_model=SupplierOut, status_code=status.HTTP_201_CREATED)
@@ -177,7 +191,7 @@ async def create_supplier(
 
     await db.commit()
     await db.refresh(s)
-    return SupplierOut.model_validate(s)
+    return await _supplier_out(db, s)
 
 
 @router.patch("/suppliers/{supplier_id}", response_model=SupplierOut)
@@ -226,8 +240,34 @@ async def update_supplier(
         s.ai_memory_enabled = bool(data["ai_memory_enabled"])
     if "preferences" in data and data["preferences"] is not None:
         s.preferences_json = SupplierPrefsIn.model_validate(data["preferences"]).model_dump_json()
-    if "broker_id" in data:
-        s.broker_id = data["broker_id"]
+    if "broker_ids" in data or "broker_id" in data:
+        merged_broker_ids: list[uuid.UUID] = []
+        incoming_ids = data.get("broker_ids")
+        if incoming_ids:
+            merged_broker_ids.extend(incoming_ids)
+        if "broker_id" in data and data.get("broker_id") is not None:
+            bid_single = data["broker_id"]
+            if bid_single not in merged_broker_ids:
+                merged_broker_ids.insert(0, bid_single)
+        dedup_brokers: list[uuid.UUID] = []
+        for bid in merged_broker_ids:
+            if bid not in dedup_brokers:
+                dedup_brokers.append(bid)
+        if "broker_id" in data and data.get("broker_id") is None and "broker_ids" not in data:
+            dedup_brokers = []
+        for bid in dedup_brokers:
+            ok = await db.scalar(
+                select(Broker.id).where(Broker.id == bid, Broker.business_id == business_id)
+            )
+            if ok is None:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    detail=f"Broker not in this business: {bid}",
+                )
+        await db.execute(delete(BrokerSupplierLink).where(BrokerSupplierLink.supplier_id == s.id))
+        for bid in dedup_brokers:
+            db.add(BrokerSupplierLink(broker_id=bid, supplier_id=s.id))
+        s.broker_id = dedup_brokers[0] if dedup_brokers else data.get("broker_id")
     for k in (
         "gst_number",
         "default_payment_days",
@@ -239,7 +279,7 @@ async def update_supplier(
             setattr(s, k, data[k])
     await db.commit()
     await db.refresh(s)
-    return SupplierOut.model_validate(s)
+    return await _supplier_out(db, s)
 
 
 @router.delete("/suppliers/{supplier_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -275,8 +315,13 @@ class BrokerOut(BaseModel):
     id: uuid.UUID
     name: str
     phone: str | None = None
+    whatsapp_number: str | None = None
+    location: str | None = None
+    notes: str | None = None
     commission_type: str
     commission_value: float | None
+    supplier_ids: list[uuid.UUID] = Field(default_factory=list)
+    preferences_json: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -284,8 +329,13 @@ class BrokerOut(BaseModel):
 class BrokerUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     phone: str | None = Field(default=None, max_length=15)
+    whatsapp_number: str | None = Field(default=None, max_length=32)
+    location: str | None = None
+    notes: str | None = None
     commission_type: str | None = Field(default=None, pattern="^(percent|flat)$")
     commission_value: float | None = Field(default=None, ge=0)
+    supplier_ids: list[uuid.UUID] | None = None
+    preferences: SupplierPrefsIn | None = None
 
 
 async def _broker_dup(
@@ -301,6 +351,15 @@ async def _broker_dup(
     return r.first() is not None
 
 
+async def _broker_out(db: AsyncSession, b: Broker) -> BrokerOut:
+    base = BrokerOut.model_validate(b).model_dump()
+    rs = await db.execute(
+        select(BrokerSupplierLink.supplier_id).where(BrokerSupplierLink.broker_id == b.id)
+    )
+    base["supplier_ids"] = list(rs.scalars().all())
+    return BrokerOut.model_validate(base)
+
+
 @router.get("/brokers", response_model=list[BrokerOut])
 async def list_brokers(
     business_id: uuid.UUID,
@@ -310,14 +369,22 @@ async def list_brokers(
     del _m
     r = await db.execute(select(Broker).where(Broker.business_id == business_id))
     rows = r.scalars().all()
-    return [BrokerOut.model_validate(b) for b in rows]
+    out: list[BrokerOut] = []
+    for b in rows:
+        out.append(await _broker_out(db, b))
+    return out
 
 
 class BrokerCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     phone: str | None = Field(default=None, max_length=15)
+    whatsapp_number: str | None = Field(default=None, max_length=32)
+    location: str | None = None
+    notes: str | None = None
     commission_type: str = Field(default="percent", pattern="^(percent|flat)$")
     commission_value: float | None = Field(default=None, ge=0)
+    supplier_ids: list[uuid.UUID] | None = None
+    preferences: SupplierPrefsIn | None = None
 
 
 @router.post("/brokers", response_model=BrokerOut, status_code=status.HTTP_201_CREATED)
@@ -337,13 +404,35 @@ async def create_broker(
         business_id=business_id,
         name=body.name.strip(),
         phone=body.phone,
+        whatsapp_number=body.whatsapp_number,
+        location=body.location,
+        notes=body.notes,
         commission_type=body.commission_type,
         commission_value=body.commission_value,
+        preferences_json=body.preferences.model_dump_json() if body.preferences else None,
     )
     db.add(b)
+    await db.flush()
+    dedup_suppliers: list[uuid.UUID] = []
+    for sid in body.supplier_ids or []:
+        if sid not in dedup_suppliers:
+            dedup_suppliers.append(sid)
+    for sid in dedup_suppliers:
+        ok = await db.scalar(
+            select(Supplier.id).where(Supplier.id == sid, Supplier.business_id == business_id)
+        )
+        if ok is None:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail=f"Supplier not in this business: {sid}",
+            )
+        db.add(BrokerSupplierLink(broker_id=b.id, supplier_id=sid))
+        sup = await db.scalar(select(Supplier).where(Supplier.id == sid))
+        if sup is not None:
+            sup.broker_id = b.id
     await db.commit()
     await db.refresh(b)
-    return BrokerOut.model_validate(b)
+    return await _broker_out(db, b)
 
 
 @router.patch("/brokers/{broker_id}", response_model=BrokerOut)
@@ -375,9 +464,37 @@ async def update_broker(
         b.commission_value = data["commission_value"]
     if "phone" in data:
         b.phone = data["phone"]
+    if "whatsapp_number" in data:
+        b.whatsapp_number = data["whatsapp_number"]
+    if "location" in data:
+        b.location = data["location"]
+    if "notes" in data:
+        b.notes = data["notes"]
+    if "preferences" in data and data["preferences"] is not None:
+        b.preferences_json = SupplierPrefsIn.model_validate(data["preferences"]).model_dump_json()
+    if "supplier_ids" in data:
+        dedup_suppliers: list[uuid.UUID] = []
+        for sid in data["supplier_ids"] or []:
+            if sid not in dedup_suppliers:
+                dedup_suppliers.append(sid)
+        for sid in dedup_suppliers:
+            ok = await db.scalar(
+                select(Supplier.id).where(Supplier.id == sid, Supplier.business_id == business_id)
+            )
+            if ok is None:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    detail=f"Supplier not in this business: {sid}",
+                )
+        await db.execute(delete(BrokerSupplierLink).where(BrokerSupplierLink.broker_id == b.id))
+        for sid in dedup_suppliers:
+            db.add(BrokerSupplierLink(broker_id=b.id, supplier_id=sid))
+            sup = await db.scalar(select(Supplier).where(Supplier.id == sid))
+            if sup is not None:
+                sup.broker_id = b.id
     await db.commit()
     await db.refresh(b)
-    return BrokerOut.model_validate(b)
+    return await _broker_out(db, b)
 
 
 @router.delete("/brokers/{broker_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -434,7 +551,7 @@ async def get_broker(
     b = r.scalar_one_or_none()
     if b is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Broker not found")
-    return BrokerOut.model_validate(b)
+    return await _broker_out(db, b)
 
 
 @router.get("/suppliers/{supplier_id}", response_model=SupplierOut)
@@ -451,7 +568,7 @@ async def get_supplier(
     s = r.scalar_one_or_none()
     if s is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Supplier not found")
-    return SupplierOut.model_validate(s)
+    return await _supplier_out(db, s)
 
 
 def _date_filter(business_id: uuid.UUID, from_date: date, to_date: date):
@@ -586,7 +703,9 @@ async def contacts_search(
         )
         .limit(limit)
     )
-    suppliers = [SupplierOut.model_validate(s) for s in rs.scalars().all()]
+    suppliers: list[SupplierOut] = []
+    for s in rs.scalars().all():
+        suppliers.append(await _supplier_out(db, s))
     rb = await db.execute(
         select(Broker)
         .where(

@@ -2,6 +2,7 @@ from app.models.base import Base
 from app.models.ai_engine import AssistantDecision, AssistantSession, CatalogAlias
 from app.models.business import Business
 from app.models.catalog import CatalogItem, CatalogVariant, CategoryType, ItemCategory
+from app.models.supplier_item_default import SupplierItemDefault
 from app.models.contacts import Broker, Supplier
 from app.models.entry import Entry, EntryLineItem
 from app.models.trade_purchase import BrokerSupplierLink, TradePurchase, TradePurchaseDraft, TradePurchaseLine
@@ -38,6 +39,7 @@ __all__ = [
     "CategoryType",
     "CatalogItem",
     "CatalogVariant",
+    "SupplierItemDefault",
     "BrokerSupplierLink",
     "TradePurchase",
     "TradePurchaseLine",

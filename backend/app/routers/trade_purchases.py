@@ -16,6 +16,7 @@ from app.schemas.trade_purchases import (
     TradeDraftOut,
     TradeDuplicateCheckRequest,
     TradeDuplicateCheckResponse,
+    TradeNextHumanIdOut,
     TradePurchaseCreateRequest,
     TradePurchaseOut,
 )
@@ -69,6 +70,18 @@ async def check_trade_duplicate(
 ):
     del user
     return await tps.check_duplicate(db, business_id, body)
+
+
+@router.get("/next-human-id", response_model=TradeNextHumanIdOut)
+async def next_trade_human_id(
+    business_id: uuid.UUID,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+):
+    del user
+    hid = await tps.next_human_id(db, business_id)
+    return TradeNextHumanIdOut(human_id=hid)
 
 
 @router.get("", response_model=list[TradePurchaseOut])

@@ -20,15 +20,15 @@ class HexaApi {
         _dio = Dio(
           BaseOptions(
             baseUrl: baseUrl ?? AppConfig.resolvedApiBaseUrl,
-            connectTimeout: const Duration(seconds: 20),
-            receiveTimeout: const Duration(seconds: 30),
+            connectTimeout: const Duration(seconds: 8),
+            receiveTimeout: const Duration(seconds: 15),
           ),
         ),
         _plain = Dio(
           BaseOptions(
             baseUrl: baseUrl ?? AppConfig.resolvedApiBaseUrl,
-            connectTimeout: const Duration(seconds: 20),
-            receiveTimeout: const Duration(seconds: 30),
+            connectTimeout: const Duration(seconds: 8),
+            receiveTimeout: const Duration(seconds: 15),
           ),
         ) {
     _dio.interceptors.add(
@@ -324,6 +324,9 @@ class HexaApi {
       return Map<String, dynamic>.from(Map<Object?, Object?>.from(d));
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) return null;
+      // Draft is optional UX convenience — avoid hard failures when API is
+      // temporarily unreachable or slow.
+      if (e.response == null) return null;
       rethrow;
     }
   }
@@ -355,6 +358,18 @@ class HexaApi {
       data: body,
     );
     return res.data ?? {};
+  }
+
+  Future<String> nextTradePurchaseHumanId({
+    required String businessId,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/trade-purchases/next-human-id',
+    );
+    final d = res.data ?? {};
+    final id = d['human_id']?.toString();
+    if (id == null || id.isEmpty) return '';
+    return id;
   }
 
   Future<Map<String, dynamic>> createTradePurchase({
@@ -480,15 +495,28 @@ class HexaApi {
   Future<Map<String, dynamic>> createBroker({
     required String businessId,
     required String name,
+    String? phone,
+    String? whatsappNumber,
+    String? location,
+    String? notes,
     String commissionType = 'percent',
     double? commissionValue,
+    List<String>? supplierIds,
+    Map<String, dynamic>? preferences,
   }) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/businesses/$businessId/brokers',
       data: {
         'name': name,
+        if (phone != null && phone.isNotEmpty) 'phone': phone,
+        if (whatsappNumber != null && whatsappNumber.isNotEmpty)
+          'whatsapp_number': whatsappNumber,
+        if (location != null && location.isNotEmpty) 'location': location,
+        if (notes != null && notes.isNotEmpty) 'notes': notes,
         'commission_type': commissionType,
         if (commissionValue != null) 'commission_value': commissionValue,
+        if (supplierIds != null) 'supplier_ids': supplierIds,
+        if (preferences != null) 'preferences': preferences,
       },
     );
     return res.data ?? {};
@@ -502,6 +530,7 @@ class HexaApi {
     String? whatsappNumber,
     String? location,
     String? brokerId,
+    List<String>? brokerIds,
     String? gstNumber,
     String? address,
     String? notes,
@@ -521,6 +550,7 @@ class HexaApi {
         if (whatsappNumber != null) 'whatsapp_number': whatsappNumber,
         if (location != null) 'location': location,
         if (brokerId != null) 'broker_id': brokerId,
+        if (brokerIds != null) 'broker_ids': brokerIds,
         if (gstNumber != null) 'gst_number': gstNumber,
         if (address != null) 'address': address,
         if (notes != null) 'notes': notes,
@@ -547,15 +577,27 @@ class HexaApi {
     required String businessId,
     required String brokerId,
     String? name,
+    String? phone,
+    String? whatsappNumber,
+    String? location,
+    String? notes,
     String? commissionType,
     double? commissionValue,
+    List<String>? supplierIds,
+    Map<String, dynamic>? preferences,
   }) async {
     final res = await _dio.patch<Map<String, dynamic>>(
       '/v1/businesses/$businessId/brokers/$brokerId',
       data: {
         if (name != null) 'name': name,
+        if (phone != null) 'phone': phone,
+        if (whatsappNumber != null) 'whatsapp_number': whatsappNumber,
+        if (location != null) 'location': location,
+        if (notes != null) 'notes': notes,
         if (commissionType != null) 'commission_type': commissionType,
         if (commissionValue != null) 'commission_value': commissionValue,
+        if (supplierIds != null) 'supplier_ids': supplierIds,
+        if (preferences != null) 'preferences': preferences,
       },
     );
     return res.data ?? {};
@@ -674,6 +716,12 @@ class HexaApi {
     String? typeId,
     String? defaultUnit,
     double? defaultKgPerBag,
+    String? defaultPurchaseUnit,
+    String? defaultSaleUnit,
+    String? hsnCode,
+    double? taxPercent,
+    double? defaultLandingCost,
+    double? defaultSellingCost,
   }) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/businesses/$businessId/catalog-items',
@@ -685,7 +733,27 @@ class HexaApi {
           'default_unit': defaultUnit,
         if (defaultKgPerBag != null && defaultKgPerBag > 0)
           'default_kg_per_bag': defaultKgPerBag,
+        if (defaultPurchaseUnit != null && defaultPurchaseUnit.isNotEmpty)
+          'default_purchase_unit': defaultPurchaseUnit,
+        if (defaultSaleUnit != null && defaultSaleUnit.isNotEmpty)
+          'default_sale_unit': defaultSaleUnit,
+        if (hsnCode != null && hsnCode.isNotEmpty) 'hsn_code': hsnCode,
+        if (taxPercent != null) 'tax_percent': taxPercent,
+        if (defaultLandingCost != null) 'default_landing_cost': defaultLandingCost,
+        if (defaultSellingCost != null) 'default_selling_cost': defaultSellingCost,
       },
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> supplierPurchaseDefaults({
+    required String businessId,
+    required String supplierId,
+    required String itemId,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/catalog-items/$itemId/supplier-purchase-defaults',
+      queryParameters: {'supplier_id': supplierId},
     );
     return res.data ?? {};
   }
@@ -708,6 +776,12 @@ class HexaApi {
     bool includeDefaultUnit = false,
     bool patchDefaultKgPerBag = false,
     double? defaultKgPerBag,
+    String? defaultPurchaseUnit,
+    String? defaultSaleUnit,
+    String? hsnCode,
+    double? taxPercent,
+    double? defaultLandingCost,
+    double? defaultSellingCost,
   }) async {
     final data = <String, dynamic>{
       if (categoryId != null) 'category_id': categoryId,
@@ -721,6 +795,24 @@ class HexaApi {
     }
     if (patchDefaultKgPerBag) {
       data['default_kg_per_bag'] = defaultKgPerBag;
+    }
+    if (defaultPurchaseUnit != null) {
+      data['default_purchase_unit'] = defaultPurchaseUnit;
+    }
+    if (defaultSaleUnit != null) {
+      data['default_sale_unit'] = defaultSaleUnit;
+    }
+    if (hsnCode != null) {
+      data['hsn_code'] = hsnCode.isEmpty ? null : hsnCode;
+    }
+    if (taxPercent != null) {
+      data['tax_percent'] = taxPercent;
+    }
+    if (defaultLandingCost != null) {
+      data['default_landing_cost'] = defaultLandingCost;
+    }
+    if (defaultSellingCost != null) {
+      data['default_selling_cost'] = defaultSellingCost;
     }
     final res = await _dio.patch<Map<String, dynamic>>(
       '/v1/businesses/$businessId/catalog-items/$itemId',

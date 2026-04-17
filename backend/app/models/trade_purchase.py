@@ -48,6 +48,7 @@ class TradePurchase(Base):
     delivered_rate: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
     billty_rate: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
     freight_amount: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
+    freight_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
     total_qty: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
     total_amount: Mapped[float] = mapped_column(Numeric(18, 4))
     status: Mapped[str] = mapped_column(String(24), default="confirmed")

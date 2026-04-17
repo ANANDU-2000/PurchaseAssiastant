@@ -1,14 +1,12 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
-import '../../../core/auth/auth_error_messages.dart';
-import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
+import 'type_wizard_page.dart';
 
 class CatalogCategoryDetailPage extends ConsumerStatefulWidget {
   const CatalogCategoryDetailPage({super.key, required this.categoryId});
@@ -48,50 +46,17 @@ class _CatalogCategoryDetailPageState
   }
 
   Future<void> _addType(BuildContext context) async {
-    final ctrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('New type'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Name',
-            hintText: 'e.g. Biriyani rice',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Create'),
-          ),
-        ],
+    final ok = await Navigator.of(context, rootNavigator: true).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => TypeWizardPage(categoryId: widget.categoryId),
+        fullscreenDialog: true,
       ),
     );
-    if (ok != true || ctrl.text.trim().isEmpty) return;
-    final session = ref.read(sessionProvider);
-    if (session == null) return;
-    try {
-      await ref.read(hexaApiProvider).createCategoryType(
-            businessId: session.primaryBusiness.id,
-            categoryId: widget.categoryId,
-            name: ctrl.text.trim(),
-          );
+    if (ok == true) {
       ref.invalidate(categoryTypesListProvider(widget.categoryId));
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Type created')),
-        );
-      }
-    } on DioException catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(friendlyApiError(e))),
         );
       }
     }

@@ -11,7 +11,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import TradePurchase, TradePurchaseDraft, TradePurchaseLine
+from app.models import CatalogItem, SupplierItemDefault, TradePurchase, TradePurchaseDraft, TradePurchaseLine
 from app.schemas.trade_purchases import (
     TradeDuplicateCheckRequest,
     TradeDuplicateCheckResponse,
@@ -35,36 +35,114 @@ def _dec(x: float | Decimal | None) -> Decimal:
     return Decimal(str(x))
 
 
-def _line_fp(name: str, qty: float, landing: float) -> str:
-    return f"{name.strip().lower()}|{qty:.4f}|{float(landing):.4f}"
+def _line_fp(
+    name: str,
+    qty: float,
+    landing: float,
+    discount: float | None,
+    tax_percent: float | None,
+) -> str:
+    d = float(discount or 0)
+    t = float(tax_percent or 0)
+    return f"{name.strip().lower()}|{qty:.4f}|{float(landing):.4f}|{d:.4f}|{t:.4f}"
 
 
 def _fingerprint_lines_from_lines(lines: list[TradePurchaseLine]) -> str:
     parts = sorted(
-        _line_fp(li.item_name, float(li.qty), float(li.landing_cost)) for li in lines
+        _line_fp(
+            li.item_name,
+            float(li.qty),
+            float(li.landing_cost),
+            float(li.discount) if li.discount is not None else None,
+            float(li.tax_percent) if li.tax_percent is not None else None,
+        )
+        for li in lines
     )
     return "|".join(parts)
 
 
 def _fingerprint_lines_from_in(lines: list[TradePurchaseLineIn]) -> str:
     parts = sorted(
-        _line_fp(li.item_name, float(li.qty), float(li.landing_cost)) for li in lines
+        _line_fp(
+            li.item_name,
+            float(li.qty),
+            float(li.landing_cost),
+            float(li.discount) if li.discount is not None else None,
+            float(li.tax_percent) if li.tax_percent is not None else None,
+        )
+        for li in lines
     )
     return "|".join(parts)
 
 
+def _line_money(li: TradePurchaseLineIn) -> Decimal:
+    base = _dec(li.qty) * _dec(li.landing_cost)
+    ld = _dec(li.discount) if li.discount is not None else Decimal("0")
+    after_disc = base * (Decimal("1") - min(ld, Decimal("100")) / Decimal("100"))
+    tax = _dec(li.tax_percent) if li.tax_percent is not None else Decimal("0")
+    return after_disc * (Decimal("1") + min(tax, Decimal("1000")) / Decimal("100"))
+
+
 def compute_totals(req: TradePurchaseCreateRequest) -> tuple[Decimal, Decimal]:
-    qty_sum = Decimal("0")
-    amt_sum = Decimal("0")
-    for li in req.lines:
-        qty_sum += _dec(li.qty)
-        amt_sum += _dec(li.qty) * _dec(li.landing_cost)
+    qty_sum = sum(_dec(li.qty) for li in req.lines)
+    amt_sum = sum(_line_money(li) for li in req.lines)
     header_disc = _dec(req.discount) if req.discount is not None else Decimal("0")
-    freight = _dec(req.freight_amount) if req.freight_amount is not None else Decimal("0")
     if header_disc > 0:
-        amt_sum = amt_sum * (Decimal("1") - header_disc / Decimal("100"))
+        amt_sum = amt_sum * (Decimal("1") - min(header_disc, Decimal("100")) / Decimal("100"))
+    freight = _dec(req.freight_amount) if req.freight_amount is not None else Decimal("0")
+    if req.freight_type == "included":
+        freight = Decimal("0")
     amt_sum += freight
     return qty_sum, amt_sum
+
+
+async def _sync_purchase_memory(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    body: TradePurchaseCreateRequest,
+) -> None:
+    """Update item master last price and supplier-item default rows."""
+    for li in body.lines:
+        if li.catalog_item_id is None:
+            continue
+        ir = await db.execute(
+            select(CatalogItem).where(
+                CatalogItem.id == li.catalog_item_id,
+                CatalogItem.business_id == business_id,
+            )
+        )
+        item = ir.scalar_one_or_none()
+        if item is not None:
+            item.last_purchase_price = float(li.landing_cost)
+        if body.supplier_id is None:
+            continue
+        dr = await db.execute(
+            select(SupplierItemDefault).where(
+                SupplierItemDefault.business_id == business_id,
+                SupplierItemDefault.supplier_id == body.supplier_id,
+                SupplierItemDefault.catalog_item_id == li.catalog_item_id,
+            )
+        )
+        row = dr.scalar_one_or_none()
+        if row is None:
+            db.add(
+                SupplierItemDefault(
+                    business_id=business_id,
+                    supplier_id=body.supplier_id,
+                    catalog_item_id=li.catalog_item_id,
+                    last_price=float(li.landing_cost),
+                    last_discount=float(li.discount) if li.discount is not None else None,
+                    last_payment_days=body.payment_days,
+                    purchase_count=1,
+                )
+            )
+        else:
+            row.purchase_count = int(row.purchase_count or 0) + 1
+            row.last_price = float(li.landing_cost)
+            if li.discount is not None:
+                row.last_discount = float(li.discount)
+            if body.payment_days is not None:
+                row.last_payment_days = body.payment_days
 
 
 async def next_human_id(db: AsyncSession, business_id: uuid.UUID) -> str:
@@ -175,6 +253,7 @@ async def create_trade_purchase(
         delivered_rate=float(body.delivered_rate) if body.delivered_rate is not None else None,
         billty_rate=float(body.billty_rate) if body.billty_rate is not None else None,
         freight_amount=float(body.freight_amount) if body.freight_amount is not None else None,
+        freight_type=body.freight_type,
         total_qty=float(qty_sum),
         total_amount=float(amt_sum),
         status="confirmed",
@@ -195,6 +274,7 @@ async def create_trade_purchase(
                 tax_percent=li.tax_percent,
             )
         )
+    await _sync_purchase_memory(db, business_id, body)
     await db.commit()
     res = await db.execute(
         select(TradePurchase)
@@ -232,6 +312,7 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
         delivered_rate=float(tp.delivered_rate) if tp.delivered_rate is not None else None,
         billty_rate=float(tp.billty_rate) if tp.billty_rate is not None else None,
         freight_amount=float(tp.freight_amount) if tp.freight_amount is not None else None,
+        freight_type=getattr(tp, "freight_type", None),
         total_qty=float(tp.total_qty) if tp.total_qty is not None else None,
         total_amount=float(tp.total_amount),
         status=tp.status,

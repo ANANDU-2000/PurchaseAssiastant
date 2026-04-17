@@ -30,6 +30,7 @@ class TradePurchaseCreateRequest(BaseModel):
     delivered_rate: float | None = Field(None, ge=0)
     billty_rate: float | None = Field(None, ge=0)
     freight_amount: float | None = Field(None, ge=0)
+    freight_type: str | None = Field(default=None, pattern="^(included|separate)$")
     lines: list[TradePurchaseLineIn] = Field(default_factory=list)
 
 
@@ -57,6 +58,7 @@ class TradePurchaseOut(BaseModel):
     delivered_rate: float | None
     billty_rate: float | None
     freight_amount: float | None
+    freight_type: str | None = None
     total_qty: float | None
     total_amount: float
     status: str
@@ -76,6 +78,10 @@ class TradeDuplicateCheckResponse(BaseModel):
     message: str | None = None
     existing_id: uuid.UUID | None = None
     existing_human_id: str | None = None
+
+
+class TradeNextHumanIdOut(BaseModel):
+    human_id: str
 
 
 class TradeDraftUpsertRequest(BaseModel):

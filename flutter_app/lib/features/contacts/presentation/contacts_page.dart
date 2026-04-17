@@ -15,7 +15,8 @@ import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/contacts_hub_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../shared/widgets/app_settings_action.dart';
-import '../../../shared/widgets/bag_default_unit_hint.dart';
+import 'broker_wizard_page.dart';
+import 'item_wizard_page.dart';
 import 'supplier_create_wizard_page.dart';
 
 Color _avatarColor(String seed) {
@@ -519,58 +520,15 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
   }
 
   Future<void> _addBroker() async {
-    final name = TextEditingController();
-    final comm = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('New broker'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-                controller: name,
-                decoration: const InputDecoration(labelText: 'Name *')),
-            TextField(
-              controller: comm,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                  labelText: 'Commission value (optional)'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Save')),
-        ],
+    if (!mounted) return;
+    await Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const BrokerWizardPage(),
+        fullscreenDialog: true,
       ),
     );
-    if (ok != true || name.text.trim().isEmpty) return;
-    final session = ref.read(sessionProvider);
-    if (session == null) return;
-    try {
-      final v = double.tryParse(comm.text.trim());
-      await ref.read(hexaApiProvider).createBroker(
-            businessId: session.primaryBusiness.id,
-            name: name.text.trim(),
-            commissionValue: v,
-          );
-      ref.invalidate(brokersListProvider);
-      ref.invalidate(contactsBrokersEnrichedProvider);
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Broker created')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
-      }
-    }
+    ref.invalidate(brokersListProvider);
+    ref.invalidate(contactsBrokersEnrichedProvider);
   }
 
   Future<void> _addCategorySheet() async {
@@ -667,218 +625,30 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
   }
 
   Future<void> _addItemSheet() async {
-    List<Map<String, dynamic>> cats = [];
-    try {
-      cats = await ref.read(itemCategoriesListProvider.future);
-    } catch (_) {}
-    if (!mounted) return;
-    if (cats.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Create a category first (Categories tab).')),
-      );
-      return;
-    }
-    var selectedCat = cats.first['id']?.toString();
-    final nameCtrl = TextEditingController();
-    final kgCtrl = TextEditingController();
-    String? unit;
-    final saved = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      backgroundColor: Colors.white,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setSt) {
-            return Padding(
-              padding: EdgeInsets.only(
-                left: 24,
-                right: 24,
-                top: 8,
-                bottom: 24 + MediaQuery.viewInsetsOf(ctx).bottom,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text('New item',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleLarge
-                          ?.copyWith(fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    key: ValueKey(selectedCat),
-                    initialValue: selectedCat,
-                    decoration: const InputDecoration(labelText: 'Category *'),
-                    items: cats
-                        .map(
-                          (c) => DropdownMenuItem<String>(
-                            value: c['id']?.toString(),
-                            child: Text(c['name']?.toString() ?? ''),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (v) => setSt(() => selectedCat = v),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: nameCtrl,
-                    autofocus: true,
-                    textCapitalization: TextCapitalization.words,
-                    decoration: const InputDecoration(labelText: 'Name *'),
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String?>(
-                    key: ValueKey(unit),
-                    initialValue: unit,
-                    decoration: const InputDecoration(
-                        labelText: 'Default unit (optional)'),
-                    items: const [
-                      DropdownMenuItem(value: null, child: Text('—')),
-                      DropdownMenuItem(value: 'kg', child: Text('kg')),
-                      DropdownMenuItem(value: 'bag', child: Text('bag')),
-                      DropdownMenuItem(value: 'box', child: Text('box')),
-                      DropdownMenuItem(value: 'piece', child: Text('pc')),
-                    ],
-                    onChanged: (v) => setSt(() => unit = v),
-                  ),
-                  if (unit == 'bag') ...[
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: kgCtrl,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(
-                        labelText: 'Default kg per bag (optional)',
-                        hintText: 'e.g. 50',
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    const BagDefaultUnitHint(),
-                  ],
-                  const SizedBox(height: 20),
-                  FilledButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    child: const Text('Save item'),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
+    await Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const ItemWizardPage(),
+        fullscreenDialog: true,
+      ),
     );
-    final categoryId = selectedCat;
-    if (saved != true || nameCtrl.text.trim().isEmpty || categoryId == null) {
-      nameCtrl.dispose();
-      kgCtrl.dispose();
-      return;
-    }
-    final session = ref.read(sessionProvider);
-    if (session == null) {
-      nameCtrl.dispose();
-      kgCtrl.dispose();
-      return;
-    }
-    try {
-      await ref.read(hexaApiProvider).createCatalogItem(
-            businessId: session.primaryBusiness.id,
-            categoryId: categoryId,
-            name: nameCtrl.text.trim(),
-            defaultUnit: unit,
-            defaultKgPerBag:
-                unit == 'bag' ? parseOptionalKgPerBag(kgCtrl.text) : null,
-          );
-      ref.invalidate(catalogItemsListProvider);
-      ref.invalidate(itemCategoriesListProvider);
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Item created')));
-      }
-    } on DioException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
-      }
-    }
-    nameCtrl.dispose();
-    kgCtrl.dispose();
+    ref.invalidate(catalogItemsListProvider);
+    ref.invalidate(itemCategoriesListProvider);
+    ref.invalidate(contactsSuppliersEnrichedProvider);
+    ref.invalidate(contactsBrokersEnrichedProvider);
   }
 
   Future<void> _editSupplier(Map<String, dynamic> s) async {
     final id = s['id']?.toString();
     if (id == null) return;
-    final name = TextEditingController(text: s['name']?.toString() ?? '');
-    final phone = TextEditingController(text: s['phone']?.toString() ?? '');
-    final wa =
-        TextEditingController(text: s['whatsapp_number']?.toString() ?? '');
-    final loc = TextEditingController(text: s['location']?.toString() ?? '');
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Edit supplier'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                  controller: name,
-                  decoration: const InputDecoration(labelText: 'Name *')),
-              TextField(
-                  controller: phone,
-                  decoration: const InputDecoration(labelText: 'Phone')),
-              TextField(
-                controller: wa,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(labelText: 'WhatsApp number'),
-              ),
-              TextField(
-                  controller: loc,
-                  decoration: const InputDecoration(labelText: 'Location')),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Save')),
-        ],
+    if (!mounted) return;
+    await Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SupplierCreateWizardPage(supplierId: id),
+        fullscreenDialog: true,
       ),
     );
-    if (ok != true || name.text.trim().isEmpty) return;
-    final session = ref.read(sessionProvider);
-    if (session == null) return;
-    try {
-      await ref.read(hexaApiProvider).updateSupplier(
-            businessId: session.primaryBusiness.id,
-            supplierId: id,
-            name: name.text.trim(),
-            phone: phone.text.trim().isEmpty ? null : phone.text.trim(),
-            whatsappNumber: wa.text.trim(),
-            location: loc.text.trim().isEmpty ? null : loc.text.trim(),
-          );
-      ref.invalidate(suppliersListProvider);
-      ref.invalidate(contactsSuppliersEnrichedProvider);
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Saved')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
-      }
-    }
+    ref.invalidate(suppliersListProvider);
+    ref.invalidate(contactsSuppliersEnrichedProvider);
   }
 
   Future<void> _deleteSupplier(Map<String, dynamic> s) async {
@@ -928,58 +698,15 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
   Future<void> _editBroker(Map<String, dynamic> b) async {
     final id = b['id']?.toString();
     if (id == null) return;
-    final name = TextEditingController(text: b['name']?.toString() ?? '');
-    final comm =
-        TextEditingController(text: b['commission_value']?.toString() ?? '');
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Edit broker'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-                controller: name,
-                decoration: const InputDecoration(labelText: 'Name *')),
-            TextField(
-              controller: comm,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Commission value'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Save')),
-        ],
+    if (!mounted) return;
+    await Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute<void>(
+        builder: (_) => BrokerWizardPage(brokerId: id),
+        fullscreenDialog: true,
       ),
     );
-    if (ok != true || name.text.trim().isEmpty) return;
-    final session = ref.read(sessionProvider);
-    if (session == null) return;
-    try {
-      await ref.read(hexaApiProvider).updateBroker(
-            businessId: session.primaryBusiness.id,
-            brokerId: id,
-            name: name.text.trim(),
-            commissionValue: double.tryParse(comm.text.trim()),
-          );
-      ref.invalidate(brokersListProvider);
-      ref.invalidate(contactsBrokersEnrichedProvider);
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Saved')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
-      }
-    }
+    ref.invalidate(brokersListProvider);
+    ref.invalidate(contactsBrokersEnrichedProvider);
   }
 
   Future<void> _deleteBroker(Map<String, dynamic> b) async {

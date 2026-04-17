@@ -14,6 +14,8 @@ from app.database import get_db
 from app.db_schema_compat import catalog_items_has_type_id_column
 from app.deps import require_membership, require_owner_membership
 from app.models import CatalogItem, CatalogVariant, CategoryType, EntryLineItem, ItemCategory, Membership
+from app.models.contacts import Supplier
+from app.models.supplier_item_default import SupplierItemDefault
 from app.models.entry import Entry
 
 router = APIRouter(prefix="/v1/businesses/{business_id}", tags=["catalog"])
@@ -58,20 +60,35 @@ class CategoryTypeOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+_UNIT_PATTERN = "^(kg|box|piece|bag|tin)$"
+
+
 class CatalogItemCreate(BaseModel):
     category_id: uuid.UUID
     type_id: uuid.UUID | None = None
     name: str = Field(min_length=1, max_length=512)
-    default_unit: str | None = Field(default=None, pattern="^(kg|box|piece|bag)$")
+    default_unit: str | None = Field(default=None, pattern=_UNIT_PATTERN)
     default_kg_per_bag: float | None = Field(default=None, gt=0)
+    default_purchase_unit: str | None = Field(default=None, pattern=_UNIT_PATTERN)
+    default_sale_unit: str | None = Field(default=None, pattern=_UNIT_PATTERN)
+    hsn_code: str | None = Field(default=None, max_length=32)
+    tax_percent: float | None = Field(default=None, ge=0, le=100)
+    default_landing_cost: float | None = Field(default=None, ge=0)
+    default_selling_cost: float | None = Field(default=None, ge=0)
 
 
 class CatalogItemUpdate(BaseModel):
     category_id: uuid.UUID | None = None
     type_id: uuid.UUID | None = None
     name: str | None = Field(default=None, min_length=1, max_length=512)
-    default_unit: str | None = Field(default=None, pattern="^(kg|box|piece|bag)$")
+    default_unit: str | None = Field(default=None, pattern=_UNIT_PATTERN)
     default_kg_per_bag: float | None = Field(default=None, gt=0)
+    default_purchase_unit: str | None = Field(default=None, pattern=_UNIT_PATTERN)
+    default_sale_unit: str | None = Field(default=None, pattern=_UNIT_PATTERN)
+    hsn_code: str | None = Field(default=None, max_length=32)
+    tax_percent: float | None = Field(default=None, ge=0, le=100)
+    default_landing_cost: float | None = Field(default=None, ge=0)
+    default_selling_cost: float | None = Field(default=None, ge=0)
 
 
 class CatalogItemOut(BaseModel):
@@ -82,8 +99,30 @@ class CatalogItemOut(BaseModel):
     name: str
     default_unit: str | None
     default_kg_per_bag: float | None = None
+    default_purchase_unit: str | None = None
+    default_sale_unit: str | None = None
+    hsn_code: str | None = None
+    tax_percent: float | None = None
+    default_landing_cost: float | None = None
+    default_selling_cost: float | None = None
+    last_purchase_price: float | None = None
 
     model_config = {"from_attributes": True}
+
+
+class SupplierPurchaseDefaultsOut(BaseModel):
+    catalog_item_id: uuid.UUID
+    supplier_id: uuid.UUID
+    last_price: float | None = None
+    last_discount: float | None = None
+    last_payment_days: int | None = None
+    purchase_count: int = 0
+    item_hsn_code: str | None = None
+    item_tax_percent: float | None = None
+    item_default_unit: str | None = None
+    item_default_kg_per_bag: float | None = None
+    item_default_landing_cost: float | None = None
+    item_default_purchase_unit: str | None = None
 
 
 class CatalogVariantCreate(BaseModel):
@@ -238,6 +277,13 @@ _CATALOG_ITEM_CORE = (
     CatalogItem.name,
     CatalogItem.default_unit,
     CatalogItem.default_kg_per_bag,
+    CatalogItem.hsn_code,
+    CatalogItem.tax_percent,
+    CatalogItem.default_landing_cost,
+    CatalogItem.default_selling_cost,
+    CatalogItem.default_purchase_unit,
+    CatalogItem.default_sale_unit,
+    CatalogItem.last_purchase_price,
     CatalogItem.created_at,
 )
 
@@ -257,6 +303,19 @@ def _catalog_item_out(
         name=i.name,
         default_unit=i.default_unit,
         default_kg_per_bag=float(i.default_kg_per_bag) if i.default_kg_per_bag is not None else None,
+        default_purchase_unit=getattr(i, "default_purchase_unit", None),
+        default_sale_unit=getattr(i, "default_sale_unit", None),
+        hsn_code=getattr(i, "hsn_code", None),
+        tax_percent=float(i.tax_percent) if getattr(i, "tax_percent", None) is not None else None,
+        default_landing_cost=float(i.default_landing_cost)
+        if getattr(i, "default_landing_cost", None) is not None
+        else None,
+        default_selling_cost=float(i.default_selling_cost)
+        if getattr(i, "default_selling_cost", None) is not None
+        else None,
+        last_purchase_price=float(i.last_purchase_price)
+        if getattr(i, "last_purchase_price", None) is not None
+        else None,
     )
 
 
@@ -642,6 +701,7 @@ async def create_catalog_item(
             },
         )
     dkg = body.default_kg_per_bag if body.default_unit == "bag" else None
+    purchase_u = body.default_purchase_unit or body.default_unit
     i = CatalogItem(
         business_id=business_id,
         category_id=body.category_id,
@@ -649,6 +709,12 @@ async def create_catalog_item(
         name=body.name.strip(),
         default_unit=body.default_unit,
         default_kg_per_bag=dkg,
+        default_purchase_unit=purchase_u,
+        default_sale_unit=body.default_sale_unit,
+        hsn_code=(body.hsn_code or "").strip() or None,
+        tax_percent=body.tax_percent,
+        default_landing_cost=body.default_landing_cost,
+        default_selling_cost=body.default_selling_cost,
     )
     db.add(i)
     await db.commit()
@@ -700,6 +766,55 @@ async def get_catalog_item(
     except SQLAlchemyError:
         logger.exception("get_catalog_item failed business_id=%s item_id=%s", business_id, item_id)
         raise
+
+
+@router.get(
+    "/catalog-items/{item_id}/supplier-purchase-defaults",
+    response_model=SupplierPurchaseDefaultsOut,
+)
+async def supplier_purchase_defaults(
+    business_id: uuid.UUID,
+    item_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    supplier_id: uuid.UUID = Query(...),
+):
+    del _m
+    ir = await db.execute(
+        select(CatalogItem).where(CatalogItem.id == item_id, CatalogItem.business_id == business_id)
+    )
+    item = ir.scalar_one_or_none()
+    if item is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")
+    sr = await db.execute(
+        select(Supplier.id).where(Supplier.id == supplier_id, Supplier.business_id == business_id)
+    )
+    if sr.first() is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Supplier not found")
+    dr = await db.execute(
+        select(SupplierItemDefault).where(
+            SupplierItemDefault.business_id == business_id,
+            SupplierItemDefault.supplier_id == supplier_id,
+            SupplierItemDefault.catalog_item_id == item_id,
+        )
+    )
+    d = dr.scalar_one_or_none()
+    return SupplierPurchaseDefaultsOut(
+        catalog_item_id=item.id,
+        supplier_id=supplier_id,
+        last_price=float(d.last_price) if d and d.last_price is not None else None,
+        last_discount=float(d.last_discount) if d and d.last_discount is not None else None,
+        last_payment_days=d.last_payment_days if d else None,
+        purchase_count=int(d.purchase_count or 0) if d else 0,
+        item_hsn_code=item.hsn_code,
+        item_tax_percent=float(item.tax_percent) if item.tax_percent is not None else None,
+        item_default_unit=item.default_unit,
+        item_default_kg_per_bag=float(item.default_kg_per_bag) if item.default_kg_per_bag is not None else None,
+        item_default_landing_cost=float(item.default_landing_cost)
+        if item.default_landing_cost is not None
+        else None,
+        item_default_purchase_unit=item.default_purchase_unit or item.default_unit,
+    )
 
 
 @router.get("/catalog-items/{item_id}/insights", response_model=CatalogItemInsightsOut)
@@ -994,6 +1109,18 @@ async def update_catalog_item(
             i.default_kg_per_bag = data["default_kg_per_bag"]
         else:
             i.default_kg_per_bag = None
+    if "default_purchase_unit" in data:
+        i.default_purchase_unit = data["default_purchase_unit"]
+    if "default_sale_unit" in data:
+        i.default_sale_unit = data["default_sale_unit"]
+    if "hsn_code" in data:
+        i.hsn_code = data["hsn_code"].strip() if data["hsn_code"] else None
+    if "tax_percent" in data:
+        i.tax_percent = data["tax_percent"]
+    if "default_landing_cost" in data:
+        i.default_landing_cost = data["default_landing_cost"]
+    if "default_selling_cost" in data:
+        i.default_selling_cost = data["default_selling_cost"]
     await db.commit()
     if not has_type_col:
         rr = await db.execute(

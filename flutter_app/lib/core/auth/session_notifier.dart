@@ -161,37 +161,19 @@ class SessionNotifier extends Notifier<Session?> {
           return;
         } on DioException catch (re) {
           final rsc = re.response?.statusCode;
-          if (rsc == 401 || rsc == 403) {
+          // Once /me/businesses has already returned 401, any refresh failure
+          // means this session cannot be trusted. Clear to prevent 401 loops.
+          if (rsc == null || rsc == 401 || rsc == 403) {
             await store.clear();
             await cache.clear();
-            api.setAuthToken(null);
-            state = null;
-            authRefresh.value++;
-            return;
-          }
-          final cached = cache.loadBusinesses();
-          if (cached != null && cached.isNotEmpty) {
-            state = Session(
-                accessToken: still.access!,
-                refreshToken: still.refresh!,
-                businesses: cached);
-            authRefresh.value++;
-            return;
           }
           api.setAuthToken(null);
           state = null;
           authRefresh.value++;
           return;
         } catch (_) {
-          final cached = cache.loadBusinesses();
-          if (cached != null && cached.isNotEmpty) {
-            state = Session(
-                accessToken: still.access!,
-                refreshToken: still.refresh!,
-                businesses: cached);
-            authRefresh.value++;
-            return;
-          }
+          await store.clear();
+          await cache.clear();
           api.setAuthToken(null);
           state = null;
           authRefresh.value++;

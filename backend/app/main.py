@@ -242,12 +242,22 @@ async def lifespan(app: FastAPI):
             if not insp.has_table("brokers"):
                 return
             cols = {c["name"] for c in insp.get_columns("brokers")}
-            if "phone" in cols:
-                return
-            try:
-                sync_conn.exec_driver_sql("ALTER TABLE brokers ADD COLUMN phone VARCHAR(15)")
-            except Exception:  # noqa: BLE001
-                pass
+            alters: list[str] = []
+            if "phone" not in cols:
+                alters.append("ALTER TABLE brokers ADD COLUMN phone VARCHAR(15)")
+            if "whatsapp_number" not in cols:
+                alters.append("ALTER TABLE brokers ADD COLUMN whatsapp_number VARCHAR(32)")
+            if "location" not in cols:
+                alters.append("ALTER TABLE brokers ADD COLUMN location TEXT")
+            if "notes" not in cols:
+                alters.append("ALTER TABLE brokers ADD COLUMN notes TEXT")
+            if "preferences_json" not in cols:
+                alters.append("ALTER TABLE brokers ADD COLUMN preferences_json TEXT")
+            for sql in alters:
+                try:
+                    sync_conn.exec_driver_sql(sql)
+                except Exception:  # noqa: BLE001
+                    pass
 
         await conn.run_sync(_ensure_broker_phone_column)
 
@@ -265,6 +275,12 @@ async def lifespan(app: FastAPI):
                 alters.append("ALTER TABLE catalog_items ADD COLUMN default_landing_cost NUMERIC(18, 4)")
             if "default_selling_cost" not in cols:
                 alters.append("ALTER TABLE catalog_items ADD COLUMN default_selling_cost NUMERIC(18, 4)")
+            if "default_purchase_unit" not in cols:
+                alters.append("ALTER TABLE catalog_items ADD COLUMN default_purchase_unit VARCHAR(32)")
+            if "default_sale_unit" not in cols:
+                alters.append("ALTER TABLE catalog_items ADD COLUMN default_sale_unit VARCHAR(32)")
+            if "last_purchase_price" not in cols:
+                alters.append("ALTER TABLE catalog_items ADD COLUMN last_purchase_price NUMERIC(18, 4)")
             for sql in alters:
                 try:
                     sync_conn.exec_driver_sql(sql)
@@ -272,6 +288,21 @@ async def lifespan(app: FastAPI):
                     pass
 
         await conn.run_sync(_ensure_catalog_item_trade_columns)
+
+        def _ensure_trade_purchases_freight_type(sync_conn):
+            insp = inspect(sync_conn)
+            if not insp.has_table("trade_purchases"):
+                return
+            cols = {c["name"] for c in insp.get_columns("trade_purchases")}
+            if "freight_type" not in cols:
+                try:
+                    sync_conn.exec_driver_sql(
+                        "ALTER TABLE trade_purchases ADD COLUMN freight_type VARCHAR(16)"
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+
+        await conn.run_sync(_ensure_trade_purchases_freight_type)
 
     yield
     await engine.dispose()

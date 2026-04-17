@@ -72,18 +72,39 @@ class UnifiedSearchOut(BaseModel):
     fuzzy_suppliers_used: bool = False
 
 
-def _hydrate_catalog_rows(
-    rows: list[tuple[Any, ...]],
-) -> list[dict[str, Any]]:
-    return [
-        {
-            "id": str(row[0]),
-            "name": row[1],
-            "category_name": row[2],
-            "type_name": row[3],
-        }
-        for row in rows
-    ]
+def _hydrate_catalog_rows(rows: list[tuple[Any, ...]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        if len(row) == 10:
+            _id, name, cat, tname, du, dkg, hsn, tax, dlc, lpp = row
+        else:
+            _id, name, cat, tname, du, dkg, hsn, tax, dlc, lpp = (
+                row[0],
+                row[1],
+                row[2],
+                None,
+                row[3],
+                row[4],
+                row[5],
+                row[6],
+                row[7],
+                row[8],
+            )
+        out.append(
+            {
+                "id": str(_id),
+                "name": name,
+                "category_name": cat,
+                "type_name": tname,
+                "default_unit": du,
+                "default_kg_per_bag": float(dkg) if dkg is not None else None,
+                "hsn_code": hsn,
+                "tax_percent": float(tax) if tax is not None else None,
+                "default_landing_cost": float(dlc) if dlc is not None else None,
+                "last_purchase_price": float(lpp) if lpp is not None else None,
+            }
+        )
+    return out
 
 
 @router.get("/search", response_model=UnifiedSearchOut)
@@ -103,6 +124,14 @@ async def unified_search(
         ic = ItemCategory
         ct = CategoryType
         has_type = await catalog_items_has_type_id_column(db)
+        extra_cols = (
+            CatalogItem.default_unit,
+            CatalogItem.default_kg_per_bag,
+            CatalogItem.hsn_code,
+            CatalogItem.tax_percent,
+            CatalogItem.default_landing_cost,
+            CatalogItem.last_purchase_price,
+        )
         if has_type:
             sq_items = (
                 select(
@@ -110,6 +139,7 @@ async def unified_search(
                     CatalogItem.name,
                     ic.name.label("category_name"),
                     ct.name.label("type_name"),
+                    *extra_cols,
                 )
                 .join(ic, ic.id == CatalogItem.category_id)
                 .outerjoin(ct, ct.id == CatalogItem.type_id)
@@ -118,7 +148,7 @@ async def unified_search(
                     func.lower(CatalogItem.name).contains(needle),
                 )
                 .order_by(func.lower(CatalogItem.name))
-                .limit(12)
+                .limit(40)
             )
         else:
             sq_items = (
@@ -126,6 +156,7 @@ async def unified_search(
                     CatalogItem.id,
                     CatalogItem.name,
                     ic.name.label("category_name"),
+                    *extra_cols,
                 )
                 .join(ic, ic.id == CatalogItem.category_id)
                 .where(
@@ -133,12 +164,12 @@ async def unified_search(
                     func.lower(CatalogItem.name).contains(needle),
                 )
                 .order_by(func.lower(CatalogItem.name))
-                .limit(12)
+                .limit(40)
             )
         ir = await db.execute(sq_items)
         catalog_rows = list(ir.all())
         if not has_type:
-            catalog_rows = [(r[0], r[1], r[2], None) for r in catalog_rows]
+            catalog_rows = [(*r[:3], None, *r[3:]) for r in catalog_rows]
         fuzzy_catalog_used = False
         if not catalog_rows:
             pairs_r = await db.execute(
@@ -147,7 +178,7 @@ async def unified_search(
                 ).limit(_PAIR_CAP)
             )
             pairs = [(row[0], row[1]) for row in pairs_r.all() if row[1]]
-            ranked = rank_ids_by_token_sort(needle, pairs, limit=12, score_cutoff=52)
+            ranked = rank_ids_by_token_sort(needle, pairs, limit=40, score_cutoff=52)
             if ranked:
                 fuzzy_catalog_used = True
                 ids = [uid for uid, _sc in ranked]
@@ -158,6 +189,7 @@ async def unified_search(
                             CatalogItem.name,
                             ic.name.label("category_name"),
                             ct.name.label("type_name"),
+                            *extra_cols,
                         )
                         .join(ic, ic.id == CatalogItem.category_id)
                         .outerjoin(ct, ct.id == CatalogItem.type_id)
@@ -169,6 +201,7 @@ async def unified_search(
                             CatalogItem.id,
                             CatalogItem.name,
                             ic.name.label("category_name"),
+                            *extra_cols,
                         )
                         .join(ic, ic.id == CatalogItem.category_id)
                         .where(CatalogItem.id.in_(ids))
@@ -183,7 +216,7 @@ async def unified_search(
                     if has_type:
                         catalog_rows.append(row)
                     else:
-                        catalog_rows.append((row[0], row[1], row[2], None))
+                        catalog_rows.append((*row[:3], None, *row[3:]))
 
         catalog_items = _hydrate_catalog_rows(catalog_rows)
 
