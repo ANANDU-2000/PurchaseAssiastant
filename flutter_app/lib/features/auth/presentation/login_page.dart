@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -169,10 +170,13 @@ class _LoginPageState extends ConsumerState<LoginPage>
           );
       if (mounted) context.go('/home');
     } catch (e) {
-      if (mounted) {
-        setState(() =>
-            _error = friendlyAuthError(e, context: AuthErrorContext.register));
+      if (!mounted) return;
+      if (e is DioException && e.response?.statusCode == 409) {
+        _loginEmail.text = _regEmail.text.trim();
+        _tab.animateTo(0);
       }
+      setState(() =>
+          _error = friendlyAuthError(e, context: AuthErrorContext.register));
     } finally {
       if (mounted) setState(() => _loading = false);
     }

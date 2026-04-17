@@ -59,7 +59,7 @@ String friendlyAuthError(
     if (sc == 401) {
       return context == AuthErrorContext.register
           ? 'Could not create your account. Check your details and try again.'
-          : 'Email or password does not match. Try again or create an account.';
+          : 'Wrong email or password for this server. Try again, or use Create Account if you have not registered here yet (a new database starts empty).';
     }
     if (sc == 400 || sc == 422) {
       return context == AuthErrorContext.register
@@ -67,7 +67,9 @@ String friendlyAuthError(
           : 'Something was not right with that sign-in. Try again.';
     }
     if (sc == 409) {
-      return 'That email or username is already taken.';
+      return context == AuthErrorContext.register
+          ? 'This email or username is already registered on this server. Use the Sign In tab with your password, or pick a different email or username.'
+          : 'That email or username is already taken.';
     }
     if (sc == 503) {
       return 'Sign-in is temporarily unavailable. Try again in a moment.';
