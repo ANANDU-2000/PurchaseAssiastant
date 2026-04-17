@@ -16,6 +16,7 @@ class InputBar extends StatefulWidget {
     this.listening = false,
     this.onMicDown,
     this.onMicUp,
+    this.onMicCancel,
     this.replySnippet,
     this.onDismissReply,
   });
@@ -28,6 +29,7 @@ class InputBar extends StatefulWidget {
   final bool listening;
   final VoidCallback? onMicDown;
   final VoidCallback? onMicUp;
+  final VoidCallback? onMicCancel;
   final String? replySnippet;
   final VoidCallback? onDismissReply;
 
@@ -172,6 +174,7 @@ class _InputBarState extends State<InputBar> {
                           listening: widget.listening,
                           onMicDown: widget.onMicDown,
                           onMicUp: widget.onMicUp,
+                            onMicCancel: widget.onMicCancel,
                           onSend: widget.onSend,
                         ),
                       ),
@@ -196,6 +199,7 @@ class _TrailingAction extends StatelessWidget {
     required this.listening,
     this.onMicDown,
     this.onMicUp,
+    this.onMicCancel,
     required this.onSend,
   });
 
@@ -205,6 +209,7 @@ class _TrailingAction extends StatelessWidget {
   final bool listening;
   final VoidCallback? onMicDown;
   final VoidCallback? onMicUp;
+  final VoidCallback? onMicCancel;
   final VoidCallback onSend;
 
   @override
@@ -239,6 +244,7 @@ class _TrailingAction extends StatelessWidget {
           listening: listening,
           onStart: onMicDown ?? () {},
           onStop: onMicUp ?? () {},
+          onCancel: onMicCancel ?? () {},
         ),
       );
     }

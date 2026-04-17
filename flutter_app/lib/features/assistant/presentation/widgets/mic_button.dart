@@ -10,11 +10,13 @@ class MicButton extends StatefulWidget {
     required this.listening,
     required this.onStart,
     required this.onStop,
+    required this.onCancel,
   });
 
   final bool listening;
   final VoidCallback onStart;
   final VoidCallback onStop;
+  final VoidCallback onCancel;
 
   @override
   State<MicButton> createState() => _MicButtonState();
@@ -23,6 +25,7 @@ class MicButton extends StatefulWidget {
 class _MicButtonState extends State<MicButton>
     with SingleTickerProviderStateMixin {
   late final AnimationController _pulse;
+  bool _cancelFired = false;
 
   @override
   void initState() {
@@ -61,7 +64,16 @@ class _MicButtonState extends State<MicButton>
       child: GestureDetector(
         onLongPressStart: (_) {
           HapticFeedback.mediumImpact();
+          _cancelFired = false;
           widget.onStart();
+        },
+        onLongPressMoveUpdate: (d) {
+          if (_cancelFired) return;
+          if (d.offsetFromOrigin.dx < -72) {
+            _cancelFired = true;
+            HapticFeedback.selectionClick();
+            widget.onCancel();
+          }
         },
         onLongPressEnd: (_) => widget.onStop(),
         onLongPressCancel: widget.onStop,
