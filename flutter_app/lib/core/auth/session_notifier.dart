@@ -29,10 +29,14 @@ final hexaApiProvider = Provider<HexaApi>((ref) {
             .read(sessionProvider.notifier)
             .applyRefreshedTokens(pair.access, pair.refresh);
         return true;
+      } on DioException catch (e) {
+        final sc = e.response?.statusCode;
+        final invalidRefresh = sc == 401 || sc == 403;
+        if (invalidRefresh) {
+          await ref.read(sessionProvider.notifier).logout();
+        }
+        return false;
       } catch (_) {
-        // Refresh token invalid (wrong server DB, rotated JWT secret, revoked). Clear storage
-        // or the app keeps sending dead tokens and spams 401 in the console.
-        await ref.read(sessionProvider.notifier).logout();
         return false;
       }
     },
@@ -155,9 +159,39 @@ class SessionNotifier extends Notifier<Session?> {
           await _persistSession(session);
           authRefresh.value++;
           return;
+        } on DioException catch (re) {
+          final rsc = re.response?.statusCode;
+          if (rsc == 401 || rsc == 403) {
+            await store.clear();
+            await cache.clear();
+            api.setAuthToken(null);
+            state = null;
+            authRefresh.value++;
+            return;
+          }
+          final cached = cache.loadBusinesses();
+          if (cached != null && cached.isNotEmpty) {
+            state = Session(
+                accessToken: still.access!,
+                refreshToken: still.refresh!,
+                businesses: cached);
+            authRefresh.value++;
+            return;
+          }
+          api.setAuthToken(null);
+          state = null;
+          authRefresh.value++;
+          return;
         } catch (_) {
-          await store.clear();
-          await cache.clear();
+          final cached = cache.loadBusinesses();
+          if (cached != null && cached.isNotEmpty) {
+            state = Session(
+                accessToken: still.access!,
+                refreshToken: still.refresh!,
+                businesses: cached);
+            authRefresh.value++;
+            return;
+          }
           api.setAuthToken(null);
           state = null;
           authRefresh.value++;

@@ -21,6 +21,7 @@ import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/bag_default_unit_hint.dart';
+import '../../contacts/presentation/supplier_create_wizard_page.dart';
 import '../domain/quick_entry_parser.dart';
 import 'smart_price_panel.dart';
 part 'entry_create_sheet_modals.part.dart';
@@ -935,71 +936,30 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     }
   }
 
-  Future<void> _addSupplierDialog() async {
-    final name = TextEditingController();
-    final phone = TextEditingController();
-    final loc = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('New supplier'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-                controller: name,
-                decoration: const InputDecoration(labelText: 'Name *')),
-            TextField(
-                controller: phone,
-                decoration: const InputDecoration(labelText: 'Phone')),
-            TextField(
-                controller: loc,
-                decoration: const InputDecoration(labelText: 'Location')),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Create')),
-        ],
+  /// Same full-screen wizard as Catalog → Suppliers (+); keeps one UX everywhere.
+  Future<void> _openSupplierCreateWizard() async {
+    if (ref.read(sessionProvider) == null) return;
+    final result = await Navigator.of(context, rootNavigator: true).push<Object?>(
+      MaterialPageRoute<Object?>(
+        builder: (_) => const SupplierCreateWizardPage(),
+        fullscreenDialog: true,
       ),
     );
-    if (ok != true || name.text.trim().isEmpty) return;
-    final session = ref.read(sessionProvider);
-    if (session == null) return;
+    if (!mounted) return;
+    ref.invalidate(suppliersListProvider);
+    final map = result is Map<String, dynamic> ? result : null;
+    final newId = map?['supplier_id']?.toString();
+    if (newId == null || newId.isEmpty) return;
     try {
-      final created = await ref.read(hexaApiProvider).createSupplier(
-            businessId: session.primaryBusiness.id,
-            name: name.text.trim(),
-            phone: phone.text.trim().isEmpty ? null : phone.text.trim(),
-            location: loc.text.trim().isEmpty ? null : loc.text.trim(),
-          );
-      final newId = created['id']?.toString();
-      ref.invalidate(suppliersListProvider);
       final fresh = await ref.read(suppliersListProvider.future);
       if (!mounted) return;
-      final suppliers = fresh
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .toList();
+      final suppliers =
+          fresh.map((e) => Map<String, dynamic>.from(e as Map)).toList();
       setState(() {
-        if (newId != null && newId.isNotEmpty) {
-          _supplierId = newId;
-          _brokerId = _brokerIdForSupplier(suppliers, newId);
-        }
+        _supplierId = newId;
+        _brokerId = _brokerIdForSupplier(suppliers, newId);
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Supplier added')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
-      }
-    }
+    } catch (_) {}
   }
 
   Future<void> _addCategoryFromEntry() async {
@@ -1604,7 +1564,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                           Padding(
                             padding: const EdgeInsets.only(top: 6),
                             child: TextButton(
-                              onPressed: _busy ? null : _addSupplierDialog,
+                              onPressed: _busy ? null : _openSupplierCreateWizard,
                               child: const Text('＋ New'),
                             ),
                           ),
@@ -1811,7 +1771,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                           Padding(
                             padding: const EdgeInsets.only(top: 6),
                             child: TextButton(
-                              onPressed: _busy ? null : _addSupplierDialog,
+                              onPressed: _busy ? null : _openSupplierCreateWizard,
                               child: const Text('＋ New'),
                             ),
                           ),
@@ -2114,7 +2074,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                                   avatar: const Icon(Icons.storefront_outlined,
                                       size: 18, color: HexaColors.primaryMid),
                                   label: const Text('Supplier'),
-                                  onPressed: _busy ? null : _addSupplierDialog,
+                                  onPressed: _busy ? null : _openSupplierCreateWizard,
                                 ),
                                 ActionChip(
                                   avatar: const Icon(Icons.handshake_outlined,

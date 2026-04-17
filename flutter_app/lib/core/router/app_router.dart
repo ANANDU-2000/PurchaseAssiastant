@@ -15,6 +15,7 @@ import '../../features/auth/presentation/login_page.dart';
 import '../../features/contacts/presentation/contacts_page.dart';
 import '../../features/contacts/presentation/broker_detail_page.dart';
 import '../../features/contacts/presentation/category_items_page.dart';
+import '../../features/contacts/presentation/supplier_create_wizard_page.dart';
 import '../../features/contacts/presentation/supplier_detail_page.dart';
 import '../../features/entries/presentation/entry_detail_page.dart';
 import '../../features/home/presentation/home_page.dart';
@@ -208,6 +209,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
           child: const PurchaseWizardPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/contacts/supplier/new',
+        name: 'supplier_create',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const SupplierCreateWizardPage(),
         ),
       ),
       GoRoute(

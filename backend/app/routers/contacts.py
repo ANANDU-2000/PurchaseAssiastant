@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import require_membership, require_owner_membership
-from app.models import Broker, Entry, EntryLineItem, Membership, Supplier
+from app.models import Broker, BrokerSupplierLink, Entry, EntryLineItem, Membership, Supplier
 
 router = APIRouter(prefix="/v1/businesses/{business_id}", tags=["contacts"])
 
@@ -18,17 +18,31 @@ def _norm_name(s: str) -> str:
     return s.strip().lower()
 
 
+class SupplierPrefsIn(BaseModel):
+    """Preferred categories, subcategory (type) ids, and catalog item ids for search / AI."""
+
+    category_ids: list[uuid.UUID] = Field(default_factory=list)
+    type_ids: list[uuid.UUID] = Field(default_factory=list)
+    item_ids: list[uuid.UUID] = Field(default_factory=list)
+
+
 class SupplierCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     phone: str | None = None
     whatsapp_number: str | None = Field(default=None, max_length=32)
     location: str | None = None
     broker_id: uuid.UUID | None = None
+    broker_ids: list[uuid.UUID] | None = None
     gst_number: str | None = Field(default=None, max_length=20)
+    address: str | None = None
+    notes: str | None = None
     default_payment_days: int | None = Field(default=None, ge=0, le=3650)
     default_discount: float | None = Field(default=None, ge=0)
     default_delivered_rate: float | None = Field(default=None, ge=0)
     default_billty_rate: float | None = Field(default=None, ge=0)
+    freight_type: str | None = Field(default=None, max_length=16)
+    ai_memory_enabled: bool = False
+    preferences: SupplierPrefsIn | None = None
 
 
 class SupplierOut(BaseModel):
@@ -39,10 +53,15 @@ class SupplierOut(BaseModel):
     location: str | None = None
     broker_id: uuid.UUID | None = None
     gst_number: str | None = None
+    address: str | None = None
+    notes: str | None = None
     default_payment_days: int | None = None
     default_discount: float | None = None
     default_delivered_rate: float | None = None
     default_billty_rate: float | None = None
+    freight_type: str | None = None
+    ai_memory_enabled: bool = False
+    preferences_json: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -54,10 +73,15 @@ class SupplierUpdate(BaseModel):
     location: str | None = None
     broker_id: uuid.UUID | None = None
     gst_number: str | None = Field(default=None, max_length=20)
+    address: str | None = None
+    notes: str | None = None
     default_payment_days: int | None = Field(default=None, ge=0, le=3650)
     default_discount: float | None = Field(default=None, ge=0)
     default_delivered_rate: float | None = Field(default=None, ge=0)
     default_billty_rate: float | None = Field(default=None, ge=0)
+    freight_type: str | None = Field(default=None, max_length=16)
+    ai_memory_enabled: bool | None = None
+    preferences: SupplierPrefsIn | None = None
 
 
 async def _supplier_dup(
@@ -98,20 +122,59 @@ async def create_supplier(
             status.HTTP_409_CONFLICT,
             detail="A supplier with this name already exists",
         )
+    ft = body.freight_type
+    if ft is not None and ft not in ("included", "separate"):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="freight_type must be 'included' or 'separate'",
+        )
+
+    merged_broker_ids: list[uuid.UUID] = []
+    if body.broker_ids:
+        merged_broker_ids.extend(body.broker_ids)
+    if body.broker_id and body.broker_id not in merged_broker_ids:
+        merged_broker_ids.insert(0, body.broker_id)
+    dedup_brokers: list[uuid.UUID] = []
+    for bid in merged_broker_ids:
+        if bid not in dedup_brokers:
+            dedup_brokers.append(bid)
+
+    prefs_json: str | None = None
+    if body.preferences is not None:
+        prefs_json = body.preferences.model_dump_json()
+
     s = Supplier(
         business_id=business_id,
         name=body.name.strip(),
         phone=body.phone,
         whatsapp_number=body.whatsapp_number,
         location=body.location,
-        broker_id=body.broker_id,
+        broker_id=dedup_brokers[0] if dedup_brokers else body.broker_id,
         gst_number=body.gst_number,
+        address=body.address,
+        notes=body.notes,
         default_payment_days=body.default_payment_days,
         default_discount=body.default_discount,
         default_delivered_rate=body.default_delivered_rate,
         default_billty_rate=body.default_billty_rate,
+        freight_type=ft,
+        ai_memory_enabled=body.ai_memory_enabled,
+        preferences_json=prefs_json,
     )
     db.add(s)
+    await db.flush()
+
+    for bid in dedup_brokers:
+        ok = await db.scalar(
+            select(Broker.id).where(Broker.id == bid, Broker.business_id == business_id)
+        )
+        if ok is None:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail=f"Broker not in this business: {bid}",
+            )
+        db.add(BrokerSupplierLink(broker_id=bid, supplier_id=s.id))
+
     await db.commit()
     await db.refresh(s)
     return SupplierOut.model_validate(s)
@@ -147,6 +210,22 @@ async def update_supplier(
         s.whatsapp_number = None if v is None or (isinstance(v, str) and not str(v).strip()) else str(v).strip()
     if "location" in data:
         s.location = data["location"]
+    if "address" in data:
+        s.address = data["address"]
+    if "notes" in data:
+        s.notes = data["notes"]
+    if "freight_type" in data:
+        fv = data["freight_type"]
+        if fv is not None and fv not in ("included", "separate"):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail="freight_type must be 'included' or 'separate'",
+            )
+        s.freight_type = fv
+    if "ai_memory_enabled" in data and data["ai_memory_enabled"] is not None:
+        s.ai_memory_enabled = bool(data["ai_memory_enabled"])
+    if "preferences" in data and data["preferences"] is not None:
+        s.preferences_json = SupplierPrefsIn.model_validate(data["preferences"]).model_dump_json()
     if "broker_id" in data:
         s.broker_id = data["broker_id"]
     for k in (

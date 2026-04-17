@@ -32,6 +32,7 @@ class ShellScreen extends ConsumerWidget {
     }
 
     final cs = Theme.of(context).colorScheme;
+    final onPurchaseBranch = idx == branchPurchase;
 
     return Scaffold(
       key: ValueKey<String>('shell_${routePath}_$idx'),
@@ -69,39 +70,122 @@ class ShellScreen extends ConsumerWidget {
           Expanded(child: navigationShell),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        height: 68,
-        selectedIndex: idx,
-        onDestinationSelected: go,
-        backgroundColor: cs.surface,
-        indicatorColor: HexaColors.accentInfo.withValues(alpha: 0.16),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.grid_view_outlined),
-            selectedIcon: Icon(Icons.grid_view_rounded),
-            label: 'Home',
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: FloatingActionButton(
+          tooltip: onPurchaseBranch ? 'Purchase list' : 'Quick purchase entry',
+          backgroundColor: HexaColors.primaryMid,
+          foregroundColor: Colors.white,
+          elevation: 2,
+          onPressed: () {
+            HapticFeedback.mediumImpact();
+            if (onPurchaseBranch) {
+              context.go('/purchase');
+              return;
+            }
+            context.push('/purchase/new');
+          },
+          child: const Icon(Icons.edit_note_rounded),
+        ),
+      ),
+      bottomNavigationBar: BottomAppBar(
+        color: cs.surface,
+        elevation: 6,
+        shape: const CircularNotchedRectangle(),
+        notchMargin: 8,
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            height: 66,
+            child: Row(
+              children: [
+                Expanded(
+                  child: _ShellTabItem(
+                    label: 'Home',
+                    icon: idx == branchHome
+                        ? Icons.grid_view_rounded
+                        : Icons.grid_view_outlined,
+                    selected: idx == branchHome,
+                    onTap: () => go(branchHome),
+                  ),
+                ),
+                Expanded(
+                  child: _ShellTabItem(
+                    label: 'Reports',
+                    icon: idx == branchReports
+                        ? Icons.bar_chart_rounded
+                        : Icons.bar_chart_outlined,
+                    selected: idx == branchReports,
+                    onTap: () => go(branchReports),
+                  ),
+                ),
+                const SizedBox(width: 72),
+                Expanded(
+                  child: _ShellTabItem(
+                    label: 'Contacts',
+                    icon: idx == branchContacts
+                        ? Icons.people_alt_rounded
+                        : Icons.people_alt_outlined,
+                    selected: idx == branchContacts,
+                    onTap: () => go(branchContacts),
+                  ),
+                ),
+                Expanded(
+                  child: _ShellTabItem(
+                    label: 'Assistant',
+                    icon: idx == branchAssistant
+                        ? Icons.chat_bubble_rounded
+                        : Icons.chat_bubble_outline_rounded,
+                    selected: idx == branchAssistant,
+                    onTap: () => go(branchAssistant),
+                  ),
+                ),
+              ],
+            ),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.edit_note_outlined),
-            selectedIcon: Icon(Icons.edit_note_rounded),
-            label: 'Purchase',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.bar_chart_outlined),
-            selectedIcon: Icon(Icons.bar_chart_rounded),
-            label: 'Reports',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.people_alt_outlined),
-            selectedIcon: Icon(Icons.people_alt_rounded),
-            label: 'Contacts',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.chat_bubble_outline_rounded),
-            selectedIcon: Icon(Icons.chat_bubble_rounded),
-            label: 'Assistant',
-          ),
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ShellTabItem extends StatelessWidget {
+  const _ShellTabItem({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final active = selected ? HexaColors.primaryMid : cs.onSurfaceVariant;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 24, color: active),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: active,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  ),
+            ),
+          ],
+        ),
       ),
     );
   }

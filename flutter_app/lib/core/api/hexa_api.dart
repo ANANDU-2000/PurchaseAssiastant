@@ -402,17 +402,51 @@ class HexaApi {
     String? whatsappNumber,
     String? location,
     String? brokerId,
+    List<String>? brokerIds,
+    String? gstNumber,
+    String? address,
+    String? notes,
+    int? defaultPaymentDays,
+    double? defaultDiscount,
+    double? defaultDeliveredRate,
+    double? defaultBilltyRate,
+    String? freightType,
+    bool aiMemoryEnabled = false,
+    Map<String, dynamic>? preferences,
   }) async {
+    final data = <String, dynamic>{
+      'name': name,
+      if (phone != null && phone.isNotEmpty) 'phone': phone,
+      if (whatsappNumber != null && whatsappNumber.isNotEmpty)
+        'whatsapp_number': whatsappNumber,
+      if (location != null && location.isNotEmpty) 'location': location,
+      if (brokerId != null && brokerId.isNotEmpty) 'broker_id': brokerId,
+      if (brokerIds != null && brokerIds.isNotEmpty) 'broker_ids': brokerIds,
+      if (gstNumber != null && gstNumber.isNotEmpty) 'gst_number': gstNumber,
+      if (address != null && address.isNotEmpty) 'address': address,
+      if (notes != null && notes.isNotEmpty) 'notes': notes,
+      if (defaultPaymentDays != null) 'default_payment_days': defaultPaymentDays,
+      if (defaultDiscount != null) 'default_discount': defaultDiscount,
+      if (defaultDeliveredRate != null)
+        'default_delivered_rate': defaultDeliveredRate,
+      if (defaultBilltyRate != null) 'default_billty_rate': defaultBilltyRate,
+      if (freightType != null && freightType.isNotEmpty)
+        'freight_type': freightType,
+      'ai_memory_enabled': aiMemoryEnabled,
+    };
+    if (preferences != null) {
+      final c = preferences['category_ids'];
+      final t = preferences['type_ids'];
+      final i = preferences['item_ids'];
+      if ((c is List && c.isNotEmpty) ||
+          (t is List && t.isNotEmpty) ||
+          (i is List && i.isNotEmpty)) {
+        data['preferences'] = preferences;
+      }
+    }
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/businesses/$businessId/suppliers',
-      data: {
-        'name': name,
-        if (phone != null && phone.isNotEmpty) 'phone': phone,
-        if (whatsappNumber != null && whatsappNumber.isNotEmpty)
-          'whatsapp_number': whatsappNumber,
-        if (location != null && location.isNotEmpty) 'location': location,
-        if (brokerId != null && brokerId.isNotEmpty) 'broker_id': brokerId,
-      },
+      data: data,
     );
     return res.data ?? {};
   }
@@ -468,6 +502,16 @@ class HexaApi {
     String? whatsappNumber,
     String? location,
     String? brokerId,
+    String? gstNumber,
+    String? address,
+    String? notes,
+    int? defaultPaymentDays,
+    double? defaultDiscount,
+    double? defaultDeliveredRate,
+    double? defaultBilltyRate,
+    String? freightType,
+    bool? aiMemoryEnabled,
+    Map<String, dynamic>? preferences,
   }) async {
     final res = await _dio.patch<Map<String, dynamic>>(
       '/v1/businesses/$businessId/suppliers/$supplierId',
@@ -477,6 +521,18 @@ class HexaApi {
         if (whatsappNumber != null) 'whatsapp_number': whatsappNumber,
         if (location != null) 'location': location,
         if (brokerId != null) 'broker_id': brokerId,
+        if (gstNumber != null) 'gst_number': gstNumber,
+        if (address != null) 'address': address,
+        if (notes != null) 'notes': notes,
+        if (defaultPaymentDays != null)
+          'default_payment_days': defaultPaymentDays,
+        if (defaultDiscount != null) 'default_discount': defaultDiscount,
+        if (defaultDeliveredRate != null)
+          'default_delivered_rate': defaultDeliveredRate,
+        if (defaultBilltyRate != null) 'default_billty_rate': defaultBilltyRate,
+        if (freightType != null) 'freight_type': freightType,
+        if (aiMemoryEnabled != null) 'ai_memory_enabled': aiMemoryEnabled,
+        if (preferences != null) 'preferences': preferences,
       },
     );
     return res.data ?? {};

@@ -16,6 +16,7 @@ import '../../../core/providers/contacts_hub_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../shared/widgets/app_settings_action.dart';
 import '../../../shared/widgets/bag_default_unit_hint.dart';
+import 'supplier_create_wizard_page.dart';
 
 Color _avatarColor(String seed) {
   const palette = <Color>[
@@ -508,99 +509,13 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
   }
 
   Future<void> _addSupplier() async {
-    final name = TextEditingController();
-    final phone = TextEditingController();
-    final wa = TextEditingController();
-    final loc = TextEditingController();
-    String? selectedBrokerId;
-    List<Map<String, dynamic>> brokers = [];
-    try {
-      brokers = await ref.read(brokersListProvider.future);
-    } catch (_) {
-      brokers = [];
-    }
     if (!mounted) return;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSt) => AlertDialog(
-          title: const Text('New supplier'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                    controller: name,
-                    decoration: const InputDecoration(labelText: 'Name *')),
-                TextField(
-                    controller: phone,
-                    decoration: const InputDecoration(labelText: 'Phone')),
-                TextField(
-                  controller: wa,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(
-                    labelText: 'WhatsApp number',
-                    helperText: 'Optional — can differ from phone',
-                  ),
-                ),
-                TextField(
-                    controller: loc,
-                    decoration: const InputDecoration(labelText: 'Location')),
-                DropdownButtonFormField<String?>(
-                  key: ValueKey(selectedBrokerId ?? '∅'),
-                  initialValue: selectedBrokerId,
-                  decoration:
-                      const InputDecoration(labelText: 'Broker (optional)'),
-                  items: [
-                    const DropdownMenuItem<String?>(
-                        value: null, child: Text('None')),
-                    ...brokers.map(
-                      (b) => DropdownMenuItem<String?>(
-                        value: b['id']?.toString(),
-                        child: Text(b['name']?.toString() ?? ''),
-                      ),
-                    ),
-                  ],
-                  onChanged: (v) => setSt(() => selectedBrokerId = v),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel')),
-            FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Save')),
-          ],
-        ),
+    await Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const SupplierCreateWizardPage(),
+        fullscreenDialog: true,
       ),
     );
-    if (ok != true || name.text.trim().isEmpty) return;
-    final session = ref.read(sessionProvider);
-    if (session == null) return;
-    try {
-      await ref.read(hexaApiProvider).createSupplier(
-            businessId: session.primaryBusiness.id,
-            name: name.text.trim(),
-            phone: phone.text.trim().isEmpty ? null : phone.text.trim(),
-            whatsappNumber: wa.text.trim().isEmpty ? null : wa.text.trim(),
-            location: loc.text.trim().isEmpty ? null : loc.text.trim(),
-            brokerId: selectedBrokerId,
-          );
-      ref.invalidate(suppliersListProvider);
-      ref.invalidate(contactsSuppliersEnrichedProvider);
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Supplier created')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
-      }
-    }
   }
 
   Future<void> _addBroker() async {

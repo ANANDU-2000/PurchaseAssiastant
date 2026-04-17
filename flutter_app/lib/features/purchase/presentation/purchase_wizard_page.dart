@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/brokers_list_provider.dart';
+import '../../../core/providers/purchase_prefill_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
 import '../../../shared/widgets/full_screen_form_scaffold.dart';
@@ -62,7 +63,33 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
     _commissionCtrl = TextEditingController();
     _paymentDaysCtrl = TextEditingController();
     _discountCtrl = TextEditingController();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadDraft());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _loadDraft();
+      if (!mounted) return;
+      final pre = ref.read(pendingPurchaseSupplierIdProvider);
+      if (pre != null && pre.isNotEmpty) {
+        ref.read(pendingPurchaseSupplierIdProvider.notifier).state = null;
+        await _applyPrefillSupplier(pre);
+      }
+    });
+  }
+
+  Future<void> _applyPrefillSupplier(String id) async {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    try {
+      final s = await ref.read(hexaApiProvider).getSupplier(
+            businessId: session.primaryBusiness.id,
+            supplierId: id,
+          );
+      if (!mounted || s.isEmpty) return;
+      setState(() {
+        _supplierId = id;
+        _applySupplierDefaults(s);
+        _dirty = true;
+        _scheduleDraft();
+      });
+    } catch (_) {}
   }
 
   Future<void> _loadDraft() async {

@@ -205,6 +205,38 @@ async def lifespan(app: FastAPI):
 
         await conn.run_sync(_ensure_supplier_wholesale_columns)
 
+        def _ensure_supplier_profile_columns(sync_conn):
+            insp = inspect(sync_conn)
+            if not insp.has_table("suppliers"):
+                return
+            cols = {c["name"] for c in insp.get_columns("suppliers")}
+            alters: list[str] = []
+            if "address" not in cols:
+                alters.append("ALTER TABLE suppliers ADD COLUMN address TEXT")
+            if "notes" not in cols:
+                alters.append("ALTER TABLE suppliers ADD COLUMN notes TEXT")
+            if "freight_type" not in cols:
+                alters.append("ALTER TABLE suppliers ADD COLUMN freight_type VARCHAR(16)")
+            if "ai_memory_enabled" not in cols:
+                dialect = sync_conn.dialect.name
+                if dialect == "postgresql":
+                    alters.append(
+                        "ALTER TABLE suppliers ADD COLUMN ai_memory_enabled BOOLEAN NOT NULL DEFAULT false"
+                    )
+                else:
+                    alters.append(
+                        "ALTER TABLE suppliers ADD COLUMN ai_memory_enabled INTEGER NOT NULL DEFAULT 0"
+                    )
+            if "preferences_json" not in cols:
+                alters.append("ALTER TABLE suppliers ADD COLUMN preferences_json TEXT")
+            for sql in alters:
+                try:
+                    sync_conn.exec_driver_sql(sql)
+                except Exception:  # noqa: BLE001
+                    pass
+
+        await conn.run_sync(_ensure_supplier_profile_columns)
+
         def _ensure_broker_phone_column(sync_conn):
             insp = inspect(sync_conn)
             if not insp.has_table("brokers"):

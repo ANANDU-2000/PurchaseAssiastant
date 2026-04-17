@@ -9,6 +9,7 @@ class FullScreenFormScaffold extends StatelessWidget {
     required this.body,
     required this.bottom,
     this.actions,
+    this.onBackPressed,
   });
 
   final String title;
@@ -16,13 +17,22 @@ class FullScreenFormScaffold extends StatelessWidget {
   final Widget body;
   final Widget bottom;
   final List<Widget>? actions;
+  /// When set, used for the leading control (e.g. intercept back for drafts).
+  final VoidCallback? onBackPressed;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: onBackPressed ?? () => Navigator.of(context).maybePop(),
+        ),
+        automaticallyImplyLeading: false,
+        centerTitle: true,
         title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(title),

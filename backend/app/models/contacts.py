@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text, Uuid
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -39,6 +39,11 @@ class Supplier(Base):
     default_billty_rate: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
     whatsapp_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
     location: Mapped[str | None] = mapped_column(Text, nullable=True)
+    address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    freight_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    ai_memory_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    preferences_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     broker_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("brokers.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
