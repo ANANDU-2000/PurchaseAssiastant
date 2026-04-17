@@ -15,7 +15,6 @@ import '../../../core/providers/dashboard_provider.dart';
 import '../../../core/providers/home_insights_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
-import '../../entries/presentation/entry_create_sheet.dart';
 import '../../../shared/widgets/app_settings_action.dart';
 
 class HomePage extends ConsumerStatefulWidget {
@@ -293,7 +292,7 @@ class _HomePageState extends ConsumerState<HomePage>
                         ),
                         const SizedBox(height: 8),
                         _SmallActions(
-                          onAdd: () => showEntryCreateSheet(context),
+                          onAdd: () => context.push('/purchase/new'),
                           onAssistant: () => context.go('/assistant'),
                         ),
                         const SizedBox(height: 8),

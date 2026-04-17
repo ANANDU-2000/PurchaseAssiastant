@@ -8,7 +8,6 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/theme/theme_context_ext.dart';
 import '../../../core/widgets/friendly_load_error.dart';
-import '../../entries/presentation/entry_create_sheet.dart';
 
 final _pipProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, itemName) async {
@@ -174,7 +173,7 @@ class _ItemAnalyticsDetailPageState
                   hintLine:
                       hints.isNotEmpty ? hints.first.toString() : null,
                   inr: _inr,
-                  onAddPurchase: () => showEntryCreateSheet(context),
+                  onAddPurchase: () => context.push('/purchase/new'),
                 ),
                 const SizedBox(height: 16),
                 if (historyPts.length >= 2)

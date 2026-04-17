@@ -54,6 +54,10 @@ class CatalogItem(Base):
     name: Mapped[str] = mapped_column(String(512))
     default_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
     default_kg_per_bag: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
+    hsn_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    tax_percent: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
+    default_landing_cost: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
+    default_selling_cost: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     category = relationship("ItemCategory", back_populates="items")

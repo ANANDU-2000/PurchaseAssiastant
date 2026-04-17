@@ -13,7 +13,25 @@ from sqlalchemy import inspect
 
 from app.database import engine
 from app.models import Base
-from app.routers import admin, ai_chat, analytics, auth, billing, catalog, contacts, entries, health, me, media, price_intelligence, razorpay_webhook, realtime, search
+from app.routers import (
+    admin,
+    ai_chat,
+    analytics,
+    auth,
+    billing,
+    catalog,
+    contacts,
+    entries,
+    health,
+    me,
+    media,
+    price_intelligence,
+    razorpay_webhook,
+    realtime,
+    reports_trade,
+    search,
+    trade_purchases,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +181,66 @@ async def lifespan(app: FastAPI):
 
         await conn.run_sync(_ensure_catalog_items_type_id)
 
+        def _ensure_supplier_wholesale_columns(sync_conn):
+            insp = inspect(sync_conn)
+            if not insp.has_table("suppliers"):
+                return
+            cols = {c["name"] for c in insp.get_columns("suppliers")}
+            alters: list[str] = []
+            if "gst_number" not in cols:
+                alters.append("ALTER TABLE suppliers ADD COLUMN gst_number VARCHAR(20)")
+            if "default_payment_days" not in cols:
+                alters.append("ALTER TABLE suppliers ADD COLUMN default_payment_days INTEGER")
+            if "default_discount" not in cols:
+                alters.append("ALTER TABLE suppliers ADD COLUMN default_discount NUMERIC(18, 4)")
+            if "default_delivered_rate" not in cols:
+                alters.append("ALTER TABLE suppliers ADD COLUMN default_delivered_rate NUMERIC(18, 4)")
+            if "default_billty_rate" not in cols:
+                alters.append("ALTER TABLE suppliers ADD COLUMN default_billty_rate NUMERIC(18, 4)")
+            for sql in alters:
+                try:
+                    sync_conn.exec_driver_sql(sql)
+                except Exception:  # noqa: BLE001
+                    pass
+
+        await conn.run_sync(_ensure_supplier_wholesale_columns)
+
+        def _ensure_broker_phone_column(sync_conn):
+            insp = inspect(sync_conn)
+            if not insp.has_table("brokers"):
+                return
+            cols = {c["name"] for c in insp.get_columns("brokers")}
+            if "phone" in cols:
+                return
+            try:
+                sync_conn.exec_driver_sql("ALTER TABLE brokers ADD COLUMN phone VARCHAR(15)")
+            except Exception:  # noqa: BLE001
+                pass
+
+        await conn.run_sync(_ensure_broker_phone_column)
+
+        def _ensure_catalog_item_trade_columns(sync_conn):
+            insp = inspect(sync_conn)
+            if not insp.has_table("catalog_items"):
+                return
+            cols = {c["name"] for c in insp.get_columns("catalog_items")}
+            alters: list[str] = []
+            if "hsn_code" not in cols:
+                alters.append("ALTER TABLE catalog_items ADD COLUMN hsn_code VARCHAR(32)")
+            if "tax_percent" not in cols:
+                alters.append("ALTER TABLE catalog_items ADD COLUMN tax_percent NUMERIC(18, 4)")
+            if "default_landing_cost" not in cols:
+                alters.append("ALTER TABLE catalog_items ADD COLUMN default_landing_cost NUMERIC(18, 4)")
+            if "default_selling_cost" not in cols:
+                alters.append("ALTER TABLE catalog_items ADD COLUMN default_selling_cost NUMERIC(18, 4)")
+            for sql in alters:
+                try:
+                    sync_conn.exec_driver_sql(sql)
+                except Exception:  # noqa: BLE001
+                    pass
+
+        await conn.run_sync(_ensure_catalog_item_trade_columns)
+
     yield
     await engine.dispose()
 
@@ -235,6 +313,8 @@ app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(me.router)
 app.include_router(entries.router)
+app.include_router(trade_purchases.router)
+app.include_router(reports_trade.router)
 app.include_router(search.router)
 app.include_router(ai_chat.router)
 app.include_router(analytics.router)

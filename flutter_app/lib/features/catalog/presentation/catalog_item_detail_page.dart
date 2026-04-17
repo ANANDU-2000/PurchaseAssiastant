@@ -11,7 +11,6 @@ import '../../../core/providers/catalog_providers.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/bag_default_unit_hint.dart';
-import '../../entries/presentation/entry_create_sheet.dart';
 
 class CatalogItemDetailPage extends ConsumerStatefulWidget {
   const CatalogItemDetailPage({super.key, required this.itemId});
@@ -421,7 +420,7 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                                 pip: p,
                                 inr: _inr,
                                 onAddPurchase: () =>
-                                    showEntryCreateSheet(context),
+                                    context.push('/purchase/new'),
                               ),
                             );
                           },

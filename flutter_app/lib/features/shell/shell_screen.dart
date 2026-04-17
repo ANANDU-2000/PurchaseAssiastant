@@ -5,19 +5,18 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/providers/connectivity_provider.dart';
 import '../../core/theme/hexa_colors.dart';
-import '../entries/presentation/entry_create_sheet.dart';
 
-/// Shell: [IndexedStack body] · bottom nav · Home | Entries | (center +) | Catalog | Reports.
+/// Shell: [IndexedStack body] · bottom nav · Home | Purchase | Reports | Contacts | Assistant.
 class ShellScreen extends ConsumerWidget {
   const ShellScreen({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
 
-  /// Branch indices: 0 home, 1 entries, 2 catalog (suppliers/items), 3 analytics.
   static const branchHome = 0;
-  static const branchEntries = 1;
-  static const branchContacts = 2;
-  static const branchAnalytics = 3;
+  static const branchPurchase = 1;
+  static const branchReports = 2;
+  static const branchContacts = 3;
+  static const branchAssistant = 4;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -33,9 +32,6 @@ class ShellScreen extends ConsumerWidget {
     }
 
     final cs = Theme.of(context).colorScheme;
-    // Keep one global primary action (+) across shell pages.
-    // Hide only on assistant route (full-screen compose).
-    final showShellPurchaseFab = !routePath.startsWith('/assistant');
 
     return Scaffold(
       key: ValueKey<String>('shell_${routePath}_$idx'),
@@ -73,196 +69,39 @@ class ShellScreen extends ConsumerWidget {
           Expanded(child: navigationShell),
         ],
       ),
-      floatingActionButton: showShellPurchaseFab
-          ? Tooltip(
-              message: 'New purchase entry',
-              child: Container(
-                key: const ValueKey('shell_fab'),
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  color: cs.surface,
-                  border: Border.all(
-                    color: HexaColors.accentInfo.withValues(alpha: 0.45),
-                    width: 1.5,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.07),
-                      blurRadius: 12,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(16),
-                    onTap: () {
-                      HapticFeedback.mediumImpact();
-                      showEntryCreateSheet(context);
-                    },
-                    splashColor: HexaColors.accentInfo.withValues(alpha: 0.12),
-                    highlightColor:
-                        HexaColors.accentInfo.withValues(alpha: 0.06),
-                    child: const SizedBox(
-                      width: 56,
-                      height: 56,
-                      child: Icon(
-                        Icons.add_rounded,
-                        color: HexaColors.accentInfo,
-                        size: 26,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            )
-          : null,
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: BottomAppBar(
-        padding: EdgeInsets.zero,
-        height: 72,
-        elevation: 0,
-        shadowColor: Colors.transparent,
-        color: cs.surface,
-        surfaceTintColor: Colors.transparent,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            border: Border(
-                top: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.9))),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 18,
-                offset: const Offset(0, -2),
-              ),
-            ],
+      bottomNavigationBar: NavigationBar(
+        height: 68,
+        selectedIndex: idx,
+        onDestinationSelected: go,
+        backgroundColor: cs.surface,
+        indicatorColor: HexaColors.accentInfo.withValues(alpha: 0.16),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.grid_view_outlined),
+            selectedIcon: Icon(Icons.grid_view_rounded),
+            label: 'Home',
           ),
-          child: SafeArea(
-            top: false,
-            child: Row(
-              children: [
-                Expanded(
-                  child: _ShellTab(
-                    selected: idx == ShellScreen.branchHome,
-                    icon: Icons.grid_view_outlined,
-                    selectedIcon: Icons.grid_view_rounded,
-                    label: 'Home',
-                    onTap: () => go(ShellScreen.branchHome),
-                  ),
-                ),
-                Expanded(
-                  child: _ShellTab(
-                    selected: idx == ShellScreen.branchEntries,
-                    icon: Icons.receipt_long_outlined,
-                    selectedIcon: Icons.receipt_long_rounded,
-                    label: 'Entries',
-                    onTap: () => go(ShellScreen.branchEntries),
-                  ),
-                ),
-                const SizedBox(width: 64),
-                Expanded(
-                  child: _ShellTab(
-                    selected: idx == ShellScreen.branchContacts,
-                    icon: Icons.people_alt_outlined,
-                    selectedIcon: Icons.people_alt_rounded,
-                    label: 'Catalog',
-                    onTap: () => go(ShellScreen.branchContacts),
-                  ),
-                ),
-                Expanded(
-                  child: _ShellTab(
-                    selected: idx == ShellScreen.branchAnalytics,
-                    icon: Icons.bar_chart_outlined,
-                    selectedIcon: Icons.bar_chart_rounded,
-                    label: 'Reports',
-                    onTap: () => go(ShellScreen.branchAnalytics),
-                  ),
-                ),
-              ],
-            ),
+          NavigationDestination(
+            icon: Icon(Icons.edit_note_outlined),
+            selectedIcon: Icon(Icons.edit_note_rounded),
+            label: 'Purchase',
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ShellTab extends StatelessWidget {
-  const _ShellTab({
-    required this.selected,
-    required this.icon,
-    required this.selectedIcon,
-    required this.label,
-    required this.onTap,
-  });
-
-  final bool selected;
-  final IconData icon;
-  final IconData selectedIcon;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    final muted = const Color(0xFF64748B);
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: label,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
-          splashColor: HexaColors.accentInfo.withValues(alpha: 0.12),
-          highlightColor: HexaColors.accentInfo.withValues(alpha: 0.06),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
-            child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    curve: Curves.easeOutCubic,
-                    width: selected ? 40 : 32,
-                    height: selected ? 40 : 32,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: selected
-                          ? HexaColors.accentInfo.withValues(alpha: 0.16)
-                          : Colors.transparent,
-                    ),
-                    child: Icon(
-                      selected ? selectedIcon : icon,
-                      size: 20,
-                      color: selected
-                          ? HexaColors.accentInfo
-                          : muted,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: tt.labelSmall?.copyWith(
-                      fontSize: 9,
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                      color: selected
-                          ? HexaColors.accentInfo
-                          : muted,
-                    ),
-                  ),
-                ],
-            ),
+          NavigationDestination(
+            icon: Icon(Icons.bar_chart_outlined),
+            selectedIcon: Icon(Icons.bar_chart_rounded),
+            label: 'Reports',
           ),
-        ),
+          NavigationDestination(
+            icon: Icon(Icons.people_alt_outlined),
+            selectedIcon: Icon(Icons.people_alt_rounded),
+            label: 'Contacts',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.chat_bubble_outline_rounded),
+            selectedIcon: Icon(Icons.chat_bubble_rounded),
+            label: 'Assistant',
+          ),
+        ],
       ),
     );
   }

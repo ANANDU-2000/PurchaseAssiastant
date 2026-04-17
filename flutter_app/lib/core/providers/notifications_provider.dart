@@ -73,7 +73,7 @@ class NotificationsNotifier extends StateNotifier<List<NotificationItem>> {
         subtitle:
             '$itemSample — landing 15%+ above recent average. Verify before next buy.',
         createdAt: DateTime.now(),
-        actionRoute: '/entries',
+        actionRoute: '/purchase',
       ),
       ...state,
     ];

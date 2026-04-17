@@ -14,7 +14,6 @@ import '../../../core/config/app_config.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/hexa_empty_state.dart';
-import '../../entries/presentation/entry_create_sheet.dart';
 
 final _supplierProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, supplierId) async {
@@ -492,7 +491,7 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                       subtitle:
                           'Add a purchase and link it to this supplier to see metrics.',
                       primaryActionLabel: 'Add purchase',
-                      onPrimaryAction: () => showEntryCreateSheet(context),
+                      onPrimaryAction: () => context.push('/purchase/new'),
                     )
                   else
                     _EntryTable(entries: _entries ?? []),

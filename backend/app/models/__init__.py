@@ -4,6 +4,7 @@ from app.models.business import Business
 from app.models.catalog import CatalogItem, CatalogVariant, CategoryType, ItemCategory
 from app.models.contacts import Broker, Supplier
 from app.models.entry import Entry, EntryLineItem
+from app.models.trade_purchase import BrokerSupplierLink, TradePurchase, TradePurchaseDraft, TradePurchaseLine
 from app.models.feature_flag import FeatureFlag
 from app.models.platform_integration import PlatformIntegration
 from app.models.membership import Membership
@@ -37,6 +38,10 @@ __all__ = [
     "CategoryType",
     "CatalogItem",
     "CatalogVariant",
+    "BrokerSupplierLink",
+    "TradePurchase",
+    "TradePurchaseLine",
+    "TradePurchaseDraft",
     "FeatureFlag",
     "PlatformIntegration",
 ]

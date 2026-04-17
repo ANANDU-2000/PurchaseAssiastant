@@ -16,9 +16,10 @@ import '../../features/contacts/presentation/contacts_page.dart';
 import '../../features/contacts/presentation/broker_detail_page.dart';
 import '../../features/contacts/presentation/category_items_page.dart';
 import '../../features/contacts/presentation/supplier_detail_page.dart';
-import '../../features/entries/presentation/entries_page.dart';
 import '../../features/entries/presentation/entry_detail_page.dart';
 import '../../features/home/presentation/home_page.dart';
+import '../../features/purchase/presentation/purchase_home_page.dart';
+import '../../features/purchase/presentation/purchase_wizard_page.dart';
 import '../../features/notifications/presentation/notifications_page.dart';
 import '../../features/settings/presentation/settings_page.dart';
 import '../../features/search/presentation/search_page.dart';
@@ -197,11 +198,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         redirect: (context, state) => '/assistant',
       ),
       GoRoute(
-        path: '/assistant',
-        name: 'assistant',
+        path: '/entries',
+        redirect: (context, state) => '/purchase',
+      ),
+      GoRoute(
+        path: '/purchase/new',
+        name: 'purchase_new',
         pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
-          child: const AssistantChatPage(),
+          child: const PurchaseWizardPage(),
         ),
       ),
       GoRoute(
@@ -227,28 +232,37 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(
-                  path: '/entries',
-                  name: 'entries',
-                  builder: (context, state) => EntriesPage(
-                        requestSearchFocus:
-                            state.uri.queryParameters['focusSearch'] == '1',
-                      )),
+                path: '/purchase',
+                name: 'purchase',
+                builder: (context, state) => const PurchaseHomePage(),
+              ),
             ],
           ),
           StatefulShellBranch(
             routes: [
               GoRoute(
-                  path: '/contacts',
-                  name: 'contacts',
-                  builder: (context, state) => const ContactsPage()),
+                path: '/analytics',
+                name: 'analytics',
+                builder: (context, state) => const AnalyticsPage(),
+              ),
             ],
           ),
           StatefulShellBranch(
             routes: [
               GoRoute(
-                  path: '/analytics',
-                  name: 'analytics',
-                  builder: (context, state) => const AnalyticsPage()),
+                path: '/contacts',
+                name: 'contacts',
+                builder: (context, state) => const ContactsPage(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/assistant',
+                name: 'assistant',
+                builder: (context, state) => const AssistantChatPage(),
+              ),
             ],
           ),
         ],

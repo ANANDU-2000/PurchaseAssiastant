@@ -13,7 +13,6 @@ import '../../../shared/widgets/app_settings_action.dart';
 import '../../../core/widgets/friendly_load_error.dart'
     show FriendlyLoadError, kFriendlyLoadNetworkSubtitle;
 import '../../../shared/widgets/hexa_empty_state.dart';
-import 'entry_create_sheet.dart';
 
 class EntriesPage extends ConsumerStatefulWidget {
   const EntriesPage({super.key, this.requestSearchFocus = false});
@@ -458,7 +457,7 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
                     subtitle:
                         'Add a purchase to see it here. Entries sync when you are online and signed in.',
                     primaryActionLabel: 'Add purchase',
-                    onPrimaryAction: () => showEntryCreateSheet(context),
+                    onPrimaryAction: () => context.push('/purchase/new'),
                   );
                 }
                 final sorted = List<Map<String, dynamic>>.from(items);

@@ -19,7 +19,6 @@ import '../../../shared/widgets/analytics_overview_slice_error.dart';
 import '../../../shared/widgets/app_settings_action.dart';
 import 'analytics_report_helpers.dart';
 import '../../../shared/widgets/hexa_empty_state.dart';
-import '../../entries/presentation/entry_create_sheet.dart';
 
 class _TopBarsCard extends StatelessWidget {
   const _TopBarsCard({
@@ -890,7 +889,7 @@ class _ItemsTabState extends ConsumerState<_ItemsTab> {
             subtitle:
                 'Try widening the date range, or add purchases so we can show rankings and trends.',
             primaryActionLabel: 'Add purchase',
-            onPrimaryAction: () => showEntryCreateSheet(context),
+            onPrimaryAction: () => context.push('/purchase/new'),
           );
         }
         final mode = _modes[_sortColumnIndex.clamp(0, _modes.length - 1)];

@@ -24,15 +24,25 @@ class SupplierCreate(BaseModel):
     whatsapp_number: str | None = Field(default=None, max_length=32)
     location: str | None = None
     broker_id: uuid.UUID | None = None
+    gst_number: str | None = Field(default=None, max_length=20)
+    default_payment_days: int | None = Field(default=None, ge=0, le=3650)
+    default_discount: float | None = Field(default=None, ge=0)
+    default_delivered_rate: float | None = Field(default=None, ge=0)
+    default_billty_rate: float | None = Field(default=None, ge=0)
 
 
 class SupplierOut(BaseModel):
     id: uuid.UUID
     name: str
-    phone: str | None
-    whatsapp_number: str | None
-    location: str | None
-    broker_id: uuid.UUID | None
+    phone: str | None = None
+    whatsapp_number: str | None = None
+    location: str | None = None
+    broker_id: uuid.UUID | None = None
+    gst_number: str | None = None
+    default_payment_days: int | None = None
+    default_discount: float | None = None
+    default_delivered_rate: float | None = None
+    default_billty_rate: float | None = None
 
     model_config = {"from_attributes": True}
 
@@ -43,6 +53,11 @@ class SupplierUpdate(BaseModel):
     whatsapp_number: str | None = Field(default=None, max_length=32)
     location: str | None = None
     broker_id: uuid.UUID | None = None
+    gst_number: str | None = Field(default=None, max_length=20)
+    default_payment_days: int | None = Field(default=None, ge=0, le=3650)
+    default_discount: float | None = Field(default=None, ge=0)
+    default_delivered_rate: float | None = Field(default=None, ge=0)
+    default_billty_rate: float | None = Field(default=None, ge=0)
 
 
 async def _supplier_dup(
@@ -67,17 +82,7 @@ async def list_suppliers(
     del _m
     r = await db.execute(select(Supplier).where(Supplier.business_id == business_id))
     rows = r.scalars().all()
-    return [
-        SupplierOut(
-            id=s.id,
-            name=s.name,
-            phone=s.phone,
-            whatsapp_number=s.whatsapp_number,
-            location=s.location,
-            broker_id=s.broker_id,
-        )
-        for s in rows
-    ]
+    return [SupplierOut.model_validate(s) for s in rows]
 
 
 @router.post("/suppliers", response_model=SupplierOut, status_code=status.HTTP_201_CREATED)
@@ -100,18 +105,16 @@ async def create_supplier(
         whatsapp_number=body.whatsapp_number,
         location=body.location,
         broker_id=body.broker_id,
+        gst_number=body.gst_number,
+        default_payment_days=body.default_payment_days,
+        default_discount=body.default_discount,
+        default_delivered_rate=body.default_delivered_rate,
+        default_billty_rate=body.default_billty_rate,
     )
     db.add(s)
     await db.commit()
     await db.refresh(s)
-    return SupplierOut(
-        id=s.id,
-        name=s.name,
-        phone=s.phone,
-        whatsapp_number=s.whatsapp_number,
-        location=s.location,
-        broker_id=s.broker_id,
-    )
+    return SupplierOut.model_validate(s)
 
 
 @router.patch("/suppliers/{supplier_id}", response_model=SupplierOut)
@@ -146,16 +149,18 @@ async def update_supplier(
         s.location = data["location"]
     if "broker_id" in data:
         s.broker_id = data["broker_id"]
+    for k in (
+        "gst_number",
+        "default_payment_days",
+        "default_discount",
+        "default_delivered_rate",
+        "default_billty_rate",
+    ):
+        if k in data:
+            setattr(s, k, data[k])
     await db.commit()
     await db.refresh(s)
-    return SupplierOut(
-        id=s.id,
-        name=s.name,
-        phone=s.phone,
-        whatsapp_number=s.whatsapp_number,
-        location=s.location,
-        broker_id=s.broker_id,
-    )
+    return SupplierOut.model_validate(s)
 
 
 @router.delete("/suppliers/{supplier_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -190,6 +195,7 @@ async def delete_supplier(
 class BrokerOut(BaseModel):
     id: uuid.UUID
     name: str
+    phone: str | None = None
     commission_type: str
     commission_value: float | None
 
@@ -198,6 +204,7 @@ class BrokerOut(BaseModel):
 
 class BrokerUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
+    phone: str | None = Field(default=None, max_length=15)
     commission_type: str | None = Field(default=None, pattern="^(percent|flat)$")
     commission_value: float | None = Field(default=None, ge=0)
 
@@ -224,19 +231,12 @@ async def list_brokers(
     del _m
     r = await db.execute(select(Broker).where(Broker.business_id == business_id))
     rows = r.scalars().all()
-    return [
-        BrokerOut(
-            id=b.id,
-            name=b.name,
-            commission_type=b.commission_type,
-            commission_value=float(b.commission_value) if b.commission_value is not None else None,
-        )
-        for b in rows
-    ]
+    return [BrokerOut.model_validate(b) for b in rows]
 
 
 class BrokerCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
+    phone: str | None = Field(default=None, max_length=15)
     commission_type: str = Field(default="percent", pattern="^(percent|flat)$")
     commission_value: float | None = Field(default=None, ge=0)
 
@@ -257,18 +257,14 @@ async def create_broker(
     b = Broker(
         business_id=business_id,
         name=body.name.strip(),
+        phone=body.phone,
         commission_type=body.commission_type,
         commission_value=body.commission_value,
     )
     db.add(b)
     await db.commit()
     await db.refresh(b)
-    return BrokerOut(
-        id=b.id,
-        name=b.name,
-        commission_type=b.commission_type,
-        commission_value=float(b.commission_value) if b.commission_value is not None else None,
-    )
+    return BrokerOut.model_validate(b)
 
 
 @router.patch("/brokers/{broker_id}", response_model=BrokerOut)
@@ -298,14 +294,11 @@ async def update_broker(
         b.commission_type = data["commission_type"]
     if "commission_value" in data:
         b.commission_value = data["commission_value"]
+    if "phone" in data:
+        b.phone = data["phone"]
     await db.commit()
     await db.refresh(b)
-    return BrokerOut(
-        id=b.id,
-        name=b.name,
-        commission_type=b.commission_type,
-        commission_value=float(b.commission_value) if b.commission_value is not None else None,
-    )
+    return BrokerOut.model_validate(b)
 
 
 @router.delete("/brokers/{broker_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -362,12 +355,7 @@ async def get_broker(
     b = r.scalar_one_or_none()
     if b is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Broker not found")
-    return BrokerOut(
-        id=b.id,
-        name=b.name,
-        commission_type=b.commission_type,
-        commission_value=float(b.commission_value) if b.commission_value is not None else None,
-    )
+    return BrokerOut.model_validate(b)
 
 
 @router.get("/suppliers/{supplier_id}", response_model=SupplierOut)
@@ -384,14 +372,7 @@ async def get_supplier(
     s = r.scalar_one_or_none()
     if s is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Supplier not found")
-    return SupplierOut(
-        id=s.id,
-        name=s.name,
-        phone=s.phone,
-        whatsapp_number=s.whatsapp_number,
-        location=s.location,
-        broker_id=s.broker_id,
-    )
+    return SupplierOut.model_validate(s)
 
 
 def _date_filter(business_id: uuid.UUID, from_date: date, to_date: date):
@@ -526,17 +507,7 @@ async def contacts_search(
         )
         .limit(limit)
     )
-    suppliers = [
-        SupplierOut(
-            id=s.id,
-            name=s.name,
-            phone=s.phone,
-            whatsapp_number=s.whatsapp_number,
-            location=s.location,
-            broker_id=s.broker_id,
-        )
-        for s in rs.scalars().all()
-    ]
+    suppliers = [SupplierOut.model_validate(s) for s in rs.scalars().all()]
     rb = await db.execute(
         select(Broker)
         .where(
@@ -545,15 +516,7 @@ async def contacts_search(
         )
         .limit(limit)
     )
-    brokers = [
-        BrokerOut(
-            id=b.id,
-            name=b.name,
-            commission_type=b.commission_type,
-            commission_value=float(b.commission_value) if b.commission_value is not None else None,
-        )
-        for b in rb.scalars().all()
-    ]
+    brokers = [BrokerOut.model_validate(b) for b in rb.scalars().all()]
     ri = await db.execute(
         select(EntryLineItem.item_name)
         .distinct()
