@@ -11,12 +11,12 @@ class AssistantQuickPrompt {
 /// Static prompt list (Riverpod so the bar can `watch` / test overrides).
 final assistantQuickPromptsProvider = Provider<List<AssistantQuickPrompt>>((ref) {
   return const [
-    AssistantQuickPrompt(label: 'Profit this month', message: 'Profit this month'),
+    AssistantQuickPrompt(label: 'Profit', message: 'Profit this month'),
     AssistantQuickPrompt(
       label: 'Add purchase',
       message: 'Help me add a purchase: item, qty, buy price',
     ),
-    AssistantQuickPrompt(label: 'New supplier', message: 'Create supplier '),
-    AssistantQuickPrompt(label: 'Today', message: 'Summary today'),
+    AssistantQuickPrompt(label: 'Summary', message: 'Summary today'),
+    AssistantQuickPrompt(label: 'Suppliers', message: 'Show suppliers summary'),
   ];
 });

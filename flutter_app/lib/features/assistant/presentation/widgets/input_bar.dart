@@ -136,6 +136,24 @@ class _InputBarState extends State<InputBar> {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
+                        IconButton(
+                          tooltip: 'Emoji',
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () {},
+                          icon: const Icon(
+                            Icons.sentiment_satisfied_alt_rounded,
+                            color: Color(0xFF6B7280),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Attach',
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () {},
+                          icon: const Icon(
+                            Icons.attach_file_rounded,
+                            color: Color(0xFF6B7280),
+                          ),
+                        ),
                         Expanded(
                           child: TextField(
                             controller: widget.controller,

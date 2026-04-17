@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../../../core/auth/auth_error_messages.dart';
@@ -326,7 +327,7 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
             _inputFocus.requestFocus();
             HapticFeedback.lightImpact();
           },
-          child: const Icon(Icons.keyboard_arrow_down_rounded),
+          child: const Icon(Icons.bolt_rounded),
         ),
       ),
       body: ChatBackgroundPattern(
@@ -366,6 +367,7 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
                     crossAxisAlignment:
                         m.isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                     children: [
+                      if (i == 0) const _DayDivider(label: 'TODAY'),
                       ChatBubble(
                         text: m.text,
                         isUser: m.isUser,
@@ -488,7 +490,13 @@ class _GradientAppBar extends StatelessWidget {
             color: Colors.transparent,
             child: IconButton(
               icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
-              onPressed: () => Navigator.of(context).maybePop(),
+              onPressed: () {
+                if (context.canPop()) {
+                  context.pop();
+                  return;
+                }
+                context.go('/home');
+              },
             ),
           ),
           Stack(
@@ -547,7 +555,60 @@ class _GradientAppBar extends StatelessWidget {
               ],
             ),
           ),
+          Material(
+            color: Colors.transparent,
+            child: IconButton(
+              icon: const Icon(Icons.mic_rounded, color: Colors.white, size: 20),
+              tooltip: 'Voice chat',
+              onPressed: () => context.push('/voice'),
+            ),
+          ),
+          Material(
+            color: Colors.transparent,
+            child: IconButton(
+              icon: const Icon(Icons.more_vert_rounded, color: Colors.white, size: 20),
+              tooltip: 'Voice chat',
+              onPressed: () => context.push('/voice'),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _DayDivider extends StatelessWidget {
+  const _DayDivider({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.8),
+            borderRadius: BorderRadius.circular(999),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 6,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Text(
+            label,
+            style: AssistantChatTheme.inter(
+              11,
+              w: FontWeight.w700,
+              c: const Color(0xFF667781),
+            ),
+          ),
+        ),
       ),
     );
   }
