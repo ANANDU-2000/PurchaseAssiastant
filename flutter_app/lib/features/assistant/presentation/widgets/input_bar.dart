@@ -1,5 +1,3 @@
-import 'dart:ui' show ImageFilter;
-
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
@@ -112,91 +110,72 @@ class _InputBarState extends State<InputBar> {
                 borderRadius: BorderRadius.circular(26),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.08),
-                    blurRadius: 20,
-                    offset: const Offset(0, 6),
+                    color: Colors.black.withValues(alpha: 0.09),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
                   ),
                 ],
-                gradient: LinearGradient(
-                  colors: [
-                    AssistantChatTheme.glassFill,
-                    AssistantChatTheme.glassFill.withValues(alpha: 0.88),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.65)),
+                color: const Color(0xFFF0F2F5),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.7)),
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(26),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        IconButton(
-                          tooltip: 'Emoji',
-                          visualDensity: VisualDensity.compact,
-                          onPressed: () {},
-                          icon: const Icon(
-                            Icons.sentiment_satisfied_alt_rounded,
-                            color: Color(0xFF6B7280),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      if (widget.listening)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4, right: 6, bottom: 10),
+                          child: Icon(
+                            Icons.graphic_eq_rounded,
+                            color: const Color(0xFFE53935).withValues(alpha: 0.9),
+                            size: 18,
                           ),
                         ),
-                        IconButton(
-                          tooltip: 'Attach',
-                          visualDensity: VisualDensity.compact,
-                          onPressed: () {},
-                          icon: const Icon(
-                            Icons.attach_file_rounded,
-                            color: Color(0xFF6B7280),
-                          ),
-                        ),
-                        Expanded(
-                          child: TextField(
-                            controller: widget.controller,
-                            focusNode: widget.focusNode,
-                            minLines: 1,
-                            maxLines: 4,
-                            textInputAction: TextInputAction.send,
-                            onSubmitted: (_) {
-                              if (!widget.loading) widget.onSend();
-                            },
-                            style: AssistantChatTheme.inter(15, w: FontWeight.w500),
-                            decoration: InputDecoration(
-                              hintText: 'Message…',
-                              hintStyle: AssistantChatTheme.inter(15, c: const Color(0xFF8696A0)),
-                              border: InputBorder.none,
-                              isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            ),
-                          ),
-                        ),
-                        AnimatedSwitcher(
-                          duration: AssistantChatTheme.shortAnim,
-                          switchInCurve: AssistantChatTheme.motion,
-                          switchOutCurve: AssistantChatTheme.motion,
-                          transitionBuilder: (c, anim) {
-                            return ScaleTransition(
-                              scale: anim,
-                              child: FadeTransition(opacity: anim, child: c),
-                            );
+                      Expanded(
+                        child: TextField(
+                          controller: widget.controller,
+                          focusNode: widget.focusNode,
+                          minLines: 1,
+                          maxLines: 4,
+                          textInputAction: TextInputAction.send,
+                          onSubmitted: (_) {
+                            if (!widget.loading) widget.onSend();
                           },
-                          child: _TrailingAction(
-                            key: ValueKey('${_hasText}_${widget.listening}'),
-                            hasText: _hasText,
-                            loading: widget.loading,
-                            speechReady: widget.speechReady && !kIsWeb,
-                            listening: widget.listening,
-                            onMicDown: widget.onMicDown,
-                            onMicUp: widget.onMicUp,
-                            onSend: widget.onSend,
+                          style: AssistantChatTheme.inter(15, w: FontWeight.w500),
+                          decoration: InputDecoration(
+                            hintText: widget.listening ? 'Listening…' : 'Message…',
+                            hintStyle: AssistantChatTheme.inter(15, c: const Color(0xFF8696A0)),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                      AnimatedSwitcher(
+                        duration: AssistantChatTheme.shortAnim,
+                        switchInCurve: AssistantChatTheme.motion,
+                        switchOutCurve: AssistantChatTheme.motion,
+                        transitionBuilder: (c, anim) {
+                          return ScaleTransition(
+                            scale: anim,
+                            child: FadeTransition(opacity: anim, child: c),
+                          );
+                        },
+                        child: _TrailingAction(
+                          key: ValueKey('${_hasText}_${widget.listening}'),
+                          hasText: _hasText,
+                          loading: widget.loading,
+                          speechReady: widget.speechReady && !kIsWeb,
+                          listening: widget.listening,
+                          onMicDown: widget.onMicDown,
+                          onMicUp: widget.onMicUp,
+                          onSend: widget.onSend,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),

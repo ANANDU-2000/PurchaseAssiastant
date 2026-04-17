@@ -31,7 +31,7 @@ class LoginPage extends ConsumerStatefulWidget {
 }
 
 class _LoginPageState extends ConsumerState<LoginPage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final TabController _tab;
 
   final _loginEmail = TextEditingController();
@@ -45,6 +45,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
 
   bool _loading = false;
   String? _error;
+  Size? _lastViewPhysicalSize;
 
   TextStyle get _bodyStyle => GoogleFonts.inter(
         fontSize: 17,
@@ -53,11 +54,37 @@ class _LoginPageState extends ConsumerState<LoginPage>
         height: 1.25,
       );
 
+  void _onAuthTabChanged() {
+    if (_tab.indexIsChanging) return;
+    // Web: avoids engine assert when an offstage TabBarView child still owns
+    // TextInputConnection (GloballyPositionedTextEditingStrategy / domElement).
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: 2, vsync: this);
+    WidgetsBinding.instance.addObserver(this);
+    _tab = TabController(length: 2, vsync: this)..addListener(_onAuthTabChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _tryResumeSession());
+  }
+
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    if (!kIsWeb) return;
+    final views = WidgetsBinding.instance.platformDispatcher.views;
+    if (views.isEmpty) return;
+    final v = views.first;
+    if (v.viewInsets.bottom > 0) return;
+    final sz = v.physicalSize;
+    final prev = _lastViewPhysicalSize;
+    _lastViewPhysicalSize = sz;
+    if (prev == null || prev == sz) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      FocusManager.instance.primaryFocus?.unfocus();
+    });
   }
 
   Future<void> _tryResumeSession() async {
@@ -84,6 +111,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _tab.removeListener(_onAuthTabChanged);
     _tab.dispose();
     _loginEmail.dispose();
     _loginPass.dispose();
@@ -564,6 +593,7 @@ class _SignInFormState extends State<_SignInForm> {
     return ListView(
       padding: EdgeInsets.zero,
       physics: const BouncingScrollPhysics(),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       children: [
         TextField(
           controller: widget.emailCtrl,
@@ -653,6 +683,7 @@ class _SignUpFormState extends State<_SignUpForm> {
     return ListView(
       padding: EdgeInsets.zero,
       physics: const BouncingScrollPhysics(),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       children: [
         TextField(
           controller: widget.userCtrl,
