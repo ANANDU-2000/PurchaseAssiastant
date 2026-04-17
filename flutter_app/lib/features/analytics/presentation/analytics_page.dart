@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:fl_chart/fl_chart.dart';
@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/config/app_config.dart';
@@ -16,173 +15,11 @@ import '../../../core/providers/analytics_kpi_provider.dart'
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/theme/theme_context_ext.dart';
 import '../../../core/widgets/friendly_load_error.dart';
+import '../../../shared/widgets/analytics_overview_slice_error.dart';
 import '../../../shared/widgets/app_settings_action.dart';
+import 'analytics_report_helpers.dart';
 import '../../../shared/widgets/hexa_empty_state.dart';
 import '../../entries/presentation/entry_create_sheet.dart';
-
-/// KPI can succeed while a dependent chart request fails — one card per slice (clear label).
-Widget _overviewSliceError(
-  BuildContext context,
-  String sectionLabel,
-  VoidCallback onRetry,
-) {
-  final cs = Theme.of(context).colorScheme;
-  return Container(
-    margin: const EdgeInsets.only(top: 4, bottom: 8),
-    padding: const EdgeInsets.all(14),
-    decoration: BoxDecoration(
-      color: cs.surface,
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(
-          color: cs.outlineVariant.withValues(alpha: 0.65)),
-    ),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.cloud_off_rounded,
-                size: 20,
-                color: Theme.of(context).colorScheme.onSurfaceVariant),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                sectionLabel,
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Text(
-          'Could not load this section.',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: onRetry,
-            icon: const Icon(Icons.refresh_rounded, size: 18),
-            label: const Text('Retry'),
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-int _trendSortKey(Map<String, dynamic> r) {
-  switch (r['trend']?.toString()) {
-    case 'up':
-      return 2;
-    case 'flat':
-      return 1;
-    case 'down':
-      return 0;
-    default:
-      return -1;
-  }
-}
-
-List<Map<String, dynamic>> _sortedRows(
-  List<Map<String, dynamic>> rows,
-  String mode,
-  bool asc,
-  num Function(Map<String, dynamic> r) profitKey,
-) {
-  final o = List<Map<String, dynamic>>.from(rows);
-  int cmp(Map<String, dynamic> a, Map<String, dynamic> b) {
-    switch (mode) {
-      case 'best':
-        return (a['best_item_name'] ?? '')
-            .toString()
-            .compareTo((b['best_item_name'] ?? '').toString());
-      case 'type':
-        return (a['type_name'] ?? '')
-            .toString()
-            .compareTo((b['type_name'] ?? '').toString());
-      case 'name':
-        return (a['item_name'] ??
-                a['category'] ??
-                a['supplier_name'] ??
-                a['broker_name'] ??
-                '')
-            .toString()
-            .compareTo((b['item_name'] ??
-                    b['category'] ??
-                    b['supplier_name'] ??
-                    b['broker_name'] ??
-                    '')
-                .toString());
-      case 'qty':
-        return ((a['total_qty'] as num?) ?? 0)
-            .compareTo((b['total_qty'] as num?) ?? 0);
-      case 'lines':
-        return ((a['line_count'] as num?) ?? 0)
-            .compareTo((b['line_count'] as num?) ?? 0);
-      case 'deals':
-        return ((a['deals'] as num?) ?? 0).compareTo((b['deals'] as num?) ?? 0);
-      case 'avg':
-        return ((a['avg_landing'] as num?) ?? 0)
-            .compareTo((b['avg_landing'] as num?) ?? 0);
-      case 'commission':
-        return ((a['total_commission'] as num?) ?? 0)
-            .compareTo((b['total_commission'] as num?) ?? 0);
-      case 'margin':
-        return ((a['margin_pct'] as num?) ?? 0)
-            .compareTo((b['margin_pct'] as num?) ?? 0);
-      case 'trend':
-        return _trendSortKey(a).compareTo(_trendSortKey(b));
-      case 'commission_pct':
-        return ((a['commission_pct_of_profit'] as num?) ?? 0)
-            .compareTo((b['commission_pct_of_profit'] as num?) ?? 0);
-      case 'profit':
-      default:
-        return profitKey(a).compareTo(profitKey(b));
-    }
-  }
-
-  o.sort((a, b) {
-    final c = cmp(a, b);
-    return asc ? c : -c;
-  });
-  return o;
-}
-
-String _csvCell(String value) {
-  final s = value.replaceAll('\r\n', ' ').replaceAll('\n', ' ');
-  if (s.contains(',') || s.contains('"')) {
-    return '"${s.replaceAll('"', '""')}"';
-  }
-  return s;
-}
-
-Future<void> _shareCsv({
-  required String title,
-  required List<String> headers,
-  required List<Map<String, dynamic>> rows,
-  required List<String Function(Map<String, dynamic> r)> columns,
-}) async {
-  final buf = StringBuffer();
-  buf.writeln(headers.map(_csvCell).join(','));
-  for (final r in rows) {
-    buf.writeln(columns.map((c) => _csvCell(c(r))).join(','));
-  }
-  await Share.share(buf.toString(), subject: title);
-}
-
-Color _marginStripeColor(double? m) {
-  if (m == null) return Colors.transparent;
-  if (m >= 15) return HexaColors.profit.withValues(alpha: 0.85);
-  if (m >= 5) return HexaColors.accentAmber.withValues(alpha: 0.9);
-  return HexaColors.loss.withValues(alpha: 0.75);
-}
 
 class _TopBarsCard extends StatelessWidget {
   const _TopBarsCard({
@@ -739,19 +576,19 @@ class _OverviewTab extends ConsumerWidget {
               const SizedBox(height: 12),
               sup.when(
                 loading: () => const SizedBox.shrink(),
-                error: (_, __) => _overviewSliceError(
-                    context,
-                    'Supplier performance',
-                    () => ref.invalidate(analyticsSuppliersTableProvider)),
+                error: (_, __) => AnalyticsOverviewSliceError(
+                    sectionLabel: 'Supplier performance',
+                    onRetry: () =>
+                        ref.invalidate(analyticsSuppliersTableProvider)),
                 data: (rows) => _SupplierShareBars(rows: rows, tt: tt, inr: inr),
               ),
               const SizedBox(height: 10),
               cats.when(
                 loading: () => const SizedBox.shrink(),
-                error: (_, __) => _overviewSliceError(
-                    context,
-                    'Category split',
-                    () => ref.invalidate(analyticsCategoriesTableProvider)),
+                error: (_, __) => AnalyticsOverviewSliceError(
+                    sectionLabel: 'Category split',
+                    onRetry: () =>
+                        ref.invalidate(analyticsCategoriesTableProvider)),
                 data: (rows) =>
                     _CategoryShareBars(rows: rows, tt: tt, inr: inr),
               ),
@@ -1057,7 +894,7 @@ class _ItemsTabState extends ConsumerState<_ItemsTab> {
           );
         }
         final mode = _modes[_sortColumnIndex.clamp(0, _modes.length - 1)];
-        final sorted = _sortedRows(
+        final sorted = sortedReportRows(
           rows,
           mode,
           _asc,
@@ -1138,7 +975,7 @@ class _ItemsTabState extends ConsumerState<_ItemsTab> {
                   IconButton(
                     tooltip: 'Export CSV',
                     icon: const Icon(Icons.ios_share_rounded),
-                    onPressed: () => _shareCsv(
+                    onPressed: () => shareAnalyticsReportCsv(
                       title:
                           '${AppConfig.appName} Items ${fmt.format(range.from)}–${fmt.format(range.to)}',
                       headers: const [
@@ -1305,7 +1142,7 @@ class _ItemsTabState extends ConsumerState<_ItemsTab> {
                                                       decoration:
                                                           BoxDecoration(
                                                         color:
-                                                            _marginStripeColor(
+                                                            analyticsMarginStripeColor(
                                                           (r['margin_pct']
                                                                   as num?)
                                                               ?.toDouble(),
@@ -1494,7 +1331,7 @@ class _CategoriesTabState extends ConsumerState<_CategoriesTab> {
           return const Center(child: Text('No categories in this range'));
         }
         final mode = _modes[_sortColumnIndex.clamp(0, _modes.length - 1)];
-        final sorted = _sortedRows(
+        final sorted = sortedReportRows(
             rows, mode, _asc, (r) => (r['total_profit'] as num?) ?? 0);
         final filtered = _filterCategoryRows(sorted, _search.text);
         final tt = Theme.of(context).textTheme;
@@ -1581,7 +1418,7 @@ class _CategoriesTabState extends ConsumerState<_CategoriesTab> {
                   IconButton(
                     tooltip: 'Export CSV',
                     icon: const Icon(Icons.ios_share_rounded),
-                    onPressed: () => _shareCsv(
+                    onPressed: () => shareAnalyticsReportCsv(
                       title:
                           '${AppConfig.appName} Categories ${fmt.format(range.from)}–${fmt.format(range.to)}',
                       headers: const [
@@ -1858,7 +1695,7 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
         }
 
         final mode = _modes[_sortColumnIndex.clamp(0, _modes.length - 1)];
-        final sorted = _sortedRows(
+        final sorted = sortedReportRows(
             rows, mode, _asc, (r) => (r['total_profit'] as num?) ?? 0);
         final filtered = _filterQuery(sorted, _search.text, 'supplier_name');
         final tt = Theme.of(context).textTheme;
@@ -1885,10 +1722,10 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
               loading: () => const SizedBox.shrink(),
               error: (_, __) => Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                child: _overviewSliceError(
-                  context,
-                  'Supplier insight',
-                  () => ref.invalidate(analyticsBestSupplierInsightProvider),
+                child: AnalyticsOverviewSliceError(
+                  sectionLabel: 'Supplier insight',
+                  onRetry: () =>
+                      ref.invalidate(analyticsBestSupplierInsightProvider),
                 ),
               ),
             ),
@@ -1962,7 +1799,7 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
                   IconButton(
                     tooltip: 'Export CSV',
                     icon: const Icon(Icons.ios_share_rounded),
-                    onPressed: () => _shareCsv(
+                    onPressed: () => shareAnalyticsReportCsv(
                       title:
                           '${AppConfig.appName} Suppliers ${fmt.format(range.from)}–${fmt.format(range.to)}',
                       headers: const [
@@ -2321,7 +2158,7 @@ class _BrokersTabState extends ConsumerState<_BrokersTab> {
               child: Text('No broker-linked entries in this range'));
         }
         final mode = _modes[_sortColumnIndex.clamp(0, _modes.length - 1)];
-        final sorted = _sortedRows(
+        final sorted = sortedReportRows(
             rows, mode, _asc, (r) => (r['total_profit'] as num?) ?? 0);
         final filtered = _filterQuery(sorted, _search.text, 'broker_name');
         final tt = Theme.of(context).textTheme;
@@ -2398,7 +2235,7 @@ class _BrokersTabState extends ConsumerState<_BrokersTab> {
                   IconButton(
                     tooltip: 'Export CSV',
                     icon: const Icon(Icons.ios_share_rounded),
-                    onPressed: () => _shareCsv(
+                    onPressed: () => shareAnalyticsReportCsv(
                       title:
                           '${AppConfig.appName} Brokers ${fmt.format(range.from)}–${fmt.format(range.to)}',
                       headers: const [
