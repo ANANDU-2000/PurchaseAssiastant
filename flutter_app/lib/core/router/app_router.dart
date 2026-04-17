@@ -25,6 +25,7 @@ import '../../features/settings/presentation/settings_page.dart';
 import '../../features/search/presentation/search_page.dart';
 import '../../features/shell/shell_screen.dart';
 import '../../features/splash/presentation/splash_page.dart';
+import '../../features/voice/presentation/voice_page.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 
@@ -215,6 +216,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
           child: const NotificationsPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/voice',
+        name: 'voice',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const VoicePage(),
         ),
       ),
       StatefulShellRoute.indexedStack(
