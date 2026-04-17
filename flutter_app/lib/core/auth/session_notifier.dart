@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -49,6 +51,24 @@ class SessionNotifier extends Notifier<Session?> {
   @override
   Session? build() => null;
 
+  /// Serializes [restore], [login], [register], and [signInWithGoogle] so a concurrent
+  /// [restore] (splash / login / cold start) cannot fire `logout()` from a dead refresh
+  /// while new tokens are being written — which used to clear storage mid sign-up and
+  /// leave the Create Account button spinning forever.
+  Future<void> _authSerial = Future<void>.value();
+
+  Future<T> _withAuthSerial<T>(Future<T> Function() fn) {
+    final c = Completer<T>();
+    _authSerial = _authSerial.then((_) async {
+      try {
+        if (!c.isCompleted) c.complete(await fn());
+      } catch (e, st) {
+        if (!c.isCompleted) c.completeError(e, st);
+      }
+    });
+    return c.future;
+  }
+
   Future<void> applyRefreshedTokens(String access, String refresh) async {
     final cur = state;
     if (cur == null) return;
@@ -61,7 +81,9 @@ class SessionNotifier extends Notifier<Session?> {
     await cache.saveBusinesses(session.businesses);
   }
 
-  Future<void> restore() async {
+  Future<void> restore() => _withAuthSerial(_restoreImpl);
+
+  Future<void> _restoreImpl() async {
     final store = ref.read(tokenStoreProvider);
     final api = ref.read(hexaApiProvider);
     final cache = SessionCache(ref.read(sharedPreferencesProvider));
@@ -192,9 +214,14 @@ class SessionNotifier extends Notifier<Session?> {
         (t == DioExceptionType.unknown && e.response == null);
   }
 
-  Future<void> login({required String email, required String password}) async {
+  Future<void> login({required String email, required String password}) =>
+      _withAuthSerial(() => _loginImpl(email: email, password: password));
+
+  Future<void> _loginImpl(
+      {required String email, required String password}) async {
     final api = ref.read(hexaApiProvider);
     final store = ref.read(tokenStoreProvider);
+    api.setAuthToken(null);
     final tokens = await api.login(email: email, password: password);
     await store.write(access: tokens.access, refresh: tokens.refresh);
     api.setAuthToken(tokens.access);
@@ -212,9 +239,25 @@ class SessionNotifier extends Notifier<Session?> {
       {required String username,
       required String email,
       required String password,
-      String? name}) async {
+      String? name}) =>
+      _withAuthSerial(
+        () => _registerImpl(
+          username: username,
+          email: email,
+          password: password,
+          name: name,
+        ),
+      );
+
+  Future<void> _registerImpl({
+    required String username,
+    required String email,
+    required String password,
+    String? name,
+  }) async {
     final api = ref.read(hexaApiProvider);
     final store = ref.read(tokenStoreProvider);
+    api.setAuthToken(null);
     final tokens = await api.register(
         username: username,
         email: email,
@@ -232,9 +275,13 @@ class SessionNotifier extends Notifier<Session?> {
     authRefresh.value++;
   }
 
-  Future<void> signInWithGoogle({required String idToken}) async {
+  Future<void> signInWithGoogle({required String idToken}) =>
+      _withAuthSerial(() => _signInWithGoogleImpl(idToken: idToken));
+
+  Future<void> _signInWithGoogleImpl({required String idToken}) async {
     final api = ref.read(hexaApiProvider);
     final store = ref.read(tokenStoreProvider);
+    api.setAuthToken(null);
     final tokens = await api.loginWithGoogle(idToken: idToken);
     await store.write(access: tokens.access, refresh: tokens.refresh);
     api.setAuthToken(tokens.access);
