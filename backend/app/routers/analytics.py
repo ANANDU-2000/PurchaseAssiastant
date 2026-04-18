@@ -1,11 +1,11 @@
 import calendar
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from collections import defaultdict
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import String, case, cast, desc, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +13,7 @@ from app.database import get_db
 from app.deps import require_membership
 from app.models import (
     Broker,
+    BusinessGoal,
     CatalogItem,
     CatalogVariant,
     Entry,
@@ -20,6 +21,8 @@ from app.models import (
     ItemCategory,
     Membership,
     Supplier,
+    TradePurchase,
+    TradePurchaseLine,
 )
 
 router = APIRouter(prefix="/v1/businesses/{business_id}/analytics", tags=["analytics"])
@@ -750,3 +753,141 @@ async def analytics_brokers(
             )
         )
     return out
+
+
+class TradeInsightsOut(BaseModel):
+    best_item: str | None = None
+    worst_item: str | None = None
+    cheapest_supplier: str | None = None
+    expensive_supplier: str | None = None
+    cost_jumps: list[dict] = []
+
+
+@router.get("/insights", response_model=TradeInsightsOut)
+async def analytics_trade_insights(
+    business_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    from_date: date = Query(..., alias="from"),
+    to_date: date = Query(..., alias="to"),
+):
+    del _m
+    tp_f = (
+        TradePurchase.business_id == business_id,
+        TradePurchase.purchase_date >= from_date,
+        TradePurchase.purchase_date <= to_date,
+        TradePurchase.status != "cancelled",
+    )
+    q_items = (
+        select(
+            TradePurchaseLine.item_name,
+            func.sum(TradePurchaseLine.qty * TradePurchaseLine.landing_cost).label("spend"),
+        )
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .where(*tp_f)
+        .group_by(TradePurchaseLine.item_name)
+    )
+    r_items = await db.execute(q_items)
+    rows = [(str(a), float(b or 0)) for a, b in r_items.all()]
+    rows.sort(key=lambda x: x[1], reverse=True)
+    best_item = rows[0][0] if rows else None
+    worst_item = rows[-1][0] if rows else None
+
+    q_sup = (
+        select(
+            Supplier.name,
+            func.avg(TradePurchaseLine.landing_cost).label("avg_l"),
+        )
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .join(Supplier, Supplier.id == TradePurchase.supplier_id)
+        .where(*tp_f, TradePurchase.supplier_id.isnot(None))
+        .group_by(Supplier.id, Supplier.name)
+    )
+    r_sup = await db.execute(q_sup)
+    sups = [(str(a), float(b or 0)) for a, b in r_sup.all()]
+    sups.sort(key=lambda x: x[1])
+    cheapest_supplier = sups[0][0] if sups else None
+    expensive_supplier = sups[-1][0] if sups else None
+
+    return TradeInsightsOut(
+        best_item=best_item,
+        worst_item=worst_item,
+        cheapest_supplier=cheapest_supplier,
+        expensive_supplier=expensive_supplier,
+        cost_jumps=[],
+    )
+
+
+class BusinessGoalOut(BaseModel):
+    period: str
+    profit_goal: float | None = None
+    volume_goal: float | None = None
+
+
+class BusinessGoalUpsert(BaseModel):
+    profit_goal: float | None = Field(None, ge=0)
+    volume_goal: float | None = Field(None, ge=0)
+
+
+@router.get("/goals", response_model=BusinessGoalOut | None)
+async def get_business_goal(
+    business_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    period: str = Query(..., min_length=7, max_length=7),
+):
+    del _m
+    r = await db.execute(
+        select(BusinessGoal).where(
+            BusinessGoal.business_id == business_id,
+            BusinessGoal.period == period,
+        )
+    )
+    g = r.scalar_one_or_none()
+    if not g:
+        return None
+    return BusinessGoalOut(
+        period=g.period,
+        profit_goal=float(g.profit_goal) if g.profit_goal is not None else None,
+        volume_goal=float(g.volume_goal) if g.volume_goal is not None else None,
+    )
+
+
+@router.put("/goals", response_model=BusinessGoalOut)
+async def upsert_business_goal(
+    business_id: uuid.UUID,
+    body: BusinessGoalUpsert,
+    _m: Annotated[Membership, Depends(require_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    period: str = Query(..., min_length=7, max_length=7),
+):
+    del _m
+    now = datetime.now(timezone.utc)
+    r = await db.execute(
+        select(BusinessGoal).where(
+            BusinessGoal.business_id == business_id,
+            BusinessGoal.period == period,
+        )
+    )
+    g = r.scalar_one_or_none()
+    if g:
+        if body.profit_goal is not None:
+            g.profit_goal = float(body.profit_goal)
+        if body.volume_goal is not None:
+            g.volume_goal = float(body.volume_goal)
+        g.updated_at = now
+    else:
+        g = BusinessGoal(
+            business_id=business_id,
+            period=period,
+            profit_goal=float(body.profit_goal) if body.profit_goal is not None else None,
+            volume_goal=float(body.volume_goal) if body.volume_goal is not None else None,
+        )
+        db.add(g)
+    await db.commit()
+    await db.refresh(g)
+    return BusinessGoalOut(
+        period=g.period,
+        profit_goal=float(g.profit_goal) if g.profit_goal is not None else None,
+        volume_goal=float(g.volume_goal) if g.volume_goal is not None else None,
+    )

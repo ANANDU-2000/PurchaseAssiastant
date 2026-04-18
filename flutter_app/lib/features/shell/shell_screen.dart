@@ -6,25 +6,23 @@ import 'package:go_router/go_router.dart';
 import '../../core/providers/connectivity_provider.dart';
 import '../../core/theme/hexa_colors.dart';
 
-/// Shell: [IndexedStack body] · bottom nav · Home | Purchase | Reports | Contacts | Assistant.
+/// Shell: Home | Reports | ⊕ FAB | History | Assistant
 class ShellScreen extends ConsumerWidget {
   const ShellScreen({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
 
-  static const branchHome = 0;
-  static const branchPurchase = 1;
-  static const branchReports = 2;
-  static const branchContacts = 3;
-  static const branchAssistant = 4;
+  static const branchHome      = 0;
+  static const branchReports   = 1;
+  static const branchHistory   = 2;
+  static const branchAssistant = 3;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final idx = navigationShell.currentIndex;
+    final idx       = navigationShell.currentIndex;
     final routePath = GoRouterState.of(context).uri.path;
-    final conn = ref.watch(connectivityResultsProvider);
-    final offline =
-        conn.valueOrNull != null && isOfflineResult(conn.valueOrNull!);
+    final conn      = ref.watch(connectivityResultsProvider);
+    final offline   = conn.valueOrNull != null && isOfflineResult(conn.valueOrNull!);
 
     void go(int branch) {
       HapticFeedback.selectionClick();
@@ -32,7 +30,12 @@ class ShellScreen extends ConsumerWidget {
     }
 
     final cs = Theme.of(context).colorScheme;
-    final onPurchaseBranch = idx == branchPurchase;
+
+    // Hide docked FAB + bottom bar on Assistant so they never overlap the composer.
+    // Prefer route path over branch index (index can disagree if navigation state is stale).
+    final loc = routePath;
+    final hideShellChrome =
+        loc == '/assistant' || loc.startsWith('/assistant/');
 
     return Scaffold(
       key: ValueKey<String>('shell_${routePath}_$idx'),
@@ -44,23 +47,20 @@ class ShellScreen extends ConsumerWidget {
             Material(
               color: const Color(0xFFF59E0B),
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 child: Row(
                   children: [
-                    const Icon(Icons.flash_on_rounded,
-                        size: 18, color: Color(0xFF1C1917)),
+                    const Icon(Icons.flash_on_rounded, size: 18, color: Color(0xFF1C1917)),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Offline — showing cached data where available. New purchases need a connection.',
-                        style:
-                            Theme.of(context).textTheme.labelMedium?.copyWith(
-                                  color: const Color(0xFF1C1917),
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 12,
-                                  height: 1.25,
-                                ),
+                        'Offline — showing cached data. New purchases need a connection.',
+                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                              color: const Color(0xFF1C1917),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                              height: 1.25,
+                            ),
                       ),
                     ),
                   ],
@@ -71,78 +71,112 @@ class ShellScreen extends ConsumerWidget {
         ],
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(top: 6),
-        child: FloatingActionButton(
-          tooltip: onPurchaseBranch ? 'Purchase list' : 'Quick purchase entry',
-          backgroundColor: HexaColors.primaryMid,
-          foregroundColor: Colors.white,
-          elevation: 2,
-          onPressed: () {
+      floatingActionButton: hideShellChrome ? null : _FabButton(idx: idx),
+      bottomNavigationBar: hideShellChrome ? null : _BottomBar(idx: idx, go: go, cs: cs),
+    );
+  }
+}
+
+// ── FAB ────────────────────────────────────────────────────────────────────────
+
+class _FabButton extends StatelessWidget {
+  const _FabButton({required this.idx});
+  final int idx;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 60,
+      height: 60,
+      margin: const EdgeInsets.only(top: 4),
+      decoration: BoxDecoration(
+        gradient: HexaColors.ctaGradient,
+        shape: BoxShape.circle,
+        boxShadow: HexaColors.heroShadow(),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () {
             HapticFeedback.mediumImpact();
-            if (onPurchaseBranch) {
-              context.go('/purchase');
-              return;
-            }
             context.push('/purchase/new');
           },
-          child: const Icon(Icons.edit_note_rounded),
+          child: const Icon(Icons.add_rounded, size: 28, color: Colors.white),
         ),
       ),
-      bottomNavigationBar: BottomAppBar(
-        color: cs.surface,
-        elevation: 6,
-        shape: const CircularNotchedRectangle(),
-        notchMargin: 8,
-        child: SafeArea(
-          top: false,
-          child: SizedBox(
-            height: 66,
-            child: Row(
-              children: [
-                Expanded(
-                  child: _ShellTabItem(
-                    label: 'Home',
-                    icon: idx == branchHome
-                        ? Icons.grid_view_rounded
-                        : Icons.grid_view_outlined,
-                    selected: idx == branchHome,
-                    onTap: () => go(branchHome),
-                  ),
+    );
+  }
+}
+
+// ── BOTTOM BAR ─────────────────────────────────────────────────────────────────
+
+class _BottomBar extends StatelessWidget {
+  const _BottomBar({required this.idx, required this.go, required this.cs});
+  final int idx;
+  final void Function(int) go;
+  final ColorScheme cs;
+
+  @override
+  Widget build(BuildContext context) {
+    return BottomAppBar(
+      color: cs.surface,
+      elevation: 8,
+      shadowColor: Colors.black.withValues(alpha: 0.10),
+      shape: const CircularNotchedRectangle(),
+      notchMargin: 8,
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 62,
+          child: Row(
+            children: [
+              Expanded(
+                child: _TabItem(
+                  label: 'Home',
+                  selected: idx == ShellScreen.branchHome,
+                  icon: idx == ShellScreen.branchHome
+                      ? Icons.grid_view_rounded
+                      : Icons.grid_view_outlined,
+                  onTap: () => go(ShellScreen.branchHome),
                 ),
-                Expanded(
-                  child: _ShellTabItem(
-                    label: 'Reports',
-                    icon: idx == branchReports
-                        ? Icons.bar_chart_rounded
-                        : Icons.bar_chart_outlined,
-                    selected: idx == branchReports,
-                    onTap: () => go(branchReports),
-                  ),
+              ),
+              Expanded(
+                child: _TabItem(
+                  label: 'Reports',
+                  selected: idx == ShellScreen.branchReports,
+                  icon: idx == ShellScreen.branchReports
+                      ? Icons.bar_chart_rounded
+                      : Icons.bar_chart_outlined,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    context.push('/reports');
+                  },
                 ),
-                const SizedBox(width: 72),
-                Expanded(
-                  child: _ShellTabItem(
-                    label: 'Contacts',
-                    icon: idx == branchContacts
-                        ? Icons.people_alt_rounded
-                        : Icons.people_alt_outlined,
-                    selected: idx == branchContacts,
-                    onTap: () => go(branchContacts),
-                  ),
+              ),
+              const SizedBox(width: 72), // FAB notch gap
+              Expanded(
+                child: _TabItem(
+                  label: 'History',
+                  selected: idx == ShellScreen.branchHistory,
+                  icon: idx == ShellScreen.branchHistory
+                      ? Icons.receipt_long_rounded
+                      : Icons.receipt_long_outlined,
+                  onTap: () => go(ShellScreen.branchHistory),
                 ),
-                Expanded(
-                  child: _ShellTabItem(
-                    label: 'Assistant',
-                    icon: idx == branchAssistant
-                        ? Icons.chat_bubble_rounded
-                        : Icons.chat_bubble_outline_rounded,
-                    selected: idx == branchAssistant,
-                    onTap: () => go(branchAssistant),
-                  ),
+              ),
+              Expanded(
+                child: _TabItem(
+                  label: 'Assistant',
+                  selected: idx == ShellScreen.branchAssistant,
+                  icon: idx == ShellScreen.branchAssistant
+                      ? Icons.chat_bubble_rounded
+                      : Icons.chat_bubble_outline_rounded,
+                  onTap: () => go(ShellScreen.branchAssistant),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -150,8 +184,8 @@ class ShellScreen extends ConsumerWidget {
   }
 }
 
-class _ShellTabItem extends StatelessWidget {
-  const _ShellTabItem({
+class _TabItem extends StatelessWidget {
+  const _TabItem({
     required this.label,
     required this.icon,
     required this.selected,
@@ -165,24 +199,35 @@ class _ShellTabItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final active = selected ? HexaColors.primaryMid : cs.onSurfaceVariant;
+    final active = selected ? HexaColors.brandPrimary : Colors.grey.shade500;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(12),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 24, color: active),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: EdgeInsets.symmetric(
+                  horizontal: selected ? 14 : 0, vertical: 2),
+              decoration: selected
+                  ? BoxDecoration(
+                      color: HexaColors.brandPrimary.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(20),
+                    )
+                  : null,
+              child: Icon(icon, size: 22, color: active),
+            ),
             const SizedBox(height: 3),
             Text(
               label,
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: active,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  ),
+              style: TextStyle(
+                fontSize: 11,
+                color: active,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              ),
             ),
           ],
         ),

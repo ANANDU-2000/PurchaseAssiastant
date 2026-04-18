@@ -52,9 +52,9 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
     _msgs.add(
       ChatMessage(
         id: 'welcome',
-        text: 'Describe a purchase or say e.g. “create supplier Ravi”. '
-            'You’ll get a preview first — reply YES to save, NO to cancel.\n'
-            'Hold the mic to dictate (Malayalam / English on device).',
+        text: 'Ask in plain words, e.g. create supplier Ravi, or add a purchase. '
+            'You will see a preview first. Reply YES to save or NO to cancel.\n'
+            'Hold the mic in the bar below to dictate (Malayalam or English).',
         isUser: false,
         at: DateTime.now(),
       ),
@@ -296,15 +296,15 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
   Widget _subtitleRow() {
     final h = ref.watch(healthProvider);
     return h.when(
-      loading: () => Text('checking…', style: AssistantChatTheme.inter(12, c: Colors.white70)),
-      error: (_, __) => Text('offline', style: AssistantChatTheme.inter(12, c: Colors.white70)),
+      loading: () => Text('…', style: AssistantChatTheme.inter(11.5, c: Colors.white70)),
+      error: (_, __) => Text('Offline', style: AssistantChatTheme.inter(11.5, c: Colors.white70)),
       data: (m) {
         final llm = m['intent_llm_active'] == true;
         final prov = (m['ai_provider'] ?? 'stub').toString();
-        final tail = llm ? ' · AI ready' : (prov == 'stub' ? ' · basic mode' : ' · setup');
+        final tail = llm ? ' · Smart replies on' : (prov == 'stub' ? ' · Quick answers' : ' · Check setup');
         return Text(
-          'online$tail',
-          style: AssistantChatTheme.inter(12.5, w: FontWeight.w500, c: Colors.white.withValues(alpha: 0.92)),
+          'Connected$tail',
+          style: AssistantChatTheme.inter(11.5, w: FontWeight.w500, c: Colors.white.withValues(alpha: 0.9)),
         );
       },
     );
@@ -314,34 +314,22 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
   Widget build(BuildContext context) {
     ref.watch(healthProvider);
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       extendBodyBehindAppBar: false,
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 88),
-        child: FloatingActionButton.small(
-          heroTag: 'assistant_jump',
-          backgroundColor: AssistantChatTheme.primary,
-          foregroundColor: Colors.white,
-          elevation: 2,
-          onPressed: () {
-            _scrollEnd();
-            _inputFocus.requestFocus();
-            HapticFeedback.lightImpact();
-          },
-          child: const Icon(Icons.bolt_rounded),
-        ),
-      ),
       body: ChatBackgroundPattern(
         child: Column(
           children: [
             _GradientAppBar(
-              title: 'Purchase Assistant',
+              title: 'Assistant',
               subtitle: _subtitleRow(),
+              onMenu: () => _showAssistantMenu(context),
             ),
             Expanded(
               child: ListView.builder(
                 controller: _scroll,
                 physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+                padding: const EdgeInsets.fromLTRB(10, 6, 10, 12),
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                 itemCount: _msgs.length + (_loading ? 1 : 0),
                 itemBuilder: (context, i) {
                   if (_loading && i == _msgs.length) {
@@ -437,18 +425,70 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
                 },
               ),
             ),
-            QuickPromptsBar(onPrompt: (msg) => unawaited(_sendWithText(msg))),
-            InputBar(
-              controller: _ctrl,
-              focusNode: _inputFocus,
-              onSend: _send,
-              loading: _loading,
-              speechReady: _speechOn,
-              listening: _listening,
-              onMicDown: _startListen,
-              onMicUp: _stopListen,
-              replySnippet: _replySnippet,
-              onDismissReply: () => setState(() => _replySnippet = null),
+            AnimatedPadding(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.viewInsetsOf(context).bottom,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  QuickPromptsBar(onPrompt: (msg) => unawaited(_sendWithText(msg))),
+                  InputBar(
+                    controller: _ctrl,
+                    focusNode: _inputFocus,
+                    onSend: _send,
+                    loading: _loading,
+                    speechReady: _speechOn,
+                    listening: _listening,
+                    onMicDown: _startListen,
+                    onMicUp: _stopListen,
+                    replySnippet: _replySnippet,
+                    onDismissReply: () => setState(() => _replySnippet = null),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAssistantMenu(BuildContext context) {
+    HapticFeedback.selectionClick();
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.vertical_align_bottom_rounded),
+              title: const Text('Jump to latest'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _scrollEnd();
+                _inputFocus.requestFocus();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.mic_rounded),
+              title: const Text('Voice mode'),
+              onTap: () {
+                Navigator.pop(ctx);
+                context.push('/voice');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.home_outlined),
+              title: const Text('Home'),
+              onTap: () {
+                Navigator.pop(ctx);
+                context.go('/home');
+              },
             ),
           ],
         ),
@@ -458,120 +498,118 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
 }
 
 class _GradientAppBar extends StatelessWidget {
-  const _GradientAppBar({required this.title, required this.subtitle});
+  const _GradientAppBar({
+    required this.title,
+    required this.subtitle,
+    required this.onMenu,
+  });
 
   final String title;
   final Widget subtitle;
+  final VoidCallback onMenu;
 
   @override
   Widget build(BuildContext context) {
     final top = MediaQuery.paddingOf(context).top;
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.fromLTRB(12, top + 8, 12, 14),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [AssistantChatTheme.primary, AssistantChatTheme.primaryLight],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x33075E54),
-            blurRadius: 16,
-            offset: Offset(0, 4),
+    return Material(
+      elevation: 0,
+      color: Colors.transparent,
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.fromLTRB(4, top + 4, 8, 10),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [AssistantChatTheme.primary, AssistantChatTheme.primaryLight],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Material(
-            color: Colors.transparent,
-            child: IconButton(
-              icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
-              onPressed: () {
-                if (context.canPop()) {
-                  context.pop();
-                  return;
-                }
-                context.go('/home');
-              },
+          boxShadow: [
+            BoxShadow(
+              color: Color(0x22075E54),
+              blurRadius: 8,
+              offset: Offset(0, 2),
             ),
-          ),
-          Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.45), width: 2),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AssistantChatTheme.accent.withValues(alpha: 0.55),
-                      blurRadius: 12,
-                      spreadRadius: 1,
-                    ),
-                  ],
-                  color: Colors.white.withValues(alpha: 0.18),
-                ),
-                alignment: Alignment.center,
-                child: const Text(
-                  'H',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 20),
-                ),
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Material(
+              color: Colors.transparent,
+              child: IconButton(
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
+                onPressed: () {
+                  if (context.canPop()) {
+                    context.pop();
+                    return;
+                  }
+                  context.go('/home');
+                },
               ),
-              Positioned(
-                right: 0,
-                bottom: 0,
-                child: Container(
-                  width: 12,
-                  height: 12,
+            ),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
                   decoration: BoxDecoration(
-                    color: AssistantChatTheme.onlineDot,
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AssistantChatTheme.accent.withValues(alpha: 0.8),
-                        blurRadius: 6,
-                      ),
-                    ],
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.4), width: 1.5),
+                    color: Colors.white.withValues(alpha: 0.16),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Text(
+                    'H',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16),
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: AssistantChatTheme.jakarta(18, w: FontWeight.w700, c: Colors.white)),
-                const SizedBox(height: 2),
-                subtitle,
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: AssistantChatTheme.onlineDot,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 1.5),
+                    ),
+                  ),
+                ),
               ],
             ),
-          ),
-          Material(
-            color: Colors.transparent,
-            child: IconButton(
-              icon: const Icon(Icons.mic_rounded, color: Colors.white, size: 20),
-              tooltip: 'Voice chat',
-              onPressed: () => context.push('/voice'),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: AssistantChatTheme.jakarta(16, w: FontWeight.w700, c: Colors.white),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 1),
+                  subtitle,
+                ],
+              ),
             ),
-          ),
-          Material(
-            color: Colors.transparent,
-            child: IconButton(
-              icon: const Icon(Icons.more_vert_rounded, color: Colors.white, size: 20),
-              tooltip: 'Voice chat',
-              onPressed: () => context.push('/voice'),
+            Material(
+              color: Colors.transparent,
+              child: IconButton(
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                icon: const Icon(Icons.more_vert_rounded, color: Colors.white, size: 22),
+                tooltip: 'Menu',
+                onPressed: onMenu,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

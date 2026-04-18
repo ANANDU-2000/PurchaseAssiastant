@@ -14,3 +14,5 @@ def test_openapi_lists_trade_purchase_paths():
     keys = " ".join(paths.keys())
     assert "/v1/businesses/{business_id}/trade-purchases" in keys
     assert "/v1/businesses/{business_id}/reports/trade-summary" in keys
+    assert "/v1/businesses/{business_id}/analytics/insights" in keys
+    assert "/v1/businesses/{business_id}/analytics/goals" in keys

@@ -15,15 +15,22 @@ import '../../../core/providers/trade_purchases_provider.dart';
 import '../../../shared/widgets/full_screen_form_scaffold.dart';
 
 class PurchaseWizardPage extends ConsumerStatefulWidget {
-  const PurchaseWizardPage({super.key});
+  const PurchaseWizardPage({super.key, this.editingId});
+
+  /// When set, wizard loads this purchase and saves via PUT.
+  final String? editingId;
 
   @override
   ConsumerState<PurchaseWizardPage> createState() => _PurchaseWizardPageState();
 }
 
 class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
+  static const EdgeInsets _pagePadding = EdgeInsets.fromLTRB(10, 4, 10, 14);
+
   int _step = 0;
   bool _dirty = false;
+  String? _editPurchaseId;
+  bool _leaveInFlight = false;
   Timer? _draftTimer;
   Timer? _searchDebounce;
 
@@ -57,9 +64,21 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
   @override
   void initState() {
     super.initState();
+    _editPurchaseId =
+        (widget.editingId != null && widget.editingId!.trim().isNotEmpty)
+            ? widget.editingId!.trim()
+            : null;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (_editPurchaseId != null) {
+        await _bootstrapHistoryCache();
+        await _loadExistingForEdit(_editPurchaseId!);
+        if (!mounted) return;
+        await _hydrateSupplierMemoryFromSupplierId();
+        return;
+      }
       await _loadDraft();
       await _bootstrapHistoryCache();
+      await _hydrateSupplierMemoryFromSupplierId();
       await _loadNextPurchaseId();
       if (!mounted) return;
       final pre = ref.read(pendingPurchaseSupplierIdProvider);
@@ -164,9 +183,24 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
         _supplierId = id;
         _applySupplierDefaults(s);
         _refreshSupplierMemory(s);
+        _syncBrokerCommissionFromList(ref.read(brokersListProvider).valueOrNull, force: true);
         _dirty = true;
         _scheduleDraft();
       });
+    } catch (_) {}
+  }
+
+  Future<void> _hydrateSupplierMemoryFromSupplierId() async {
+    final session = ref.read(sessionProvider);
+    final sid = _supplierId;
+    if (session == null || sid == null || sid.isEmpty) return;
+    try {
+      final s = await ref.read(hexaApiProvider).getSupplier(
+            businessId: session.primaryBusiness.id,
+            supplierId: sid,
+          );
+      if (!mounted || s.isEmpty) return;
+      setState(() => _refreshSupplierMemory(s));
     } catch (_) {}
   }
 
@@ -236,6 +270,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
         }
       }
       _dirty = false;
+      _syncBrokerCommissionFromList(ref.read(brokersListProvider).valueOrNull, force: false);
     });
   }
 
@@ -252,8 +287,68 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
       'delivered_rate': _delivered,
       'billty_rate': _billty,
       'freight_amount': _freight,
+      'status': 'confirmed',
       'lines': List<Map<String, dynamic>>.from(_lines),
     };
+  }
+
+  Future<void> _loadExistingForEdit(String purchaseId) async {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    try {
+      final p = await ref.read(hexaApiProvider).getTradePurchase(
+            businessId: session.primaryBusiness.id,
+            purchaseId: purchaseId,
+          );
+      if (!mounted || p.isEmpty) return;
+      setState(() {
+        _purchaseHumanId = p['human_id']?.toString() ?? _purchaseHumanId;
+        if (p['purchase_date'] != null) {
+          _purchaseDate =
+              DateTime.tryParse(p['purchase_date'].toString()) ?? _purchaseDate;
+        }
+        _supplierId = p['supplier_id']?.toString();
+        _brokerId = p['broker_id']?.toString();
+        _freightType = p['freight_type']?.toString() ?? _freightType;
+        _paymentDays = (p['payment_days'] as num?)?.toInt();
+        _discount = (p['discount'] as num?)?.toDouble();
+        _commission = (p['commission_percent'] as num?)?.toDouble();
+        _delivered = (p['delivered_rate'] as num?)?.toDouble();
+        _billty = (p['billty_rate'] as num?)?.toDouble();
+        _freight = (p['freight_amount'] as num?)?.toDouble();
+        _commissionCtrl.text = _commission?.toString() ?? '';
+        _paymentDaysCtrl.text = _paymentDays?.toString() ?? '';
+        _discountCtrl.text = _discount?.toString() ?? '';
+        _deliveredCtrl.text = _delivered?.toString() ?? '';
+        _billtyCtrl.text = _billty?.toString() ?? '';
+        _freightCtrl.text = _freight?.toString() ?? '';
+        _lines
+          ..clear()
+          ..addAll(_linesFromPurchaseJson(p));
+        _dirty = false;
+      });
+    } catch (_) {}
+  }
+
+  List<Map<String, dynamic>> _linesFromPurchaseJson(Map<String, dynamic> p) {
+    final raw = p['lines'];
+    final out = <Map<String, dynamic>>[];
+    if (raw is! List) return out;
+    for (final e in raw) {
+      if (e is! Map) continue;
+      final m = Map<String, dynamic>.from(e);
+      out.add({
+        'item_name': m['item_name'],
+        'qty': m['qty'],
+        'unit': m['unit'] ?? 'kg',
+        'landing_cost': m['landing_cost'],
+        'selling_cost': m['selling_cost'],
+        'discount': m['discount'],
+        'tax_percent': m['tax_percent'],
+        'catalog_item_id': m['catalog_item_id']?.toString(),
+      });
+    }
+    return out;
   }
 
   void _scheduleDraft() {
@@ -298,6 +393,10 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
     final bid = s['broker_id']?.toString();
     if (bid != null && bid.isNotEmpty) {
       _brokerId = bid;
+    } else {
+      _brokerId = null;
+      _commission = null;
+      _commissionCtrl.clear();
     }
     _paymentDaysCtrl.text = _paymentDays?.toString() ?? '';
     _discountCtrl.text = _discount?.toString() ?? '';
@@ -312,6 +411,38 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
     }
   }
 
+  /// When [force] is true (e.g. supplier or broker dropdown changed), commission is refreshed from broker master.
+  /// Otherwise fills only if commission is still unset (async broker list load after draft).
+  bool _syncBrokerCommissionFromList(List<Map<String, dynamic>>? brokers, {required bool force}) {
+    if (brokers == null) return false;
+    final id = _brokerId;
+    if (id == null || id.isEmpty) {
+      if (force) {
+        final had = _commission != null || _commissionCtrl.text.trim().isNotEmpty;
+        _commission = null;
+        _commissionCtrl.clear();
+        return had;
+      }
+      return false;
+    }
+    if (!force && _commission != null) return false;
+    Map<String, dynamic>? row;
+    for (final r in brokers) {
+      if (r['id']?.toString() == id) {
+        row = r;
+        break;
+      }
+    }
+    if (row == null) return false;
+    final cv = (row['commission_value'] as num?)?.toDouble();
+    if (cv == null) return false;
+    final text = cv.toString();
+    if (_commission == cv && _commissionCtrl.text == text) return false;
+    _commission = cv;
+    _commissionCtrl.text = text;
+    return true;
+  }
+
   double _lineGross(Map<String, dynamic> l) {
     final q = (l['qty'] as num?)?.toDouble() ?? 0;
     final lc = (l['landing_cost'] as num?)?.toDouble() ?? 0;
@@ -319,12 +450,12 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
   }
 
   double _lineNetAfterLineDiscount(Map<String, dynamic> l) {
-    final disc = (l['discount'] as num?)?.toDouble() ?? 0;
+    final disc = ((l['discount'] as num?)?.toDouble() ?? 0).clamp(0.0, 100.0);
     return _lineGross(l) * (1 - disc / 100.0);
   }
 
   double _lineTaxAmount(Map<String, dynamic> l) {
-    final tax = (l['tax_percent'] as num?)?.toDouble() ?? 0;
+    final tax = ((l['tax_percent'] as num?)?.toDouble() ?? 0).clamp(0.0, 100.0);
     return _lineNetAfterLineDiscount(l) * (tax / 100.0);
   }
 
@@ -341,15 +472,17 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
   }
 
   double _grandTotal() {
-    var s = _linesSubtotal();
-    final disc = _discount ?? 0;
+    var afterHeader = _linesSubtotal();
+    final disc = (_discount ?? 0).clamp(0.0, 100.0);
     if (disc > 0) {
-      s *= (1 - disc / 100.0);
+      afterHeader *= (1 - disc / 100.0);
     }
+    var total = afterHeader;
     if (_freightType == 'separate') {
-      s += _freight ?? 0;
+      total += _freight ?? 0;
     }
-    return s;
+    total += _brokerCommissionMoney();
+    return total;
   }
 
   String? _kgHelperLine(Map<String, dynamic> l) {
@@ -473,7 +606,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
     final fallback = opts.isNotEmpty ? opts.first : 'kg';
     if (opts.length == 1) {
       return InputDecorator(
-        decoration: const InputDecoration(labelText: 'Unit'),
+        decoration: const InputDecoration(labelText: 'Unit', isDense: true),
         child: Text(fallback.toUpperCase()),
       );
     }
@@ -494,7 +627,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
     return DropdownButtonFormField<String>(
       key: ValueKey('unit_${i}_$v'),
       initialValue: v,
-      decoration: const InputDecoration(labelText: 'Unit'),
+      decoration: const InputDecoration(labelText: 'Unit', isDense: true),
       items: opts
           .map(
             (e) => DropdownMenuItem(
@@ -508,16 +641,30 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
         final oldU = (l['unit']?.toString() ?? '').toLowerCase();
         if (newU == oldU) return;
         var qty = (l['qty'] as num?)?.toDouble() ?? 1;
+        final rate = (l['landing_cost'] as num?)?.toDouble() ?? 0;
+        var newRate = rate;
         final kgPer = (l['default_kg_per_bag'] as num?)?.toDouble() ?? 0;
         if (kgPer > 0) {
           if (oldU == 'bag' && newU == 'kg') {
             qty *= kgPer;
+            newRate = rate / kgPer;
           } else if (oldU == 'kg' && newU == 'bag') {
             qty /= kgPer;
+            newRate = rate * kgPer;
           }
         }
         l['unit'] = newU;
         l['qty'] = qty;
+        l['landing_cost'] = newRate;
+        final sc = l['selling_cost'];
+        if (sc != null && kgPer > 0) {
+          final sr = (sc as num).toDouble();
+          if (oldU == 'bag' && newU == 'kg') {
+            l['selling_cost'] = sr / kgPer;
+          } else if (oldU == 'kg' && newU == 'bag') {
+            l['selling_cost'] = sr * kgPer;
+          }
+        }
         _markDirty();
       },
     );
@@ -547,8 +694,9 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
   }
 
   double _headerDiscountMoney() {
-    if ((_discount ?? 0) <= 0) return 0;
-    return _linesSubtotal() * ((_discount ?? 0) / 100.0);
+    final d = (_discount ?? 0).clamp(0.0, 100.0);
+    if (d <= 0) return 0;
+    return _linesSubtotal() * (d / 100.0);
   }
 
   double _totalTaxMoney() {
@@ -566,6 +714,18 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
     return base * (p / 100.0);
   }
 
+  int _recencyBoostForItemName(String nameKey) {
+    final h = _historyByItem[nameKey.trim().toLowerCase()];
+    if (h == null) return 0;
+    final ds = h['last_date']?.toString();
+    if (ds == null || ds.isEmpty) return 0;
+    final dt = DateTime.tryParse(ds);
+    if (dt == null) return 0;
+    final days = DateTime.now().difference(dt).inDays;
+    final clamped = days.clamp(0, 730);
+    return ((730 - clamped) / 13).floor();
+  }
+
   int _searchScore(String q, Map<String, dynamic> item) {
     final name = (item['name']?.toString() ?? '').toLowerCase();
     var score = 0;
@@ -575,6 +735,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
     if (item['_same_supplier'] == true) score += 110;
     if (_historyByItem.containsKey(name)) score += 40;
     score += ((item['used_count'] as int?) ?? 0) * 3;
+    score += _recencyBoostForItemName(name);
     return score;
   }
 
@@ -621,6 +782,21 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
     }
   }
 
+  String? _linesValidationError() {
+    for (final l in _lines) {
+      final q = (l['qty'] as num?)?.toDouble() ?? 0;
+      if (q <= 0) {
+        return 'Each line needs quantity greater than zero.';
+      }
+      final rate = (l['landing_cost'] as num?)?.toDouble() ?? 0;
+      if (rate < 0) {
+        final name = l['item_name']?.toString() ?? 'Item';
+        return 'Line "$name" has a negative landing rate.';
+      }
+    }
+    return null;
+  }
+
   Future<void> _savePurchase() async {
     final session = ref.read(sessionProvider);
     if (session == null) return;
@@ -628,6 +804,11 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Add at least one line item.')),
       );
+      return;
+    }
+    final lineErr = _linesValidationError();
+    if (lineErr != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(lineErr)));
       return;
     }
     final body = {
@@ -660,40 +841,54 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
             businessId: session.primaryBusiness.id,
             body: dupBody,
           );
-      if (dup['duplicate'] == true && mounted) {
-        final go = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Possible duplicate'),
-            content: Text(dup['message']?.toString() ?? 'Save anyway?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Save'),
-              ),
-            ],
-          ),
-        );
-        if (go != true) return;
+      if (dup['duplicate'] == true) {
+        final sameEdit = _editPurchaseId != null &&
+            dup['existing_id']?.toString() == _editPurchaseId;
+        if (!sameEdit && mounted) {
+          final go = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Possible duplicate'),
+              content: Text(dup['message']?.toString() ?? 'Save anyway?'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Save'),
+                ),
+              ],
+            ),
+          );
+          if (go != true) return;
+        }
       }
-      final created = await ref.read(hexaApiProvider).createTradePurchase(
-            businessId: session.primaryBusiness.id,
-            body: body,
-          );
-      await ref.read(hexaApiProvider).deleteTradePurchaseDraft(
-            businessId: session.primaryBusiness.id,
-          );
+      final Map<String, dynamic> saved;
+      if (_editPurchaseId != null) {
+        final upd = Map<String, dynamic>.from(body)..remove('human_id');
+        saved = await ref.read(hexaApiProvider).updateTradePurchase(
+              businessId: session.primaryBusiness.id,
+              purchaseId: _editPurchaseId!,
+              body: upd,
+            );
+      } else {
+        saved = await ref.read(hexaApiProvider).createTradePurchase(
+              businessId: session.primaryBusiness.id,
+              body: body,
+            );
+        await ref.read(hexaApiProvider).deleteTradePurchaseDraft(
+              businessId: session.primaryBusiness.id,
+            );
+      }
       ref.invalidate(tradePurchasesListProvider);
       if (!mounted) return;
-      final hid = created['human_id']?.toString() ?? _purchaseHumanId;
+      final hid = saved['human_id']?.toString() ?? _purchaseHumanId;
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Purchase created'),
+          title: Text(_editPurchaseId != null ? 'Purchase updated' : 'Purchase created'),
           content: Text('ID: $hid'),
           actions: [
             TextButton(
@@ -703,7 +898,9 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
           ],
         ),
       );
-      await _loadNextPurchaseId();
+      if (_editPurchaseId == null) {
+        await _loadNextPurchaseId();
+      }
       if (mounted) context.pop();
     } catch (e) {
       if (!mounted) return;
@@ -715,31 +912,38 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
 
   Future<void> _handleLeaveRequest() async {
     if (!mounted) return;
+    if (_leaveInFlight) return;
     if (!_dirty) {
       context.pop();
       return;
     }
-    final action = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Save draft?'),
-        content: const Text('You have unsaved changes. Save a draft to continue later?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, 'discard'),
-            child: const Text('Discard'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, 'cancel'),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, 'save'),
-            child: const Text('Save draft'),
-          ),
-        ],
-      ),
-    );
+    _leaveInFlight = true;
+    String? action;
+    try {
+      action = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Save draft?'),
+          content: const Text('You have unsaved changes. Save a draft to continue later?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'discard'),
+              child: const Text('Discard'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'cancel'),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, 'save'),
+              child: const Text('Save draft'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      _leaveInFlight = false;
+    }
     if (!mounted || action == null || action == 'cancel') return;
     final session = ref.read(sessionProvider);
     if (session == null) return;
@@ -760,7 +964,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
 
   Widget _stepHeader(String label) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 6),
       child: Text(
         label,
         style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -772,7 +976,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
 
   Widget _buildStep0(AsyncValue<List<Map<String, dynamic>>> suppliers) {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 20),
+      padding: _pagePadding,
       children: [
         _stepHeader('Purchase header'),
         Container(
@@ -790,9 +994,9 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
             ],
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         InputDecorator(
-          decoration: const InputDecoration(labelText: 'Purchase date'),
+          decoration: const InputDecoration(labelText: 'Purchase date', isDense: true),
           child: Text(DateFormat.yMMMd().format(_purchaseDate)),
         ),
         Align(
@@ -824,7 +1028,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
             initialValue: _supplierId != null && rows.any((r) => r['id']?.toString() == _supplierId)
                 ? _supplierId
                 : null,
-            decoration: const InputDecoration(labelText: 'Supplier *'),
+            decoration: const InputDecoration(labelText: 'Supplier *', isDense: true),
             items: rows
                 .map((r) => DropdownMenuItem<String>(
                       value: r['id']?.toString(),
@@ -842,6 +1046,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
                   if (s.isNotEmpty) {
                     _applySupplierDefaults(s);
                     _refreshSupplierMemory(s);
+                    _syncBrokerCommissionFromList(ref.read(brokersListProvider).valueOrNull, force: true);
                   }
                 }
                 _markDirty();
@@ -849,7 +1054,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
             },
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         ref.watch(brokersListProvider).when(
               loading: () => const SizedBox.shrink(),
               error: (_, __) => const SizedBox.shrink(),
@@ -858,7 +1063,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
                 initialValue: _brokerId != null && brokers.any((b) => b['id']?.toString() == _brokerId)
                     ? _brokerId
                     : null,
-                decoration: const InputDecoration(labelText: 'Broker'),
+                decoration: const InputDecoration(labelText: 'Broker', isDense: true),
                 items: [
                   const DropdownMenuItem<String?>(value: null, child: Text('None')),
                   ...brokers.map(
@@ -871,16 +1076,11 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
                 onChanged: (v) {
                   setState(() {
                     _brokerId = v;
-                    if (v != null) {
-                      final b = brokers.firstWhere(
-                        (row) => row['id']?.toString() == v,
-                        orElse: () => <String, dynamic>{},
-                      );
-                      final cv = (b['commission_value'] as num?)?.toDouble();
-                      if (cv != null) {
-                        _commission = cv;
-                        _commissionCtrl.text = cv.toString();
-                      }
+                    if (v == null) {
+                      _commission = null;
+                      _commissionCtrl.clear();
+                    } else {
+                      _syncBrokerCommissionFromList(brokers, force: true);
                     }
                     _markDirty();
                   });
@@ -895,7 +1095,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
               style: TextStyle(color: Theme.of(context).colorScheme.error, fontWeight: FontWeight.w600),
             ),
           ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         SegmentedButton<String>(
           segments: const [
             ButtonSegment(value: 'included', label: Text('Freight Included')),
@@ -917,40 +1117,40 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
             _scheduleDraft();
           },
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         TextField(
           controller: _paymentDaysCtrl,
-          decoration: const InputDecoration(labelText: 'Payment days'),
+          decoration: const InputDecoration(labelText: 'Payment days', isDense: true),
           keyboardType: TextInputType.number,
           onChanged: (t) {
             _paymentDays = int.tryParse(t);
             _markDirty();
           },
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         TextField(
           controller: _discountCtrl,
-          decoration: const InputDecoration(labelText: 'Header discount %'),
+          decoration: const InputDecoration(labelText: 'Header discount %', isDense: true),
           keyboardType: TextInputType.number,
           onChanged: (t) {
-            _discount = double.tryParse(t);
+            _discount = (double.tryParse(t) ?? 0).clamp(0, 100);
             _markDirty();
           },
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         TextField(
           controller: _commissionCtrl,
-          decoration: const InputDecoration(labelText: 'Broker commission %'),
+          decoration: const InputDecoration(labelText: 'Broker commission %', isDense: true),
           keyboardType: TextInputType.number,
           onChanged: (t) {
             _commission = double.tryParse(t);
             _markDirty();
           },
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         TextField(
           controller: _deliveredCtrl,
-          decoration: const InputDecoration(labelText: 'Delivered rate'),
+          decoration: const InputDecoration(labelText: 'Delivered rate', isDense: true),
           keyboardType: TextInputType.number,
           onChanged: (t) {
             _delivered = double.tryParse(t);
@@ -961,10 +1161,10 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
             _markDirty();
           },
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         TextField(
           controller: _billtyCtrl,
-          decoration: const InputDecoration(labelText: 'Billty rate'),
+          decoration: const InputDecoration(labelText: 'Billty rate', isDense: true),
           keyboardType: TextInputType.number,
           onChanged: (t) {
             _billty = double.tryParse(t);
@@ -975,12 +1175,13 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
             _markDirty();
           },
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         TextField(
           controller: _freightCtrl,
           readOnly: _freightType == 'included',
           decoration: InputDecoration(
             labelText: _freightType == 'included' ? 'Freight (included — not added to total)' : 'Freight amount',
+            isDense: true,
           ),
           keyboardType: TextInputType.number,
           onChanged: (t) {
@@ -996,7 +1197,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
   Widget _buildStep1() {
     final money = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
     return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 20),
+      padding: _pagePadding,
       children: [
         _stepHeader('Items'),
         TextField(
@@ -1004,13 +1205,14 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
           decoration: const InputDecoration(
             labelText: 'Search items',
             prefixIcon: Icon(Icons.search_rounded),
+            isDense: true,
           ),
           onChanged: (v) {
             _searchDebounce?.cancel();
             _searchDebounce = Timer(const Duration(milliseconds: 250), () => _runSearch(v));
           },
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         if (_searchHits.isNotEmpty)
           ..._searchHits.map((h) {
             final name = h['name']?.toString() ?? h['item_name']?.toString() ?? 'Item';
@@ -1026,6 +1228,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
             ];
             return ListTile(
               dense: true,
+              visualDensity: VisualDensity.compact,
               title: Text(name),
               subtitle: Text(subtitleParts.join(' · ')),
               trailing: score >= 100 ? const Icon(Icons.auto_awesome_rounded, size: 16) : null,
@@ -1034,14 +1237,15 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
               },
             );
           }),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         ..._lines.asMap().entries.map((entry) {
           final i = entry.key;
           final l = entry.value;
           return Card(
             key: ValueKey('line_$i'),
+            margin: const EdgeInsets.only(bottom: 8),
             child: Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -1080,9 +1284,9 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
                     children: [
                       Expanded(
                         child: TextFormField(
-                          key: ValueKey('qty_${i}_${l['qty']}'),
+                          key: ValueKey('qty_${i}_${l['unit']}'),
                           initialValue: (l['qty'] as num?)?.toString() ?? '1',
-                          decoration: const InputDecoration(labelText: 'Qty'),
+                          decoration: const InputDecoration(labelText: 'Qty', isDense: true),
                           keyboardType: TextInputType.number,
                           onChanged: (t) {
                             l['qty'] = double.tryParse(t) ?? 1.0;
@@ -1096,7 +1300,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
                   ),
                   if (_kgHelperLine(l) != null)
                     Padding(
-                      padding: const EdgeInsets.only(top: 6),
+                      padding: const EdgeInsets.only(top: 4),
                       child: Text(
                         _kgHelperLine(l)!,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -1105,14 +1309,14 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
                             ),
                       ),
                     ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   Row(
                     children: [
                       Expanded(
                         child: TextFormField(
                           key: ValueKey('land_$i'),
                           initialValue: (l['landing_cost'] as num?)?.toString() ?? '0',
-                          decoration: const InputDecoration(labelText: 'Landing cost *'),
+                          decoration: const InputDecoration(labelText: 'Landing cost *', isDense: true),
                           keyboardType: TextInputType.number,
                           onChanged: (t) {
                             l['landing_cost'] = double.tryParse(t) ?? 0;
@@ -1125,7 +1329,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
                         child: TextFormField(
                           key: ValueKey('sell_$i'),
                           initialValue: l['selling_cost'] != null ? (l['selling_cost'] as num).toString() : '',
-                          decoration: const InputDecoration(labelText: 'Selling cost'),
+                          decoration: const InputDecoration(labelText: 'Selling cost', isDense: true),
                           keyboardType: TextInputType.number,
                           onChanged: (t) {
                             l['selling_cost'] = double.tryParse(t);
@@ -1135,17 +1339,17 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   Row(
                     children: [
                       Expanded(
                         child: TextFormField(
                           key: ValueKey('disc_$i'),
                           initialValue: (l['discount'] as num?)?.toString() ?? '0',
-                          decoration: const InputDecoration(labelText: 'Line discount %'),
+                          decoration: const InputDecoration(labelText: 'Line discount %', isDense: true),
                           keyboardType: TextInputType.number,
                           onChanged: (t) {
-                            l['discount'] = double.tryParse(t) ?? 0;
+                            l['discount'] = (double.tryParse(t) ?? 0).clamp(0, 100);
                             _markDirty();
                           },
                         ),
@@ -1155,7 +1359,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
                         child: TextFormField(
                           key: ValueKey('pay_$i'),
                           initialValue: (l['payment_days'] as num?)?.toString() ?? '',
-                          decoration: const InputDecoration(labelText: 'Line payment days'),
+                          decoration: const InputDecoration(labelText: 'Line payment days', isDense: true),
                           keyboardType: TextInputType.number,
                           onChanged: (t) {
                             l['payment_days'] = int.tryParse(t);
@@ -1165,14 +1369,14 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   Text(
                     'HSN: ${l['hsn_code'] ?? '—'}   ·   Tax: ${(l['tax_percent'] as num?) ?? 0}% (from item)',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 4),
                   Text(
                     'Net ${money.format(_lineNetAfterLineDiscount(l))} + Tax ${money.format(_lineTaxAmount(l))} = ${money.format(_lineFinal(l))}',
                     style: const TextStyle(fontWeight: FontWeight.w700),
@@ -1208,7 +1412,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
     final brokerAmt = _brokerCommissionMoney();
     final grand = _grandTotal();
 
-    Widget row(String left, String right, {bool bold = false, double gap = 4}) {
+    Widget row(String left, String right, {bool bold = false, double gap = 3}) {
       return Padding(
         padding: EdgeInsets.only(bottom: gap),
         child: Row(
@@ -1237,14 +1441,14 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
     }
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 20),
+      padding: _pagePadding,
       children: [
         _stepHeader('Summary'),
         row('Purchase ID', _purchaseHumanId),
         row('Supplier', supplierName ?? '—'),
         row('Broker', brokerName ?? '—'),
         row('Freight', _freightType == 'included' ? 'Included in rate' : 'Separate (+${fmt.format(_freight ?? 0)})'),
-        const Divider(height: 20),
+        const Divider(height: 16),
         Text('ITEMS', style: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800)),
         const SizedBox(height: 6),
         ..._lines.map((l) {
@@ -1271,7 +1475,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
             ),
           );
         }),
-        const Divider(height: 20),
+        const Divider(height: 16),
         Text('TOTAL', style: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800)),
         const SizedBox(height: 6),
         row('Subtotal (lines)', fmt.format(subtotal)),
@@ -1287,6 +1491,13 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(brokersListProvider, (prev, next) {
+      final brokers = next.asData?.value;
+      if (brokers == null) return;
+      if (!_syncBrokerCommissionFromList(brokers, force: false)) return;
+      if (mounted) setState(() {});
+    });
+
     final suppliers = ref.watch(suppliersListProvider);
     final title = switch (_step) {
       0 => 'New Purchase',

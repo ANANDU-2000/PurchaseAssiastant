@@ -157,12 +157,18 @@ class HexaApi {
     required String businessId,
     String? brandingTitle,
     String? brandingLogoUrl,
+    String? gstNumber,
+    String? address,
+    String? phone,
   }) async {
     final res = await _dio.patch<Map<String, dynamic>>(
       '/v1/me/businesses/$businessId/branding',
       data: {
         if (brandingTitle != null) 'branding_title': brandingTitle,
         if (brandingLogoUrl != null) 'branding_logo_url': brandingLogoUrl,
+        if (gstNumber != null) 'gst_number': gstNumber,
+        if (address != null) 'address': address,
+        if (phone != null) 'phone': phone,
       },
     );
     return res.data ?? {};
@@ -218,6 +224,49 @@ class HexaApi {
       queryParameters: {'from': from, 'to': to},
     );
     return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> analyticsInsights({
+    required String businessId,
+    required String from,
+    required String to,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/analytics/insights',
+      queryParameters: {'from': from, 'to': to},
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>?> getAnalyticsGoals({
+    required String businessId,
+    required String period,
+  }) async {
+    final res = await _dio.get<dynamic>(
+      '/v1/businesses/$businessId/analytics/goals',
+      queryParameters: {'period': period},
+    );
+    final d = res.data;
+    if (d == null) return null;
+    if (d is Map) return Map<String, dynamic>.from(d);
+    return null;
+  }
+
+  Future<Map<String, dynamic>> putAnalyticsGoals({
+    required String businessId,
+    required String period,
+    double? profitGoal,
+    double? volumeGoal,
+  }) async {
+    final res = await _dio.put<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/analytics/goals',
+      queryParameters: {'period': period},
+      data: {
+        if (profitGoal != null) 'profit_goal': profitGoal,
+        if (volumeGoal != null) 'volume_goal': volumeGoal,
+      },
+    );
+    return Map<String, dynamic>.from(res.data ?? {});
   }
 
   Future<List<dynamic>> listEntries({
@@ -383,6 +432,81 @@ class HexaApi {
     final d = res.data;
     if (d is Map) return Map<String, dynamic>.from(d);
     return {};
+  }
+
+  Future<Map<String, dynamic>> getTradePurchase({
+    required String businessId,
+    required String purchaseId,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/trade-purchases/$purchaseId',
+    );
+    return Map<String, dynamic>.from(res.data ?? {});
+  }
+
+  Future<Map<String, dynamic>> updateTradePurchase({
+    required String businessId,
+    required String purchaseId,
+    required Map<String, dynamic> body,
+  }) async {
+    final res = await _dio.put<dynamic>(
+      '/v1/businesses/$businessId/trade-purchases/$purchaseId',
+      data: body,
+    );
+    final d = res.data;
+    if (d is Map) return Map<String, dynamic>.from(d);
+    return {};
+  }
+
+  Future<Map<String, dynamic>> patchPurchasePayment({
+    required String businessId,
+    required String purchaseId,
+    required double paidAmount,
+    String? paidAtIso,
+  }) async {
+    final res = await _dio.patch<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/trade-purchases/$purchaseId/payment',
+      data: {
+        'paid_amount': paidAmount,
+        if (paidAtIso != null && paidAtIso.isNotEmpty) 'paid_at': paidAtIso,
+      },
+    );
+    return Map<String, dynamic>.from(res.data ?? {});
+  }
+
+  Future<Map<String, dynamic>> markPurchasePaid({
+    required String businessId,
+    required String purchaseId,
+    double? paidAmount,
+    String? paidAtIso,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/trade-purchases/$purchaseId/mark-paid',
+      data: {
+        if (paidAmount != null) 'paid_amount': paidAmount,
+        if (paidAtIso != null && paidAtIso.isNotEmpty) 'paid_at': paidAtIso,
+      },
+    );
+    return Map<String, dynamic>.from(res.data ?? {});
+  }
+
+  Future<Map<String, dynamic>> cancelPurchase({
+    required String businessId,
+    required String purchaseId,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/trade-purchases/$purchaseId/cancel',
+    );
+    return Map<String, dynamic>.from(res.data ?? {});
+  }
+
+  Future<void> deleteTradePurchase({
+    required String businessId,
+    required String purchaseId,
+  }) async {
+    await _dio.delete<void>(
+      '/v1/businesses/$businessId/trade-purchases/$purchaseId',
+    );
   }
 
   Future<Map<String, dynamic>> tradePurchaseSummary({

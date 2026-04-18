@@ -13,10 +13,10 @@ final assistantQuickPromptsProvider = Provider<List<AssistantQuickPrompt>>((ref)
   return const [
     AssistantQuickPrompt(label: 'Profit', message: 'Profit this month'),
     AssistantQuickPrompt(
-      label: 'Add purchase',
+      label: 'New purchase',
       message: 'Help me add a purchase: item, qty, buy price',
     ),
-    AssistantQuickPrompt(label: 'Summary', message: 'Summary today'),
+    AssistantQuickPrompt(label: 'Today', message: 'Summary today'),
     AssistantQuickPrompt(label: 'Suppliers', message: 'Show suppliers summary'),
   ];
 });

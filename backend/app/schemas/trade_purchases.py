@@ -24,6 +24,7 @@ class TradePurchaseCreateRequest(BaseModel):
     purchase_date: date
     supplier_id: uuid.UUID | None = None
     broker_id: uuid.UUID | None = None
+    status: str = Field(default="confirmed", pattern="^(draft|saved|confirmed)$")
     payment_days: int | None = Field(None, ge=0, le=3650)
     discount: float | None = Field(None, ge=0)
     commission_percent: float | None = Field(None, ge=0)
@@ -44,6 +45,7 @@ class TradePurchaseLineOut(BaseModel):
     selling_cost: float | None
     discount: float | None
     tax_percent: float | None
+    hsn_code: str | None = None
 
 
 class TradePurchaseOut(BaseModel):
@@ -53,6 +55,9 @@ class TradePurchaseOut(BaseModel):
     supplier_id: uuid.UUID | None
     broker_id: uuid.UUID | None
     payment_days: int | None
+    due_date: date | None = None
+    paid_amount: float = 0
+    paid_at: datetime | None = None
     discount: float | None
     commission_percent: float | None
     delivered_rate: float | None
@@ -62,8 +67,36 @@ class TradePurchaseOut(BaseModel):
     total_qty: float | None
     total_amount: float
     status: str
+    remaining: float = 0
+    derived_status: str = "confirmed"
+    items_count: int = 0
+    supplier_name: str | None = None
+    broker_name: str | None = None
+    supplier_gst: str | None = None
+    supplier_address: str | None = None
+    supplier_phone: str | None = None
+    supplier_whatsapp: str | None = None
+    broker_phone: str | None = None
+    broker_location: str | None = None
     created_at: datetime
+    updated_at: datetime | None = None
     lines: list[TradePurchaseLineOut]
+
+
+class TradePurchaseUpdateRequest(TradePurchaseCreateRequest):
+    """Full replace of header + lines (wizard edit)."""
+
+
+class TradePurchasePaymentPatch(BaseModel):
+    paid_amount: float = Field(..., ge=0)
+    paid_at: datetime | None = None
+
+
+class TradeMarkPaidRequest(BaseModel):
+    """Optional partial payment; default pays remaining balance."""
+
+    paid_amount: float | None = Field(None, ge=0)
+    paid_at: datetime | None = None
 
 
 class TradeDuplicateCheckRequest(BaseModel):

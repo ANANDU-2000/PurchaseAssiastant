@@ -14,7 +14,7 @@ class QuickPromptsBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final prompts = ref.watch(assistantQuickPromptsProvider);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+      padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
@@ -30,7 +30,7 @@ class QuickPromptsBar extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(20),
                     onTap: () => onPrompt(p.message),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                       child: Text(
                         p.label,
                         style: AssistantChatTheme.inter(

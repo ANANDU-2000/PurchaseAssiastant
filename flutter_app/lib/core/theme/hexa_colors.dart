@@ -1,107 +1,106 @@
 import 'package:flutter/material.dart';
 
-/// Premium light UI — navy primary text, semantic profit/loss, blue accent only where needed.
+/// Premium green + gold brand palette — Harisree Purchases.
 abstract final class HexaColors {
-  // === LIGHT SURFACES (production palette) ===
-  /// Page background — table-first / decision UI (white canvas).
-  static const surfaceApp = Color(0xFFFFFFFF);
-  /// Cards and sheets on [surfaceApp] — clean white lift.
+  // ── BRAND ──────────────────────────────────────────────────────────────────
+  static const brandPrimary    = Color(0xFF0E4F46);
+  static const brandSecondary  = Color(0xFF065F4F);
+  static const brandAccent     = Color(0xFF159A8A);
+  static const brandGold       = Color(0xFFD4AF37);
+  static const brandGoldLight  = Color(0xFFF5E4A0);
+  static const brandBackground = Color(0xFFF7F9F6);
+  static const brandCard       = Color(0xFFFFFFFF);
+  static const brandBorder     = Color(0xFFE6ECE8);
+
+  static const brandDisabledBg   = Color(0xFFD1E8E3);
+  static const brandDisabledText = Color(0xFF9CA3AF);
+
+  // ── SURFACES ───────────────────────────────────────────────────────────────
+  static const surfaceApp       = Color(0xFFFFFFFF);
   static const surfaceCardLight = Color(0xFFFFFFFF);
-  static const neutral = Color(0xFF64748B);
+  static const surfaceCard      = Color(0xFF141929);
+  static const surfaceElevated  = Color(0xFF1C2235);
+  static const surfaceMuted     = Color(0xFF232A3E);
+  static const canvas           = Color(0xFF0B0F1A);
 
-  /// Body text on white (dark grey, not pure black).
-  static const textBody = Color(0xFF475569);
+  // ── TEXT ───────────────────────────────────────────────────────────────────
+  static const textBody         = Color(0xFF475569);
+  static const textOnLightSurface = Color(0xFF0F172A);
+  static const neutral          = Color(0xFF64748B);
+  static const primaryNavy      = Color(0xFF0F172A);
+  static const textPrimary      = Color(0xFFF0F4FF);
+  static const textSecondary    = Color(0xFF8993A9);
 
-  /// Headlines, app identity — not for full-screen fills of interactive blue.
-  static const primaryNavy = Color(0xFF0F172A);
-
-  /// Links, info, selected tab accent — use sparingly.
-  static const accentInfo = Color(0xFF2563EB);
-
-  // === DARK THEME BACKGROUNDS (settings / rare) ===
-  static const canvas = Color(0xFF0B0F1A);
-  static const surfaceCard = Color(0xFF141929);
-  static const surfaceElevated = Color(0xFF1C2235);
-  static const surfaceMuted = Color(0xFF232A3E);
-
-  // === BRAND (legacy + charts) ===
-  static const brandTeal = Color(0xFF17A8A7);
-
-  /// Prefer [accentInfo] for interactive blue. Kept as alias for existing call sites.
-  static const primaryMid = accentInfo;
-  static const primaryDeep = Color(0xFF1D4ED8);
-
-  /// Soft wash for chips / selected rows (neutral slate, not loud blue).
-  static const primaryLight = Color(0xFFF1F5F9);
-  static const accentPurple = Color(0xFF9B79E8);
-
-  static const accentBlue = accentInfo;
-  static const brand = primaryNavy;
-  static const brandHover = Color(0xFF1E293B);
-
-  // === SEMANTIC (strict) ===
-  static const profit = Color(0xFF16A34A);
-  static const loss = Color(0xFFDC2626);
+  // ── SEMANTIC ───────────────────────────────────────────────────────────────
+  static const profit  = Color(0xFF16A34A);
+  static const loss    = Color(0xFFE53935);
   static const warning = Color(0xFFF0A500);
   static const accentAmber = Color(0xFFF59E0B);
 
-  // === CHART COLORS ===
-  static const chartLandingCost = Color(0xFF3B82F6);
-  static const chartSellingCost = Color(0xFF10B981);
-  static const chartProfit = Color(0xFFF59E0B);
-  static const chartPurple = Color(0xFF9B79E8);
-  static const chartOrange = Color(0xFFFB923C);
-  static const chartPink = Color(0xFFF472B6);
+  // ── GRADIENTS ──────────────────────────────────────────────────────────────
+  static const primaryLight = Color(0xFFE8F5F2);
+  static const accentInfo   = Color(0xFF159A8A);     // kept for legacy references
+
+  // Legacy aliases kept so existing call sites compile
+  static const primaryMid  = brandAccent;
+  static const primaryDeep = brandPrimary;
+  static const brandHover  = Color(0xFF0A3D36);
+  static const brand       = primaryNavy;
+  static const brandTeal   = brandAccent;
+  static const accentBlue  = brandAccent;
+  static const accentPurple = Color(0xFF9B79E8);     // used by analytics
+  static const accentLine   = brandAccent;
+  static const cost         = Color(0xFF94A3B8);
+  static const costMuted    = neutral;
+  static const heroGradientEnd = Color(0xFF0A3D36);
+  static const border          = Color(0x18FFFFFF);
+  static const borderSubtle    = Color(0x0AFFFFFF);
+
+  // ── CHARTS ─────────────────────────────────────────────────────────────────
+  static const chartLandingCost  = Color(0xFF159A8A);
+  static const chartSellingCost  = Color(0xFF16A34A);
+  static const chartProfit       = Color(0xFFD4AF37);
+  static const chartPurple       = Color(0xFF9B79E8);
+  static const chartOrange       = Color(0xFFFB923C);
+  static const chartPink         = Color(0xFFF472B6);
 
   static const List<Color> chartPalette = [
-    primaryNavy,
-    accentInfo,
-    Color(0xFF8B5CF6),
-    brandTeal,
-    Color(0xFFF59E0B),
+    brandPrimary,
+    brandAccent,
+    brandGold,
+    Color(0xFF9B79E8),
+    Color(0xFFFB923C),
     Color(0xFFF472B6),
     Color(0xFF94A3B8),
     loss,
   ];
 
-  // === TEXT ===
-  static const textPrimary = Color(0xFFF0F4FF);
-  static const textSecondary = Color(0xFF8993A9);
-  static const border = Color(0x18FFFFFF);
-  static const borderSubtle = Color(0x0AFFFFFF);
-  static const textOnLightSurface = primaryNavy;
-
-  static const accentLine = accentInfo;
-  static const cost = Color(0xFF94A3B8);
-  static const costMuted = neutral;
-  static const heroGradientEnd = Color(0xFF1E3A5F);
-
-  /// Primary CTA — navy tones (not blue wash).
+  // ── GRADIENTS ──────────────────────────────────────────────────────────────
+  /// Primary CTA gradient — deep green → teal.
   static LinearGradient get ctaGradient => const LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [
-          Color(0xFF334155),
-          primaryNavy,
-          Color(0xFF0F172A),
-        ],
-        stops: [0.0, 0.55, 1.0],
+        colors: [brandPrimary, brandAccent],
       );
 
-  /// Hero / balance card — navy depth.
+  /// Hero / summary card — deep green → teal with gold highlight.
   static LinearGradient get heroCardGradient => const LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [
-          Color(0xFF0F172A),
-          Color(0xFF1E293B),
-          Color(0xFF334155),
-        ],
+        colors: [Color(0xFF0E4F46), Color(0xFF0D6B5E), Color(0xFF159A8A)],
+        stops: [0.0, 0.55, 1.0],
+      );
+
+  /// Subtle gold accent gradient for profit badges / chips.
+  static LinearGradient get goldGradient => const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFFD4AF37), Color(0xFFF0D060)],
       );
 
   static List<BoxShadow> glowShadow(Color color, {double blur = 18}) => [
         BoxShadow(
-          color: color.withValues(alpha: 0.35),
+          color: color.withValues(alpha: 0.32),
           blurRadius: blur,
           spreadRadius: 0,
           offset: const Offset(0, 4),
@@ -113,6 +112,14 @@ abstract final class HexaColors {
           color: Colors.black.withValues(alpha: 0.06),
           blurRadius: 12,
           offset: const Offset(0, 4),
+        ),
+      ];
+
+  static List<BoxShadow> heroShadow() => [
+        BoxShadow(
+          color: const Color(0xFF0E4F46).withValues(alpha: 0.30),
+          blurRadius: 24,
+          offset: const Offset(0, 8),
         ),
       ];
 }

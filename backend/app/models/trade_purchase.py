@@ -7,6 +7,7 @@ from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Tex
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+from app.models.contacts import Broker, Supplier
 
 
 def utcnow():
@@ -43,6 +44,9 @@ class TradePurchase(Base):
         Uuid(as_uuid=True), ForeignKey("brokers.id"), nullable=True, index=True
     )
     payment_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    paid_amount: Mapped[float] = mapped_column(Numeric(18, 4), default=0)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     discount: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
     commission_percent: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
     delivered_rate: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
@@ -56,6 +60,8 @@ class TradePurchase(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     lines = relationship("TradePurchaseLine", back_populates="purchase", cascade="all, delete-orphan")
+    supplier_row = relationship(Supplier, foreign_keys=[supplier_id], lazy="selectin")
+    broker_row = relationship(Broker, foreign_keys=[broker_id], lazy="selectin")
 
 
 class TradePurchaseLine(Base):
@@ -77,6 +83,7 @@ class TradePurchaseLine(Base):
     tax_percent: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
 
     purchase = relationship("TradePurchase", back_populates="lines")
+    catalog_item = relationship("CatalogItem", foreign_keys=[catalog_item_id], lazy="selectin")
 
 
 class TradePurchaseDraft(Base):

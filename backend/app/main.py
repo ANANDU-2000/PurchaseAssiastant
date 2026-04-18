@@ -117,6 +117,12 @@ async def lifespan(app: FastAPI):
                 sync_conn.exec_driver_sql("ALTER TABLE businesses ADD COLUMN branding_title VARCHAR(128)")
             if "branding_logo_url" not in cols:
                 sync_conn.exec_driver_sql("ALTER TABLE businesses ADD COLUMN branding_logo_url VARCHAR(512)")
+            if "gst_number" not in cols:
+                sync_conn.exec_driver_sql("ALTER TABLE businesses ADD COLUMN gst_number VARCHAR(20)")
+            if "address" not in cols:
+                sync_conn.exec_driver_sql("ALTER TABLE businesses ADD COLUMN address TEXT")
+            if "phone" not in cols:
+                sync_conn.exec_driver_sql("ALTER TABLE businesses ADD COLUMN phone VARCHAR(32)")
 
         await conn.run_sync(_ensure_businesses_branding)
 
@@ -303,6 +309,49 @@ async def lifespan(app: FastAPI):
                     pass
 
         await conn.run_sync(_ensure_trade_purchases_freight_type)
+
+        def _ensure_trade_purchases_lifecycle_columns(sync_conn):
+            insp = inspect(sync_conn)
+            if not insp.has_table("trade_purchases"):
+                return
+            cols = {c["name"] for c in insp.get_columns("trade_purchases")}
+            dialect = sync_conn.dialect.name
+            alters: list[str] = []
+            if "due_date" not in cols:
+                if dialect == "postgresql":
+                    alters.append("ALTER TABLE trade_purchases ADD COLUMN IF NOT EXISTS due_date DATE NULL")
+                else:
+                    alters.append("ALTER TABLE trade_purchases ADD COLUMN due_date DATE")
+            if "paid_amount" not in cols:
+                if dialect == "postgresql":
+                    alters.append(
+                        "ALTER TABLE trade_purchases ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(18,4) NOT NULL DEFAULT 0"
+                    )
+                else:
+                    alters.append(
+                        "ALTER TABLE trade_purchases ADD COLUMN paid_amount NUMERIC(18,4) NOT NULL DEFAULT 0"
+                    )
+            if "paid_at" not in cols:
+                if dialect == "postgresql":
+                    alters.append(
+                        "ALTER TABLE trade_purchases ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ NULL"
+                    )
+                else:
+                    alters.append("ALTER TABLE trade_purchases ADD COLUMN paid_at DATETIME")
+            if "payment_days" not in cols:
+                if dialect == "postgresql":
+                    alters.append(
+                        "ALTER TABLE trade_purchases ADD COLUMN IF NOT EXISTS payment_days INTEGER NULL"
+                    )
+                else:
+                    alters.append("ALTER TABLE trade_purchases ADD COLUMN payment_days INTEGER")
+            for sql in alters:
+                try:
+                    sync_conn.exec_driver_sql(sql)
+                except Exception:  # noqa: BLE001
+                    pass
+
+        await conn.run_sync(_ensure_trade_purchases_lifecycle_columns)
 
     yield
     await engine.dispose()

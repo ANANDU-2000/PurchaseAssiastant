@@ -12,7 +12,7 @@ String? _connectionUnreachableHint(DioException e) {
       lower.contains('connection reset') ||
       lower.contains('connection timed out') ||
       lower.contains('timed out')) {
-    return "Can't reach the sign-in server. Start the API on your machine (or point this app to the right address), then try again.";
+    return "We can't connect right now. Check your internet and try again.";
   }
   return null;
 }
@@ -27,11 +27,7 @@ String? _webBrowserNetworkHint(DioException e) {
       blob.contains('load failed') ||
       blob.contains('err_network') ||
       blob.contains('cors')) {
-    return "The browser couldn't reach the sign-in API. "
-        "Start the backend (uvicorn from the backend folder), wait until it is listening, "
-        "then refresh this page. "
-        "For Flutter web, use http://127.0.0.1 or http://localhost for both the app and API_BASE_URL — they must match the host style. "
-        "Production: set CORS_ORIGINS to your deployed web origin.";
+    return "We can't connect right now. Check your internet and try again.";
   }
   return null;
 }
@@ -49,8 +45,7 @@ String friendlyAuthError(
       if (kIsWeb) {
         final web = _webBrowserNetworkHint(error);
         if (web != null) return web;
-        return "Sign-in couldn't reach the API from this browser. "
-            "Confirm the backend is running on http://127.0.0.1:8000 and that CORS allows this origin (CORS_ORIGINS on the server).";
+        return "We can't connect right now. Check your internet and try again.";
       }
       return "Can't connect right now. Check your internet and try again.";
     }
@@ -59,7 +54,7 @@ String friendlyAuthError(
     if (sc == 401) {
       return context == AuthErrorContext.register
           ? 'Could not create your account. Check your details and try again.'
-          : 'Wrong email or password for this server. Try again, or use Create Account if you have not registered here yet (a new database starts empty).';
+          : 'Wrong email or password. Try again.';
     }
     if (sc == 400 || sc == 422) {
       return context == AuthErrorContext.register
@@ -68,7 +63,7 @@ String friendlyAuthError(
     }
     if (sc == 409) {
       return context == AuthErrorContext.register
-          ? 'This email or username is already registered on this server. Use the Sign In tab with your password, or pick a different email or username.'
+          ? 'This email is already registered. Sign in instead, or use a different email.'
           : 'That email or username is already taken.';
     }
     if (sc == 503) {
@@ -85,11 +80,13 @@ String friendlyGoogleSignInError(Object error) {
   if (error is DioException) {
     if (_isNetworkError(error)) {
       final hint = _connectionUnreachableHint(error);
-      if (hint != null) return '$hint You can try email sign-in instead.';
+      if (hint != null) {
+        return '$hint You can use email sign-in instead.';
+      }
       if (kIsWeb) {
         final web = _webBrowserNetworkHint(error);
-        if (web != null) return '$web You can try email sign-in instead.';
-        return "Google sign-in couldn't reach the server from this page. Try email sign-in after the API is running.";
+        if (web != null) return '$web You can use email sign-in instead.';
+        return "We can't connect right now. Try email sign-in, or try again later.";
       }
       return "Can't connect right now. Check your internet and try again.";
     }

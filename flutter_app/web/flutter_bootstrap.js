@@ -21,16 +21,19 @@ _flutter.loader.load({
     const boot = document.getElementById('boot');
     try {
       const appRunner = await engineInitializer.initializeEngine(_flutterLoaderConfig);
-      await appRunner.runApp();
+      // Do not await runApp before removing #boot: async main() keeps the promise pending
+      // until heavy init finishes, so "Starting…" looked like a frozen white screen.
+      const finished = appRunner.runApp();
+      boot?.remove();
+      await finished;
     } catch (e) {
       console.error(e);
-      if (boot) {
-        boot.style.color = '#f87171';
-        boot.style.pointerEvents = 'auto';
-        boot.textContent = 'App failed to start. See the browser console for details.';
+      const b = document.getElementById('boot');
+      if (b) {
+        b.style.color = '#f87171';
+        b.style.pointerEvents = 'auto';
+        b.textContent = 'App failed to start. See the browser console for details.';
       }
-      return;
     }
-    boot?.remove();
   },
 });

@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/platform/remove_boot_overlay.dart';
 import 'core/providers/tenant_branding_provider.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
@@ -21,6 +22,10 @@ class HexaApp extends ConsumerWidget {
       darkTheme: buildHexaTheme(Brightness.light),
       themeMode: ThemeMode.light,
       routerConfig: router,
+      builder: (context, child) {
+        removeBootOverlayIfPresent();
+        return child ?? const SizedBox.shrink();
+      },
       scrollBehavior: const MaterialScrollBehavior().copyWith(
         physics: const BouncingScrollPhysics(),
         dragDevices: {

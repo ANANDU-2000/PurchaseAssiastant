@@ -32,6 +32,9 @@ dependencies:
   razorpay_flutter: ^1.4.4
   http_parser: ^4.1.2
   speech_to_text: ^7.0.0
+  flutter_slidable: ^3.1.1
+  pdf: ^3.11.1
+  printing: ^5.13.4
 
 dev_dependencies:
   flutter_test:
@@ -40,3 +43,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/images/getstarted.png
+    - assets/signup/harisree.png
+    - assets/signup/signup.png
+    - assets/login/login.png

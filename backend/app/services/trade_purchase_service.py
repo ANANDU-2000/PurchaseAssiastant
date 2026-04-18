@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import delete, select
@@ -16,15 +16,33 @@ from app.schemas.trade_purchases import (
     TradeDuplicateCheckRequest,
     TradeDuplicateCheckResponse,
     TradeDraftOut,
+    TradeMarkPaidRequest,
     TradePurchaseCreateRequest,
     TradePurchaseLineIn,
     TradePurchaseLineOut,
     TradePurchaseOut,
+    TradePurchasePaymentPatch,
+    TradePurchaseUpdateRequest,
 )
+from app.services.purchase_status import compute_status
 
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _trade_purchase_load_opts() -> tuple:
+    return (
+        selectinload(TradePurchase.lines).selectinload(TradePurchaseLine.catalog_item),
+        selectinload(TradePurchase.supplier_row),
+        selectinload(TradePurchase.broker_row),
+    )
+
+
+def _due_date_from(purchase_date: date, payment_days: int | None) -> date | None:
+    if payment_days is None:
+        return None
+    return purchase_date + timedelta(days=int(payment_days))
 
 
 def _dec(x: float | Decimal | None) -> Decimal:
@@ -87,12 +105,17 @@ def compute_totals(req: TradePurchaseCreateRequest) -> tuple[Decimal, Decimal]:
     qty_sum = sum(_dec(li.qty) for li in req.lines)
     amt_sum = sum(_line_money(li) for li in req.lines)
     header_disc = _dec(req.discount) if req.discount is not None else Decimal("0")
+    after_header = amt_sum
     if header_disc > 0:
-        amt_sum = amt_sum * (Decimal("1") - min(header_disc, Decimal("100")) / Decimal("100"))
+        after_header = amt_sum * (Decimal("1") - min(header_disc, Decimal("100")) / Decimal("100"))
+    amt_sum = after_header
     freight = _dec(req.freight_amount) if req.freight_amount is not None else Decimal("0")
     if req.freight_type == "included":
         freight = Decimal("0")
     amt_sum += freight
+    comm = _dec(req.commission_percent) if req.commission_percent is not None else Decimal("0")
+    if comm > 0:
+        amt_sum += after_header * min(comm, Decimal("100")) / Decimal("100")
     return qty_sum, amt_sum
 
 
@@ -206,7 +229,7 @@ async def list_trade_purchases(
     res = await db.execute(
         select(TradePurchase)
         .where(TradePurchase.business_id == business_id)
-        .options(selectinload(TradePurchase.lines))
+        .options(*_trade_purchase_load_opts())
         .order_by(TradePurchase.purchase_date.desc(), TradePurchase.created_at.desc())
         .limit(min(limit, 500))
     )
@@ -222,7 +245,7 @@ async def get_trade_purchase(
             TradePurchase.business_id == business_id,
             TradePurchase.id == purchase_id,
         )
-        .options(selectinload(TradePurchase.lines))
+        .options(*_trade_purchase_load_opts())
     )
     p = res.scalar_one_or_none()
     return trade_purchase_to_out(p) if p else None
@@ -238,6 +261,8 @@ async def create_trade_purchase(
         raise ValueError("At least one line item is required")
     human_id = await next_human_id(db, business_id)
     qty_sum, amt_sum = compute_totals(body)
+    initial_status = body.status if body.status in ("draft", "saved", "confirmed") else "confirmed"
+    due = _due_date_from(body.purchase_date, body.payment_days)
     tp = TradePurchase(
         business_id=business_id,
         user_id=user_id,
@@ -246,6 +271,9 @@ async def create_trade_purchase(
         supplier_id=body.supplier_id,
         broker_id=body.broker_id,
         payment_days=body.payment_days,
+        due_date=due,
+        paid_amount=0.0,
+        paid_at=None,
         discount=float(body.discount) if body.discount is not None else None,
         commission_percent=float(body.commission_percent)
         if body.commission_percent is not None
@@ -256,7 +284,7 @@ async def create_trade_purchase(
         freight_type=body.freight_type,
         total_qty=float(qty_sum),
         total_amount=float(amt_sum),
-        status="confirmed",
+        status=initial_status,
     )
     db.add(tp)
     await db.flush()
@@ -279,10 +307,201 @@ async def create_trade_purchase(
     res = await db.execute(
         select(TradePurchase)
         .where(TradePurchase.id == tp.id)
-        .options(selectinload(TradePurchase.lines))
+        .options(*_trade_purchase_load_opts())
     )
     loaded = res.scalar_one()
     return trade_purchase_to_out(loaded)
+
+
+async def update_trade_purchase(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    purchase_id: uuid.UUID,
+    body: TradePurchaseUpdateRequest,
+) -> TradePurchaseOut | None:
+    if not body.lines:
+        raise ValueError("At least one line item is required")
+    res = await db.execute(
+        select(TradePurchase)
+        .where(
+            TradePurchase.business_id == business_id,
+            TradePurchase.id == purchase_id,
+        )
+        .options(selectinload(TradePurchase.lines))
+    )
+    tp = res.scalar_one_or_none()
+    if not tp:
+        return None
+    if (tp.status or "").lower() == "cancelled":
+        raise ValueError("Cannot edit a cancelled purchase")
+    qty_sum, amt_sum = compute_totals(body)
+    tp.purchase_date = body.purchase_date
+    tp.supplier_id = body.supplier_id
+    tp.broker_id = body.broker_id
+    tp.payment_days = body.payment_days
+    tp.due_date = _due_date_from(body.purchase_date, body.payment_days)
+    tp.discount = float(body.discount) if body.discount is not None else None
+    tp.commission_percent = float(body.commission_percent) if body.commission_percent is not None else None
+    tp.delivered_rate = float(body.delivered_rate) if body.delivered_rate is not None else None
+    tp.billty_rate = float(body.billty_rate) if body.billty_rate is not None else None
+    tp.freight_amount = float(body.freight_amount) if body.freight_amount is not None else None
+    tp.freight_type = body.freight_type
+    tp.total_qty = float(qty_sum)
+    tp.total_amount = float(amt_sum)
+    if body.status in ("draft", "saved", "confirmed"):
+        tp.status = body.status
+    await db.execute(delete(TradePurchaseLine).where(TradePurchaseLine.trade_purchase_id == tp.id))
+    await db.flush()
+    for li in body.lines:
+        db.add(
+            TradePurchaseLine(
+                trade_purchase_id=tp.id,
+                catalog_item_id=li.catalog_item_id,
+                item_name=li.item_name,
+                qty=li.qty,
+                unit=li.unit,
+                landing_cost=li.landing_cost,
+                selling_cost=li.selling_cost,
+                discount=li.discount,
+                tax_percent=li.tax_percent,
+            )
+        )
+    # Re-sync paid vs new total: clamp paid_amount
+    total_dec = _dec(tp.total_amount)
+    paid_dec = _dec(tp.paid_amount)
+    if paid_dec > total_dec:
+        tp.paid_amount = float(total_dec)
+    tp.updated_at = utcnow()
+    await _sync_purchase_memory(db, business_id, body)
+    await db.commit()
+    res2 = await db.execute(
+        select(TradePurchase)
+        .where(TradePurchase.id == tp.id)
+        .options(*_trade_purchase_load_opts())
+    )
+    return trade_purchase_to_out(res2.scalar_one())
+
+
+async def patch_trade_purchase_payment(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    purchase_id: uuid.UUID,
+    body: TradePurchasePaymentPatch,
+) -> TradePurchaseOut | None:
+    res = await db.execute(
+        select(TradePurchase)
+        .where(
+            TradePurchase.business_id == business_id,
+            TradePurchase.id == purchase_id,
+        )
+        .options(*_trade_purchase_load_opts())
+    )
+    tp = res.scalar_one_or_none()
+    if not tp:
+        return None
+    if (tp.status or "").lower() in ("cancelled", "draft"):
+        raise ValueError("Payment not allowed for this purchase state")
+    total = _dec(tp.total_amount)
+    paid = min(max(_dec(body.paid_amount), Decimal("0")), total)
+    tp.paid_amount = float(paid)
+    tp.paid_at = body.paid_at or utcnow()
+    tp.updated_at = utcnow()
+    derived = compute_status(
+        stored_status=tp.status or "confirmed",
+        total_amount=total,
+        paid_amount=paid,
+        due_date=tp.due_date,
+    )
+    if (tp.status or "").lower() not in ("draft", "cancelled"):
+        tp.status = derived
+    await db.commit()
+    return await get_trade_purchase(db, business_id, purchase_id)
+
+
+async def mark_trade_purchase_paid(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    purchase_id: uuid.UUID,
+    body: TradeMarkPaidRequest,
+) -> TradePurchaseOut | None:
+    res = await db.execute(
+        select(TradePurchase)
+        .where(
+            TradePurchase.business_id == business_id,
+            TradePurchase.id == purchase_id,
+        )
+        .options(*_trade_purchase_load_opts())
+    )
+    tp = res.scalar_one_or_none()
+    if not tp:
+        return None
+    if (tp.status or "").lower() in ("cancelled", "draft"):
+        raise ValueError("Payment not allowed for this purchase state")
+    total = _dec(tp.total_amount)
+    if body.paid_amount is None:
+        new_paid = total
+    else:
+        new_paid = min(max(_dec(body.paid_amount), Decimal("0")), total)
+    tp.paid_amount = float(new_paid)
+    tp.paid_at = body.paid_at or utcnow()
+    tp.updated_at = utcnow()
+    derived = compute_status(
+        stored_status=tp.status or "confirmed",
+        total_amount=total,
+        paid_amount=_dec(tp.paid_amount),
+        due_date=tp.due_date,
+    )
+    tp.status = derived
+    await db.commit()
+    return await get_trade_purchase(db, business_id, purchase_id)
+
+
+async def cancel_trade_purchase(
+    db: AsyncSession, business_id: uuid.UUID, purchase_id: uuid.UUID
+) -> TradePurchaseOut | None:
+    res = await db.execute(
+        select(TradePurchase)
+        .where(
+            TradePurchase.business_id == business_id,
+            TradePurchase.id == purchase_id,
+        )
+        .options(*_trade_purchase_load_opts())
+    )
+    tp = res.scalar_one_or_none()
+    if not tp:
+        return None
+    tp.status = "cancelled"
+    tp.updated_at = utcnow()
+    await db.commit()
+    return await get_trade_purchase(db, business_id, purchase_id)
+
+
+async def delete_trade_purchase(
+    db: AsyncSession, business_id: uuid.UUID, purchase_id: uuid.UUID
+) -> bool:
+    res = await db.execute(
+        select(TradePurchase).where(
+            TradePurchase.business_id == business_id,
+            TradePurchase.id == purchase_id,
+        )
+    )
+    tp = res.scalar_one_or_none()
+    if not tp:
+        return False
+    await db.delete(tp)
+    await db.commit()
+    return True
+
+
+def _line_hsn(li: TradePurchaseLine) -> str | None:
+    ci = getattr(li, "catalog_item", None)
+    if ci is None:
+        return None
+    h = getattr(ci, "hsn_code", None)
+    if h is None:
+        return None
+    s = str(h).strip()
+    return s or None
 
 
 def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
@@ -297,9 +516,42 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
             selling_cost=float(li.selling_cost) if li.selling_cost is not None else None,
             discount=float(li.discount) if li.discount is not None else None,
             tax_percent=float(li.tax_percent) if li.tax_percent is not None else None,
+            hsn_code=_line_hsn(li),
         )
         for li in tp.lines
     ]
+    total_dec = _dec(tp.total_amount)
+    paid_dec = _dec(getattr(tp, "paid_amount", None))
+    remaining = float(max(total_dec - paid_dec, Decimal("0")))
+    stored = tp.status or "confirmed"
+    due = getattr(tp, "due_date", None)
+    derived = compute_status(
+        stored_status=stored,
+        total_amount=total_dec,
+        paid_amount=paid_dec,
+        due_date=due,
+    )
+    sup_name: str | None = None
+    bro_name: str | None = None
+    supplier_gst: str | None = None
+    supplier_address: str | None = None
+    supplier_phone: str | None = None
+    supplier_whatsapp: str | None = None
+    broker_phone: str | None = None
+    broker_location: str | None = None
+    sr = getattr(tp, "supplier_row", None)
+    if sr is not None:
+        sup_name = getattr(sr, "name", None)
+        supplier_gst = getattr(sr, "gst_number", None) or None
+        supplier_address = getattr(sr, "address", None) or None
+        supplier_phone = getattr(sr, "phone", None) or None
+        supplier_whatsapp = getattr(sr, "whatsapp_number", None) or None
+    br = getattr(tp, "broker_row", None)
+    if br is not None:
+        bro_name = getattr(br, "name", None)
+        broker_phone = getattr(br, "phone", None) or None
+        broker_location = getattr(br, "location", None) or None
+    items_count = len(tp.lines) if tp.lines is not None else 0
     return TradePurchaseOut(
         id=tp.id,
         human_id=tp.human_id,
@@ -307,6 +559,9 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
         supplier_id=tp.supplier_id,
         broker_id=tp.broker_id,
         payment_days=tp.payment_days,
+        due_date=due,
+        paid_amount=float(paid_dec),
+        paid_at=getattr(tp, "paid_at", None),
         discount=float(tp.discount) if tp.discount is not None else None,
         commission_percent=float(tp.commission_percent) if tp.commission_percent is not None else None,
         delivered_rate=float(tp.delivered_rate) if tp.delivered_rate is not None else None,
@@ -315,8 +570,20 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
         freight_type=getattr(tp, "freight_type", None),
         total_qty=float(tp.total_qty) if tp.total_qty is not None else None,
         total_amount=float(tp.total_amount),
-        status=tp.status,
+        status=stored,
+        remaining=remaining,
+        derived_status=derived,
+        items_count=items_count,
+        supplier_name=sup_name,
+        broker_name=bro_name,
+        supplier_gst=supplier_gst,
+        supplier_address=supplier_address,
+        supplier_phone=supplier_phone,
+        supplier_whatsapp=supplier_whatsapp,
+        broker_phone=broker_phone,
+        broker_location=broker_location,
         created_at=tp.created_at,
+        updated_at=getattr(tp, "updated_at", None),
         lines=lines,
     )
 

@@ -66,6 +66,9 @@ class BusinessBrief(BaseModel):
     role: str
     branding_title: str | None = None
     branding_logo_url: str | None = None
+    gst_number: str | None = None
+    address: str | None = None
+    phone: str | None = None
 
     model_config = {"from_attributes": False}
 
@@ -88,6 +91,9 @@ async def my_businesses(
             role=m.role,
             branding_title=b.branding_title,
             branding_logo_url=b.branding_logo_url,
+            gst_number=b.gst_number,
+            address=b.address,
+            phone=b.phone,
         )
         for m, b in rows
     ]
@@ -96,6 +102,9 @@ async def my_businesses(
 class BusinessBrandingPatch(BaseModel):
     branding_title: str | None = Field(None, max_length=128)
     branding_logo_url: str | None = Field(None, max_length=512)
+    gst_number: str | None = Field(None, max_length=20)
+    address: str | None = None
+    phone: str | None = Field(None, max_length=32)
 
 
 @router.patch("/businesses/{business_id}/branding", response_model=BusinessBrief)
@@ -119,6 +128,18 @@ async def patch_my_business_branding(
     if "branding_logo_url" in data:
         u = data["branding_logo_url"]
         b.branding_logo_url = (u.strip() or None) if isinstance(u, str) else u
+    if "gst_number" in data:
+        g = data["gst_number"]
+        if g is None or (isinstance(g, str) and not g.strip()):
+            b.gst_number = None
+        elif isinstance(g, str):
+            b.gst_number = g.strip().upper()
+    if "address" in data:
+        a = data["address"]
+        b.address = (a.strip() or None) if isinstance(a, str) else a
+    if "phone" in data:
+        p = data["phone"]
+        b.phone = (p.strip() or None) if isinstance(p, str) else p
     await db.commit()
     await db.refresh(b)
     return BusinessBrief(
@@ -127,6 +148,9 @@ async def patch_my_business_branding(
         role="owner",
         branding_title=b.branding_title,
         branding_logo_url=b.branding_logo_url,
+        gst_number=b.gst_number,
+        address=b.address,
+        phone=b.phone,
     )
 
 
@@ -172,4 +196,7 @@ async def upload_business_logo(
         role="owner",
         branding_title=b.branding_title,
         branding_logo_url=b.branding_logo_url,
+        gst_number=b.gst_number,
+        address=b.address,
+        phone=b.phone,
     )

@@ -16,9 +16,12 @@ from app.schemas.trade_purchases import (
     TradeDraftOut,
     TradeDuplicateCheckRequest,
     TradeDuplicateCheckResponse,
+    TradeMarkPaidRequest,
     TradeNextHumanIdOut,
     TradePurchaseCreateRequest,
     TradePurchaseOut,
+    TradePurchasePaymentPatch,
+    TradePurchaseUpdateRequest,
 )
 from app.services import trade_purchase_service as tps
 
@@ -108,6 +111,93 @@ async def create_trade_purchase(
         return await tps.create_trade_purchase(db, business_id, user.id, body)
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+
+@router.patch("/{purchase_id}/payment", response_model=TradePurchaseOut)
+async def patch_trade_purchase_payment(
+    business_id: uuid.UUID,
+    purchase_id: uuid.UUID,
+    body: TradePurchasePaymentPatch,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+):
+    del user
+    try:
+        out = await tps.patch_trade_purchase_payment(db, business_id, purchase_id, body)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    if not out:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Purchase not found")
+    return out
+
+
+@router.post("/{purchase_id}/mark-paid", response_model=TradePurchaseOut)
+async def mark_trade_purchase_paid(
+    business_id: uuid.UUID,
+    purchase_id: uuid.UUID,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+    body: TradeMarkPaidRequest = TradeMarkPaidRequest(),
+):
+    del user
+    try:
+        out = await tps.mark_trade_purchase_paid(db, business_id, purchase_id, body)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    if not out:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Purchase not found")
+    return out
+
+
+@router.post("/{purchase_id}/cancel", response_model=TradePurchaseOut)
+async def cancel_trade_purchase(
+    business_id: uuid.UUID,
+    purchase_id: uuid.UUID,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+):
+    del user
+    out = await tps.cancel_trade_purchase(db, business_id, purchase_id)
+    if not out:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Purchase not found")
+    return out
+
+
+@router.put("/{purchase_id}", response_model=TradePurchaseOut)
+async def update_trade_purchase(
+    business_id: uuid.UUID,
+    purchase_id: uuid.UUID,
+    body: TradePurchaseUpdateRequest,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+):
+    del user
+    try:
+        out = await tps.update_trade_purchase(db, business_id, purchase_id, body)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    if not out:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Purchase not found")
+    return out
+
+
+@router.delete("/{purchase_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_trade_purchase(
+    business_id: uuid.UUID,
+    purchase_id: uuid.UUID,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+):
+    del user
+    ok = await tps.delete_trade_purchase(db, business_id, purchase_id)
+    if not ok:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Purchase not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/{purchase_id}", response_model=TradePurchaseOut)

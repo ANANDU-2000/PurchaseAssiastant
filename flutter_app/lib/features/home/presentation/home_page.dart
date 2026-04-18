@@ -8,14 +8,44 @@ import 'package:intl/intl.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/analytics_breakdown_providers.dart';
-import '../../../core/providers/tenant_branding_provider.dart';
-import '../../../core/providers/notifications_provider.dart';
 import '../../../core/providers/dashboard_period_provider.dart';
 import '../../../core/providers/dashboard_provider.dart';
 import '../../../core/providers/home_insights_provider.dart';
+import '../../../core/providers/notifications_provider.dart';
+import '../../../core/providers/tenant_branding_provider.dart';
+import '../../../core/providers/trade_purchases_provider.dart'
+    show
+        purchaseAlertsProvider,
+        purchaseUnitTotalsProvider,
+        tradePurchasesListProvider;
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/app_settings_action.dart';
+
+// ─── Formatter helpers ────────────────────────────────────────────────────────
+
+String _inr(num n) =>
+    NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
+        .format(n);
+
+String _formatPct(double? pct) {
+  if (pct == null) return '';
+  if (pct.abs() > 999) return pct > 0 ? '+new' : '–new';
+  final sign = pct >= 0 ? '+' : '';
+  return '$sign${pct.toStringAsFixed(1)}%';
+}
+
+String _itemQtyLabel(Map<String, dynamic> r) {
+  final u = (r['unit'] ?? r['primary_unit'] ?? 'kg').toString();
+  final tq = (r['total_qty'] as num?)?.toDouble() ?? 0;
+  final ul = u.toUpperCase();
+  if (ul.contains('BAG')) return '${tq.round()} bags';
+  if (ul.contains('BOX')) return '${tq.round()} boxes';
+  if (ul.contains('TIN')) return '${tq.round()} tins';
+  return '${tq.toStringAsFixed(0)} $u';
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -47,8 +77,8 @@ class _HomePageState extends ConsumerState<HomePage>
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && mounted) {
+  void didChangeAppLifecycleState(AppLifecycleState s) {
+    if (s == AppLifecycleState.resumed && mounted) {
       ref.invalidate(dashboardProvider);
       ref.invalidate(homeInsightsProvider);
     }
@@ -57,514 +87,493 @@ class _HomePageState extends ConsumerState<HomePage>
   Future<void> _refresh() async {
     ref.invalidate(dashboardProvider);
     ref.invalidate(homeInsightsProvider);
+    ref.invalidate(tradePurchasesListProvider);
     await Future.wait([
       ref.read(dashboardProvider.future),
       ref.read(homeInsightsProvider.future),
     ]);
   }
 
-  String _inr(num n) =>
-      NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
-          .format(n);
-
-  String _rangeCaption(DashboardPeriod period) {
-    final r = dashboardDateRange(period);
-    final a = DateFormat.MMMd().format(r.$1);
-    final b = DateFormat.MMMd().format(r.$2);
-    return '$a – $b, ${r.$2.year}';
-  }
-
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    final period = ref.watch(dashboardPeriodProvider);
-    final dash = ref.watch(dashboardProvider);
+    final period   = ref.watch(dashboardPeriodProvider);
+    final dash     = ref.watch(dashboardProvider);
     final insights = ref.watch(homeInsightsProvider);
-    final hi = insights.valueOrNull;
     final branding = ref.watch(tenantBrandingProvider);
+    final hi       = insights.valueOrNull;
 
-    final cs = Theme.of(context).colorScheme;
-    final appBarIconColor = cs.onSurfaceVariant;
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
-        surfaceTintColor: Colors.transparent,
-        title: Row(
-          children: [
-            if (branding.logoUrl != null && branding.logoUrl!.isNotEmpty) ...[
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: Image.network(
-                  branding.logoUrl!,
-                  width: 28,
-                  height: 28,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                ),
-              ),
-              const SizedBox(width: 10),
-            ],
-            Expanded(
-              child: Text(
-                branding.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: tt.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: cs.onSurface,
-                  letterSpacing: -0.3,
-                ),
-              ),
-            ),
-          ],
-        ),
-        scrolledUnderElevation: 0,
-        elevation: 0,
-        actions: [
-          IconTheme(
-            data: IconThemeData(color: appBarIconColor),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  tooltip: 'Refresh',
-                  onPressed: _refresh,
-                  icon: const Icon(Icons.refresh_rounded),
-                ),
-                IconButton(
-                  tooltip: 'Search',
-                  onPressed: () => context.push('/search'),
-                  icon: const Icon(Icons.search_rounded),
-                ),
-                const _HomeNotificationsButton(),
-                const AppSettingsAction(),
-              ],
-            ),
-          ),
-        ],
-      ),
+      backgroundColor: HexaColors.brandBackground,
+      appBar: _buildAppBar(context, branding),
       body: SafeArea(
         bottom: false,
         child: RefreshIndicator(
           onRefresh: _refresh,
+          color: HexaColors.brandPrimary,
           edgeOffset: 80,
           child: CustomScrollView(
             physics: const BouncingScrollPhysics(
                 parent: AlwaysScrollableScrollPhysics()),
             slivers: [
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      for (final p in DashboardPeriod.values) ...[
-                        _DatePeriodPill(
-                          label: dashboardPeriodLabel(p),
-                          selected: period == p,
-                          onTap: () {
-                            ref.read(dashboardPeriodProvider.notifier).state =
-                                p;
-                            ref.invalidate(dashboardProvider);
-                            ref.invalidate(homeInsightsProvider);
-                          },
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                    ],
+              // Filter chips
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: _FilterChips(
+                    selected: period,
+                    onSelect: (p) {
+                      ref.read(dashboardPeriodProvider.notifier).state = p;
+                      ref.invalidate(dashboardProvider);
+                      ref.invalidate(homeInsightsProvider);
+                    },
                   ),
                 ),
               ),
-            ),
-            SliverToBoxAdapter(
-              child: insights.when(
-                loading: () => const SizedBox.shrink(),
-                error: (_, __) => const SizedBox.shrink(),
-                data: (ins) {
-                  final parts = <String>[];
-                  if (ins.topItem != null &&
-                      ins.topItemProfit != null &&
-                      ins.topItem!.isNotEmpty) {
-                    parts.add(
-                      'Top item: ${ins.topItem} (${_inr(ins.topItemProfit!.round())})',
-                    );
-                  }
-                  if (ins.bestSupplierName != null &&
-                      ins.bestSupplierName!.isNotEmpty) {
-                    parts.add('Best supplier: ${ins.bestSupplierName}');
-                  }
-                  if (ins.negativeLineCount > 0) {
-                    parts.add(
-                      '${ins.negativeLineCount} line${ins.negativeLineCount == 1 ? '' : 's'} below cost',
-                    );
-                  }
-                  if (parts.isEmpty) return const SizedBox.shrink();
-                  return Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                    child: Material(
-                      color: HexaColors.primaryLight,
-                      borderRadius: BorderRadius.circular(12),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 10),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Icon(
-                              Icons.tips_and_updates_outlined,
-                              size: 18,
-                              color: HexaColors.accentInfo,
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                parts.join(' · '),
-                                style: tt.bodySmall?.copyWith(
-                                  color: HexaColors.textBody,
-                                  height: 1.35,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+
+              // Dashboard body
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                    16, 14, 16, 96 + MediaQuery.of(context).padding.bottom),
+                sliver: SliverToBoxAdapter(
+                  child: dash.when(
+                    loading: () => const _LoadingShimmer(),
+                    error: (_, __) => Card(
+                      clipBehavior: Clip.antiAlias,
+                      child: FriendlyLoadError(
+                        message: 'Could not load dashboard',
+                        onRetry: () => unawaited(_refresh()),
                       ),
                     ),
-                  );
-                },
-              ),
-            ),
-            SliverPadding(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                12,
-                16,
-                72 + MediaQuery.of(context).padding.bottom,
-              ),
-              sliver: SliverToBoxAdapter(
-                child: dash.when(
-                  loading: () => const Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _HeroProfitLoading(),
-                    ],
+                    data: (d) {
+                      final mom     = hi?.profitChangePctPriorMtd;
+                      final trend   = ref.watch(homeSevenDayProfitProvider);
+                      final topItems =
+                          ref.watch(_homeTopItemsProvider(period));
+                      final topSups =
+                          ref.watch(_homeTopSuppliersProvider(period));
+                      final topCats =
+                          ref.watch(_homeTopCategoriesProvider(period));
+                      final recentAsync =
+                          ref.watch(tradePurchasesListProvider);
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // ── Hero summary card ──
+                          _HeroSummaryCard(
+                            profitText: _inr(d.totalProfit),
+                            changePct:  mom,
+                            purchaseCount: d.purchaseCount,
+                            revenue: d.totalPurchase,
+                            period: dashboardPeriodLabel(period),
+                          ),
+                          const SizedBox(height: 12),
+                          _PurchaseAlertsRow(
+                            counts: ref.watch(purchaseAlertsProvider),
+                            onOverdue: () =>
+                                context.go('/purchase?filter=overdue'),
+                            onDueToday: () =>
+                                context.go('/purchase?filter=due_today'),
+                            onPaid: () => context.go('/purchase?filter=paid'),
+                          ),
+                          const SizedBox(height: 10),
+                          _UnitTotalsStrip(
+                              totals: ref.watch(purchaseUnitTotalsProvider)),
+                          const SizedBox(height: 14),
+
+                          // ── Sparkline ──
+                          if (trend.hasValue && (trend.value?.length ?? 0) > 1)
+                            _SparklineCard(trend: trend),
+
+                          const SizedBox(height: 16),
+
+                          // ── Top Items ──
+                          _SectionList(
+                            title: 'Top Items',
+                            icon: Icons.inventory_2_outlined,
+                            rows: topItems.maybeWhen(
+                                data: (v) => v, orElse: () => const []),
+                            nameOf: (r) => r['item_name']?.toString() ?? '—',
+                            valueOf: (r) => _inr(
+                                ((r['total_profit'] as num?) ?? 0).round()),
+                            metaOf: (r) {
+                              final m = (r['margin_pct'] as num?) ?? 0;
+                              return '${_itemQtyLabel(r)} · ${m.toStringAsFixed(1)}%';
+                            },
+                            accentColor: HexaColors.brandPrimary,
+                            onViewAll: () => context.go('/analytics'),
+                          ),
+                          const SizedBox(height: 14),
+
+                          // ── Top Suppliers ──
+                          _SectionList(
+                            title: 'Top Suppliers',
+                            icon: Icons.storefront_outlined,
+                            rows: topSups.maybeWhen(
+                                data: (v) => v, orElse: () => const []),
+                            nameOf: (r) =>
+                                r['supplier_name']?.toString() ?? '—',
+                            valueOf: (r) => _inr(
+                                ((r['avg_landing'] as num?) ?? 0).round()),
+                            metaOf: (r) {
+                              final m = (r['margin_pct'] as num?) ?? 0;
+                              return m >= 8 ? 'High margin' : 'Best price';
+                            },
+                            accentColor: HexaColors.brandAccent,
+                            onViewAll: () => context.go('/analytics'),
+                          ),
+                          const SizedBox(height: 14),
+
+                          // ── Categories ──
+                          _SectionList(
+                            title: 'Categories',
+                            icon: Icons.category_outlined,
+                            rows: topCats.maybeWhen(
+                                data: (v) => v, orElse: () => const []),
+                            nameOf: (r) => r['category']?.toString() ?? '—',
+                            valueOf: (r) =>
+                                '${((r['total_qty'] as num?) ?? 0).toStringAsFixed(0)} kg',
+                            metaOf: (_) => 'volume',
+                            accentColor: HexaColors.brandGold,
+                            onViewAll: () => context.go('/analytics'),
+                          ),
+                          const SizedBox(height: 14),
+
+                          // ── Recent Purchases ──
+                          _RecentPurchasesSection(
+                            async: recentAsync,
+                            onViewAll: () => context.go('/purchase'),
+                            onAdd: () => context.push('/purchase/new'),
+                          ),
+                        ],
+                      );
+                    },
                   ),
-                  error: (_, __) => Card(
-                    clipBehavior: Clip.antiAlias,
-                    child: FriendlyLoadError(
-                      message: 'Could not load dashboard',
-                      onRetry: () => unawaited(_refresh()),
-                    ),
-                  ),
-                  data: (d) {
-                    final mom = hi?.profitChangePctPriorMtd;
-                    final trendAsync = ref.watch(homeSevenDayProfitProvider);
-                    final topItemsAsync = ref.watch(_homeTopItemsProvider(period));
-                    final topSuppliersAsync =
-                        ref.watch(_homeTopSuppliersProvider(period));
-                    final topCategoriesAsync =
-                        ref.watch(_homeTopCategoriesProvider(period));
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _CompactHeader(
-                          ownerName: branding.title,
-                          periodLabel: dashboardPeriodLabel(period),
-                        ),
-                        const SizedBox(height: 8),
-                        _CompactProfitHead(
-                          profitText: _inr(d.totalProfit),
-                          changePct: mom,
-                          topItem: hi?.topItem,
-                          bestSupplier: hi?.bestSupplierName,
-                        ),
-                        const SizedBox(height: 8),
-                        _ThinSparkline(
-                          trend: trendAsync,
-                          stroke: HexaColors.accentInfo,
-                        ),
-                        const SizedBox(height: 8),
-                        _CompactInsightsStrip(
-                          alerts: hi?.alerts ?? const [],
-                          negativeLines: hi?.negativeLineCount ?? 0,
-                        ),
-                        const SizedBox(height: 8),
-                        _SmallActions(
-                          onAdd: () => context.push('/purchase/new'),
-                          onAssistant: () => context.go('/assistant'),
-                        ),
-                        const SizedBox(height: 8),
-                        _CompactEntityList(
-                          title: 'Top items',
-                          rows: topItemsAsync.maybeWhen(
-                            data: (v) => v,
-                            orElse: () => const <Map<String, dynamic>>[],
-                          ),
-                          nameOf: (r) => r['item_name']?.toString() ?? '—',
-                          valueOf: (r) =>
-                              _inr(((r['total_profit'] as num?) ?? 0).round()),
-                          metaOf: (r) => ((r['margin_pct'] as num?) ?? 0) >= 0
-                              ? 'up'
-                              : 'down',
-                        ),
-                        const SizedBox(height: 8),
-                        _CompactEntityList(
-                          title: 'Suppliers',
-                          rows: topSuppliersAsync.maybeWhen(
-                            data: (v) => v,
-                            orElse: () => const <Map<String, dynamic>>[],
-                          ),
-                          nameOf: (r) => r['supplier_name']?.toString() ?? '—',
-                          valueOf: (r) => _inr(
-                              ((r['avg_landing'] as num?) ?? 0).round()),
-                          metaOf: (r) => ((r['margin_pct'] as num?) ?? 0) >= 8
-                              ? 'high margin'
-                              : 'best price',
-                        ),
-                        const SizedBox(height: 8),
-                        _CompactEntityList(
-                          title: 'Categories',
-                          rows: topCategoriesAsync.maybeWhen(
-                            data: (v) => v,
-                            orElse: () => const <Map<String, dynamic>>[],
-                          ),
-                          nameOf: (r) => r['category']?.toString() ?? '—',
-                          valueOf: (r) =>
-                              '${((r['total_qty'] as num?) ?? 0).toStringAsFixed(0)}%',
-                          metaOf: (_) => 'share',
-                        ),
-                        const SizedBox(height: 10),
-                        _HeroProfitCard(
-                          profitText: _inr(d.totalProfit),
-                          changePct: mom,
-                          periodLabel: dashboardPeriodLabel(period),
-                          rangeCaption: _rangeCaption(period),
-                        ),
-                      ],
-                    );
-                  },
                 ),
               ),
-            ),
             ],
           ),
         ),
       ),
     );
   }
-}
 
-final _homeTopItemsProvider = FutureProvider.autoDispose
-    .family<List<Map<String, dynamic>>, DashboardPeriod>((ref, period) async {
-  final session = ref.watch(sessionProvider);
-  if (session == null) return const [];
-  final range = dashboardDateRange(period);
-  final fmt = DateFormat('yyyy-MM-dd');
-  final rows = await ref.read(hexaApiProvider).analyticsItems(
-        businessId: session.primaryBusiness.id,
-        from: fmt.format(range.$1),
-        to: fmt.format(range.$2),
-      );
-  final out = List<Map<String, dynamic>>.from(rows);
-  out.sort((a, b) =>
-      ((b['total_profit'] as num?) ?? 0).compareTo((a['total_profit'] as num?) ?? 0));
-  return out.take(3).toList();
-});
-
-final _homeTopSuppliersProvider = FutureProvider.autoDispose
-    .family<List<Map<String, dynamic>>, DashboardPeriod>((ref, period) async {
-  final session = ref.watch(sessionProvider);
-  if (session == null) return const [];
-  final range = dashboardDateRange(period);
-  final fmt = DateFormat('yyyy-MM-dd');
-  final rows = await ref.read(hexaApiProvider).analyticsSuppliers(
-        businessId: session.primaryBusiness.id,
-        from: fmt.format(range.$1),
-        to: fmt.format(range.$2),
-      );
-  final out = List<Map<String, dynamic>>.from(rows);
-  out.sort((a, b) =>
-      ((b['total_profit'] as num?) ?? 0).compareTo((a['total_profit'] as num?) ?? 0));
-  return out.take(3).toList();
-});
-
-final _homeTopCategoriesProvider = FutureProvider.autoDispose
-    .family<List<Map<String, dynamic>>, DashboardPeriod>((ref, period) async {
-  final session = ref.watch(sessionProvider);
-  if (session == null) return const [];
-  final range = dashboardDateRange(period);
-  final fmt = DateFormat('yyyy-MM-dd');
-  final rows = await ref.read(hexaApiProvider).analyticsCategories(
-        businessId: session.primaryBusiness.id,
-        from: fmt.format(range.$1),
-        to: fmt.format(range.$2),
-      );
-  final out = List<Map<String, dynamic>>.from(rows);
-  out.sort((a, b) =>
-      ((b['total_profit'] as num?) ?? 0).compareTo((a['total_profit'] as num?) ?? 0));
-  return out.take(3).toList();
-});
-
-class _HomeNotificationsButton extends ConsumerWidget {
-  const _HomeNotificationsButton();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final unread = ref.watch(notificationsUnreadCountProvider);
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        IconButton(
-          tooltip: 'Alerts',
-          onPressed: () => context.push('/notifications'),
-          icon: Icon(unread > 0
-              ? Icons.notifications_rounded
-              : Icons.notifications_outlined),
-        ),
-        if (unread > 0)
-          const Positioned(
-            right: 10,
-            top: 10,
-            child: SizedBox(
-              width: 8,
-              height: 8,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Color(0xFFEF4444),
-                  shape: BoxShape.circle,
-                ),
-              ),
+  PreferredSizeWidget _buildAppBar(
+      BuildContext context, TenantBranding branding) {
+    final cs   = Theme.of(context).colorScheme;
+    final icon = cs.onSurfaceVariant;
+    return AppBar(
+      automaticallyImplyLeading: false,
+      backgroundColor: HexaColors.brandBackground,
+      surfaceTintColor: Colors.transparent,
+      scrolledUnderElevation: 0,
+      title: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              gradient: HexaColors.ctaGradient,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Center(
+              child: Text('H',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 18)),
             ),
           ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '${branding.title} 👋',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: HexaColors.brandPrimary,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const Text(
+                  'Purchase Intelligence',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: HexaColors.neutral,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        IconButton(
+          tooltip: 'Refresh',
+          onPressed: _refresh,
+          icon: Icon(Icons.refresh_rounded, color: icon, size: 22),
+          padding: const EdgeInsets.all(8),
+        ),
+        IconButton(
+          tooltip: 'Search',
+          onPressed: () => context.push('/search'),
+          icon: Icon(Icons.search_rounded, color: icon, size: 22),
+          padding: const EdgeInsets.all(8),
+        ),
+        _NotifButton(icon: icon),
+        const AppSettingsAction(),
+        const SizedBox(width: 4),
       ],
     );
   }
 }
 
-class _CompactHeader extends StatelessWidget {
-  const _CompactHeader({
-    required this.ownerName,
-    required this.periodLabel,
-  });
+// ─── Filter chips ─────────────────────────────────────────────────────────────
 
-  final String ownerName;
-  final String periodLabel;
+class _FilterChips extends StatelessWidget {
+  const _FilterChips({required this.selected, required this.onSelect});
+  final DashboardPeriod selected;
+  final void Function(DashboardPeriod) onSelect;
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    final cs = Theme.of(context).colorScheme;
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            '$ownerName 👋',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: tt.titleLarge?.copyWith(
-              fontWeight: FontWeight.w800,
-              color: cs.onSurface,
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: DashboardPeriod.values.map((p) {
+          final active = p == selected;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: GestureDetector(
+              onTap: () => onSelect(p),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                height: 34,
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                decoration: BoxDecoration(
+                  gradient: active ? HexaColors.ctaGradient : null,
+                  color: active ? null : Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: active
+                        ? Colors.transparent
+                        : HexaColors.brandBorder,
+                    width: 1,
+                  ),
+                  boxShadow: active
+                      ? [
+                          BoxShadow(
+                            color: HexaColors.brandPrimary
+                                .withValues(alpha: 0.22),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                          )
+                        ]
+                      : null,
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  dashboardPeriodLabel(p),
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: active ? Colors.white : HexaColors.neutral,
+                  ),
+                ),
+              ),
             ),
-          ),
-        ),
-        Text(
-          '$periodLabel ▾',
-          style: tt.labelLarge?.copyWith(
-            fontWeight: FontWeight.w700,
-            color: cs.onSurfaceVariant,
-          ),
-        ),
-      ],
+          );
+        }).toList(),
+      ),
     );
   }
 }
 
-class _CompactProfitHead extends StatelessWidget {
-  const _CompactProfitHead({
+// ─── Hero Summary Card ────────────────────────────────────────────────────────
+
+class _HeroSummaryCard extends StatelessWidget {
+  const _HeroSummaryCard({
     required this.profitText,
     required this.changePct,
-    required this.topItem,
-    required this.bestSupplier,
+    required this.purchaseCount,
+    required this.revenue,
+    required this.period,
   });
 
   final String profitText;
   final double? changePct;
-  final String? topItem;
-  final String? bestSupplier;
+  final int purchaseCount;
+  final double revenue;
+  final String period;
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    final cs = Theme.of(context).colorScheme;
-    final up = (changePct ?? 0) >= 0;
-    final pctText = changePct == null ? '' : _formatMomPercent(changePct);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(
-              profitText,
-              style: tt.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w900,
-                color: cs.onSurface,
-              ),
-            ),
-            if (pctText.isNotEmpty) ...[
-              const SizedBox(width: 8),
-              Text(
-                '${up ? '↑' : '↓'} $pctText',
-                style: tt.labelLarge?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: up ? HexaColors.profit : HexaColors.loss,
+    final up         = (changePct ?? 0) >= 0;
+    final badgeColor = up ? const Color(0xFF4ADE80) : const Color(0xFFFC8181);
+    final pctText    = _formatPct(changePct);
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: HexaColors.heroCardGradient,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: HexaColors.heroShadow(),
+      ),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header row
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  period,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
+              const Spacer(),
+              if (pctText.isNotEmpty)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: badgeColor.withValues(alpha: 0.20),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                        color: badgeColor.withValues(alpha: 0.50), width: 0.8),
+                  ),
+                  child: Text(
+                    '${up ? '↑' : '↓'} $pctText',
+                    style: TextStyle(
+                      color: badgeColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
             ],
-          ],
-        ),
-        Text(
-          'Profit today',
-          style: tt.labelSmall?.copyWith(
-            color: cs.onSurfaceVariant,
-            fontWeight: FontWeight.w600,
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Top: ${topItem ?? '—'}  •  Best: ${bestSupplier ?? '—'}',
-          style: tt.bodySmall?.copyWith(
-            color: cs.onSurfaceVariant,
-            fontWeight: FontWeight.w600,
+          const SizedBox(height: 14),
+
+          // Profit
+          const Text(
+            'Total Profit',
+            style: TextStyle(
+              color: Colors.white60,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
           ),
-        ),
-      ],
+          const SizedBox(height: 4),
+          Text(
+            profitText,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 32,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -1.0,
+              height: 1.0,
+            ),
+          ),
+          const SizedBox(height: 18),
+
+          // Stats row
+          Row(
+            children: [
+              _StatChip(
+                icon: Icons.shopping_bag_outlined,
+                label: 'Purchases',
+                value: purchaseCount.toString(),
+              ),
+              const SizedBox(width: 10),
+              _StatChip(
+                icon: Icons.payments_outlined,
+                label: 'Revenue',
+                value: _inr(revenue.round()),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _ThinSparkline extends StatelessWidget {
-  const _ThinSparkline({
-    required this.trend,
-    required this.stroke,
-  });
-
-  final AsyncValue<List<AnalyticsDailyProfitPoint>> trend;
-  final Color stroke;
+class _StatChip extends StatelessWidget {
+  const _StatChip(
+      {required this.icon, required this.label, required this.value});
+  final IconData icon;
+  final String label;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 72,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: Colors.white70),
+          const SizedBox(width: 6),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  style: const TextStyle(
+                      color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w500)),
+              Text(value,
+                  style: const TextStyle(
+                      color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Sparkline ────────────────────────────────────────────────────────────────
+
+class _SparklineCard extends StatelessWidget {
+  const _SparklineCard({required this.trend});
+  final AsyncValue<List<AnalyticsDailyProfitPoint>> trend;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 80,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: HexaColors.brandBorder),
+      ),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
       child: trend.when(
-        loading: () => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-        error: (_, __) => const Center(child: Text('Trend unavailable')),
+        loading: () => const SizedBox.shrink(),
+        error: (_, __) => const SizedBox.shrink(),
         data: (pts) {
-          if (pts.length < 2) return const Center(child: Text('Add entries'));
+          if (pts.length < 2) return const SizedBox.shrink();
           final spots = <FlSpot>[];
-          var minY = pts.first.profit;
-          var maxY = pts.first.profit;
+          var minY = pts.first.profit, maxY = pts.first.profit;
           for (var i = 0; i < pts.length; i++) {
             final y = pts[i].profit;
             if (y < minY) minY = y;
@@ -572,24 +581,58 @@ class _ThinSparkline extends StatelessWidget {
             spots.add(FlSpot(i.toDouble(), y));
           }
           final span = (maxY - minY).abs() < 1e-6 ? 1.0 : (maxY - minY);
-          return LineChart(
-            LineChartData(
-              minY: minY - span * 0.08,
-              maxY: maxY + span * 0.08,
-              gridData: const FlGridData(show: false),
-              titlesData: const FlTitlesData(show: false),
-              borderData: FlBorderData(show: false),
-              lineTouchData: const LineTouchData(enabled: false),
-              lineBarsData: [
-                LineChartBarData(
-                  spots: spots,
-                  isCurved: true,
-                  color: stroke,
-                  barWidth: 1.8,
-                  dotData: const FlDotData(show: false),
+          return Row(
+            children: [
+              Expanded(
+                child: LineChart(
+                  LineChartData(
+                    minY: minY - span * 0.1,
+                    maxY: maxY + span * 0.1,
+                    gridData: const FlGridData(show: false),
+                    titlesData: const FlTitlesData(show: false),
+                    borderData: FlBorderData(show: false),
+                    lineTouchData: const LineTouchData(enabled: false),
+                    lineBarsData: [
+                      LineChartBarData(
+                        spots: spots,
+                        isCurved: true,
+                        gradient: HexaColors.ctaGradient,
+                        barWidth: 2.5,
+                        dotData: const FlDotData(show: false),
+                        belowBarData: BarAreaData(
+                          show: true,
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              HexaColors.brandPrimary.withValues(alpha: 0.18),
+                              HexaColors.brandPrimary.withValues(alpha: 0.02),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 10),
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  const Text('7-day',
+                      style: TextStyle(
+                          fontSize: 10,
+                          color: HexaColors.neutral,
+                          fontWeight: FontWeight.w500)),
+                  Text('profit',
+                      style: TextStyle(
+                          fontSize: 10,
+                          color: HexaColors.neutral.withValues(alpha: 0.7),
+                          fontWeight: FontWeight.w400)),
+                ],
+              ),
+            ],
           );
         },
       ),
@@ -597,196 +640,417 @@ class _ThinSparkline extends StatelessWidget {
   }
 }
 
-class _CompactInsightsStrip extends StatelessWidget {
-  const _CompactInsightsStrip({
-    required this.alerts,
-    required this.negativeLines,
+// ─── Section list ─────────────────────────────────────────────────────────────
+
+class _SectionList extends StatelessWidget {
+  const _SectionList({
+    required this.title,
+    required this.icon,
+    required this.rows,
+    required this.nameOf,
+    required this.valueOf,
+    required this.metaOf,
+    required this.accentColor,
+    required this.onViewAll,
   });
 
-  final List<Map<String, dynamic>> alerts;
-  final int negativeLines;
+  final String title;
+  final IconData icon;
+  final List<Map<String, dynamic>> rows;
+  final String Function(Map<String, dynamic>) nameOf;
+  final String Function(Map<String, dynamic>) valueOf;
+  final String Function(Map<String, dynamic>) metaOf;
+  final Color accentColor;
+  final VoidCallback onViewAll;
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    final base = <String>[
-      if (negativeLines > 0) 'Risk: $negativeLines lines below cost',
-      for (final a in alerts.take(4)) (a['message']?.toString() ?? '').trim(),
-    ].where((e) => e.isNotEmpty).toList();
-    final items = base.isEmpty
-        ? <String>['Insight: Keep adding entries to improve recommendations']
-        : base;
-    return SizedBox(
-      height: 36,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: items.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (context, i) {
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(
-              color: HexaColors.primaryLight.withValues(alpha: 0.7),
-              borderRadius: BorderRadius.circular(999),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: HexaColors.brandBorder),
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 10, 8),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: accentColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(icon, size: 16, color: accentColor),
+                ),
+                const SizedBox(width: 10),
+                Text(title,
+                    style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: HexaColors.brandPrimary)),
+                const Spacer(),
+                TextButton(
+                  onPressed: onViewAll,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 4),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text('View all',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: accentColor,
+                          fontWeight: FontWeight.w600)),
+                ),
+              ],
             ),
-            child: Text(
-              items[i],
-              style: tt.labelSmall?.copyWith(fontWeight: FontWeight.w700),
-            ),
-          );
-        },
+          ),
+          if (rows.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline,
+                      size: 14, color: Colors.grey.shade400),
+                  const SizedBox(width: 6),
+                  Text('No data for this period',
+                      style: TextStyle(
+                          fontSize: 12, color: Colors.grey.shade500)),
+                ],
+              ),
+            )
+          else
+            ...List.generate(rows.length, (i) {
+              final r = rows[i];
+              return Column(
+                children: [
+                  if (i > 0)
+                    Divider(
+                        height: 1,
+                        color: HexaColors.brandBorder
+                            .withValues(alpha: 0.6),
+                        indent: 14,
+                        endIndent: 14),
+                  Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: accentColor.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Center(
+                            child: Text('${i + 1}',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    color: accentColor)),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            nameOf(r),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 13, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(valueOf(r),
+                                style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: HexaColors.brandPrimary)),
+                            Text(metaOf(r),
+                                style: const TextStyle(
+                                    fontSize: 10,
+                                    color: HexaColors.neutral,
+                                    fontWeight: FontWeight.w500)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            }),
+        ],
       ),
     );
   }
 }
 
-class _SmallActions extends StatelessWidget {
-  const _SmallActions({
+// ─── Recent Purchases ─────────────────────────────────────────────────────────
+
+class _RecentPurchasesSection extends StatelessWidget {
+  const _RecentPurchasesSection({
+    required this.async,
+    required this.onViewAll,
     required this.onAdd,
-    required this.onAssistant,
   });
 
+  final AsyncValue<List<Map<String, dynamic>>> async;
+  final VoidCallback onViewAll;
   final VoidCallback onAdd;
-  final VoidCallback onAssistant;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: HexaColors.brandBorder),
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 10, 8),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: HexaColors.brandGold.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.receipt_long_outlined,
+                      size: 16, color: HexaColors.brandGold),
+                ),
+                const SizedBox(width: 10),
+                const Text('Recent Purchases',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: HexaColors.brandPrimary)),
+                const Spacer(),
+                TextButton(
+                  onPressed: onViewAll,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 4),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text('View all',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: HexaColors.brandGold,
+                          fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ),
+          ),
+          async.when(
+            loading: () => const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(
+                  child:
+                      CircularProgressIndicator(strokeWidth: 2)),
+            ),
+            error: (_, __) => Padding(
+              padding: const EdgeInsets.all(14),
+              child: Text('Could not load purchases',
+                  style: TextStyle(
+                      fontSize: 13, color: Colors.grey.shade500)),
+            ),
+            data: (items) {
+              if (items.isEmpty) return _EmptyPurchaseState(onAdd: onAdd);
+              final recent = items.take(5).toList();
+              return Column(
+                children: List.generate(recent.length, (i) {
+                  final r      = recent[i];
+                  final hid    = r['human_id']?.toString() ?? '';
+                  final date   = r['purchase_date']?.toString() ?? '';
+                  final total  = (r['total_amount'] as num?)?.toDouble() ?? 0;
+                  final supp   = r['supplier_name']?.toString() ??
+                      r['supplier_id']?.toString() ??
+                      '—';
+                  final status = r['derived_status']?.toString() ??
+                      r['status']?.toString() ??
+                      'draft';
+
+                  return Column(
+                    children: [
+                      if (i > 0)
+                        Divider(
+                          height: 1,
+                          color: HexaColors.brandBorder
+                              .withValues(alpha: 0.6),
+                          indent: 14,
+                          endIndent: 14,
+                        ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 10),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                gradient: HexaColors.ctaGradient,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  supp.isNotEmpty
+                                      ? supp[0].toUpperCase()
+                                      : 'P',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(supp,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700)),
+                                  Text(
+                                    '$hid  ·  $date',
+                                    style: const TextStyle(
+                                        fontSize: 11,
+                                        color: HexaColors.neutral),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(_inr(total.round()),
+                                    style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w800,
+                                        color: HexaColors.brandPrimary)),
+                                _StatusBadge(status),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                }),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PurchaseAlertsRow extends StatelessWidget {
+  const _PurchaseAlertsRow({
+    required this.counts,
+    required this.onOverdue,
+    required this.onDueToday,
+    required this.onPaid,
+  });
+
+  final Map<String, int> counts;
+  final VoidCallback onOverdue;
+  final VoidCallback onDueToday;
+  final VoidCallback onPaid;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        TextButton.icon(
-          onPressed: onAdd,
-          icon: const Icon(Icons.add_rounded, size: 18),
-          label: const Text('Add'),
+        Expanded(
+          child: _AlertMini(
+            label: 'Overdue',
+            value: '${counts['overdue'] ?? 0}',
+            color: HexaColors.loss,
+            onTap: onOverdue,
+          ),
         ),
-        const SizedBox(width: 6),
-        TextButton.icon(
-          onPressed: onAssistant,
-          icon: const Icon(Icons.smart_toy_outlined, size: 18),
-          label: const Text('AI'),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _AlertMini(
+            label: 'Due today',
+            value: '${counts['dueToday'] ?? 0}',
+            color: const Color(0xFFF59E0B),
+            onTap: onDueToday,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _AlertMini(
+            label: 'Paid',
+            value: '${counts['paid'] ?? 0}',
+            color: HexaColors.brandAccent,
+            onTap: onPaid,
+          ),
         ),
       ],
     );
   }
 }
 
-class _CompactEntityList extends StatelessWidget {
-  const _CompactEntityList({
-    required this.title,
-    required this.rows,
-    required this.nameOf,
-    required this.valueOf,
-    required this.metaOf,
-  });
-
-  final String title;
-  final List<Map<String, dynamic>> rows;
-  final String Function(Map<String, dynamic>) nameOf;
-  final String Function(Map<String, dynamic>) valueOf;
-  final String Function(Map<String, dynamic>) metaOf;
-
-  @override
-  Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    final cs = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: tt.titleSmall?.copyWith(
-            fontWeight: FontWeight.w800,
-            color: cs.onSurface,
-          ),
-        ),
-        const SizedBox(height: 4),
-        if (rows.isEmpty)
-          Text(
-            'No data yet',
-            style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-          )
-        else
-          ...rows.map(
-            (r) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      nameOf(r),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    valueOf(r),
-                    style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    metaOf(r),
-                    style: tt.labelSmall?.copyWith(
-                      color: cs.onSurfaceVariant,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _DatePeriodPill extends StatelessWidget {
-  const _DatePeriodPill({
+class _AlertMini extends StatelessWidget {
+  const _AlertMini({
     required this.label,
-    required this.selected,
+    required this.value,
+    required this.color,
     required this.onTap,
   });
 
   final String label;
-  final bool selected;
+  final String value;
+  final Color color;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final borderColor = selected
-        ? HexaColors.brandTeal
-        : (isDark
-            ? const Color(0x20FFFFFF)
-            : cs.outline.withValues(alpha: 0.45));
-    final unselectedLabel =
-        isDark ? HexaColors.textSecondary : cs.onSurfaceVariant;
     return Material(
-      color: Colors.transparent,
-      child: GestureDetector(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
         onTap: onTap,
-        behavior: HitTestBehavior.opaque,
+        borderRadius: BorderRadius.circular(12),
         child: Container(
-          height: 32,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
           decoration: BoxDecoration(
-            color: selected ? HexaColors.brandTeal : Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: borderColor,
-              width: 1,
-            ),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: HexaColors.brandBorder),
           ),
-          child: Text(
-            label,
-            style: tt.labelLarge?.copyWith(
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-              color: selected ? Colors.white : unselectedLabel,
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: color)),
+              Text(value,
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.w900)),
+            ],
           ),
         ),
       ),
@@ -794,14 +1058,132 @@ class _DatePeriodPill extends StatelessWidget {
   }
 }
 
-class _HeroProfitLoading extends StatefulWidget {
-  const _HeroProfitLoading();
+class _UnitTotalsStrip extends StatelessWidget {
+  const _UnitTotalsStrip({required this.totals});
+  final ({int bags, int boxes, int tins}) totals;
 
   @override
-  State<_HeroProfitLoading> createState() => _HeroProfitLoadingState();
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: HexaColors.brandBorder),
+      ),
+      child: Text(
+        '${totals.bags} bags  •  ${totals.boxes} boxes  •  ${totals.tins} tins',
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: HexaColors.brandPrimary),
+      ),
+    );
+  }
 }
 
-class _HeroProfitLoadingState extends State<_HeroProfitLoading>
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge(this.status);
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final (color, label) = switch (status.toLowerCase()) {
+      'confirmed' => (HexaColors.profit, 'Pending'),
+      'paid' => (HexaColors.brandAccent, 'Paid'),
+      'partially_paid' => (const Color(0xFFF59E0B), 'Partial'),
+      'overdue' => (HexaColors.loss, 'Overdue'),
+      'draft' => (HexaColors.neutral, 'Draft'),
+      'saved' => (HexaColors.neutral, 'Saved'),
+      'cancelled' => (HexaColors.loss, 'Cancelled'),
+      _ => (HexaColors.neutral, status),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(label,
+          style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: color)),
+    );
+  }
+}
+
+class _EmptyPurchaseState extends StatelessWidget {
+  const _EmptyPurchaseState({required this.onAdd});
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+      child: Column(
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              gradient: HexaColors.ctaGradient,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.receipt_long_outlined,
+                size: 32, color: Colors.white),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'No purchases yet',
+            style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: HexaColors.brandPrimary),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Add your first purchase to see data here',
+            style: TextStyle(fontSize: 13, color: HexaColors.neutral),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 44,
+            child: FilledButton.icon(
+              onPressed: onAdd,
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: const Text('Add Purchase'),
+              style: FilledButton.styleFrom(
+                backgroundColor: HexaColors.brandPrimary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
+                minimumSize: const Size(0, 44),
+                textStyle: const TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Loading shimmer ──────────────────────────────────────────────────────────
+
+class _LoadingShimmer extends StatefulWidget {
+  const _LoadingShimmer();
+  @override
+  State<_LoadingShimmer> createState() => _LoadingShimmerState();
+}
+
+class _LoadingShimmerState extends State<_LoadingShimmer>
     with SingleTickerProviderStateMixin {
   late AnimationController _c;
 
@@ -809,7 +1191,7 @@ class _HeroProfitLoadingState extends State<_HeroProfitLoading>
   void initState() {
     super.initState();
     _c = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1600))
+        vsync: this, duration: const Duration(milliseconds: 1400))
       ..repeat();
   }
 
@@ -823,150 +1205,134 @@ class _HeroProfitLoadingState extends State<_HeroProfitLoading>
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _c,
-      builder: (context, child) {
+      builder: (context, _) {
         final t = _c.value;
-        return Container(
-          height: 80,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            color: Color.lerp(
-              const Color(0xFFF1F5F9),
-              HexaColors.primaryMid.withValues(alpha: 0.08),
-              t,
-            ),
-            border: Border.all(
-              color: HexaColors.primaryMid.withValues(alpha: 0.25),
-            ),
-          ),
-          child: Center(
-            child: SizedBox(
-              width: 28,
-              height: 28,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.5,
-                color: HexaColors.primaryMid.withValues(alpha: 0.85),
+        final shimmer = Color.lerp(
+          const Color(0xFFF1F5F9),
+          HexaColors.brandPrimary.withValues(alpha: 0.07),
+          t,
+        )!;
+        return Column(
+          children: [
+            Container(
+              height: 160,
+              decoration: BoxDecoration(
+                color: shimmer,
+                borderRadius: BorderRadius.circular(20),
               ),
             ),
-          ),
+            const SizedBox(height: 12),
+            Container(
+              height: 80,
+              decoration: BoxDecoration(
+                color: shimmer,
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              height: 140,
+              decoration: BoxDecoration(
+                color: shimmer,
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ],
         );
       },
     );
   }
 }
 
-String _formatMomPercent(double? pct) {
-  if (pct == null) return '';
-  if (pct.abs() > 999) {
-    return pct > 0 ? '↑ new' : '↓ new';
-  }
-  final sign = pct >= 0 ? '+' : '';
-  return '$sign${pct.toStringAsFixed(1)}%';
-}
+// ─── Notifications button ─────────────────────────────────────────────────────
 
-class _HeroProfitCard extends StatelessWidget {
-  const _HeroProfitCard({
-    required this.profitText,
-    required this.changePct,
-    required this.periodLabel,
-    required this.rangeCaption,
-  });
-
-  final String profitText;
-  final double? changePct;
-  final String periodLabel;
-  final String rangeCaption;
+class _NotifButton extends ConsumerWidget {
+  const _NotifButton({required this.icon});
+  final Color icon;
 
   @override
-  Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    final up = changePct != null && changePct! >= 0;
-    final badgeColor = up ? HexaColors.profit : HexaColors.loss;
-    final pctLabel = _formatMomPercent(changePct);
-
-    final cs = Theme.of(context).colorScheme;
-    return SizedBox(
-      height: 88,
-      child: Container(
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerHighest.withValues(alpha: 0.85),
-          borderRadius: BorderRadius.circular(18),
-          border:
-              Border.all(color: HexaColors.primaryMid.withValues(alpha: 0.35)),
-          boxShadow: HexaColors.cardShadow(context),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final unread = ref.watch(notificationsUnreadCountProvider);
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        IconButton(
+          tooltip: 'Alerts',
+          onPressed: () => context.push('/notifications'),
+          icon: Icon(
+            unread > 0
+                ? Icons.notifications_rounded
+                : Icons.notifications_outlined,
+            color: icon,
+            size: 22,
+          ),
+          padding: const EdgeInsets.all(8),
         ),
-        clipBehavior: Clip.antiAlias,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.trending_up_rounded,
-                            color: HexaColors.primaryMid.withValues(alpha: 0.9),
-                            size: 18),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Total Profit',
-                          style: tt.labelLarge?.copyWith(
-                            color: cs.onSurfaceVariant,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Spacer(),
-                    Text(
-                      profitText,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: tt.titleLarge?.copyWith(
-                        height: 1.0,
-                        color: cs.onSurface,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 18,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '$periodLabel · $rangeCaption',
-                      style: tt.bodySmall?.copyWith(
-                          color: cs.onSurfaceVariant,
-                          fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
+        if (unread > 0)
+          Positioned(
+            right: 10,
+            top: 10,
+            child: Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(
+                  color: HexaColors.loss, shape: BoxShape.circle),
             ),
-            if (changePct != null && pctLabel.isNotEmpty)
-              Positioned(
-                top: 12,
-                right: 12,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: badgeColor.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: badgeColor, width: 0.5),
-                  ),
-                  child: Text(
-                    pctLabel,
-                    style: tt.labelSmall?.copyWith(
-                        color: badgeColor,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 12),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
+          ),
+      ],
     );
   }
 }
+
+// ─── Data providers ───────────────────────────────────────────────────────────
+
+final _homeTopItemsProvider = FutureProvider.autoDispose
+    .family<List<Map<String, dynamic>>, DashboardPeriod>((ref, period) async {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return const [];
+  final range = dashboardDateRange(period);
+  final fmt   = DateFormat('yyyy-MM-dd');
+  final rows  = await ref.read(hexaApiProvider).analyticsItems(
+        businessId: session.primaryBusiness.id,
+        from: fmt.format(range.$1),
+        to: fmt.format(range.$2),
+      );
+  final out = List<Map<String, dynamic>>.from(rows);
+  out.sort((a, b) => ((b['total_profit'] as num?) ?? 0)
+      .compareTo((a['total_profit'] as num?) ?? 0));
+  return out.take(3).toList();
+});
+
+final _homeTopSuppliersProvider = FutureProvider.autoDispose
+    .family<List<Map<String, dynamic>>, DashboardPeriod>((ref, period) async {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return const [];
+  final range = dashboardDateRange(period);
+  final fmt   = DateFormat('yyyy-MM-dd');
+  final rows  = await ref.read(hexaApiProvider).analyticsSuppliers(
+        businessId: session.primaryBusiness.id,
+        from: fmt.format(range.$1),
+        to: fmt.format(range.$2),
+      );
+  final out = List<Map<String, dynamic>>.from(rows);
+  out.sort((a, b) => ((b['total_profit'] as num?) ?? 0)
+      .compareTo((a['total_profit'] as num?) ?? 0));
+  return out.take(3).toList();
+});
+
+final _homeTopCategoriesProvider = FutureProvider.autoDispose
+    .family<List<Map<String, dynamic>>, DashboardPeriod>((ref, period) async {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return const [];
+  final range = dashboardDateRange(period);
+  final fmt   = DateFormat('yyyy-MM-dd');
+  final rows  = await ref.read(hexaApiProvider).analyticsCategories(
+        businessId: session.primaryBusiness.id,
+        from: fmt.format(range.$1),
+        to: fmt.format(range.$2),
+      );
+  final out = List<Map<String, dynamic>>.from(rows);
+  out.sort((a, b) => ((b['total_profit'] as num?) ?? 0)
+      .compareTo((a['total_profit'] as num?) ?? 0));
+  return out.take(3).toList();
+});
