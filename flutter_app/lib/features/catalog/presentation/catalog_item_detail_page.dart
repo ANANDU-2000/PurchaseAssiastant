@@ -133,167 +133,14 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
     ref.invalidate(catalogItemDetailProvider(widget.itemId));
     ref.invalidate(catalogItemInsightsProvider(_insightKey()));
     ref.invalidate(catalogItemLinesProvider(_insightKey()));
-    ref.invalidate(catalogVariantsProvider(widget.itemId));
     await ref.read(catalogItemDetailProvider(widget.itemId).future);
   }
 
-  Future<void> _addVariant() async {
-    final ctrl = TextEditingController();
-    final kg = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('New variant'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-                controller: ctrl,
-                decoration:
-                    const InputDecoration(labelText: 'Name (e.g. 1L, 5L)')),
-            const SizedBox(height: 8),
-            TextField(
-              controller: kg,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              decoration:
-                  const InputDecoration(labelText: 'Default kg/bag (optional)'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Create')),
-        ],
-      ),
+  void _openPurchasesForThisItem() {
+    context.pushNamed(
+      'purchase_new',
+      queryParameters: {'catalogItemId': widget.itemId},
     );
-    if (ok != true || ctrl.text.trim().isEmpty) return;
-    final session = ref.read(sessionProvider);
-    if (session == null) return;
-    final kgVal = double.tryParse(kg.text.trim());
-    try {
-      await ref.read(hexaApiProvider).createCatalogVariant(
-            businessId: session.primaryBusiness.id,
-            itemId: widget.itemId,
-            name: ctrl.text.trim(),
-            defaultKgPerBag: kgVal,
-          );
-      ref.invalidate(catalogVariantsProvider(widget.itemId));
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Variant added')));
-      }
-    } on DioException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('${e.response?.data ?? e}')));
-      }
-    }
-  }
-
-  Future<void> _editVariant(Map<String, dynamic> v) async {
-    final id = v['id']?.toString() ?? '';
-    final ctrl = TextEditingController(text: v['name']?.toString() ?? '');
-    final kg = TextEditingController(
-      text: v['default_kg_per_bag'] != null
-          ? v['default_kg_per_bag'].toString()
-          : '',
-    );
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Edit variant'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-                controller: ctrl,
-                decoration: const InputDecoration(labelText: 'Name')),
-            TextField(
-              controller: kg,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              decoration:
-                  const InputDecoration(labelText: 'Default kg/bag (optional)'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Save')),
-        ],
-      ),
-    );
-    if (ok != true || ctrl.text.trim().isEmpty) return;
-    final session = ref.read(sessionProvider);
-    if (session == null) return;
-    final kgVal =
-        kg.text.trim().isEmpty ? null : double.tryParse(kg.text.trim());
-    try {
-      await ref.read(hexaApiProvider).updateCatalogVariant(
-            businessId: session.primaryBusiness.id,
-            variantId: id,
-            name: ctrl.text.trim(),
-            defaultKgPerBag: kgVal,
-          );
-      ref.invalidate(catalogVariantsProvider(widget.itemId));
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Saved')));
-      }
-    } on DioException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
-      }
-    }
-  }
-
-  Future<void> _deleteVariant(Map<String, dynamic> v) async {
-    final id = v['id']?.toString() ?? '';
-    final name = v['name']?.toString() ?? '';
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete variant?'),
-        content: Text('Delete “$name”?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Delete')),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    final session = ref.read(sessionProvider);
-    if (session == null) return;
-    try {
-      await ref.read(hexaApiProvider).deleteCatalogVariant(
-            businessId: session.primaryBusiness.id,
-            variantId: id,
-          );
-      ref.invalidate(catalogVariantsProvider(widget.itemId));
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Deleted')));
-      }
-    } on DioException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('${e.response?.data ?? e}')));
-      }
-    }
   }
 
   @override
@@ -301,7 +148,6 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
     final itemAsync = ref.watch(catalogItemDetailProvider(widget.itemId));
     final insAsync = ref.watch(catalogItemInsightsProvider(_insightKey()));
     final linesAsync = ref.watch(catalogItemLinesProvider(_insightKey()));
-    final varsAsync = ref.watch(catalogVariantsProvider(widget.itemId));
     final catsAsync = ref.watch(itemCategoriesListProvider);
 
     return Scaffold(
@@ -327,9 +173,9 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
       ),
       floatingActionButton: itemAsync.hasValue
           ? FloatingActionButton.extended(
-              onPressed: _addVariant,
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Variant'),
+              onPressed: _openPurchasesForThisItem,
+              icon: const Icon(Icons.add_shopping_cart_rounded),
+              label: const Text('Add purchase'),
             )
           : null,
       body: itemAsync.when(
@@ -419,8 +265,7 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                               data: (p) => _PriceIntelDecisionCard(
                                 pip: p,
                                 inr: _inr,
-                                onAddPurchase: () =>
-                                    context.push('/purchase/new'),
+                                onAddPurchase: _openPurchasesForThisItem,
                               ),
                             );
                           },
@@ -530,58 +375,6 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                               _LandingTrendMiniChart(rows: rows, inr: _inr),
                         ),
                       ],
-                    );
-                  },
-                ),
-                const SizedBox(height: 16),
-                Text('Variants',
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w800)),
-                const SizedBox(height: 8),
-                varsAsync.when(
-                  loading: () => const LinearProgressIndicator(),
-                  error: (_, __) => FriendlyLoadError(
-                    onRetry: () =>
-                        ref.invalidate(catalogVariantsProvider(widget.itemId)),
-                  ),
-                  data: (vs) {
-                    if (vs.isEmpty) {
-                      return Text(
-                        'No variants yet. Variants distinguish pack sizes (1L vs 5L) under this item.',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: HexaColors.textSecondary),
-                      );
-                    }
-                    return Column(
-                      children: vs.map((v) {
-                        final name = v['name']?.toString() ?? '';
-                        final kg = v['default_kg_per_bag'];
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: ListTile(
-                            title: Text(name,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w600)),
-                            subtitle:
-                                kg != null ? Text('Default $kg kg/bag') : null,
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                    icon: const Icon(Icons.edit_outlined),
-                                    onPressed: () => _editVariant(v)),
-                                IconButton(
-                                    icon: const Icon(Icons.delete_outline),
-                                    onPressed: () => _deleteVariant(v)),
-                              ],
-                            ),
-                          ),
-                        );
-                      }).toList(),
                     );
                   },
                 ),

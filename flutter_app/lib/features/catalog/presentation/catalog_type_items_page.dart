@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -7,9 +8,10 @@ import 'package:intl/intl.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/catalog_providers.dart';
+import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/theme/hexa_colors.dart';
 
-/// Items (catalog SKUs) under a category **type** — variants live on each item detail.
+/// Items under a subcategory (category type).
 class CatalogTypeItemsPage extends ConsumerStatefulWidget {
   const CatalogTypeItemsPage({
     super.key,
@@ -21,12 +23,15 @@ class CatalogTypeItemsPage extends ConsumerStatefulWidget {
   final String typeId;
 
   @override
-  ConsumerState<CatalogTypeItemsPage> createState() =>
-      _CatalogTypeItemsPageState();
+  ConsumerState<CatalogTypeItemsPage> createState() => _CatalogTypeItemsPageState();
 }
 
 class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
   late ({String from, String to}) _range;
+  final _searchCtrl = TextEditingController();
+  String _searchQuery = '';
+  final Set<String> _selected = {};
+  bool _selectionMode = false;
 
   @override
   void initState() {
@@ -34,33 +39,13 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
     _range = catalogInsightsDefaultRange();
   }
 
-  String _insightKey(String itemId) =>
-      '$itemId|${_range.from}|${_range.to}';
-
-  Widget _compactInsightRetry(VoidCallback onRetry) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 2),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: TextButton(
-          onPressed: onRetry,
-          style: TextButton.styleFrom(
-            visualDensity: VisualDensity.compact,
-            padding: EdgeInsets.zero,
-            minimumSize: Size.zero,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-          child: Text(
-            'Insights unavailable · Retry',
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: HexaColors.primaryMid,
-                  fontWeight: FontWeight.w600,
-                ),
-          ),
-        ),
-      ),
-    );
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
+
+  String _insightKey(String itemId) => '$itemId|${_range.from}|${_range.to}';
 
   String _inr(num? n) {
     if (n == null) return '—';
@@ -74,13 +59,6 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
     return num.tryParse(v.toString());
   }
 
-  Color? _profitColor(num? p) {
-    if (p == null) return null;
-    if (p > 0) return HexaColors.profit;
-    if (p < 0) return HexaColors.loss;
-    return null;
-  }
-
   Future<void> _refresh() async {
     setState(() => _range = catalogInsightsDefaultRange());
     ref.invalidate(categoryTypesListProvider(widget.categoryId));
@@ -88,55 +66,246 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
     await ref.read(catalogItemsListProvider.future);
   }
 
-  Future<void> _addItem(BuildContext context) async {
-    final ctrl = TextEditingController();
+  Future<void> _bulkDelete() async {
+    if (_selected.isEmpty) return;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('New catalog item'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Name',
-            hintText: 'e.g. Basmati 5kg',
-          ),
-        ),
+        title: Text('Delete ${_selected.length} item(s)?'),
+        content: const Text('This cannot be undone.'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Create'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
         ],
       ),
     );
-    if (ok != true || ctrl.text.trim().isEmpty) return;
+    if (ok != true) return;
     final session = ref.read(sessionProvider);
     if (session == null) return;
-    try {
-      await ref.read(hexaApiProvider).createCatalogItem(
-            businessId: session.primaryBusiness.id,
-            categoryId: widget.categoryId,
-            typeId: widget.typeId,
-            name: ctrl.text.trim(),
+    for (final id in _selected.toList()) {
+      try {
+        await ref.read(hexaApiProvider).deleteCatalogItem(
+              businessId: session.primaryBusiness.id,
+              itemId: id,
+            );
+      } on DioException catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(friendlyApiError(e))),
           );
-      ref.invalidate(catalogItemsListProvider);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Item created')),
-        );
-      }
-    } on DioException catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(friendlyApiError(e))),
-        );
+        }
+        break;
       }
     }
+    ref.invalidate(catalogItemsListProvider);
+    setState(() {
+      _selected.clear();
+      _selectionMode = false;
+    });
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
+    }
+  }
+
+  Future<void> _pickMoveTarget() async {
+    if (_selected.isEmpty) return;
+    final cats = await ref.read(itemCategoriesListProvider.future);
+    if (!mounted) return;
+    String? targetCat;
+    String? targetType;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+          child: StatefulBuilder(
+            builder: (ctx, setSt) {
+              return Consumer(
+                builder: (context, ref, _) {
+                  final typesAsync = targetCat == null
+                      ? null
+                      : ref.watch(categoryTypesListProvider(targetCat!));
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            'Move ${_selected.length} item(s)',
+                            style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<String>(
+                            // ignore: deprecated_member_use
+                            value: targetCat,
+                            decoration: const InputDecoration(
+                              labelText: 'Category',
+                              border: OutlineInputBorder(),
+                            ),
+                            items: [
+                              for (final c in cats)
+                                DropdownMenuItem(
+                                  value: c['id']?.toString(),
+                                  child: Text(c['name']?.toString() ?? ''),
+                                ),
+                            ],
+                            onChanged: (v) => setSt(() {
+                              targetCat = v;
+                              targetType = null;
+                            }),
+                          ),
+                          const SizedBox(height: 12),
+                          if (typesAsync != null)
+                            typesAsync.when(
+                              loading: () => const Padding(
+                                padding: EdgeInsets.all(12),
+                                child: LinearProgressIndicator(),
+                              ),
+                              error: (_, __) => const Text('Could not load subcategories'),
+                              data: (types) {
+                                return DropdownButtonFormField<String>(
+                                  // ignore: deprecated_member_use
+                                  value: targetType,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Subcategory',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  items: [
+                                    for (final t in types)
+                                      DropdownMenuItem(
+                                        value: t['id']?.toString(),
+                                        child: Text(t['name']?.toString() ?? ''),
+                                      ),
+                                  ],
+                                  onChanged: (v) => setSt(() => targetType = v),
+                                );
+                              },
+                            ),
+                          const SizedBox(height: 20),
+                          FilledButton(
+                            onPressed: targetCat == null || targetType == null
+                                ? null
+                                : () async {
+                                    Navigator.pop(ctx);
+                                    final session = ref.read(sessionProvider);
+                                    if (session == null) return;
+                                    for (final id in _selected.toList()) {
+                                      try {
+                                        await ref.read(hexaApiProvider).updateCatalogItem(
+                                              businessId: session.primaryBusiness.id,
+                                              itemId: id,
+                                              categoryId: targetCat,
+                                              typeId: targetType,
+                                              patchTypeId: true,
+                                            );
+                                      } on DioException catch (e) {
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text(friendlyApiError(e))),
+                                          );
+                                        }
+                                        return;
+                                      }
+                                    }
+                                    ref.invalidate(catalogItemsListProvider);
+                                    if (context.mounted) {
+                                      setState(() {
+                                        _selected.clear();
+                                        _selectionMode = false;
+                                      });
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('Items moved')),
+                                      );
+                                    }
+                                  },
+                            child: const Text('Apply move'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  void _onItemLongPress(Map<String, dynamic> it) {
+    final id = it['id']?.toString() ?? '';
+    final name = it['name']?.toString() ?? '';
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('Edit on detail'),
+              subtitle: const Text('Change defaults, see history'),
+              onTap: () {
+                Navigator.pop(ctx);
+                context.push('/catalog/item/$id');
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.delete_outline, color: Colors.red.shade700),
+              title: Text('Delete', style: TextStyle(color: Colors.red.shade800)),
+              onTap: () async {
+                Navigator.pop(ctx);
+                final ok = await showDialog<bool>(
+                  context: context,
+                  builder: (d) => AlertDialog(
+                    title: Text('Delete “$name”?'),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
+                      FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Delete')),
+                    ],
+                  ),
+                );
+                if (ok != true) return;
+                final session = ref.read(sessionProvider);
+                if (session == null) return;
+                try {
+                  await ref.read(hexaApiProvider).deleteCatalogItem(
+                        businessId: session.primaryBusiness.id,
+                        itemId: id,
+                      );
+                  ref.invalidate(catalogItemsListProvider);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
+                  }
+                } on DioException catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+                  }
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.checklist_rounded),
+              title: const Text('Select multiple'),
+              onTap: () {
+                Navigator.pop(ctx);
+                setState(() {
+                  _selectionMode = true;
+                  _selected
+                    ..clear()
+                    ..add(id);
+                });
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -148,12 +317,12 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
       data: (types) {
         for (final t in types) {
           if (t['id']?.toString() == widget.typeId) {
-            return t['name']?.toString() ?? 'Type';
+            return t['name']?.toString() ?? 'Subcategory';
           }
         }
-        return 'Type';
+        return 'Subcategory';
       },
-      orElse: () => 'Type',
+      orElse: () => 'Subcategory',
     );
 
     final itemsInType = itemsAsync.maybeWhen(
@@ -163,111 +332,169 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
       orElse: () => <Map<String, dynamic>>[],
     );
 
+    final filtered = _searchQuery.trim().isEmpty
+        ? itemsInType
+        : catalogFuzzyRank(
+            _searchQuery,
+            itemsInType,
+            (it) => it['name']?.toString() ?? '',
+            minScore: 38,
+            limit: 500,
+          );
+
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: !_selectionMode,
+        leading: _selectionMode
+            ? IconButton(
+                icon: const Icon(Icons.close_rounded),
+                onPressed: () => setState(() {
+                  _selectionMode = false;
+                  _selected.clear();
+                }),
+              )
+            : null,
         title: Text(
-          typeName,
+          _selectionMode ? '${_selected.length} selected' : typeName,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
+        actions: _selectionMode
+            ? [
+                TextButton(onPressed: _bulkDelete, child: const Text('Delete')),
+                TextButton(onPressed: _pickMoveTarget, child: const Text('Move')),
+              ]
+            : null,
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _addItem(context),
-        icon: const Icon(Icons.add),
-        label: const Text('Item'),
-      ),
+      floatingActionButton: _selectionMode
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () => context
+                  .push<bool>(
+                    '/catalog/category/${widget.categoryId}/type/${widget.typeId}/add-item',
+                  )
+                  .then((_) => ref.invalidate(catalogItemsListProvider)),
+              icon: const Icon(Icons.add),
+              label: const Text('Add item'),
+            ),
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
           children: [
-            Text(
-              'Category · items in “$typeName”',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+            TextField(
+              controller: _searchCtrl,
+              decoration: InputDecoration(
+                hintText: 'Search items (fuzzy)',
+                prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: _searchQuery.trim().isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () {
+                          _searchCtrl.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                isDense: true,
+              ),
+              onChanged: (v) => setState(() => _searchQuery = v),
             ),
-            const SizedBox(height: 4),
-            Text(
-              'Last ${_range.from} → ${_range.to} (insights)',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Catalog items',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 8),
-            if (itemsInType.isEmpty)
-              Text(
-                'No items in this type yet.',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: HexaColors.textSecondary),
+            const SizedBox(height: 12),
+            if (filtered.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 32),
+                child: Text(
+                  itemsInType.isEmpty ? 'No items yet — tap Add item.' : 'No matches.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
               )
             else
-              ...itemsInType.map((it) {
+              ...filtered.map((it) {
                 final id = it['id']?.toString() ?? '';
                 final name = it['name']?.toString() ?? '';
+                final pu = (it['default_purchase_unit'] ?? it['default_unit'])?.toString() ?? '—';
+                final last = _num(it['last_purchase_price']);
+                final selected = _selected.contains(id);
                 final ik = _insightKey(id);
                 final iAsync = ref.watch(catalogItemInsightsProvider(ik));
                 return Card(
                   margin: const EdgeInsets.only(bottom: 10),
                   child: InkWell(
-                    onTap: () => context.push('/catalog/item/$id'),
+                    onTap: () {
+                      if (_selectionMode) {
+                        setState(() {
+                          if (selected) {
+                            _selected.remove(id);
+                          } else {
+                            _selected.add(id);
+                          }
+                        });
+                      } else {
+                        context.push('/catalog/item/$id');
+                      }
+                    },
+                    onLongPress: _selectionMode
+                        ? null
+                        : () {
+                            HapticFeedback.mediumImpact();
+                            _onItemLongPress(it);
+                          },
                     borderRadius: BorderRadius.circular(12),
                     child: Padding(
                       padding: const EdgeInsets.all(14),
                       child: Row(
                         children: [
+                          if (_selectionMode)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 10),
+                              child: Icon(
+                                selected ? Icons.check_circle : Icons.circle_outlined,
+                                color: selected ? HexaColors.brandPrimary : Colors.grey,
+                              ),
+                            ),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
                                   name,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
                                 ),
-                                iAsync.when(
-                                  loading: () => const Text(
-                                    '…',
-                                    style: TextStyle(fontSize: 12),
-                                  ),
-                                  error: (_, __) => _compactInsightRetry(
-                                    () => ref.invalidate(
-                                      catalogItemInsightsProvider(ik),
-                                    ),
-                                  ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Unit: ${pu.toUpperCase()} · Last ${_inr(last)}',
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                      ),
+                                ),
+                                iAsync.maybeWhen(
                                   data: (m) {
                                     final lines = m['line_count'] ?? 0;
-                                    final profit = m['total_profit'];
-                                    final al = m['avg_landing'];
-                                    final ase = m['avg_selling'];
-                                    final pc = _profitColor(_num(profit));
-                                    return Text(
-                                      'Used: $lines lines · Profit ${_inr(_num(profit))} · Avg ${_inr(_num(al))} → ${_inr(_num(ase))}',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(
-                                            color: pc ??
-                                                HexaColors.textSecondary,
-                                          ),
-                                    );
+                                    if (lines == 0) {
+                                      return Padding(
+                                        padding: const EdgeInsets.only(top: 6),
+                                        child: Text(
+                                          'Add your first purchase to unlock insights.',
+                                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                                color: HexaColors.primaryMid,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                        ),
+                                      );
+                                    }
+                                    return const SizedBox.shrink();
                                   },
+                                  orElse: () => const SizedBox.shrink(),
                                 ),
                               ],
                             ),
                           ),
-                          const Icon(Icons.chevron_right_rounded),
+                          if (!_selectionMode) const Icon(Icons.chevron_right_rounded),
                         ],
                       ),
                     ),

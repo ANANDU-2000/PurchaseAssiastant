@@ -40,10 +40,20 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  image_path: assets/images/app_logo.png
+  adaptive_icon_foreground: assets/images/app_logo.png
+  adaptive_icon_background: "#14523E"
 
 flutter:
   uses-material-design: true
   assets:
+    - assets/images/app_logo.png
     - assets/images/getstarted.png
     - assets/signup/harisree.png
     - assets/signup/signup.png

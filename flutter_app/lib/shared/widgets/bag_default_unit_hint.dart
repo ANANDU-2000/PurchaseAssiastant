@@ -28,7 +28,7 @@ class BagDefaultUnitHint extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'Used when you pick this item on a purchase (no variant). Variants can still override. Optional: set kg/bag above.',
+                'Used when you pick this item on a purchase. Optional: set kg/bag above.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: cs.onSurfaceVariant,
                       height: 1.35,

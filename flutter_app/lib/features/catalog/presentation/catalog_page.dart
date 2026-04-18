@@ -7,11 +7,11 @@ import 'package:intl/intl.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/catalog_providers.dart';
+import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
-import '../../../shared/widgets/bag_default_unit_hint.dart';
 
-/// Master categories + catalog items (per business).
+/// Category list (layer 1). Subcategories and items live on deeper routes.
 class CatalogPage extends ConsumerStatefulWidget {
   const CatalogPage({super.key});
 
@@ -19,30 +19,14 @@ class CatalogPage extends ConsumerStatefulWidget {
   ConsumerState<CatalogPage> createState() => _CatalogPageState();
 }
 
-class _CatalogPageState extends ConsumerState<CatalogPage>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabs;
+class _CatalogPageState extends ConsumerState<CatalogPage> {
   final _searchCtrl = TextEditingController();
   String _searchQuery = '';
 
   @override
-  void initState() {
-    super.initState();
-    _tabs = TabController(length: 2, vsync: this);
-    _tabs.addListener(() => setState(() {}));
-  }
-
-  @override
   void dispose() {
     _searchCtrl.dispose();
-    _tabs.dispose();
     super.dispose();
-  }
-
-  bool _matches(String? name) {
-    final q = _searchQuery.trim().toLowerCase();
-    if (q.isEmpty) return true;
-    return (name ?? '').toLowerCase().contains(q);
   }
 
   String _inr(num? n) {
@@ -57,20 +41,13 @@ class _CatalogPageState extends ConsumerState<CatalogPage>
     return num.tryParse(v.toString());
   }
 
-  /// Per-row insights sit in a list — use a compact retry instead of hiding failures.
-  Widget _insightLoadErrorButton(VoidCallback onRetry) {
+  Widget _insightRetry(VoidCallback onRetry) {
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Align(
         alignment: Alignment.centerLeft,
         child: TextButton(
           onPressed: onRetry,
-          style: TextButton.styleFrom(
-            visualDensity: VisualDensity.compact,
-            padding: EdgeInsets.zero,
-            minimumSize: Size.zero,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
           child: Text(
             'Insights unavailable · Retry',
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
@@ -83,537 +60,16 @@ class _CatalogPageState extends ConsumerState<CatalogPage>
     );
   }
 
-  String? _existingItemIdFrom409(DioException e) {
-    if (e.response?.statusCode != 409) return null;
-    final d = e.response?.data;
-    if (d is Map && d['detail'] is Map) {
-      return (d['detail'] as Map)['existing_item_id']?.toString();
-    }
-    return null;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.pop(),
-        ),
-        title: const Text('Item catalog'),
-        bottom: TabBar(
-          controller: _tabs,
-          tabs: const [
-            Tab(text: 'Categories'),
-            Tab(text: 'Items'),
-          ],
-        ),
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: TextField(
-              controller: _searchCtrl,
-              decoration: InputDecoration(
-                hintText: 'Search by name',
-                prefixIcon: const Icon(Icons.search_rounded),
-                suffixIcon: _searchQuery.trim().isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.close_rounded),
-                        onPressed: () {
-                          _searchCtrl.clear();
-                          setState(() => _searchQuery = '');
-                        },
-                      ),
-                border:
-                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                isDense: true,
-              ),
-              onChanged: (v) => setState(() => _searchQuery = v),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Expanded(
-            child: TabBarView(
-              controller: _tabs,
-              children: [
-                _categoriesBody(context),
-                _itemsBody(context),
-              ],
-            ),
-          ),
-        ],
-      ),
-      floatingActionButton: _tabs.index == 0
-          ? FloatingActionButton.extended(
-              onPressed: () => _addCategory(context),
-              icon: const Icon(Icons.add),
-              label: const Text('Category'),
-            )
-          : FloatingActionButton.extended(
-              onPressed: () => _addItem(context),
-              icon: const Icon(Icons.add),
-              label: const Text('Item'),
-            ),
-    );
-  }
-
-  Widget _categoriesBody(BuildContext context) {
-    final async = ref.watch(itemCategoriesListProvider);
-    final itemsAsync = ref.watch(catalogItemsListProvider);
-    final range = catalogInsightsDefaultRange();
-    return async.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (_, __) => FriendlyLoadError(
-        onRetry: () {
-          ref.invalidate(itemCategoriesListProvider);
-          ref.invalidate(catalogItemsListProvider);
-        },
-      ),
-      data: (list) {
-        final items = itemsAsync.maybeWhen(
-            data: (x) => x, orElse: () => <Map<String, dynamic>>[]);
-        final filtered =
-            list.where((c) => _matches(c['name']?.toString())).toList();
-        return RefreshIndicator(
-          onRefresh: () async {
-            ref.invalidate(itemCategoriesListProvider);
-            ref.invalidate(catalogItemsListProvider);
-            await ref.read(itemCategoriesListProvider.future);
-            await ref.read(catalogItemsListProvider.future);
-          },
-          child: filtered.isEmpty
-              ? ListView(
-                  physics: const BouncingScrollPhysics(
-                      parent: AlwaysScrollableScrollPhysics()),
-                  padding: const EdgeInsets.fromLTRB(24, 48, 24, 88),
-                  children: [
-                    Icon(Icons.folder_outlined,
-                        size: 48, color: Theme.of(context).colorScheme.primary),
-                    const SizedBox(height: 16),
-                    Text(
-                      list.isEmpty ? 'No categories yet' : 'No matches',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleSmall
-                          ?.copyWith(fontWeight: FontWeight.w800),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      list.isEmpty
-                          ? 'Add a category to organize items, or create categories while recording a purchase.'
-                          : 'Try a different search.',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant,
-                          ),
-                    ),
-                  ],
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
-                  itemCount: filtered.length,
-                  itemBuilder: (context, i) {
-                    final c = filtered[i];
-                    final id = c['id']?.toString() ?? '';
-                    final name = c['name']?.toString() ?? '';
-                    final itemCount = items
-                        .where((it) => it['category_id']?.toString() == id)
-                        .length;
-                    final insKey = '$id|${range.from}|${range.to}';
-                    final ins = ref.watch(categoryInsightsProvider(insKey));
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      elevation: 0,
-                      shadowColor: Colors.transparent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        side: BorderSide(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .outlineVariant
-                              .withValues(alpha: 0.85),
-                        ),
-                      ),
-                      child: InkWell(
-                        onTap: () => context.push('/catalog/category/$id'),
-                        borderRadius: BorderRadius.circular(12),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(
-                                width: 8,
-                                height: 44,
-                                decoration: BoxDecoration(
-                                  color: HexaColors.primaryMid
-                                      .withValues(alpha: 0.85),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(name,
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.w800,
-                                            fontSize: 16)),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      'Items in catalog: $itemCount',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .onSurfaceVariant,
-                                          ),
-                                    ),
-                                    ins.when(
-                                      loading: () => const Padding(
-                                        padding: EdgeInsets.only(top: 8),
-                                        child: LinearProgressIndicator(),
-                                      ),
-                                      error: (_, __) => _insightLoadErrorButton(
-                                          () => ref.invalidate(
-                                              categoryInsightsProvider(
-                                                  insKey))),
-                                      data: (m) {
-                                        final tp = m['total_profit'];
-                                        final top =
-                                            m['top_item_name']?.toString();
-                                        final lines =
-                                            m['linked_line_count'] ?? 0;
-                                        return Padding(
-                                          padding:
-                                              const EdgeInsets.only(top: 8),
-                                          child: Text(
-                                            'Last 90d: ${_inr(_num(tp))} profit · $lines lines${top != null ? ' · top: $top' : ''}',
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .bodySmall
-                                                ?.copyWith(
-                                                  color: Theme.of(context)
-                                                      .colorScheme
-                                                      .onSurfaceVariant,
-                                                  height: 1.35,
-                                                ),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              PopupMenuButton<String>(
-                                onSelected: (v) {
-                                  if (v == 'edit') {
-                                    _editCategory(context, id, name);
-                                  }
-                                  if (v == 'del') {
-                                    _deleteCategory(context, id, name);
-                                  }
-                                },
-                                itemBuilder: (ctx) => const [
-                                  PopupMenuItem(
-                                      value: 'edit', child: Text('Rename')),
-                                  PopupMenuItem(
-                                      value: 'del', child: Text('Delete')),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-        );
-      },
-    );
-  }
-
-  Widget _itemsBody(BuildContext context) {
-    final catsAsync = ref.watch(itemCategoriesListProvider);
-    final itemsAsync = ref.watch(catalogItemsListProvider);
-    final range = catalogInsightsDefaultRange();
-    return catsAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (_, __) => FriendlyLoadError(
-        onRetry: () {
-          ref.invalidate(itemCategoriesListProvider);
-          ref.invalidate(catalogItemsListProvider);
-        },
-      ),
-      data: (cats) {
-        return itemsAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (_, __) => FriendlyLoadError(
-            onRetry: () {
-              ref.invalidate(itemCategoriesListProvider);
-              ref.invalidate(catalogItemsListProvider);
-            },
-          ),
-          data: (items) {
-            final catName = <String, String>{
-              for (final c in cats) c['id'].toString(): c['name'].toString(),
-            };
-            final filtered =
-                items.where((it) => _matches(it['name']?.toString())).toList();
-            return RefreshIndicator(
-              onRefresh: () async {
-                ref.invalidate(itemCategoriesListProvider);
-                ref.invalidate(catalogItemsListProvider);
-                await ref.read(catalogItemsListProvider.future);
-              },
-              child: filtered.isEmpty
-                  ? ListView(
-                      physics: const BouncingScrollPhysics(
-                          parent: AlwaysScrollableScrollPhysics()),
-                      padding: const EdgeInsets.fromLTRB(24, 48, 24, 88),
-                      children: [
-                        Icon(Icons.inventory_2_outlined,
-                            size: 48,
-                            color: Theme.of(context).colorScheme.primary),
-                        const SizedBox(height: 16),
-                        Text(
-                          items.isEmpty ? 'No catalog items yet' : 'No matches',
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w800),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          items.isEmpty
-                              ? 'Add items here to get profit and usage on this screen — or create them from a purchase entry.'
-                              : 'Try a different search.',
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant,
-                              ),
-                        ),
-                      ],
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
-                      itemCount: filtered.length,
-                      itemBuilder: (context, i) {
-                        final it = filtered[i];
-                        final id = it['id']?.toString() ?? '';
-                        final cid = it['category_id']?.toString() ?? '';
-                        final name = it['name']?.toString() ?? '';
-                        final du = it['default_unit']?.toString();
-                        final typeName = it['type_name']?.toString();
-                        final catLine = [
-                          catName[cid] ?? cid,
-                          if (typeName != null && typeName.isNotEmpty) typeName,
-                          if (du != null && du.isNotEmpty) 'default $du',
-                        ].join(' · ');
-                        final insKey = '$id|${range.from}|${range.to}';
-                        final ins =
-                            ref.watch(catalogItemInsightsProvider(insKey));
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 10),
-                      elevation: 0,
-                      shadowColor: Colors.transparent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        side: BorderSide(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .outlineVariant
-                              .withValues(alpha: 0.85),
-                        ),
-                      ),
-                          child: InkWell(
-                            onTap: () => context.push('/catalog/item/$id'),
-                            borderRadius: BorderRadius.circular(12),
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Container(
-                                    width: 8,
-                                    height: 44,
-                                    decoration: BoxDecoration(
-                                      color: HexaColors.accentAmber
-                                          .withValues(alpha: 0.9),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(name,
-                                            style: const TextStyle(
-                                                fontWeight: FontWeight.w800,
-                                                fontSize: 16)),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          catLine,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodySmall
-                                              ?.copyWith(
-                                                  color:
-                                                      HexaColors.textSecondary),
-                                        ),
-                                        ins.when(
-                                          loading: () => const Padding(
-                                            padding: EdgeInsets.only(top: 8),
-                                            child: LinearProgressIndicator(),
-                                          ),
-                                          error: (_, __) =>
-                                              _insightLoadErrorButton(() =>
-                                                  ref.invalidate(
-                                                      catalogItemInsightsProvider(
-                                                          insKey))),
-                                          data: (m) {
-                                            final lines = m['line_count'] ?? 0;
-                                            final profit = m['total_profit'];
-                                            final al = m['avg_landing'];
-                                            final ase = m['avg_selling'];
-                                            final last = m['last_entry_date']
-                                                ?.toString();
-                                            return Padding(
-                                              padding:
-                                                  const EdgeInsets.only(top: 8),
-                                              child: Text(
-                                                'Last 90d: $lines lines · ${_inr(_num(profit))} profit · avg ${_inr(_num(al))} → ${_inr(_num(ase))}'
-                                                '${last != null ? ' · last $last' : ''}',
-                                                style: Theme.of(context)
-                                                    .textTheme
-                                                    .bodySmall
-                                                    ?.copyWith(
-                                                      color: Theme.of(context)
-                                                          .colorScheme
-                                                          .onSurfaceVariant,
-                                                      height: 1.35,
-                                                    ),
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const Padding(
-                                    padding: EdgeInsets.only(left: 8),
-                                    child: Icon(Icons.chevron_right_rounded),
-                                  ),
-                                  PopupMenuButton<String>(
-                                    onSelected: (v) {
-                                      if (v == 'edit') {
-                                        _editItem(context, cats, it);
-                                      }
-                                      if (v == 'del') {
-                                        _deleteItem(context, id, name);
-                                      }
-                                    },
-                                    itemBuilder: (ctx) => const [
-                                      PopupMenuItem(
-                                          value: 'edit', child: Text('Edit')),
-                                      PopupMenuItem(
-                                          value: 'del', child: Text('Delete')),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Future<void> _addCategory(BuildContext context) async {
-    final ctrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('New category'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Name'),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Create')),
-        ],
-      ),
-    );
-    if (ok != true || ctrl.text.trim().isEmpty) return;
-    final session = ref.read(sessionProvider);
-    if (session == null) return;
-    try {
-      await ref.read(hexaApiProvider).createItemCategory(
-            businessId: session.primaryBusiness.id,
-            name: ctrl.text.trim(),
-          );
-      ref.invalidate(itemCategoriesListProvider);
-      ref.invalidate(catalogItemsListProvider);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Category created')));
-      }
-    } on DioException catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
-      }
-    }
-  }
-
-  Future<void> _editCategory(
-      BuildContext context, String id, String current) async {
+  Future<void> _editCategory(BuildContext context, String id, String current) async {
     final ctrl = TextEditingController(text: current);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Rename category'),
-        content: TextField(
-            controller: ctrl,
-            decoration: const InputDecoration(labelText: 'Name')),
+        content: TextField(controller: ctrl, decoration: const InputDecoration(labelText: 'Name')),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Save')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
         ],
       ),
     );
@@ -629,31 +85,26 @@ class _CatalogPageState extends ConsumerState<CatalogPage>
       ref.invalidate(itemCategoriesListProvider);
       ref.invalidate(catalogItemsListProvider);
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Saved')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved')));
       }
     } on DioException catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
       }
+    } finally {
+      ctrl.dispose();
     }
   }
 
-  Future<void> _deleteCategory(
-      BuildContext context, String id, String name) async {
+  Future<void> _deleteCategory(BuildContext context, String id, String name) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete category?'),
         content: Text('Delete “$name”? It must have no items.'),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Delete')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
         ],
       ),
     );
@@ -662,336 +113,261 @@ class _CatalogPageState extends ConsumerState<CatalogPage>
     if (session == null) return;
     try {
       await ref.read(hexaApiProvider).deleteItemCategory(
-          businessId: session.primaryBusiness.id, categoryId: id);
+            businessId: session.primaryBusiness.id,
+            categoryId: id,
+          );
       ref.invalidate(itemCategoriesListProvider);
       ref.invalidate(catalogItemsListProvider);
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Category deleted')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Category deleted')));
       }
     } on DioException catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
       }
     }
   }
 
-  Future<void> _addItem(BuildContext context) async {
-    final cats = await ref.read(itemCategoriesListProvider.future);
-    if (!context.mounted) return;
-    if (cats.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Create a category first.')),
-      );
-      return;
-    }
-    var selectedCat = cats.first['id']?.toString();
-    final nameCtrl = TextEditingController();
-    final kgCtrl = TextEditingController();
-    String? unit;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSt) => AlertDialog(
-          title: const Text('New catalog item'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButtonFormField<String>(
-                  key: ValueKey(selectedCat),
-                  initialValue: selectedCat,
-                  decoration: const InputDecoration(labelText: 'Category'),
-                  items: cats
-                      .map(
-                        (c) => DropdownMenuItem<String>(
-                          value: c['id']?.toString(),
-                          child: Text(c['name']?.toString() ?? ''),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (v) => setSt(() => selectedCat = v),
-                ),
-                TextField(
-                    controller: nameCtrl,
-                    decoration: const InputDecoration(labelText: 'Name')),
-                DropdownButtonFormField<String?>(
-                  key: ValueKey(unit),
-                  initialValue: unit,
-                  decoration: const InputDecoration(
-                      labelText: 'Default unit (optional)'),
-                  items: const [
-                    DropdownMenuItem(value: null, child: Text('—')),
-                    DropdownMenuItem(value: 'kg', child: Text('kg')),
-                    DropdownMenuItem(value: 'bag', child: Text('bag')),
-                    DropdownMenuItem(value: 'box', child: Text('box')),
-                    DropdownMenuItem(value: 'piece', child: Text('piece')),
-                  ],
-                  onChanged: (v) => setSt(() => unit = v),
-                ),
-                if (unit == 'bag') ...[
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: kgCtrl,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
-                      labelText: 'Default kg per bag (optional)',
-                      hintText: 'e.g. 50',
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const BagDefaultUnitHint(),
-                ],
-              ],
+  @override
+  Widget build(BuildContext context) {
+    final async = ref.watch(itemCategoriesListProvider);
+    final itemsAsync = ref.watch(catalogItemsListProvider);
+    final range = catalogInsightsDefaultRange();
+
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => context.pop(),
+        ),
+        title: const Text('Catalog'),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => context.push('/catalog/new-category').then((_) {
+          ref.invalidate(itemCategoriesListProvider);
+          ref.invalidate(catalogItemsListProvider);
+        }),
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('Add category'),
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: TextField(
+              controller: _searchCtrl,
+              decoration: InputDecoration(
+                hintText: 'Search categories (fuzzy)',
+                prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: _searchQuery.trim().isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () {
+                          _searchCtrl.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                isDense: true,
+              ),
+              onChanged: (v) => setState(() => _searchQuery = v),
             ),
           ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel')),
-            FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Create')),
-          ],
-        ),
-      ),
-    );
-    try {
-      if (ok != true || nameCtrl.text.trim().isEmpty) return;
-      final categoryId = selectedCat;
-      if (categoryId == null) return;
-      final session = ref.read(sessionProvider);
-      if (session == null) return;
-      await ref.read(hexaApiProvider).createCatalogItem(
-            businessId: session.primaryBusiness.id,
-            categoryId: categoryId,
-            name: nameCtrl.text.trim(),
-            defaultUnit: unit,
-            defaultKgPerBag:
-                unit == 'bag' ? parseOptionalKgPerBag(kgCtrl.text) : null,
-          );
-      ref.invalidate(catalogItemsListProvider);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Item created')));
-      }
-    } on DioException catch (e) {
-      final existing = _existingItemIdFrom409(e);
-      if (existing != null && context.mounted) {
-        final go = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Item already exists'),
-            content: const Text('Open the existing catalog item?'),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Cancel')),
-              FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('Open')),
-            ],
-          ),
-        );
-        if (go == true && context.mounted) {
-          context.push('/catalog/item/$existing');
-        }
-        return;
-      }
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
-      }
-    } finally {
-      nameCtrl.dispose();
-      kgCtrl.dispose();
-    }
-  }
-
-  Future<void> _editItem(
-    BuildContext context,
-    List<Map<String, dynamic>> cats,
-    Map<String, dynamic> it,
-  ) async {
-    if (cats.isEmpty) return;
-    final id = it['id']?.toString() ?? '';
-    var selectedCat = it['category_id']?.toString();
-    final nameCtrl = TextEditingController(text: it['name']?.toString() ?? '');
-    var unit = it['default_unit']?.toString();
-    final kgCtrl = TextEditingController(
-      text: it['default_kg_per_bag'] != null
-          ? it['default_kg_per_bag'].toString()
-          : '',
-    );
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSt) => AlertDialog(
-          title: const Text('Edit catalog item'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButtonFormField<String>(
-                  key: ValueKey(selectedCat),
-                  initialValue: selectedCat,
-                  decoration: const InputDecoration(labelText: 'Category'),
-                  items: cats
-                      .map(
-                        (c) => DropdownMenuItem<String>(
-                          value: c['id']?.toString(),
-                          child: Text(c['name']?.toString() ?? ''),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (v) => setSt(() => selectedCat = v),
-                ),
-                TextField(
-                    controller: nameCtrl,
-                    decoration: const InputDecoration(labelText: 'Name')),
-                DropdownButtonFormField<String?>(
-                  key: ValueKey(unit),
-                  initialValue: unit,
-                  decoration: const InputDecoration(
-                      labelText: 'Default unit (optional)'),
-                  items: const [
-                    DropdownMenuItem(value: null, child: Text('—')),
-                    DropdownMenuItem(value: 'kg', child: Text('kg')),
-                    DropdownMenuItem(value: 'bag', child: Text('bag')),
-                    DropdownMenuItem(value: 'box', child: Text('box')),
-                    DropdownMenuItem(value: 'piece', child: Text('piece')),
-                  ],
-                  onChanged: (v) => setSt(() => unit = v),
-                ),
-                if (unit == 'bag') ...[
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: kgCtrl,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
-                      labelText: 'Default kg per bag (optional)',
-                      hintText: 'e.g. 50',
+          if (_searchQuery.trim().length >= 2)
+            async.when(
+              loading: () => const SizedBox.shrink(),
+              error: (_, __) => const SizedBox.shrink(),
+              data: (list) {
+                final sug = catalogFuzzyRank(
+                  _searchQuery,
+                  list,
+                  (c) => c['name']?.toString() ?? '',
+                  minScore: 38,
+                  limit: 6,
+                );
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        for (final c in sug)
+                          ActionChip(
+                            label: Text(c['name']?.toString() ?? ''),
+                            onPressed: () {
+                              final id = c['id']?.toString();
+                              if (id != null) context.push('/catalog/category/$id');
+                            },
+                          ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  const BagDefaultUnitHint(),
-                ],
-              ],
+                );
+              },
+            ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: async.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (_, __) => FriendlyLoadError(
+                onRetry: () {
+                  ref.invalidate(itemCategoriesListProvider);
+                  ref.invalidate(catalogItemsListProvider);
+                },
+              ),
+              data: (list) {
+                final items = itemsAsync.maybeWhen(data: (x) => x, orElse: () => <Map<String, dynamic>>[]);
+                final display = _searchQuery.trim().isEmpty
+                    ? list
+                    : catalogFuzzyRank(
+                        _searchQuery,
+                        list,
+                        (c) => c['name']?.toString() ?? '',
+                        minScore: 38,
+                        limit: 500,
+                      );
+
+                return RefreshIndicator(
+                  onRefresh: () async {
+                    ref.invalidate(itemCategoriesListProvider);
+                    ref.invalidate(catalogItemsListProvider);
+                    await ref.read(itemCategoriesListProvider.future);
+                    await ref.read(catalogItemsListProvider.future);
+                  },
+                  child: display.isEmpty
+                      ? ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.fromLTRB(24, 48, 24, 100),
+                          children: [
+                            Icon(Icons.folder_outlined,
+                                size: 48, color: Theme.of(context).colorScheme.primary),
+                            const SizedBox(height: 16),
+                            Text(
+                              list.isEmpty ? 'No categories yet' : 'No matches',
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              list.isEmpty
+                                  ? 'Add a category, then subcategories and items — all from this catalog.'
+                                  : 'Try a different spelling or clear search.',
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  ),
+                            ),
+                          ],
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                          itemCount: display.length,
+                          itemBuilder: (context, i) {
+                            final c = display[i];
+                            final id = c['id']?.toString() ?? '';
+                            final name = c['name']?.toString() ?? '';
+                            final itemCount =
+                                items.where((it) => it['category_id']?.toString() == id).length;
+                            final typesAsync = ref.watch(categoryTypesListProvider(id));
+                            final subCount = typesAsync.maybeWhen(
+                              data: (t) => t.length,
+                              orElse: () => 0,
+                            );
+                            final insKey = '$id|${range.from}|${range.to}';
+                            final ins = ref.watch(categoryInsightsProvider(insKey));
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 10),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                side: BorderSide(
+                                  color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.85),
+                                ),
+                              ),
+                              child: InkWell(
+                                onTap: () => context.push('/catalog/category/$id'),
+                                borderRadius: BorderRadius.circular(12),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Row(
+                                    children: [
+                                      CircleAvatar(
+                                        backgroundColor:
+                                            HexaColors.primaryMid.withValues(alpha: 0.2),
+                                        foregroundColor: HexaColors.primaryMid,
+                                        child: Text(
+                                          name.isNotEmpty ? name[0].toUpperCase() : '?',
+                                          style: const TextStyle(fontWeight: FontWeight.w800),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              name,
+                                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              '$subCount subcategories · $itemCount items',
+                                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                  ),
+                                            ),
+                                            ins.when(
+                                              loading: () => const Padding(
+                                                padding: EdgeInsets.only(top: 8),
+                                                child: LinearProgressIndicator(),
+                                              ),
+                                              error: (_, __) => _insightRetry(
+                                                () => ref.invalidate(categoryInsightsProvider(insKey)),
+                                              ),
+                                              data: (m) {
+                                                final tp = m['total_profit'];
+                                                final lines = m['linked_line_count'] ?? 0;
+                                                return Padding(
+                                                  padding: const EdgeInsets.only(top: 6),
+                                                  child: Text(
+                                                    'Last 90d: ${_inr(_num(tp))} profit · $lines lines',
+                                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                        ),
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      PopupMenuButton<String>(
+                                        onSelected: (v) {
+                                          if (v == 'edit') _editCategory(context, id, name);
+                                          if (v == 'del') _deleteCategory(context, id, name);
+                                        },
+                                        itemBuilder: (ctx) => const [
+                                          PopupMenuItem(value: 'edit', child: Text('Rename')),
+                                          PopupMenuItem(value: 'del', child: Text('Delete')),
+                                        ],
+                                      ),
+                                      const Icon(Icons.chevron_right_rounded),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                );
+              },
             ),
           ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel')),
-            FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Save')),
-          ],
-        ),
-      ),
-    );
-    try {
-      if (ok != true || nameCtrl.text.trim().isEmpty || selectedCat == null) {
-        return;
-      }
-      final session = ref.read(sessionProvider);
-      if (session == null) return;
-      final kgParsed =
-          unit == 'bag' ? parseOptionalKgPerBag(kgCtrl.text) : null;
-      await ref.read(hexaApiProvider).updateCatalogItem(
-            businessId: session.primaryBusiness.id,
-            itemId: id,
-            categoryId: selectedCat,
-            name: nameCtrl.text.trim(),
-            includeDefaultUnit: true,
-            defaultUnit: unit,
-            patchDefaultKgPerBag: unit == 'bag',
-            defaultKgPerBag: kgParsed,
-          );
-      ref.invalidate(catalogItemsListProvider);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Saved')));
-      }
-    } on DioException catch (e) {
-      final existing = _existingItemIdFrom409(e);
-      if (existing != null && context.mounted) {
-        final go = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Name already used'),
-            content: const Text(
-                'Another item in that category has this name. Open it?'),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Cancel')),
-              FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('Open')),
-            ],
-          ),
-        );
-        if (go == true && context.mounted) {
-          context.push('/catalog/item/$existing');
-        }
-        return;
-      }
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
-      }
-    } finally {
-      nameCtrl.dispose();
-      kgCtrl.dispose();
-    }
-  }
-
-  Future<void> _deleteItem(BuildContext context, String id, String name) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete item?'),
-        content: Text('Delete “$name” from the catalog?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Delete')),
         ],
       ),
     );
-    if (ok != true) return;
-    final session = ref.read(sessionProvider);
-    if (session == null) return;
-    try {
-      await ref.read(hexaApiProvider).deleteCatalogItem(
-          businessId: session.primaryBusiness.id, itemId: id);
-      ref.invalidate(catalogItemsListProvider);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Item removed')));
-      }
-    } on DioException catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
-      }
-    }
   }
 }

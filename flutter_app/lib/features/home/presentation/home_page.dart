@@ -12,7 +12,6 @@ import '../../../core/providers/dashboard_period_provider.dart';
 import '../../../core/providers/dashboard_provider.dart';
 import '../../../core/providers/home_insights_provider.dart';
 import '../../../core/providers/notifications_provider.dart';
-import '../../../core/providers/tenant_branding_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart'
     show
         purchaseAlertsProvider,
@@ -99,12 +98,11 @@ class _HomePageState extends ConsumerState<HomePage>
     final period   = ref.watch(dashboardPeriodProvider);
     final dash     = ref.watch(dashboardProvider);
     final insights = ref.watch(homeInsightsProvider);
-    final branding = ref.watch(tenantBrandingProvider);
     final hi       = insights.valueOrNull;
 
     return Scaffold(
       backgroundColor: HexaColors.brandBackground,
-      appBar: _buildAppBar(context, branding),
+      appBar: _buildAppBar(context),
       body: SafeArea(
         bottom: false,
         child: RefreshIndicator(
@@ -258,8 +256,7 @@ class _HomePageState extends ConsumerState<HomePage>
     );
   }
 
-  PreferredSizeWidget _buildAppBar(
-      BuildContext context, TenantBranding branding) {
+  PreferredSizeWidget _buildAppBar(BuildContext context) {
     final cs   = Theme.of(context).colorScheme;
     final icon = cs.onSurfaceVariant;
     return AppBar(
@@ -269,52 +266,32 @@ class _HomePageState extends ConsumerState<HomePage>
       scrolledUnderElevation: 0,
       title: Row(
         children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              gradient: HexaColors.ctaGradient,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Center(
-              child: Text('H',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 18)),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '${branding.title} 👋',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: HexaColors.brandPrimary,
-                    letterSpacing: -0.3,
-                  ),
-                ),
-                const Text(
-                  'Purchase Intelligence',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: HexaColors.neutral,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Image.asset(
+              'assets/images/app_logo.png',
+              width: 40,
+              height: 40,
+              fit: BoxFit.cover,
+              gaplessPlayback: true,
+              filterQuality: FilterQuality.high,
             ),
           ),
         ],
       ),
       actions: [
+        IconButton(
+          tooltip: 'Catalog',
+          onPressed: () => context.push('/catalog'),
+          icon: Icon(Icons.inventory_2_outlined, color: icon, size: 22),
+          padding: const EdgeInsets.all(8),
+        ),
+        IconButton(
+          tooltip: 'Contacts',
+          onPressed: () => context.push('/contacts'),
+          icon: Icon(Icons.groups_outlined, color: icon, size: 22),
+          padding: const EdgeInsets.all(8),
+        ),
         IconButton(
           tooltip: 'Refresh',
           onPressed: _refresh,

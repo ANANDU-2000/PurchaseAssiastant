@@ -163,34 +163,23 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                                 context.go(route);
                               }
                             },
-                            child: Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border(
-                                  left: BorderSide(
-                                      color:
-                                          n.isRead
-                                              ? Theme.of(context)
-                                                  .colorScheme
-                                                  .outlineVariant
-                                              : color,
-                                      width: n.isRead ? 1 : 3),
-                                  top: BorderSide(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .outlineVariant),
-                                  right: BorderSide(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .outlineVariant),
-                                  bottom: BorderSide(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .outlineVariant),
-                                ),
-                              ),
-                              padding: const EdgeInsets.all(14),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(14),
                               child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Container(
+                                    width: n.isRead ? 1 : 4,
+                                    color: n.isRead
+                                        ? Theme.of(context)
+                                            .colorScheme
+                                            .outlineVariant
+                                        : color,
+                                  ),
+                                  Expanded(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(14),
+                                      child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   CircleAvatar(
@@ -238,6 +227,10 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                                             .dismiss(n.id),
                                       ),
                                     ],
+                                  ),
+                                ],
+                                      ),
+                                    ),
                                   ),
                                 ],
                               ),

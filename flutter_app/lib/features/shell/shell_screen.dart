@@ -149,10 +149,7 @@ class _BottomBar extends StatelessWidget {
                   icon: idx == ShellScreen.branchReports
                       ? Icons.bar_chart_rounded
                       : Icons.bar_chart_outlined,
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    context.push('/reports');
-                  },
+                  onTap: () => go(ShellScreen.branchReports),
                 ),
               ),
               const SizedBox(width: 72), // FAB notch gap

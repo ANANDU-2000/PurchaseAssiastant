@@ -4,9 +4,9 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/providers/catalog_providers.dart';
+import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
-import 'type_wizard_page.dart';
 
 class CatalogCategoryDetailPage extends ConsumerStatefulWidget {
   const CatalogCategoryDetailPage({super.key, required this.categoryId});
@@ -21,11 +21,19 @@ class CatalogCategoryDetailPage extends ConsumerStatefulWidget {
 class _CatalogCategoryDetailPageState
     extends ConsumerState<CatalogCategoryDetailPage> {
   late ({String from, String to}) _range;
+  final _searchCtrl = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
     _range = catalogInsightsDefaultRange();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   String _insightKey() => '${widget.categoryId}|${_range.from}|${_range.to}';
@@ -45,20 +53,12 @@ class _CatalogCategoryDetailPageState
     await ref.read(itemCategoriesListProvider.future);
   }
 
-  Future<void> _addType(BuildContext context) async {
-    final ok = await Navigator.of(context, rootNavigator: true).push<bool>(
-      MaterialPageRoute<bool>(
-        builder: (_) => TypeWizardPage(categoryId: widget.categoryId),
-        fullscreenDialog: true,
-      ),
+  Future<void> _addSubcategory(BuildContext context) async {
+    final ok = await context.push<bool>(
+      '/catalog/category/${widget.categoryId}/new-subcategory',
     );
     if (ok == true) {
       ref.invalidate(categoryTypesListProvider(widget.categoryId));
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Type created')),
-        );
-      }
     }
   }
 
@@ -93,15 +93,35 @@ class _CatalogCategoryDetailPageState
         title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _addType(context),
+        onPressed: () => _addSubcategory(context),
         icon: const Icon(Icons.add),
-        label: const Text('Type'),
+        label: const Text('Add subcategory'),
       ),
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            TextField(
+              controller: _searchCtrl,
+              decoration: InputDecoration(
+                hintText: 'Search subcategories',
+                prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: _searchQuery.trim().isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () {
+                          _searchCtrl.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                isDense: true,
+              ),
+              onChanged: (v) => setState(() => _searchQuery = v),
+            ),
+            const SizedBox(height: 12),
             Text(
               'Last ${_range.from} → ${_range.to}',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -187,16 +207,33 @@ class _CatalogCategoryDetailPageState
               data: (types) {
                 if (types.isEmpty) {
                   return Text(
-                    'No types yet — add one with the + button.',
+                    'No subcategories yet — tap Add subcategory.',
                     style: Theme.of(context)
                         .textTheme
                         .bodySmall
                         ?.copyWith(color: HexaColors.textSecondary),
                   );
                 }
+                final filtered = _searchQuery.trim().isEmpty
+                    ? types
+                    : catalogFuzzyRank(
+                        _searchQuery,
+                        types,
+                        (t) => t['name']?.toString() ?? '',
+                        minScore: 38,
+                        limit: 200,
+                      );
+                if (filtered.isEmpty) {
+                  return Text(
+                    'No matches — try another spelling.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: HexaColors.textSecondary,
+                        ),
+                  );
+                }
                 return Column(
                   children: [
-                    for (final t in types)
+                    for (final t in filtered)
                       _typeCard(
                         context,
                         typeId: t['id']?.toString() ?? '',
@@ -265,7 +302,7 @@ class _CatalogCategoryDetailPageState
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '$itemCount catalog items',
+                      '$itemCount items',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: HexaColors.textSecondary,
                           ),

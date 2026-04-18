@@ -17,10 +17,17 @@ import 'widgets/defaults_applied_card.dart';
 import 'widgets/purchase_saved_sheet.dart';
 
 class PurchaseWizardPage extends ConsumerStatefulWidget {
-  const PurchaseWizardPage({super.key, this.editingId});
+  const PurchaseWizardPage({
+    super.key,
+    this.editingId,
+    this.initialCatalogItemId,
+  });
 
   /// When set, wizard loads this purchase and saves via PUT.
   final String? editingId;
+
+  /// Deep link: open wizard with this catalog line prefilled (after server draft + supplier prefill).
+  final String? initialCatalogItemId;
 
   @override
   ConsumerState<PurchaseWizardPage> createState() => _PurchaseWizardPageState();
@@ -90,6 +97,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
         ref.read(pendingPurchaseSupplierIdProvider.notifier).state = null;
         await _applyPrefillSupplier(pre);
       }
+      await _applyInitialCatalogItemIfNeeded();
     });
   }
 
@@ -192,6 +200,27 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
         _dirty = true;
         _scheduleDraft();
       });
+    } catch (_) {}
+  }
+
+  Future<void> _applyInitialCatalogItemIfNeeded() async {
+    final id = widget.initialCatalogItemId?.trim();
+    if (id == null || id.isEmpty) return;
+    if (_editPurchaseId != null) return;
+    for (final l in _lines) {
+      if (l['catalog_item_id']?.toString() == id) return;
+    }
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    try {
+      final raw = await ref.read(hexaApiProvider).getCatalogItem(
+            businessId: session.primaryBusiness.id,
+            itemId: id,
+          );
+      if (!mounted || raw.isEmpty) return;
+      final hit = Map<String, dynamic>.from(raw);
+      hit['id'] ??= id;
+      await _addLineFromCatalogHit(hit);
     } catch (_) {}
   }
 

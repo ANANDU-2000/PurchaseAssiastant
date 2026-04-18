@@ -7,6 +7,9 @@ import 'page_transitions.dart';
 import '../../features/analytics/presentation/analytics_page.dart';
 import '../../features/analytics/presentation/full_reports_page.dart';
 import '../../features/analytics/presentation/item_analytics_detail_page.dart';
+import '../../features/catalog/presentation/catalog_add_category_page.dart';
+import '../../features/catalog/presentation/catalog_add_item_page.dart';
+import '../../features/catalog/presentation/catalog_add_subcategory_page.dart';
 import '../../features/catalog/presentation/catalog_category_detail_page.dart';
 import '../../features/catalog/presentation/catalog_item_detail_page.dart';
 import '../../features/catalog/presentation/catalog_page.dart';
@@ -16,6 +19,7 @@ import '../../features/auth/presentation/login_page.dart';
 import '../../features/auth/presentation/signup_page.dart';
 import '../../features/contacts/presentation/broker_detail_page.dart';
 import '../../features/contacts/presentation/category_items_page.dart';
+import '../../features/contacts/presentation/contacts_page.dart';
 import '../../features/contacts/presentation/supplier_create_wizard_page.dart';
 import '../../features/contacts/presentation/supplier_detail_page.dart';
 import '../../features/entries/presentation/entry_detail_page.dart';
@@ -118,13 +122,48 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       // Aliases
       GoRoute(path: '/dashboard', redirect: (_, __) => '/home'),
       GoRoute(path: '/history', redirect: (_, __) => '/purchase'),
-      GoRoute(path: '/contacts', redirect: (_, __) => '/purchase'),
+      GoRoute(
+        path: '/contacts',
+        name: 'contacts',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const ContactsPage(),
+        ),
+      ),
       GoRoute(
         path: '/catalog',
         pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
           child: const CatalogPage(),
         ),
+      ),
+      GoRoute(
+        path: '/catalog/new-category',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const CatalogAddCategoryPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/catalog/category/:categoryId/new-subcategory',
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['categoryId']!;
+          return iosPushPage(
+            key: state.pageKey,
+            child: CatalogAddSubcategoryPage(categoryId: id),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/catalog/category/:categoryId/type/:typeId/add-item',
+        pageBuilder: (context, state) {
+          final cid = state.pathParameters['categoryId']!;
+          final tid = state.pathParameters['typeId']!;
+          return iosPushPage(
+            key: state.pageKey,
+            child: CatalogAddItemPage(categoryId: cid, typeId: tid),
+          );
+        },
       ),
       GoRoute(
         path: '/catalog/item/:itemId',
@@ -243,10 +282,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/purchase/new',
         name: 'purchase_new',
-        pageBuilder: (context, state) => iosPushPage(
-          key: state.pageKey,
-          child: const PurchaseWizardPage(),
-        ),
+        pageBuilder: (context, state) {
+          final cid = state.uri.queryParameters['catalogItemId']?.trim();
+          return iosPushPage(
+            key: state.pageKey,
+            child: PurchaseWizardPage(
+              initialCatalogItemId:
+                  (cid != null && cid.isNotEmpty) ? cid : null,
+            ),
+          );
+        },
       ),
       GoRoute(
         path: '/purchase/scan',
