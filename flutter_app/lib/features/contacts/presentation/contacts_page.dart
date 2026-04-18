@@ -14,6 +14,7 @@ import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/contacts_hub_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
+import '../../../core/search/catalog_fuzzy.dart';
 import '../../../shared/widgets/app_settings_action.dart';
 import 'broker_wizard_page.dart';
 import 'item_wizard_page.dart';
@@ -1030,7 +1031,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
   }
 }
 
-class _SuppliersTab extends ConsumerWidget {
+class _SuppliersTab extends ConsumerStatefulWidget {
   const _SuppliersTab({
     required this.onDial,
     required this.onWhatsApp,
@@ -1044,7 +1045,27 @@ class _SuppliersTab extends ConsumerWidget {
   final Future<void> Function(Map<String, dynamic>) onDelete;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_SuppliersTab> createState() => _SuppliersTabState();
+}
+
+class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
+  final _filterCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _filterCtrl.dispose();
+    super.dispose();
+  }
+
+  String _supplierHaystack(Map<String, dynamic> s) {
+    final nm = s['name']?.toString() ?? '';
+    final ph = s['phone']?.toString() ?? '';
+    final loc = s['location']?.toString() ?? '';
+    return '$nm $ph $loc';
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final async = ref.watch(contactsSuppliersEnrichedProvider);
     final session = ref.watch(sessionProvider);
     final isOwner = session?.primaryBusiness.role == 'owner';
@@ -1070,48 +1091,120 @@ class _SuppliersTab extends ConsumerWidget {
             ),
           );
         }
-        return RefreshIndicator(
-          onRefresh: () async {
-            ref.invalidate(contactsSuppliersEnrichedProvider);
-            await ref.read(contactsSuppliersEnrichedProvider.future);
-          },
-          child: ListView.separated(
-            physics: const BouncingScrollPhysics(
-                parent: AlwaysScrollableScrollPhysics()),
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-            itemCount: list.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (context, i) {
-              final s = list[i];
-              final id = s['id']?.toString();
-              final m = s['_metrics'] as Map<String, dynamic>?;
-              return _SupplierCard(
-                data: Map<String, dynamic>.from(s),
-                metrics: m,
-                isOwner: isOwner,
-                onOpen:
-                    id == null ? () {} : () => context.push('/supplier/$id'),
-                onDial: onDial,
-                onWhatsApp: onWhatsApp,
-                onEdit: () => onEdit(s),
-                onDelete: () => onDelete(s),
+        final q = _filterCtrl.text.trim();
+        final filtered = q.isEmpty
+            ? list
+            : catalogFuzzyRank(
+                q,
+                list,
+                _supplierHaystack,
+                minScore: 38,
+                limit: 500,
               );
-            },
-          ),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: TextField(
+                controller: _filterCtrl,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  hintText: 'Filter suppliers (fuzzy)…',
+                  prefixIcon: const Icon(Icons.filter_alt_outlined),
+                  suffixIcon: _filterCtrl.text.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear_rounded),
+                          onPressed: () {
+                            _filterCtrl.clear();
+                            setState(() {});
+                          },
+                        )
+                      : null,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  filled: true,
+                ),
+              ),
+            ),
+            Expanded(
+              child: filtered.isEmpty
+                  ? Center(
+                      child: Text(
+                        'No suppliers match “$q”.',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(color: HexaColors.textSecondary),
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: () async {
+                        ref.invalidate(contactsSuppliersEnrichedProvider);
+                        await ref.read(contactsSuppliersEnrichedProvider.future);
+                      },
+                      child: ListView.separated(
+                        physics: const BouncingScrollPhysics(
+                            parent: AlwaysScrollableScrollPhysics()),
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                        itemCount: filtered.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (context, i) {
+                          final s = filtered[i];
+                          final id = s['id']?.toString();
+                          final m = s['_metrics'] as Map<String, dynamic>?;
+                          return _SupplierCard(
+                            data: Map<String, dynamic>.from(s),
+                            metrics: m,
+                            isOwner: isOwner,
+                            onOpen: id == null
+                                ? () {}
+                                : () => context.push('/supplier/$id'),
+                            onDial: widget.onDial,
+                            onWhatsApp: widget.onWhatsApp,
+                            onEdit: () => widget.onEdit(s),
+                            onDelete: () => widget.onDelete(s),
+                          );
+                        },
+                      ),
+                    ),
+            ),
+          ],
         );
       },
     );
   }
 }
 
-class _BrokersTab extends ConsumerWidget {
+class _BrokersTab extends ConsumerStatefulWidget {
   const _BrokersTab({required this.onEdit, required this.onDelete});
 
   final Future<void> Function(Map<String, dynamic>) onEdit;
   final Future<void> Function(Map<String, dynamic>) onDelete;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_BrokersTab> createState() => _BrokersTabState();
+}
+
+class _BrokersTabState extends ConsumerState<_BrokersTab> {
+  final _filterCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _filterCtrl.dispose();
+    super.dispose();
+  }
+
+  String _brokerHaystack(Map<String, dynamic> b) {
+    final nm = b['name']?.toString() ?? '';
+    final ph = b['phone']?.toString() ?? '';
+    final loc = b['location']?.toString() ?? '';
+    return '$nm $ph $loc';
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final async = ref.watch(contactsBrokersEnrichedProvider);
     final session = ref.watch(sessionProvider);
     final isOwner = session?.primaryBusiness.role == 'owner';
@@ -1122,31 +1215,84 @@ class _BrokersTab extends ConsumerWidget {
       ),
       data: (list) {
         if (list.isEmpty) return const Center(child: Text('No brokers yet'));
-        return RefreshIndicator(
-          onRefresh: () async {
-            ref.invalidate(contactsBrokersEnrichedProvider);
-            await ref.read(contactsBrokersEnrichedProvider.future);
-          },
-          child: ListView.separated(
-            physics: const BouncingScrollPhysics(
-                parent: AlwaysScrollableScrollPhysics()),
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-            itemCount: list.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (context, i) {
-              final b = list[i];
-              final id = b['id']?.toString();
-              final m = b['_metrics'] as Map<String, dynamic>?;
-              return _BrokerCard(
-                data: Map<String, dynamic>.from(b),
-                metrics: m,
-                isOwner: isOwner,
-                onOpen: id == null ? () {} : () => context.push('/broker/$id'),
-                onEdit: () => onEdit(b),
-                onDelete: () => onDelete(b),
+        final q = _filterCtrl.text.trim();
+        final filtered = q.isEmpty
+            ? list
+            : catalogFuzzyRank(
+                q,
+                list,
+                _brokerHaystack,
+                minScore: 38,
+                limit: 500,
               );
-            },
-          ),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: TextField(
+                controller: _filterCtrl,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  hintText: 'Filter brokers (fuzzy)…',
+                  prefixIcon: const Icon(Icons.filter_alt_outlined),
+                  suffixIcon: _filterCtrl.text.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear_rounded),
+                          onPressed: () {
+                            _filterCtrl.clear();
+                            setState(() {});
+                          },
+                        )
+                      : null,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  filled: true,
+                ),
+              ),
+            ),
+            Expanded(
+              child: filtered.isEmpty
+                  ? Center(
+                      child: Text(
+                        'No brokers match “$q”.',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(color: HexaColors.textSecondary),
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: () async {
+                        ref.invalidate(contactsBrokersEnrichedProvider);
+                        await ref.read(contactsBrokersEnrichedProvider.future);
+                      },
+                      child: ListView.separated(
+                        physics: const BouncingScrollPhysics(
+                            parent: AlwaysScrollableScrollPhysics()),
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                        itemCount: filtered.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (context, i) {
+                          final b = filtered[i];
+                          final id = b['id']?.toString();
+                          final m = b['_metrics'] as Map<String, dynamic>?;
+                          return _BrokerCard(
+                            data: Map<String, dynamic>.from(b),
+                            metrics: m,
+                            isOwner: isOwner,
+                            onOpen: id == null
+                                ? () {}
+                                : () => context.push('/broker/$id'),
+                            onEdit: () => widget.onEdit(b),
+                            onDelete: () => widget.onDelete(b),
+                          );
+                        },
+                      ),
+                    ),
+            ),
+          ],
         );
       },
     );

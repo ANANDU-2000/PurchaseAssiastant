@@ -17,7 +17,6 @@ final entriesListProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
-  final q = ref.watch(entrySearchQueryProvider);
   final from = ref.watch(entryListFromProvider);
   final to = ref.watch(entryListToProvider);
   final supplierId = ref.watch(entryListSupplierIdProvider);
@@ -25,7 +24,6 @@ final entriesListProvider =
   final fmt = DateFormat('yyyy-MM-dd');
   final raw = await api.listEntries(
     businessId: session.primaryBusiness.id,
-    item: q.trim().isEmpty ? null : q.trim(),
     from: from == null ? null : fmt.format(from),
     to: to == null ? null : fmt.format(to),
     supplierId: supplierId,

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,12 +10,20 @@ import 'package:intl/intl.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/brokers_list_provider.dart';
+import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/purchase_prefill_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
+import '../../../core/search/catalog_fuzzy.dart';
+import '../../../core/theme/hexa_colors.dart';
+import '../../../shared/widgets/bag_default_unit_hint.dart';
 import '../../../shared/widgets/full_screen_form_scaffold.dart';
 import 'widgets/defaults_applied_card.dart';
 import 'widgets/purchase_saved_sheet.dart';
+
+const _supplierPickNew = '__new_supplier__';
+const _brokerPickNew = '__new_broker__';
+const _brokerPickNone = '__broker_none__';
 
 class PurchaseWizardPage extends ConsumerStatefulWidget {
   const PurchaseWizardPage({
@@ -489,10 +498,124 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
     return true;
   }
 
+  /// For BAG + kg/bag set, [landing_cost] is total ₹ per bag (see [_putLandingPerKg]).
+  /// For BAG without kg/bag, gross is 0 until the user sets kg (avoid ₹/kg shown as line total).
   double _lineGross(Map<String, dynamic> l) {
     final q = (l['qty'] as num?)?.toDouble() ?? 0;
     final lc = (l['landing_cost'] as num?)?.toDouble() ?? 0;
+    final u = (l['unit'] ?? '').toString().toLowerCase();
+    final kgPer = (l['default_kg_per_bag'] as num?)?.toDouble() ?? 0;
+    if (u == 'bag') {
+      if (kgPer > 0) return q * lc;
+      return 0;
+    }
     return q * lc;
+  }
+
+  double _savedPerKgForBagLine(Map<String, dynamic> l) {
+    final u = (l['unit'] ?? '').toString().toLowerCase();
+    final kg = (l['default_kg_per_bag'] as num?)?.toDouble() ?? 0;
+    final lc = (l['landing_cost'] as num?)?.toDouble() ?? 0;
+    if (u != 'bag') return lc;
+    if (kg > 0) return lc / kg;
+    return lc;
+  }
+
+  double? _savedPerKgSellingForBagLine(Map<String, dynamic> l) {
+    final sc = l['selling_cost'];
+    if (sc == null) return null;
+    final u = (l['unit'] ?? '').toString().toLowerCase();
+    final kg = (l['default_kg_per_bag'] as num?)?.toDouble() ?? 0;
+    final v = (sc as num).toDouble();
+    if (u != 'bag') return v;
+    if (kg > 0) return v / kg;
+    return v;
+  }
+
+  Future<void> _editKgPerBagForLine(BuildContext context, int lineIndex) async {
+    final l = _lines[lineIndex];
+    final perKg = _savedPerKgForBagLine(l);
+    final sellPerKg = _savedPerKgSellingForBagLine(l);
+    final ctrl = TextEditingController(
+      text: (l['default_kg_per_bag'] as num?)?.toString() ?? '',
+    );
+    final kg = await showModalBottomSheet<double?>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            bottom: MediaQuery.viewInsetsOf(ctx).bottom + 20,
+            top: 8,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Kg per bag · ${l['item_name']?.toString() ?? 'Item'}',
+                style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: ctrl,
+                autofocus: true,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'Kg per bag',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              const BagDefaultUnitHint(),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () {
+                  final parsed = parseOptionalKgPerBag(ctrl.text);
+                  if (parsed == null || parsed <= 0) return;
+                  Navigator.pop(ctx, parsed);
+                },
+                child: const Text('Apply'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    ctrl.dispose();
+    if (!mounted || kg == null) return;
+
+    final session = ref.read(sessionProvider);
+    final cid = l['catalog_item_id']?.toString();
+    if (session != null && cid != null && cid.isNotEmpty) {
+      try {
+        await ref.read(hexaApiProvider).updateCatalogItem(
+              businessId: session.primaryBusiness.id,
+              itemId: cid,
+              patchDefaultKgPerBag: true,
+              defaultKgPerBag: kg,
+            );
+        ref.invalidate(catalogItemsListProvider);
+      } on DioException catch (e) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(friendlyApiError(e))),
+        );
+        return;
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      l['default_kg_per_bag'] = kg;
+      l['unit'] = 'bag';
+      _putLandingPerKg(l, perKg);
+      _putSellingPerKg(l, sellPerKg);
+      _markDirty();
+    });
   }
 
   double _lineNetAfterLineDiscount(Map<String, dynamic> l) {
@@ -1115,70 +1238,171 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
         suppliers.when(
           loading: () => const LinearProgressIndicator(),
           error: (_, __) => const Text('Could not load suppliers'),
-          data: (rows) => DropdownButtonFormField<String>(
-            key: ValueKey(_supplierId),
-            initialValue: _supplierId != null && rows.any((r) => r['id']?.toString() == _supplierId)
-                ? _supplierId
-                : null,
-            decoration: const InputDecoration(labelText: 'Supplier *', isDense: true),
-            items: rows
-                .map((r) => DropdownMenuItem<String>(
-                      value: r['id']?.toString(),
-                      child: Text(r['name']?.toString() ?? ''),
-                    ))
-                .toList(),
-            onChanged: (v) {
-              setState(() {
-                _supplierId = v;
-                if (v != null) {
-                  final s = rows.firstWhere(
-                    (r) => r['id']?.toString() == v,
-                    orElse: () => <String, dynamic>{},
-                  );
-                  if (s.isNotEmpty) {
-                    _applySupplierDefaults(s);
-                    _refreshSupplierMemory(s);
-                    _syncBrokerCommissionFromList(ref.read(brokersListProvider).valueOrNull, force: true);
-                  }
-                }
-                _markDirty();
-              });
-              unawaited(_refreshSupplierWarning());
-            },
-          ),
+          data: (rows) {
+            if (rows.isEmpty) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text('No suppliers yet — create one to record purchases.'),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => context.push('/contacts/supplier/new'),
+                    icon: const Icon(Icons.add_business_outlined),
+                    label: const Text('Create supplier'),
+                  ),
+                ],
+              );
+            }
+            final entries = <DropdownMenuEntry<String>>[
+              ...rows.map(
+                (r) => DropdownMenuEntry<String>(
+                  value: r['id']?.toString() ?? '',
+                  label: r['name']?.toString() ?? '',
+                ),
+              ),
+              const DropdownMenuEntry<String>(
+                value: _supplierPickNew,
+                label: '+ New supplier',
+              ),
+            ];
+            final nameById = {
+              for (final r in rows) r['id']?.toString() ?? '': r['name']?.toString() ?? '',
+            };
+            return LayoutBuilder(
+              builder: (context, c) {
+                return DropdownMenu<String>(
+                  width: c.maxWidth,
+                  menuHeight: 360,
+                  enableFilter: true,
+                  enableSearch: true,
+                  requestFocusOnTap: true,
+                  label: const Text('Supplier *'),
+                  hintText: 'Search or pick supplier',
+                  initialSelection: _supplierId != null && rows.any((r) => r['id']?.toString() == _supplierId)
+                      ? _supplierId
+                      : null,
+                  filterCallback: (list, filter) {
+                    final q = filter.trim();
+                    if (q.isEmpty) return list;
+                    final tail = list.where((e) => e.value == _supplierPickNew).toList();
+                    final main = list.where((e) => e.value != _supplierPickNew).toList();
+                    final ids = main.map((e) => e.value).toList();
+                    final ranked = catalogFuzzyRank(
+                      q,
+                      ids,
+                      (id) => nameById[id] ?? '',
+                      minScore: 18,
+                      limit: 200,
+                    );
+                    if (ranked.isEmpty) return [...tail];
+                    final set = ranked.toSet();
+                    return [...main.where((e) => set.contains(e.value)), ...tail];
+                  },
+                  onSelected: (v) {
+                    if (v == null) return;
+                    if (v == _supplierPickNew) {
+                      context.push('/contacts/supplier/new');
+                      return;
+                    }
+                    setState(() {
+                      _supplierId = v;
+                      final s = rows.firstWhere(
+                        (r) => r['id']?.toString() == v,
+                        orElse: () => <String, dynamic>{},
+                      );
+                      if (s.isNotEmpty) {
+                        _applySupplierDefaults(s);
+                        _refreshSupplierMemory(s);
+                        _syncBrokerCommissionFromList(ref.read(brokersListProvider).valueOrNull, force: true);
+                      }
+                      _markDirty();
+                    });
+                    unawaited(_refreshSupplierWarning());
+                  },
+                  dropdownMenuEntries: entries,
+                );
+              },
+            );
+          },
         ),
         const SizedBox(height: 6),
         ref.watch(brokersListProvider).when(
               loading: () => const SizedBox.shrink(),
               error: (_, __) => const SizedBox.shrink(),
-              data: (brokers) => DropdownButtonFormField<String?>(
-                key: ValueKey(_brokerId),
-                initialValue: _brokerId != null && brokers.any((b) => b['id']?.toString() == _brokerId)
-                    ? _brokerId
-                    : null,
-                decoration: const InputDecoration(labelText: 'Broker (optional)', isDense: true),
-                items: [
-                  const DropdownMenuItem<String?>(value: null, child: Text('None')),
+              data: (brokers) {
+                final entries = <DropdownMenuEntry<String>>[
+                  const DropdownMenuEntry<String>(
+                    value: _brokerPickNone,
+                    label: 'None',
+                  ),
                   ...brokers.map(
-                    (b) => DropdownMenuItem<String?>(
-                      value: b['id']?.toString(),
-                      child: Text(b['name']?.toString() ?? ''),
+                    (b) => DropdownMenuEntry<String>(
+                      value: b['id']?.toString() ?? '',
+                      label: b['name']?.toString() ?? '',
                     ),
                   ),
-                ],
-                onChanged: (v) {
-                  setState(() {
-                    _brokerId = v;
-                    if (v == null) {
-                      _commission = null;
-                      _commissionCtrl.clear();
-                    } else {
-                      _syncBrokerCommissionFromList(brokers, force: true);
-                    }
-                    _markDirty();
-                  });
-                },
-              ),
+                  const DropdownMenuEntry<String>(
+                    value: _brokerPickNew,
+                    label: '+ New broker',
+                  ),
+                ];
+                final nameById = {
+                  for (final b in brokers) b['id']?.toString() ?? '': b['name']?.toString() ?? '',
+                };
+                final initial = _brokerId != null && brokers.any((b) => b['id']?.toString() == _brokerId)
+                    ? _brokerId!
+                    : _brokerPickNone;
+                return LayoutBuilder(
+                  builder: (context, c) {
+                    return DropdownMenu<String>(
+                      width: c.maxWidth,
+                      menuHeight: 360,
+                      enableFilter: true,
+                      enableSearch: true,
+                      requestFocusOnTap: true,
+                      label: const Text('Broker (optional)'),
+                      hintText: 'Search brokers',
+                      initialSelection: initial,
+                      filterCallback: (list, filter) {
+                        final q = filter.trim();
+                        if (q.isEmpty) return list;
+                        final tail = list.where((e) => e.value == _brokerPickNew || e.value == _brokerPickNone).toList();
+                        final main = list.where((e) => e.value != _brokerPickNew && e.value != _brokerPickNone).toList();
+                        final ids = main.map((e) => e.value).toList();
+                        final ranked = catalogFuzzyRank(
+                          q,
+                          ids,
+                          (id) => nameById[id] ?? '',
+                          minScore: 18,
+                          limit: 200,
+                        );
+                        if (ranked.isEmpty) return [...tail];
+                        final set = ranked.toSet();
+                        return [...main.where((e) => set.contains(e.value)), ...tail];
+                      },
+                      onSelected: (v) {
+                        if (v == null) return;
+                        if (v == _brokerPickNew) {
+                          context.push('/contacts');
+                          return;
+                        }
+                        setState(() {
+                          if (v == _brokerPickNone) {
+                            _brokerId = null;
+                            _commission = null;
+                            _commissionCtrl.clear();
+                          } else {
+                            _brokerId = v;
+                            _syncBrokerCommissionFromList(brokers, force: true);
+                          }
+                          _markDirty();
+                        });
+                      },
+                      dropdownMenuEntries: entries,
+                    );
+                  },
+                );
+              },
             ),
         if (_supplierWarning != null)
           Padding(
@@ -1290,6 +1514,29 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
           ),
           if (bagSell != null)
             Text('Selling per BAG → ${money.format(bagSell)}', style: const TextStyle(fontSize: 11.5)),
+        ],
+      );
+    }
+    if (u == 'BAG' && kgPer <= 0) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Set kg per bag to compute line total (qty is number of bags).',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+              color: HexaColors.warning,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Landing ₹/kg is entered above; after kg/bag is set, totals use qty × kg/bag × ₹/kg.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  height: 1.35,
+                ),
+          ),
         ],
       );
     }
@@ -1455,6 +1702,19 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
                             ),
                       ),
                     ),
+                  if ((l['unit']?.toString().toLowerCase() == 'bag') &&
+                      ((l['default_kg_per_bag'] as num?)?.toDouble() ?? 0) <= 0)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: ActionChip(
+                          avatar: Icon(Icons.scale_outlined, size: 18, color: cs.primary),
+                          label: const Text('Set kg per bag'),
+                          onPressed: () => unawaited(_editKgPerBagForLine(context, i)),
+                        ),
+                      ),
+                    ),
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -1521,34 +1781,45 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
                           _markDirty();
                         },
                       ),
-                      TextFormField(
-                        key: ValueKey('hsn_$i'),
-                        initialValue: l['hsn_code']?.toString() ?? '',
-                        decoration: const InputDecoration(labelText: 'HSN (optional)', isDense: true),
-                        onChanged: (t) {
-                          l['hsn_code'] = t.trim().isEmpty ? null : t.trim();
-                          _markDirty();
-                        },
-                      ),
-                      TextFormField(
-                        key: ValueKey('tax_$i'),
-                        initialValue: (l['tax_percent'] as num?)?.toString() ?? '0',
-                        decoration: const InputDecoration(labelText: 'Tax %', isDense: true),
-                        keyboardType: TextInputType.number,
-                        onChanged: (t) {
-                          l['tax_percent'] = double.tryParse(t) ?? 0;
-                          _markDirty();
-                        },
-                      ),
-                      TextFormField(
-                        key: ValueKey('desc_$i'),
-                        initialValue: l['description']?.toString() ?? '',
-                        decoration: const InputDecoration(labelText: 'Description', isDense: true),
-                        maxLines: 2,
-                        onChanged: (t) {
-                          l['description'] = t.trim().isEmpty ? null : t.trim();
-                          _markDirty();
-                        },
+                      ExpansionTile(
+                        tilePadding: EdgeInsets.zero,
+                        title: Text(
+                          'More (HSN, tax, notes)',
+                          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                        children: [
+                          TextFormField(
+                            key: ValueKey('hsn_$i'),
+                            initialValue: l['hsn_code']?.toString() ?? '',
+                            decoration: const InputDecoration(labelText: 'HSN (optional)', isDense: true),
+                            onChanged: (t) {
+                              l['hsn_code'] = t.trim().isEmpty ? null : t.trim();
+                              _markDirty();
+                            },
+                          ),
+                          TextFormField(
+                            key: ValueKey('tax_$i'),
+                            initialValue: (l['tax_percent'] as num?)?.toString() ?? '0',
+                            decoration: const InputDecoration(labelText: 'Tax %', isDense: true),
+                            keyboardType: TextInputType.number,
+                            onChanged: (t) {
+                              l['tax_percent'] = double.tryParse(t) ?? 0;
+                              _markDirty();
+                            },
+                          ),
+                          TextFormField(
+                            key: ValueKey('desc_$i'),
+                            initialValue: l['description']?.toString() ?? '',
+                            decoration: const InputDecoration(labelText: 'Description', isDense: true),
+                            maxLines: 2,
+                            onChanged: (t) {
+                              l['description'] = t.trim().isEmpty ? null : t.trim();
+                              _markDirty();
+                            },
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -1606,23 +1877,38 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
       return Padding(
         padding: EdgeInsets.only(bottom: gap),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Expanded(
+              flex: 3,
               child: Text(
                 left,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontWeight: bold ? FontWeight.w800 : FontWeight.w500,
-                  fontSize: bold ? 15 : 13,
+                  fontSize: bold ? 14.5 : 12.5,
                 ),
               ),
             ),
-            Text(
-              right,
-              style: TextStyle(
-                fontWeight: bold ? FontWeight.w800 : FontWeight.w500,
-                fontSize: bold ? 15 : 13,
+            const SizedBox(width: 8),
+            Expanded(
+              flex: 2,
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    right,
+                    maxLines: 1,
+                    textAlign: TextAlign.end,
+                    style: TextStyle(
+                      fontWeight: bold ? FontWeight.w800 : FontWeight.w500,
+                      fontSize: bold ? 14.5 : 12.5,
+                    ),
+                  ),
+                ),
               ),
             ),
           ],
@@ -1823,23 +2109,32 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
       );
     }
 
+    final baseTheme = Theme.of(context);
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
         await _handleLeaveRequest();
       },
-      child: FullScreenFormScaffold(
-        title: title,
-        subtitle: 'Step ${_step + 1} of 3',
-        actions: [
-          IconButton(
-            onPressed: _handleLeaveRequest,
-            icon: const Icon(Icons.close_rounded),
+      child: Theme(
+        data: baseTheme.copyWith(
+          inputDecorationTheme: const InputDecorationTheme(
+            isDense: true,
+            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           ),
-        ],
-        body: body,
-        bottom: bottom,
+        ),
+        child: FullScreenFormScaffold(
+          title: title,
+          subtitle: 'Step ${_step + 1} of 3',
+          actions: [
+            IconButton(
+              onPressed: _handleLeaveRequest,
+              icon: const Icon(Icons.close_rounded),
+            ),
+          ],
+          body: body,
+          bottom: bottom,
+        ),
       ),
     );
   }

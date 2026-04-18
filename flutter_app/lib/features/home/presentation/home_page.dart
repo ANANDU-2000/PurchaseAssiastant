@@ -11,7 +11,6 @@ import '../../../core/providers/analytics_breakdown_providers.dart';
 import '../../../core/providers/dashboard_period_provider.dart';
 import '../../../core/providers/dashboard_provider.dart';
 import '../../../core/providers/home_insights_provider.dart';
-import '../../../core/providers/notifications_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart'
     show
         purchaseAlertsProvider,
@@ -19,7 +18,7 @@ import '../../../core/providers/trade_purchases_provider.dart'
         tradePurchasesListProvider;
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
-import '../../../shared/widgets/app_settings_action.dart';
+import '../../../shared/widgets/shell_quick_ref_actions.dart';
 
 // ─── Formatter helpers ────────────────────────────────────────────────────────
 
@@ -199,7 +198,7 @@ class _HomePageState extends ConsumerState<HomePage>
                               return '${_itemQtyLabel(r)} · ${m.toStringAsFixed(1)}%';
                             },
                             accentColor: HexaColors.brandPrimary,
-                            onViewAll: () => context.go('/analytics'),
+                            onViewAll: () => context.go('/reports'),
                           ),
                           const SizedBox(height: 14),
 
@@ -218,7 +217,7 @@ class _HomePageState extends ConsumerState<HomePage>
                               return m >= 8 ? 'High margin' : 'Best price';
                             },
                             accentColor: HexaColors.brandAccent,
-                            onViewAll: () => context.go('/analytics'),
+                            onViewAll: () => context.go('/reports'),
                           ),
                           const SizedBox(height: 14),
 
@@ -233,7 +232,7 @@ class _HomePageState extends ConsumerState<HomePage>
                                 '${((r['total_qty'] as num?) ?? 0).toStringAsFixed(0)} kg',
                             metaOf: (_) => 'volume',
                             accentColor: HexaColors.brandGold,
-                            onViewAll: () => context.go('/analytics'),
+                            onViewAll: () => context.go('/reports'),
                           ),
                           const SizedBox(height: 14),
 
@@ -257,8 +256,6 @@ class _HomePageState extends ConsumerState<HomePage>
   }
 
   PreferredSizeWidget _buildAppBar(BuildContext context) {
-    final cs   = Theme.of(context).colorScheme;
-    final icon = cs.onSurfaceVariant;
     return AppBar(
       automaticallyImplyLeading: false,
       backgroundColor: HexaColors.brandBackground,
@@ -280,33 +277,7 @@ class _HomePageState extends ConsumerState<HomePage>
         ],
       ),
       actions: [
-        IconButton(
-          tooltip: 'Catalog',
-          onPressed: () => context.push('/catalog'),
-          icon: Icon(Icons.inventory_2_outlined, color: icon, size: 22),
-          padding: const EdgeInsets.all(8),
-        ),
-        IconButton(
-          tooltip: 'Contacts',
-          onPressed: () => context.push('/contacts'),
-          icon: Icon(Icons.groups_outlined, color: icon, size: 22),
-          padding: const EdgeInsets.all(8),
-        ),
-        IconButton(
-          tooltip: 'Refresh',
-          onPressed: _refresh,
-          icon: Icon(Icons.refresh_rounded, color: icon, size: 22),
-          padding: const EdgeInsets.all(8),
-        ),
-        IconButton(
-          tooltip: 'Search',
-          onPressed: () => context.push('/search'),
-          icon: Icon(Icons.search_rounded, color: icon, size: 22),
-          padding: const EdgeInsets.all(8),
-        ),
-        _NotifButton(icon: icon),
-        const AppSettingsAction(),
-        const SizedBox(width: 4),
+        ShellQuickRefActions(onRefresh: _refresh),
       ],
     );
   }
@@ -1217,46 +1188,6 @@ class _LoadingShimmerState extends State<_LoadingShimmer>
           ],
         );
       },
-    );
-  }
-}
-
-// ─── Notifications button ─────────────────────────────────────────────────────
-
-class _NotifButton extends ConsumerWidget {
-  const _NotifButton({required this.icon});
-  final Color icon;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final unread = ref.watch(notificationsUnreadCountProvider);
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        IconButton(
-          tooltip: 'Alerts',
-          onPressed: () => context.push('/notifications'),
-          icon: Icon(
-            unread > 0
-                ? Icons.notifications_rounded
-                : Icons.notifications_outlined,
-            color: icon,
-            size: 22,
-          ),
-          padding: const EdgeInsets.all(8),
-        ),
-        if (unread > 0)
-          Positioned(
-            right: 10,
-            top: 10,
-            child: Container(
-              width: 8,
-              height: 8,
-              decoration: const BoxDecoration(
-                  color: HexaColors.loss, shape: BoxShape.circle),
-            ),
-          ),
-      ],
     );
   }
 }

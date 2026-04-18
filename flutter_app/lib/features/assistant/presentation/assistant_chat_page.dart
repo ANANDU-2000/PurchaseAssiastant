@@ -16,6 +16,7 @@ import 'providers/assistant_quick_prompts_provider.dart';
 import 'widgets/chat_background_pattern.dart';
 import 'widgets/chat_bubble.dart';
 import 'widgets/input_bar.dart';
+import 'widgets/entity_preview_card.dart';
 import 'widgets/preview_card.dart';
 import 'widgets/quick_prompts_bar.dart';
 import 'widgets/typing_indicator.dart';
@@ -362,11 +363,15 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
                   final next = i < _msgs.length - 1 ? _msgs[i + 1] : null;
                   final tightGroupTop = prev != null && prev.isUser == m.isUser;
                   final showMeta = next == null || next.isUser != m.isUser;
-                  final parsed = m.draftSnapshot != null
+                  final isEntityDraft = m.draftSnapshot?['__assistant__'] == 'entity';
+                  final parsedPurchase = m.draftSnapshot != null && !isEntityDraft
                       ? PreviewCard.parse(m.draftSnapshot!)
                       : null;
-                  final showCard =
-                      m.showPreviewActions && m.draftSnapshot != null && parsed != null;
+                  final parsedEntity =
+                      isEntityDraft ? parseEntityPreviewFromReply(m.text) : null;
+                  final showCard = m.showPreviewActions &&
+                      m.draftSnapshot != null &&
+                      (parsedPurchase != null || parsedEntity != null);
                   return Column(
                     crossAxisAlignment:
                         m.isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
@@ -393,13 +398,19 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
                           }
                         },
                       ),
-                      if (showCard)
+                      if (showCard && parsedEntity != null)
+                        EntityPreviewCard(
+                          parse: parsedEntity,
+                          onCancel: () => unawaited(_sendWithText('NO')),
+                          onSave: () => unawaited(_sendWithText('YES')),
+                        )
+                      else if (showCard && parsedPurchase != null)
                         PreviewCard(
                           entryDraft: m.draftSnapshot!,
                           onCancel: () => unawaited(_sendWithText('NO')),
                           onSave: () => unawaited(_sendWithText('YES')),
                         )
-                      else if (m.showPreviewActions)
+                      else if (m.showPreviewActions && !showCard)
                         Padding(
                           padding: const EdgeInsets.only(left: 4, right: 48, bottom: 8),
                           child: Row(
@@ -613,6 +624,20 @@ class _GradientAppBar extends StatelessWidget {
                   subtitle,
                 ],
               ),
+            ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 40),
+              tooltip: 'Catalog',
+              icon: const Icon(Icons.inventory_2_outlined, color: Colors.white, size: 20),
+              onPressed: () => context.push('/catalog'),
+            ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 40),
+              tooltip: 'Contacts',
+              icon: const Icon(Icons.groups_outlined, color: Colors.white, size: 20),
+              onPressed: () => context.push('/contacts'),
             ),
             Material(
               color: Colors.transparent,

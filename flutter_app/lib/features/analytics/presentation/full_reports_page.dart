@@ -9,6 +9,7 @@ import '../../../core/providers/analytics_breakdown_providers.dart';
 import '../../../core/providers/analytics_kpi_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
+import '../../../shared/widgets/shell_quick_ref_actions.dart';
 
 enum _ReportMode { overview, category, supplier, broker, item }
 
@@ -43,7 +44,7 @@ final _goalsProvider =
       );
 });
 
-/// Full-screen reports (outside shell).
+/// Full-screen reports (also used as shell Reports tab at `/reports`).
 class FullReportsPage extends ConsumerStatefulWidget {
   const FullReportsPage({super.key});
 
@@ -152,13 +153,19 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
     return Scaffold(
       backgroundColor: HexaColors.brandBackground,
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.pop(),
-        ),
+        automaticallyImplyLeading: false,
+        leading: GoRouter.of(context).canPop()
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back_rounded),
+                onPressed: () => context.pop(),
+              )
+            : null,
         title: const Text('Reports'),
         backgroundColor: HexaColors.brandBackground,
         foregroundColor: HexaColors.brandPrimary,
+        actions: [
+          ShellQuickRefActions(onRefresh: () => _invalidateAnalytics()),
+        ],
       ),
       body: session == null
           ? const Center(child: Text('Sign in'))

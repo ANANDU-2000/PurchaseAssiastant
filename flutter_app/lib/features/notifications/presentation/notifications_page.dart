@@ -16,6 +16,13 @@ class NotificationsPage extends ConsumerStatefulWidget {
 
 class _NotificationsPageState extends ConsumerState<NotificationsPage> {
   String _filter = 'all'; // all | alerts | reminders | system
+  final _textSearch = TextEditingController();
+
+  @override
+  void dispose() {
+    _textSearch.dispose();
+    super.dispose();
+  }
 
   bool _matchesFilter(NotificationItem n) {
     switch (_filter) {
@@ -37,6 +44,13 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
     final tt = Theme.of(context).textTheme;
     final items = ref.watch(notificationsProvider);
     final filtered = items.where(_matchesFilter).toList();
+    final q = _textSearch.text.trim().toLowerCase();
+    final visible = q.isEmpty
+        ? filtered
+        : filtered
+            .where((n) =>
+                '${n.title} ${n.subtitle}'.toLowerCase().contains(q))
+            .toList();
     final rel = DateFormat.Hm();
 
     final onSurf = Theme.of(context).colorScheme.onSurface;
@@ -93,6 +107,29 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            child: TextField(
+              controller: _textSearch,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                hintText: 'Search alerts…',
+                isDense: true,
+                prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                suffixIcon: _textSearch.text.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 20),
+                        onPressed: () {
+                          _textSearch.clear();
+                          setState(() {});
+                        },
+                      ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -118,19 +155,19 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
             ),
           ),
           Expanded(
-            child: filtered.isEmpty
+            child: visible.isEmpty
                 ? Center(
-                    child: Text('No notifications',
-                        style: tt.bodyMedium?.copyWith(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant)),
+                    child: Text(
+                      filtered.isEmpty ? 'No notifications' : 'No matches',
+                      style: tt.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    ),
                   )
                 : ListView.builder(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                    itemCount: filtered.length,
+                    itemCount: visible.length,
                     itemBuilder: (context, i) {
-                      final n = filtered[i];
+                      final n = visible[i];
                       final color = switch (n.type) {
                         NotificationType.priceAlert => HexaColors.warning,
                         NotificationType.profitLow => HexaColors.loss,

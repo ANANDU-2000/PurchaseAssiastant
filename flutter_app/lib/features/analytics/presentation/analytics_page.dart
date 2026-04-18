@@ -1,4 +1,5 @@
-﻿import 'dart:async';
+﻿// Deprecated: shell Reports tab now uses FullReportsPage at `/reports`. File kept for reference.
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:fl_chart/fl_chart.dart';

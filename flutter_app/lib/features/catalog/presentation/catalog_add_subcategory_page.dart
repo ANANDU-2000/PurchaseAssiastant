@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/catalog_providers.dart';
+import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/theme/hexa_colors.dart';
 
 /// Full-screen create subcategory (category type).
@@ -39,6 +40,39 @@ class _CatalogAddSubcategoryPageState
     }
     final session = ref.read(sessionProvider);
     if (session == null) return;
+    try {
+      final types = await ref.read(categoryTypesListProvider(widget.categoryId).future);
+      final similar = catalogFuzzyRank(
+        n,
+        types,
+        (t) => t['name']?.toString() ?? '',
+        minScore: 86,
+        limit: 4,
+      );
+      if (similar.isNotEmpty && mounted) {
+        final sample = similar
+            .map((t) => t['name']?.toString() ?? '')
+            .where((s) => s.isNotEmpty)
+            .take(2)
+            .join('", "');
+        final go = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Similar subcategory exists'),
+            content: Text(
+              sample.isEmpty
+                  ? 'A close name match exists. Create "$n" anyway?'
+                  : 'Close matches include "$sample". Create "$n" anyway?',
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Go back')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Create')),
+            ],
+          ),
+        );
+        if (go != true) return;
+      }
+    } catch (_) {}
     setState(() => _saving = true);
     try {
       await ref.read(hexaApiProvider).createCategoryType(

@@ -31,7 +31,7 @@ final assistantQuickPromptsProvider = Provider<List<AssistantQuickPrompt>>((ref)
     ),
     AssistantQuickPrompt(
       label: 'Today',
-      goLocation: '/analytics',
+      goLocation: '/home',
     ),
     AssistantQuickPrompt(
       label: 'Suppliers',

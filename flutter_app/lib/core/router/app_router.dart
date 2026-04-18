@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 
 import '../auth/session_notifier.dart';
 import 'page_transitions.dart';
-import '../../features/analytics/presentation/analytics_page.dart';
 import '../../features/analytics/presentation/full_reports_page.dart';
 import '../../features/analytics/presentation/item_analytics_detail_page.dart';
 import '../../features/catalog/presentation/catalog_add_category_page.dart';
@@ -272,12 +271,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         redirect: (context, state) => '/purchase',
       ),
       GoRoute(
-        path: '/reports',
-        name: 'reports_full',
-        pageBuilder: (context, state) => iosPushPage(
-          key: state.pageKey,
-          child: const FullReportsPage(),
-        ),
+        path: '/analytics',
+        redirect: (context, state) => '/reports',
       ),
       GoRoute(
         path: '/purchase/new',
@@ -360,13 +355,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   builder: (context, state) => const HomePage()),
             ],
           ),
-          // Branch 1 — Reports (analytics)
+          // Branch 1 — Reports (full analytics UI)
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/analytics',
-                name: 'analytics',
-                builder: (context, state) => const AnalyticsPage(),
+                path: '/reports',
+                name: 'reports_full',
+                builder: (context, state) => const FullReportsPage(),
               ),
             ],
           ),

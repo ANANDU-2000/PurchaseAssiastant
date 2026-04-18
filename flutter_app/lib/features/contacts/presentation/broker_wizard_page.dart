@@ -193,6 +193,20 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
       setState(() => _step = 0);
       return;
     }
+    if (widget.brokerId == null && _dupHint != null && mounted) {
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Similar broker'),
+          content: Text('$_dupHint\n\nContinue saving this broker?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Go back')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Continue')),
+          ],
+        ),
+      );
+      if (go != true) return;
+    }
     final session = ref.read(sessionProvider);
     if (session == null) return;
     final bid = session.primaryBusiness.id;

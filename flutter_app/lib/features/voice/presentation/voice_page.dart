@@ -329,8 +329,13 @@ class _VoicePageState extends ConsumerState<VoicePage>
   }
 
   Widget _botMessageBody(_ChatMsg m, int index, TextTheme tt, ColorScheme cs) {
-    final baseBot = (tt.bodyMedium ?? const TextStyle(fontSize: 15))
-        .copyWith(color: HexaColors.textPrimary, height: 1.35);
+    final welcomeDarkBubble = index == 0 && !m.isUser;
+    final baseBot = (tt.bodyMedium ?? const TextStyle(fontSize: 15)).copyWith(
+      color: welcomeDarkBubble
+          ? HexaColors.textPrimary
+          : HexaColors.textOnLightSurface,
+      height: 1.35,
+    );
     if (index == 0 && !m.isUser) {
       final paras =
           m.text.split('\n\n').where((s) => s.trim().isNotEmpty).toList();
@@ -543,7 +548,7 @@ class _VoicePageState extends ConsumerState<VoicePage>
                                 child: Text(
                                   '🎙 Tap mic only — short session, then confirm in Entries',
                                   style: tt.bodySmall?.copyWith(
-                                      color: HexaColors.textPrimary,
+                                      color: HexaColors.textOnLightSurface,
                                       fontWeight: FontWeight.w600,
                                       height: 1.35),
                                 ),
@@ -561,7 +566,7 @@ class _VoicePageState extends ConsumerState<VoicePage>
                         ActionChip(
                           avatar: const Icon(Icons.add_rounded,
                               size: 18, color: HexaColors.primaryMid),
-                          label: const Text('＋ Add Entry'),
+                          label: const Text('Add entry'),
                           onPressed: () => context.go('/entries'),
                         ),
                         const SizedBox(width: 8),
@@ -569,7 +574,7 @@ class _VoicePageState extends ConsumerState<VoicePage>
                           avatar: const Icon(Icons.insights_outlined,
                               size: 18, color: HexaColors.primaryMid),
                           label: const Text('Reports'),
-                          onPressed: () => context.go('/analytics'),
+                          onPressed: () => context.go('/reports'),
                         ),
                         const SizedBox(width: 8),
                         ActionChip(

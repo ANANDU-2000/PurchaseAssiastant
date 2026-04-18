@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/entries_list_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
+import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../shared/widgets/app_settings_action.dart';
 import '../../../core/widgets/friendly_load_error.dart'
@@ -43,8 +44,39 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
 
   void _onSearchChanged() {
     ref.read(entrySearchQueryProvider.notifier).state = _searchCtrl.text;
-    ref.invalidate(entriesListProvider);
     setState(() {});
+  }
+
+  /// Text used for typo-tolerant client filter (search does not refetch the list).
+  static String _entryFuzzyHaystack(
+    Map<String, dynamic> e,
+    Map<String, String> supplierNames,
+  ) {
+    final buf = StringBuffer();
+    buf.write(_titleLine(e));
+    buf.write(' ');
+    final sid = e['supplier_id']?.toString();
+    final sn = sid == null ? null : supplierNames[sid];
+    if (sn != null && sn.isNotEmpty) {
+      buf.write(sn);
+      buf.write(' ');
+    }
+    final notes = e['notes']?.toString();
+    if (notes != null && notes.trim().isNotEmpty) {
+      buf.write(notes);
+      buf.write(' ');
+    }
+    final lines = e['lines'];
+    if (lines is List) {
+      for (final li in lines) {
+        if (li is! Map) continue;
+        final n = li['item_name']?.toString();
+        if (n != null && n.isNotEmpty) buf.write('$n ');
+        final cat = li['category']?.toString();
+        if (cat != null && cat.isNotEmpty) buf.write('$cat ');
+      }
+    }
+    return buf.toString();
   }
 
   /// Extra hint in debug so local web devs know why XHR fails (connection refused).
@@ -301,7 +333,7 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
           TextButton(
             onPressed: () {
               ref.read(entrySearchQueryProvider.notifier).state = '';
-              ref.invalidate(entriesListProvider);
+              _searchCtrl.text = '';
               Navigator.pop(ctx);
             },
             child: const Text('Clear'),
@@ -310,7 +342,7 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
             onPressed: () {
               ref.read(entrySearchQueryProvider.notifier).state =
                   controller.text;
-              ref.invalidate(entriesListProvider);
+              _searchCtrl.text = controller.text;
               Navigator.pop(ctx);
             },
             child: const Text('Apply'),
@@ -388,7 +420,7 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
                 return SearchBar(
                   focusNode: _searchFocus,
                   controller: _searchCtrl,
-                  hintText: 'Search items, notes…',
+                  hintText: 'Fuzzy search items, supplier, notes…',
                   leading: const Icon(Icons.search_rounded),
                   trailing: [
                     if (_searchCtrl.text.isNotEmpty)
@@ -398,7 +430,6 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
                           _searchCtrl.clear();
                           ref.read(entrySearchQueryProvider.notifier).state =
                               '';
-                          ref.invalidate(entriesListProvider);
                           setState(() {});
                         },
                       ),
@@ -470,9 +501,35 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
                       DateTime.fromMillisecondsSinceEpoch(0);
                   return db.compareTo(da);
                 });
+                final q = searchQ.trim();
+                final visible = q.isEmpty
+                    ? sorted
+                    : catalogFuzzyRank(
+                        q,
+                        sorted,
+                        (e) => _entryFuzzyHaystack(e, supplierNames),
+                        minScore: 38,
+                        limit: 2000,
+                      );
+                if (visible.isEmpty) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        'No entries match “$q”.\n'
+                        'Try a shorter phrase or check spelling.',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(color: HexaColors.textSecondary),
+                      ),
+                    ),
+                  );
+                }
                 final flat = <Object>[];
                 String? lastGroup;
-                for (final e in sorted) {
+                for (final e in visible) {
                   final raw = e['entry_date'];
                   final dt = DateTime.tryParse(raw?.toString() ?? '');
                   final label = dt == null
