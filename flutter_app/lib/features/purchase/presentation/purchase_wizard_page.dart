@@ -37,6 +37,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
   Timer? _searchDebounce;
 
   final _search = TextEditingController();
+  final _searchFocus = FocusNode();
   final _commissionCtrl = TextEditingController();
   final _paymentDaysCtrl = TextEditingController();
   final _discountCtrl = TextEditingController();
@@ -97,6 +98,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
     _draftTimer?.cancel();
     _searchDebounce?.cancel();
     _search.dispose();
+    _searchFocus.dispose();
     _commissionCtrl.dispose();
     _paymentDaysCtrl.dispose();
     _discountCtrl.dispose();
@@ -1287,6 +1289,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
         _stepHeader('Items'),
         TextField(
           controller: _search,
+          focusNode: _searchFocus,
           decoration: const InputDecoration(
             labelText: 'Search items (supplier-aware)',
             hintText: 'Supplier, item, category…',
@@ -1737,7 +1740,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
             Expanded(
               child: OutlinedButton.icon(
                 onPressed: () {
-                  _search.requestFocus();
+                  _searchFocus.requestFocus();
                 },
                 icon: const Icon(Icons.add_rounded),
                 label: const Text('Add item'),

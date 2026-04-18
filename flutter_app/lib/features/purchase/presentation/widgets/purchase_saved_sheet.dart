@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../../../core/models/business_profile.dart';
 import '../../../../core/models/trade_purchase_models.dart';
 import '../../../../core/providers/business_profile_provider.dart';
 import '../../../../core/services/purchase_pdf.dart';
@@ -22,8 +21,7 @@ Future<void> showPurchaseSavedSheet(
   required bool wasEdit,
 }) async {
   final p = TradePurchase.fromJson(Map<String, dynamic>.from(savedJson));
-  final biz = ref.read(businessProfileProvider).valueOrNull ??
-      const BusinessProfile(legalName: '', displayTitle: '');
+  final biz = ref.read(invoiceBusinessProfileProvider);
 
   if (!context.mounted) return;
   await showModalBottomSheet<void>(
