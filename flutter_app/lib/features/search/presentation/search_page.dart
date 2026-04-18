@@ -43,7 +43,12 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _focus.requestFocus();
+      if (!mounted) return;
+      final sec = GoRouterState.of(context).uri.queryParameters['section'];
+      if (sec == 'all' || sec == 'items' || sec == 'suppliers' || sec == 'entries') {
+        setState(() => _section = sec!);
+      }
+      _focus.requestFocus();
     });
   }
 

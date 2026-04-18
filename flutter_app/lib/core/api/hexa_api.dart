@@ -351,10 +351,16 @@ class HexaApi {
   Future<List<Map<String, dynamic>>> listTradePurchases({
     required String businessId,
     int limit = 50,
+    String status = 'all',
+    String? q,
   }) async {
     final res = await _dio.get<dynamic>(
       '/v1/businesses/$businessId/trade-purchases',
-      queryParameters: {'limit': limit},
+      queryParameters: {
+        'limit': limit,
+        'status': status,
+        if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+      },
     );
     final data = res.data;
     if (data is! List) return [];
@@ -1204,11 +1210,17 @@ class HexaApi {
   }
 
   /// OCR preview stub — requires `ENABLE_OCR` on server; never auto-saves.
-  Future<Map<String, dynamic>> mediaOcrPreview(
-      {required String businessId, String imageBase64 = 'QQ=='}) async {
+  Future<Map<String, dynamic>> mediaOcrPreview({
+    required String businessId,
+    String imageBase64 = '',
+    String? pasteText,
+  }) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/businesses/$businessId/media/ocr',
-      data: {'image_base64': imageBase64},
+      data: {
+        'image_base64': imageBase64,
+        if (pasteText != null && pasteText.trim().isNotEmpty) 'paste_text': pasteText.trim(),
+      },
     );
     return res.data ?? {};
   }

@@ -11,6 +11,7 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/providers/business_profile_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
+import 'widgets/due_soon_banner.dart';
 import '../../../core/services/purchase_pdf.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
@@ -18,6 +19,33 @@ import '../../../core/widgets/friendly_load_error.dart';
 String _inr(num n) =>
     NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
         .format(n);
+
+String _purchaseFirstLineLabel(TradePurchase p) {
+  if (p.lines.isEmpty) return 'No items';
+  final ln = p.lines.first;
+  return '${ln.itemName} · ${ln.qty} ${ln.unit}';
+}
+
+double _totalBagsOnPurchase(TradePurchase p) {
+  var b = 0.0;
+  for (final ln in p.lines) {
+    if (ln.unit.toUpperCase().contains('BAG')) b += ln.qty;
+  }
+  return b;
+}
+
+String? _dueFooterLine(TradePurchase p) {
+  if (p.dueDate == null || p.remaining <= 0.01 || p.statusEnum == PurchaseStatus.paid) {
+    return null;
+  }
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final d = DateTime(p.dueDate!.year, p.dueDate!.month, p.dueDate!.day);
+  final days = d.difference(today).inDays;
+  if (days < 0) return 'Overdue by ${-days} day(s)';
+  if (days <= 3) return 'Due in $days day(s)';
+  return null;
+}
 
 /// Purchase History — filters, search, swipe actions, multi-select.
 class PurchaseHomePage extends ConsumerStatefulWidget {
@@ -31,14 +59,39 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
   final _searchCtrl = TextEditingController();
   final _scroll = ScrollController();
   Timer? _debounce;
-  String _query = '';
   bool _selectMode = false;
   final _selected = <String>{};
+  String _lastRouteFilter = '';
 
   @override
   void initState() {
     super.initState();
     _searchCtrl.addListener(_onSearchChanged);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final raw = GoRouterState.of(context).uri.queryParameters['filter'];
+    final f = (raw == null || raw.isEmpty) ? 'all' : raw.toLowerCase();
+    if (f == _lastRouteFilter) return;
+    _lastRouteFilter = f;
+    _syncFilterFromRoute();
+  }
+
+  void _syncFilterFromRoute() {
+    final q = GoRouterState.of(context).uri.queryParameters['filter'];
+    final f = (q == null || q.isEmpty) ? 'all' : q.toLowerCase();
+    if (f == 'pending' || f == 'paid' || f == 'overdue') {
+      ref.read(purchaseHistoryPrimaryFilterProvider.notifier).state = 'all';
+      ref.read(purchaseHistorySecondaryFilterProvider.notifier).state = f;
+    } else if (f == 'due_today') {
+      ref.read(purchaseHistorySecondaryFilterProvider.notifier).state = null;
+      ref.read(purchaseHistoryPrimaryFilterProvider.notifier).state = 'due_soon';
+    } else {
+      ref.read(purchaseHistorySecondaryFilterProvider.notifier).state = null;
+      ref.read(purchaseHistoryPrimaryFilterProvider.notifier).state = f;
+    }
   }
 
   @override
@@ -53,56 +106,78 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 200), () {
       if (!mounted) return;
-      setState(() => _query = _searchCtrl.text.trim());
+      ref.read(purchaseHistorySearchProvider.notifier).state =
+          _searchCtrl.text.trim();
     });
   }
 
-  String _filterFromRoute() {
-    final q = GoRouterState.of(context).uri.queryParameters['filter'];
-    if (q == null || q.isEmpty) return 'all';
-    return q.toLowerCase();
+  void _selectPrimary(String key) {
+    ref.read(purchaseHistoryPrimaryFilterProvider.notifier).state = key;
+    ref.read(purchaseHistorySecondaryFilterProvider.notifier).state = null;
+    context.go(key == 'all' ? '/purchase' : '/purchase?filter=$key');
   }
 
-  bool _matchesFilter(TradePurchase p, String f) {
-    final st = p.statusEnum;
-    switch (f) {
-      case 'draft':
-        return st == PurchaseStatus.draft || st == PurchaseStatus.saved;
-      case 'pending':
-        return st == PurchaseStatus.confirmed;
-      case 'paid':
-        return st == PurchaseStatus.paid;
-      case 'overdue':
-        return st == PurchaseStatus.overdue;
-      case 'due_today':
-        final now = DateTime.now();
-        final t = DateTime(now.year, now.month, now.day);
-        if (p.dueDate == null) return false;
-        final d = DateTime(p.dueDate!.year, p.dueDate!.month, p.dueDate!.day);
-        return d == t &&
-            st != PurchaseStatus.paid &&
-            st != PurchaseStatus.cancelled;
-      default:
-        return true;
-    }
+  void _selectSecondary(String key) {
+    ref.read(purchaseHistoryPrimaryFilterProvider.notifier).state = 'all';
+    ref.read(purchaseHistorySecondaryFilterProvider.notifier).state = key;
+    context.go('/purchase?filter=$key');
   }
 
-  bool _matchesSearch(TradePurchase p) {
-    if (_query.isEmpty) return true;
-    final q = _query.toLowerCase();
-    if (p.humanId.toLowerCase().contains(q)) return true;
-    if ((p.supplierName ?? '').toLowerCase().contains(q)) return true;
-    if ((p.brokerName ?? '').toLowerCase().contains(q)) return true;
-    if (p.itemsSummary.toLowerCase().contains(q)) return true;
-    return false;
+  Future<void> _openMoreFilters() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(title: Text('More filters', style: TextStyle(fontWeight: FontWeight.w800))),
+            ListTile(
+              leading: const Icon(Icons.hourglass_top_rounded),
+              title: const Text('Pending'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _selectSecondary('pending');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.payments_rounded),
+              title: const Text('Paid'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _selectSecondary('paid');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.warning_amber_rounded),
+              title: const Text('Overdue'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _selectSecondary('overdue');
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
-  List<TradePurchase> _filterList(List<TradePurchase> all) {
-    final f = _filterFromRoute();
-    return all
-        .where((p) => _matchesFilter(p, f))
-        .where(_matchesSearch)
-        .toList();
+  List<TradePurchase> _applySecondary(List<TradePurchase> all) {
+    final s = ref.watch(purchaseHistorySecondaryFilterProvider);
+    if (s == null) return all;
+    return all.where((p) {
+      final st = p.statusEnum;
+      switch (s) {
+        case 'pending':
+          return st == PurchaseStatus.confirmed;
+        case 'paid':
+          return st == PurchaseStatus.paid;
+        case 'overdue':
+          return st == PurchaseStatus.overdue;
+        default:
+          return true;
+      }
+    }).toList();
   }
 
   Future<void> _confirmDelete(BuildContext context, TradePurchase p) async {
@@ -187,8 +262,11 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(sessionProvider);
-    final rows = ref.watch(tradePurchasesListProvider);
-    final filter = _filterFromRoute();
+    final rows = ref.watch(tradePurchasesParsedProvider);
+    final primary = ref.watch(purchaseHistoryPrimaryFilterProvider);
+    final secondary = ref.watch(purchaseHistorySecondaryFilterProvider);
+    final alerts = ref.watch(purchaseAlertsProvider);
+    final dueAlert = (alerts['dueSoon'] ?? 0) + (alerts['overdue'] ?? 0);
 
     return Scaffold(
       backgroundColor: HexaColors.brandBackground,
@@ -238,6 +316,22 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
               icon: const Icon(Icons.refresh_rounded,
                   color: HexaColors.neutral, size: 22),
             ),
+            PopupMenuButton<String>(
+              tooltip: 'More',
+              itemBuilder: (ctx) => [
+                const PopupMenuItem(
+                  value: 'scan',
+                  child: ListTile(
+                    leading: Icon(Icons.document_scanner_outlined),
+                    title: Text('Scan bill'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              ],
+              onSelected: (v) {
+                if (v == 'scan') context.push('/purchase/scan');
+              },
+            ),
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: FilledButton.icon(
@@ -263,24 +357,26 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
               error: (_, __) => FriendlyLoadError(
                 onRetry: () => ref.invalidate(tradePurchasesListProvider),
               ),
-              data: (items) {
-                final parsed = items
-                    .map((e) => TradePurchase.fromJson(Map<String, dynamic>.from(e)))
-                    .toList();
-                final visible = _filterList(parsed);
+              data: (List<TradePurchase> items) {
+                final visible = _applySecondary(items);
                 return Column(
                   children: [
+                    DueSoonBanner(
+                      count: dueAlert,
+                      onTap: () => _selectPrimary('due_soon'),
+                    ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
                       child: TextField(
                         controller: _searchCtrl,
-                        decoration: InputDecoration(
-                          hintText: 'Search supplier, ID, items…',
+                        decoration: const InputDecoration(
+                          hintText: 'Search supplier, purchase ID, item name…',
                           filled: true,
                           fillColor: Colors.white,
                           border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12)),
-                          prefixIcon: const Icon(Icons.search_rounded),
+                            borderRadius: BorderRadius.all(Radius.circular(12)),
+                          ),
+                          prefixIcon: Icon(Icons.search_rounded),
                         ),
                       ),
                     ),
@@ -292,31 +388,40 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                           for (final e in const [
                             ('all', 'All'),
                             ('draft', 'Draft'),
-                            ('pending', 'Pending'),
-                            ('paid', 'Paid'),
-                            ('overdue', 'Overdue'),
+                            ('due_soon', 'Due soon'),
                           ])
                             Padding(
                               padding: const EdgeInsets.only(right: 6),
                               child: FilterChip(
                                 label: Text(e.$2),
-                                selected: filter == e.$1,
-                                onSelected: (_) {
-                                  final uri = e.$1 == 'all'
-                                      ? '/purchase'
-                                      : '/purchase?filter=${e.$1}';
-                                  context.go(uri);
-                                },
+                                selected: secondary == null && primary == e.$1,
+                                onSelected: (_) => _selectPrimary(e.$1),
                               ),
                             ),
+                          IconButton.filledTonal(
+                            tooltip: 'More filters',
+                            onPressed: _openMoreFilters,
+                            icon: const Icon(Icons.filter_list_rounded),
+                          ),
                         ],
                       ),
                     ),
+                    if (secondary != null)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: ActionChip(
+                            label: Text('Filtered: $secondary · Clear'),
+                            onPressed: () => _selectPrimary('all'),
+                          ),
+                        ),
+                      ),
                     Expanded(
                       child: visible.isEmpty
                           ? _HistoryEmpty(onAdd: () => context.push('/purchase/new'))
                           : ListView.separated(
-                              key: PageStorageKey<String>('hist_${filter}_$_query'),
+                              key: PageStorageKey<String>('hist_${primary}_${secondary ?? ''}_${ref.watch(purchaseHistorySearchProvider)}'),
                               controller: _scroll,
                               padding: EdgeInsets.fromLTRB(
                                   16, 8, 16, 96 + MediaQuery.of(context).padding.bottom),
@@ -400,9 +505,14 @@ class _PurchaseRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final st = p.statusEnum;
     final supp = p.supplierName ?? p.supplierId?.toString() ?? '—';
-    final due = p.dueDate != null
-        ? DateFormat.yMMMd().format(p.dueDate!)
-        : '—';
+    final bags = _totalBagsOnPurchase(p);
+    final bagsText = bags > 0
+        ? '${(bags - bags.floor()).abs() < 1e-6 ? bags.toInt() : bags.toStringAsFixed(1)} bags'
+        : '';
+    final dueFoot = _dueFooterLine(p);
+    final footColor = st == PurchaseStatus.overdue
+        ? HexaColors.loss
+        : (st == PurchaseStatus.dueSoon ? const Color(0xFFCA8A04) : HexaColors.neutral);
 
     final card = Material(
       color: Colors.white,
@@ -443,33 +553,48 @@ class _PurchaseRow extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Text(
+                      'Supplier: $supp',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _purchaseFirstLineLabel(p),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12, color: HexaColors.neutral, height: 1.2),
+                    ),
+                    if (bagsText.isNotEmpty)
+                      Text(
+                        bagsText,
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                      ),
+                    const SizedBox(height: 4),
                     Row(
                       children: [
                         Expanded(
-                          child: Text(supp,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  fontSize: 14, fontWeight: FontWeight.w800)),
+                          child: Text(
+                            p.humanId,
+                            style: const TextStyle(fontSize: 10, color: HexaColors.neutral),
+                          ),
                         ),
                         _MiniBadge(st),
                       ],
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${p.humanId} · ${DateFormat.yMMMd().format(p.purchaseDate)}',
-                      style: const TextStyle(fontSize: 11, color: HexaColors.neutral),
-                    ),
-                    if (p.itemsSummary.isNotEmpty)
-                      Text(
-                        p.itemsSummary,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 11, color: HexaColors.neutral),
+                    if (dueFoot != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          dueFoot,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: footColor,
+                          ),
+                        ),
                       ),
-                    const SizedBox(height: 4),
-                    Text('Due $due',
-                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
                   ],
                 ),
               ),

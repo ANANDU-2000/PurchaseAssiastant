@@ -13,6 +13,8 @@ import '../../../core/providers/purchase_prefill_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
 import '../../../shared/widgets/full_screen_form_scaffold.dart';
+import 'widgets/defaults_applied_card.dart';
+import 'widgets/purchase_saved_sheet.dart';
 
 class PurchaseWizardPage extends ConsumerStatefulWidget {
   const PurchaseWizardPage({super.key, this.editingId});
@@ -54,6 +56,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
   double? _billty;
   double? _freight;
   String? _headerError;
+  String? _supplierWarning;
 
   final List<Map<String, dynamic>> _lines = [];
   List<Map<String, dynamic>> _searchHits = [];
@@ -274,6 +277,17 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
     });
   }
 
+  int? _maxLinePaymentDays() {
+    int? mx;
+    for (final l in _lines) {
+      final pd = (l['payment_days'] as num?)?.toInt();
+      if (pd != null && pd >= 0) {
+        mx = mx == null ? pd : (mx > pd ? mx : pd);
+      }
+    }
+    return mx;
+  }
+
   Map<String, dynamic> _payload() {
     return {
       'human_id': _purchaseHumanId,
@@ -281,7 +295,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
       'supplier_id': _supplierId,
       'broker_id': _brokerId,
       'freight_type': _freightType,
-      'payment_days': _paymentDays,
+      'payment_days': _maxLinePaymentDays(),
       'discount': _discount,
       'commission_percent': _commission,
       'delivered_rate': _delivered,
@@ -345,6 +359,9 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
         'selling_cost': m['selling_cost'],
         'discount': m['discount'],
         'tax_percent': m['tax_percent'],
+        'payment_days': m['payment_days'],
+        'hsn_code': m['hsn_code']?.toString(),
+        'description': m['description']?.toString(),
         'catalog_item_id': m['catalog_item_id']?.toString(),
       });
     }
@@ -382,8 +399,6 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
   }
 
   void _applySupplierDefaults(Map<String, dynamic> s) {
-    _paymentDays = (s['default_payment_days'] as num?)?.toInt() ?? _paymentDays;
-    _discount = (s['default_discount'] as num?)?.toDouble() ?? _discount;
     _delivered = (s['default_delivered_rate'] as num?)?.toDouble() ?? _delivered;
     _billty = (s['default_billty_rate'] as num?)?.toDouble() ?? _billty;
     final freightType = s['freight_type']?.toString();
@@ -506,14 +521,82 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
   }
 
   List<String> _allowedUnitsForLine(Map<String, dynamic> l) {
+    final kg = (l['default_kg_per_bag'] as num?)?.toDouble() ?? 0;
+    if (kg > 0) return ['bag'];
     var base = (l['default_unit']?.toString() ?? l['unit']?.toString() ?? 'kg').toLowerCase();
     if (base.isEmpty) base = 'kg';
-    if (base == 'bag') {
-      final k = (l['default_kg_per_bag'] as num?)?.toDouble() ?? 0;
-      if (k > 0) return ['bag', 'kg'];
-      return ['bag'];
-    }
     return [base];
+  }
+
+  double _landingPerKg(Map<String, dynamic> l) {
+    final u = (l['unit'] ?? '').toString().toLowerCase();
+    final kg = (l['default_kg_per_bag'] as num?)?.toDouble() ?? 0;
+    final lc = (l['landing_cost'] as num?)?.toDouble() ?? 0;
+    if (u == 'bag' && kg > 0) return lc / kg;
+    return lc;
+  }
+
+  void _putLandingPerKg(Map<String, dynamic> l, double perKg) {
+    final u = (l['unit'] ?? '').toString().toLowerCase();
+    final kg = (l['default_kg_per_bag'] as num?)?.toDouble() ?? 0;
+    if (u == 'bag' && kg > 0) {
+      l['landing_cost'] = perKg * kg;
+    } else {
+      l['landing_cost'] = perKg;
+    }
+  }
+
+  double? _sellingPerKg(Map<String, dynamic> l) {
+    final sc = l['selling_cost'];
+    if (sc == null) return null;
+    final u = (l['unit'] ?? '').toString().toLowerCase();
+    final kg = (l['default_kg_per_bag'] as num?)?.toDouble() ?? 0;
+    final v = (sc as num).toDouble();
+    if (u == 'bag' && kg > 0) return v / kg;
+    return v;
+  }
+
+  void _putSellingPerKg(Map<String, dynamic> l, double? perKg) {
+    if (perKg == null) {
+      l['selling_cost'] = null;
+      return;
+    }
+    final u = (l['unit'] ?? '').toString().toLowerCase();
+    final kg = (l['default_kg_per_bag'] as num?)?.toDouble() ?? 0;
+    if (u == 'bag' && kg > 0) {
+      l['selling_cost'] = perKg * kg;
+    } else {
+      l['selling_cost'] = perKg;
+    }
+  }
+
+  Future<void> _refreshSupplierWarning() async {
+    final session = ref.read(sessionProvider);
+    final sid = _supplierId;
+    if (session == null || sid == null || sid.isEmpty) {
+      if (mounted) setState(() => _supplierWarning = null);
+      return;
+    }
+    try {
+      final s = await ref.read(hexaApiProvider).getSupplier(
+            businessId: session.primaryBusiness.id,
+            supplierId: sid,
+          );
+      if (!mounted) return;
+      final phone = (s['phone']?.toString() ?? '').trim();
+      final gst = (s['gst_number']?.toString() ?? '').trim();
+      final addr = (s['address']?.toString() ?? '').trim();
+      setState(() {
+        if (phone.isEmpty || gst.isEmpty || addr.isEmpty) {
+          _supplierWarning =
+              'Add supplier phone, GSTIN, and address for invoices and WhatsApp.';
+        } else {
+          _supplierWarning = null;
+        }
+      });
+    } catch (_) {
+      if (mounted) setState(() => _supplierWarning = null);
+    }
   }
 
   Future<void> _addLineFromCatalogHit(Map<String, dynamic> h) async {
@@ -541,7 +624,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
         (h['default_landing_cost'] as num?)?.toDouble() ??
         0.0;
     var lineDisc = 0.0;
-    var linePay = _paymentDays;
+    int? linePay;
 
     if (id != null && _supplierId != null && _supplierId!.isNotEmpty) {
       try {
@@ -586,6 +669,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
         'payment_days': linePay,
         'tax_percent': tax,
         'hsn_code': hsn,
+        'description': null,
         if (id != null) 'catalog_item_id': id,
       };
       final allow = _allowedUnitsForLine(newLine);
@@ -599,75 +683,6 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
       _dirty = true;
     });
     _scheduleDraft();
-  }
-
-  Widget _lineUnitPicker(int i, Map<String, dynamic> l) {
-    final opts = _allowedUnitsForLine(l);
-    final fallback = opts.isNotEmpty ? opts.first : 'kg';
-    if (opts.length == 1) {
-      return InputDecorator(
-        decoration: const InputDecoration(labelText: 'Unit', isDense: true),
-        child: Text(fallback.toUpperCase()),
-      );
-    }
-    final cur = (l['unit']?.toString() ?? fallback).toLowerCase();
-    final v = opts.contains(cur) ? cur : fallback;
-    if (!opts.contains(cur)) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        if (!opts.contains((l['unit']?.toString() ?? '').toLowerCase())) {
-          setState(() {
-            l['unit'] = v;
-            _dirty = true;
-          });
-          _scheduleDraft();
-        }
-      });
-    }
-    return DropdownButtonFormField<String>(
-      key: ValueKey('unit_${i}_$v'),
-      initialValue: v,
-      decoration: const InputDecoration(labelText: 'Unit', isDense: true),
-      items: opts
-          .map(
-            (e) => DropdownMenuItem(
-              value: e,
-              child: Text(e.toUpperCase()),
-            ),
-          )
-          .toList(),
-      onChanged: (newU) {
-        if (newU == null) return;
-        final oldU = (l['unit']?.toString() ?? '').toLowerCase();
-        if (newU == oldU) return;
-        var qty = (l['qty'] as num?)?.toDouble() ?? 1;
-        final rate = (l['landing_cost'] as num?)?.toDouble() ?? 0;
-        var newRate = rate;
-        final kgPer = (l['default_kg_per_bag'] as num?)?.toDouble() ?? 0;
-        if (kgPer > 0) {
-          if (oldU == 'bag' && newU == 'kg') {
-            qty *= kgPer;
-            newRate = rate / kgPer;
-          } else if (oldU == 'kg' && newU == 'bag') {
-            qty /= kgPer;
-            newRate = rate * kgPer;
-          }
-        }
-        l['unit'] = newU;
-        l['qty'] = qty;
-        l['landing_cost'] = newRate;
-        final sc = l['selling_cost'];
-        if (sc != null && kgPer > 0) {
-          final sr = (sc as num).toDouble();
-          if (oldU == 'bag' && newU == 'kg') {
-            l['selling_cost'] = sr / kgPer;
-          } else if (oldU == 'kg' && newU == 'bag') {
-            l['selling_cost'] = sr * kgPer;
-          }
-        }
-        _markDirty();
-      },
-    );
   }
 
   String _lineUnitWarning(Map<String, dynamic> l) {
@@ -793,6 +808,12 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
         final name = l['item_name']?.toString() ?? 'Item';
         return 'Line "$name" has a negative landing rate.';
       }
+      final u = (l['unit'] ?? '').toString().toLowerCase();
+      final kg = (l['default_kg_per_bag'] as num?)?.toDouble() ?? 0;
+      if (u == 'bag' && kg <= 0) {
+        final name = l['item_name']?.toString() ?? 'Item';
+        return 'Line "$name": bag unit needs kg-per-bag on the catalog item.';
+      }
     }
     return null;
   }
@@ -823,6 +844,11 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
               if (l['selling_cost'] != null) 'selling_cost': l['selling_cost'],
               if (l['discount'] != null) 'discount': l['discount'],
               if (l['tax_percent'] != null) 'tax_percent': l['tax_percent'],
+              if (l['payment_days'] != null) 'payment_days': l['payment_days'],
+              if (l['hsn_code'] != null && (l['hsn_code'] as String).trim().isNotEmpty)
+                'hsn_code': (l['hsn_code'] as String).trim(),
+              if (l['description'] != null && (l['description'] as String).trim().isNotEmpty)
+                'description': (l['description'] as String).trim(),
               if (l['catalog_item_id'] != null) 'catalog_item_id': l['catalog_item_id'],
             },
           )
@@ -884,19 +910,11 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
       }
       ref.invalidate(tradePurchasesListProvider);
       if (!mounted) return;
-      final hid = saved['human_id']?.toString() ?? _purchaseHumanId;
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(_editPurchaseId != null ? 'Purchase updated' : 'Purchase created'),
-          content: Text('ID: $hid'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Close'),
-            ),
-          ],
-        ),
+      await showPurchaseSavedSheet(
+        context,
+        ref,
+        savedJson: saved,
+        wasEdit: _editPurchaseId != null,
       );
       if (_editPurchaseId == null) {
         await _loadNextPurchaseId();
@@ -975,24 +993,67 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
   }
 
   Widget _buildStep0(AsyncValue<List<Map<String, dynamic>>> suppliers) {
+    String supplierName(List<Map<String, dynamic>> rows) {
+      if (_supplierId == null) return '';
+      for (final r in rows) {
+        if (r['id']?.toString() == _supplierId) return r['name']?.toString() ?? '';
+      }
+      return '';
+    }
+
     return ListView(
       padding: _pagePadding,
       children: [
         _stepHeader('Purchase header'),
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.receipt_long_rounded, size: 18),
-              const SizedBox(width: 8),
-              const Text('Purchase ID: '),
-              Text(_purchaseHumanId, style: const TextStyle(fontWeight: FontWeight.w800)),
-            ],
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.receipt_long_rounded, size: 18),
+                    const SizedBox(width: 8),
+                    const Text('Purchase ID: '),
+                    Expanded(
+                      child: Text(_purchaseHumanId,
+                          style: const TextStyle(fontWeight: FontWeight.w800)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton.filledTonal(
+              tooltip: 'Scan bill',
+              onPressed: () async {
+                final lines = await context.push<List<Map<String, dynamic>>>('/purchase/scan');
+                if (!mounted || lines == null || lines.isEmpty) return;
+                setState(() {
+                  for (final raw in lines) {
+                    final m = Map<String, dynamic>.from(raw);
+                    m['default_unit'] = (m['unit'] ?? 'kg').toString().toLowerCase();
+                    m['default_kg_per_bag'] = null;
+                    m['discount'] = m['discount'] ?? 0.0;
+                    m['tax_percent'] = m['tax_percent'] ?? 0.0;
+                    m['payment_days'] = m['payment_days'];
+                    m['hsn_code'] = m['hsn_code'];
+                    m['description'] = m['description'];
+                    final allow = _allowedUnitsForLine(m);
+                    m['unit'] = allow.isNotEmpty ? allow.first : 'kg';
+                    _lines.add(m);
+                  }
+                  _dirty = true;
+                });
+                _scheduleDraft();
+              },
+              icon: const Icon(Icons.document_scanner_outlined),
+            ),
+          ],
         ),
         const SizedBox(height: 6),
         InputDecorator(
@@ -1051,6 +1112,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
                 }
                 _markDirty();
               });
+              unawaited(_refreshSupplierWarning());
             },
           ),
         ),
@@ -1063,7 +1125,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
                 initialValue: _brokerId != null && brokers.any((b) => b['id']?.toString() == _brokerId)
                     ? _brokerId
                     : null,
-                decoration: const InputDecoration(labelText: 'Broker', isDense: true),
+                decoration: const InputDecoration(labelText: 'Broker (optional)', isDense: true),
                 items: [
                   const DropdownMenuItem<String?>(value: null, child: Text('None')),
                   ...brokers.map(
@@ -1087,6 +1149,30 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
                 },
               ),
             ),
+        if (_supplierWarning != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Material(
+              color: const Color(0xFFFFF7ED),
+              borderRadius: BorderRadius.circular(10),
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.info_outline_rounded, size: 18, color: Color(0xFFEA580C)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _supplierWarning!,
+                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         if (_headerError != null)
           Padding(
             padding: const EdgeInsets.only(top: 4),
@@ -1095,100 +1181,98 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
               style: TextStyle(color: Theme.of(context).colorScheme.error, fontWeight: FontWeight.w600),
             ),
           ),
-        const SizedBox(height: 6),
-        SegmentedButton<String>(
-          segments: const [
-            ButtonSegment(value: 'included', label: Text('Freight Included')),
-            ButtonSegment(value: 'separate', label: Text('Freight Separate')),
-          ],
-          selected: {_freightType},
-          onSelectionChanged: (v) {
-            setState(() {
-              _freightType = v.first;
-              if (_freightType == 'included') {
-                _freight = 0;
-                _freightCtrl.text = '0';
-              } else {
+        const SizedBox(height: 8),
+        suppliers.when(
+          loading: () => const SizedBox.shrink(),
+          error: (_, __) => const SizedBox.shrink(),
+          data: (rows) => DefaultsAppliedCard(
+            supplierLabel: supplierName(rows),
+            freightType: _freightType,
+            onFreightTypeChanged: (ft) {
+              setState(() {
+                _freightType = ft;
+                if (_freightType == 'included') {
+                  _freight = 0;
+                  _freightCtrl.text = '0';
+                } else {
+                  _freight = (_delivered ?? 0) + (_billty ?? 0);
+                  _freightCtrl.text = (_freight ?? 0).toStringAsFixed(2);
+                }
+                _dirty = true;
+              });
+              _scheduleDraft();
+            },
+            deliveredController: _deliveredCtrl,
+            billtyController: _billtyCtrl,
+            freightController: _freightCtrl,
+            freightReadOnly: _freightType == 'included',
+            onDeliveredChanged: (t) {
+              _delivered = double.tryParse(t);
+              if (_freightType == 'separate') {
                 _freight = (_delivered ?? 0) + (_billty ?? 0);
                 _freightCtrl.text = (_freight ?? 0).toStringAsFixed(2);
               }
-              _dirty = true;
-            });
-            _scheduleDraft();
-          },
-        ),
-        const SizedBox(height: 6),
-        TextField(
-          controller: _paymentDaysCtrl,
-          decoration: const InputDecoration(labelText: 'Payment days', isDense: true),
-          keyboardType: TextInputType.number,
-          onChanged: (t) {
-            _paymentDays = int.tryParse(t);
-            _markDirty();
-          },
-        ),
-        const SizedBox(height: 6),
-        TextField(
-          controller: _discountCtrl,
-          decoration: const InputDecoration(labelText: 'Header discount %', isDense: true),
-          keyboardType: TextInputType.number,
-          onChanged: (t) {
-            _discount = (double.tryParse(t) ?? 0).clamp(0, 100);
-            _markDirty();
-          },
-        ),
-        const SizedBox(height: 6),
-        TextField(
-          controller: _commissionCtrl,
-          decoration: const InputDecoration(labelText: 'Broker commission %', isDense: true),
-          keyboardType: TextInputType.number,
-          onChanged: (t) {
-            _commission = double.tryParse(t);
-            _markDirty();
-          },
-        ),
-        const SizedBox(height: 6),
-        TextField(
-          controller: _deliveredCtrl,
-          decoration: const InputDecoration(labelText: 'Delivered rate', isDense: true),
-          keyboardType: TextInputType.number,
-          onChanged: (t) {
-            _delivered = double.tryParse(t);
-            if (_freightType == 'separate') {
-              _freight = (_delivered ?? 0) + (_billty ?? 0);
-              _freightCtrl.text = (_freight ?? 0).toStringAsFixed(2);
-            }
-            _markDirty();
-          },
-        ),
-        const SizedBox(height: 6),
-        TextField(
-          controller: _billtyCtrl,
-          decoration: const InputDecoration(labelText: 'Billty rate', isDense: true),
-          keyboardType: TextInputType.number,
-          onChanged: (t) {
-            _billty = double.tryParse(t);
-            if (_freightType == 'separate') {
-              _freight = (_delivered ?? 0) + (_billty ?? 0);
-              _freightCtrl.text = (_freight ?? 0).toStringAsFixed(2);
-            }
-            _markDirty();
-          },
-        ),
-        const SizedBox(height: 6),
-        TextField(
-          controller: _freightCtrl,
-          readOnly: _freightType == 'included',
-          decoration: InputDecoration(
-            labelText: _freightType == 'included' ? 'Freight (included — not added to total)' : 'Freight amount',
-            isDense: true,
+              _markDirty();
+            },
+            onBilltyChanged: (t) {
+              _billty = double.tryParse(t);
+              if (_freightType == 'separate') {
+                _freight = (_delivered ?? 0) + (_billty ?? 0);
+                _freightCtrl.text = (_freight ?? 0).toStringAsFixed(2);
+              }
+              _markDirty();
+            },
+            onFreightChanged: (t) {
+              if (_freightType == 'included') return;
+              _freight = double.tryParse(t);
+              _markDirty();
+            },
           ),
-          keyboardType: TextInputType.number,
-          onChanged: (t) {
-            if (_freightType == 'included') return;
-            _freight = double.tryParse(t);
-            _markDirty();
-          },
+        ),
+      ],
+    );
+  }
+
+  Widget _liveLineMath(Map<String, dynamic> l, NumberFormat money) {
+    final q = (l['qty'] as num?)?.toDouble() ?? 0;
+    final u = (l['unit'] ?? '').toString().toUpperCase();
+    final kgPer = (l['default_kg_per_bag'] as num?)?.toDouble() ?? 0;
+    final landKg = _landingPerKg(l);
+    final sellKg = _sellingPerKg(l);
+    final bagLand = (u == 'BAG' && kgPer > 0) ? landKg * kgPer : landKg;
+    final bagSell = (sellKg != null && u == 'BAG' && kgPer > 0) ? sellKg * kgPer : sellKg;
+    final total = _lineFinal(l);
+    if (u == 'BAG' && kgPer > 0) {
+      final kgTot = q * kgPer;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Per KG → ${money.format(landKg)}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+          Text('Per BAG → ${money.format(bagLand)}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+          Text(
+            '$q $u (${kgTot.toStringAsFixed(kgTot == kgTot.roundToDouble() ? 0 : 1)} kg) → Line total ${money.format(total)}',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 12.5,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+          if (bagSell != null)
+            Text('Selling per BAG → ${money.format(bagSell)}', style: const TextStyle(fontSize: 11.5)),
+        ],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Per KG → ${money.format(landKg)}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+        Text(
+          '$q $u → Line total ${money.format(total)}',
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 12.5,
+            color: Theme.of(context).colorScheme.primary,
+          ),
         ),
       ],
     );
@@ -1196,6 +1280,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
 
   Widget _buildStep1() {
     final money = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+    final cs = Theme.of(context).colorScheme;
     return ListView(
       padding: _pagePadding,
       children: [
@@ -1203,7 +1288,8 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
         TextField(
           controller: _search,
           decoration: const InputDecoration(
-            labelText: 'Search items',
+            labelText: 'Search items (supplier-aware)',
+            hintText: 'Supplier, item, category…',
             prefixIcon: Icon(Icons.search_rounded),
             isDense: true,
           ),
@@ -1218,18 +1304,28 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
             final name = h['name']?.toString() ?? h['item_name']?.toString() ?? 'Item';
             final score = (h['_score'] as int?) ?? 0;
             final used = h['used_count'];
+            final kgPer = (h['default_kg_per_bag'] as num?)?.toDouble() ?? 0;
+            final last = (h['last_price'] as num?)?.toDouble();
+            String? lastKg;
+            if (last != null) {
+              final pu = (h['default_purchase_unit']?.toString() ?? '').toLowerCase();
+              if (pu == 'bag' && kgPer > 0) {
+                lastKg = '${money.format(last / kgPer)}/kg';
+              } else {
+                lastKg = '${money.format(last)}/kg';
+              }
+            }
             final subtitleParts = <String>[
-              if (h['_same_supplier'] == true) 'Same supplier',
+              if (lastKg != null) 'Last purchase: $lastKg',
               if (used is num && used > 0) 'Used ${used.toInt()}×',
+              if (h['_same_supplier'] == true) 'Supplier: match',
               if ((h['category_name']?.toString() ?? '').trim().isNotEmpty)
                 h['category_name'].toString(),
-              if (h['avg_5'] != null) 'Avg5 ${money.format(h['avg_5'])}',
-              if (h['last_price'] != null) 'Last ${money.format(h['last_price'])}',
             ];
             return ListTile(
               dense: true,
               visualDensity: VisualDensity.compact,
-              title: Text(name),
+              title: Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
               subtitle: Text(subtitleParts.join(' · ')),
               trailing: score >= 100 ? const Icon(Icons.auto_awesome_rounded, size: 16) : null,
               onTap: () async {
@@ -1241,11 +1337,20 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
         ..._lines.asMap().entries.map((entry) {
           final i = entry.key;
           final l = entry.value;
+          final uopts = _allowedUnitsForLine(l);
+          final udisp = uopts.isNotEmpty ? uopts.first.toUpperCase() : 'KG';
+          final qtyErr = ((l['qty'] as num?)?.toDouble() ?? 0) <= 0;
           return Card(
             key: ValueKey('line_$i'),
-            margin: const EdgeInsets.only(bottom: 8),
+            elevation: 1,
+            shadowColor: Colors.black26,
+            margin: const EdgeInsets.only(bottom: 10),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(color: cs.outlineVariant),
+            ),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -1254,7 +1359,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
                       Expanded(
                         child: Text(
                           l['item_name']?.toString() ?? '',
-                          style: const TextStyle(fontWeight: FontWeight.w700),
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
                         ),
                       ),
                       IconButton(
@@ -1274,7 +1379,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
                       child: Text(
                         _lineUnitWarning(l),
                         style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
+                          color: cs.error,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
@@ -1286,7 +1391,11 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
                         child: TextFormField(
                           key: ValueKey('qty_${i}_${l['unit']}'),
                           initialValue: (l['qty'] as num?)?.toString() ?? '1',
-                          decoration: const InputDecoration(labelText: 'Qty', isDense: true),
+                          decoration: InputDecoration(
+                            labelText: 'Qty',
+                            isDense: true,
+                            errorText: qtyErr ? 'Enter quantity' : null,
+                          ),
                           keyboardType: TextInputType.number,
                           onChanged: (t) {
                             l['qty'] = double.tryParse(t) ?? 1.0;
@@ -1294,8 +1403,13 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
                           },
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(child: _lineUnitPicker(i, l)),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: InputDecorator(
+                          decoration: const InputDecoration(labelText: 'Unit', isDense: true),
+                          child: Text(udisp, style: const TextStyle(fontWeight: FontWeight.w700)),
+                        ),
+                      ),
                     ],
                   ),
                   if (_kgHelperLine(l) != null)
@@ -1304,35 +1418,44 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
                       child: Text(
                         _kgHelperLine(l)!,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              color: cs.onSurfaceVariant,
                               fontWeight: FontWeight.w600,
                             ),
                       ),
                     ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
                   Row(
                     children: [
                       Expanded(
                         child: TextFormField(
-                          key: ValueKey('land_$i'),
-                          initialValue: (l['landing_cost'] as num?)?.toString() ?? '0',
-                          decoration: const InputDecoration(labelText: 'Landing cost *', isDense: true),
+                          key: ValueKey('lpk_$i'),
+                          initialValue: _landingPerKg(l).toString(),
+                          decoration: const InputDecoration(
+                            labelText: 'Landing ₹/kg',
+                            isDense: true,
+                          ),
                           keyboardType: TextInputType.number,
                           onChanged: (t) {
-                            l['landing_cost'] = double.tryParse(t) ?? 0;
+                            final v = double.tryParse(t);
+                            if (v == null) return;
+                            _putLandingPerKg(l, v);
                             _markDirty();
                           },
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 10),
                       Expanded(
                         child: TextFormField(
-                          key: ValueKey('sell_$i'),
-                          initialValue: l['selling_cost'] != null ? (l['selling_cost'] as num).toString() : '',
-                          decoration: const InputDecoration(labelText: 'Selling cost', isDense: true),
+                          key: ValueKey('spk_$i'),
+                          initialValue: _sellingPerKg(l)?.toString() ?? '',
+                          decoration: const InputDecoration(
+                            labelText: 'Selling ₹/kg',
+                            isDense: true,
+                          ),
                           keyboardType: TextInputType.number,
                           onChanged: (t) {
-                            l['selling_cost'] = double.tryParse(t);
+                            final v = double.tryParse(t);
+                            _putSellingPerKg(l, v);
                             _markDirty();
                           },
                         ),
@@ -1340,46 +1463,62 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
                     ],
                   ),
                   const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          key: ValueKey('disc_$i'),
-                          initialValue: (l['discount'] as num?)?.toString() ?? '0',
-                          decoration: const InputDecoration(labelText: 'Line discount %', isDense: true),
-                          keyboardType: TextInputType.number,
-                          onChanged: (t) {
-                            l['discount'] = (double.tryParse(t) ?? 0).clamp(0, 100);
-                            _markDirty();
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextFormField(
-                          key: ValueKey('pay_$i'),
-                          initialValue: (l['payment_days'] as num?)?.toString() ?? '',
-                          decoration: const InputDecoration(labelText: 'Line payment days', isDense: true),
-                          keyboardType: TextInputType.number,
-                          onChanged: (t) {
-                            l['payment_days'] = int.tryParse(t);
-                            _markDirty();
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'HSN: ${l['hsn_code'] ?? '—'}   ·   Tax: ${(l['tax_percent'] as num?) ?? 0}% (from item)',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                  ),
+                  _liveLineMath(l, money),
                   const SizedBox(height: 4),
-                  Text(
-                    'Net ${money.format(_lineNetAfterLineDiscount(l))} + Tax ${money.format(_lineTaxAmount(l))} = ${money.format(_lineFinal(l))}',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ExpansionTile(
+                    tilePadding: EdgeInsets.zero,
+                    title: const Text('Show advanced fields', style: TextStyle(fontWeight: FontWeight.w600)),
+                    children: [
+                      TextFormField(
+                        key: ValueKey('disc_$i'),
+                        initialValue: (l['discount'] as num?)?.toString() ?? '0',
+                        decoration: const InputDecoration(labelText: 'Line discount %', isDense: true),
+                        keyboardType: TextInputType.number,
+                        onChanged: (t) {
+                          l['discount'] = (double.tryParse(t) ?? 0).clamp(0, 100);
+                          _markDirty();
+                        },
+                      ),
+                      TextFormField(
+                        key: ValueKey('pay_$i'),
+                        initialValue: (l['payment_days'] as num?)?.toString() ?? '',
+                        decoration: const InputDecoration(labelText: 'Payment days (line)', isDense: true),
+                        keyboardType: TextInputType.number,
+                        onChanged: (t) {
+                          l['payment_days'] = int.tryParse(t);
+                          _markDirty();
+                        },
+                      ),
+                      TextFormField(
+                        key: ValueKey('hsn_$i'),
+                        initialValue: l['hsn_code']?.toString() ?? '',
+                        decoration: const InputDecoration(labelText: 'HSN (optional)', isDense: true),
+                        onChanged: (t) {
+                          l['hsn_code'] = t.trim().isEmpty ? null : t.trim();
+                          _markDirty();
+                        },
+                      ),
+                      TextFormField(
+                        key: ValueKey('tax_$i'),
+                        initialValue: (l['tax_percent'] as num?)?.toString() ?? '0',
+                        decoration: const InputDecoration(labelText: 'Tax %', isDense: true),
+                        keyboardType: TextInputType.number,
+                        onChanged: (t) {
+                          l['tax_percent'] = double.tryParse(t) ?? 0;
+                          _markDirty();
+                        },
+                      ),
+                      TextFormField(
+                        key: ValueKey('desc_$i'),
+                        initialValue: l['description']?.toString() ?? '',
+                        decoration: const InputDecoration(labelText: 'Description', isDense: true),
+                        maxLines: 2,
+                        onChanged: (t) {
+                          l['description'] = t.trim().isEmpty ? null : t.trim();
+                          _markDirty();
+                        },
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -1390,8 +1529,26 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
     );
   }
 
+  ({double bags, double kg}) _totBagsAndKg() {
+    var bags = 0.0;
+    var kg = 0.0;
+    for (final l in _lines) {
+      final q = (l['qty'] as num?)?.toDouble() ?? 0;
+      final u = (l['unit'] ?? '').toString().toLowerCase();
+      final kpb = (l['default_kg_per_bag'] as num?)?.toDouble() ?? 0;
+      if (u == 'bag' && kpb > 0) {
+        bags += q;
+        kg += q * kpb;
+      } else {
+        kg += q;
+      }
+    }
+    return (bags: bags, kg: kg);
+  }
+
   Widget _buildStep2() {
     final fmt = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+    final cs = Theme.of(context).colorScheme;
     final suppliers = ref.watch(suppliersListProvider).valueOrNull ?? const [];
     final brokers = ref.watch(brokersListProvider).valueOrNull ?? const [];
     final supplierName = suppliers
@@ -1411,6 +1568,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
     final taxTotal = _totalTaxMoney();
     final brokerAmt = _brokerCommissionMoney();
     final grand = _grandTotal();
+    final tot = _totBagsAndKg();
 
     Widget row(String left, String right, {bool bold = false, double gap = 3}) {
       return Padding(
@@ -1444,47 +1602,89 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
       padding: _pagePadding,
       children: [
         _stepHeader('Summary'),
-        row('Purchase ID', _purchaseHumanId),
-        row('Supplier', supplierName ?? '—'),
-        row('Broker', brokerName ?? '—'),
-        row('Freight', _freightType == 'included' ? 'Included in rate' : 'Separate (+${fmt.format(_freight ?? 0)})'),
-        const Divider(height: 16),
-        Text('ITEMS', style: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800)),
-        const SizedBox(height: 6),
-        ..._lines.map((l) {
-          final name = l['item_name']?.toString() ?? '';
-          final u = (l['unit']?.toString() ?? '').toUpperCase();
-          final rate = (l['landing_cost'] as num?)?.toDouble() ?? 0;
-          final disc = (l['discount'] as num?)?.toDouble() ?? 0;
-          final taxPct = (l['tax_percent'] as num?)?.toDouble() ?? 0;
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(name, style: const TextStyle(fontWeight: FontWeight.w800)),
-                row(
-                  '${l['qty']} $u × ${fmt.format(rate)}',
-                  fmt.format(_lineGross(l)),
-                  gap: 2,
-                ),
-                if (disc > 0) row('Line discount ($disc%)', '- ${fmt.format(_lineGross(l) - _lineNetAfterLineDiscount(l))}', gap: 2),
-                row('Tax ($taxPct%)', fmt.format(_lineTaxAmount(l)), gap: 2),
-                row('Line final', fmt.format(_lineFinal(l)), bold: true, gap: 2),
+                Text('Supplier · ${supplierName ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                Text('Broker · ${brokerName ?? '—'}', style: TextStyle(color: cs.onSurfaceVariant)),
+                Text('Date · ${DateFormat.yMMMd().format(_purchaseDate)}'),
               ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        ..._lines.map((l) {
+          final name = l['item_name']?.toString() ?? '';
+          final u = (l['unit']?.toString() ?? '').toUpperCase();
+          final q = (l['qty'] as num?)?.toDouble() ?? 0;
+          final kgPer = (l['default_kg_per_bag'] as num?)?.toDouble() ?? 0;
+          final kgLine = (u == 'BAG' && kgPer > 0) ? q * kgPer : q;
+          final land = _landingPerKg(l);
+          final sell = _sellingPerKg(l);
+          final pk = (sell != null) ? (sell - land) : null;
+          final profitStyle = TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 13,
+            color: pk == null
+                ? cs.onSurfaceVariant
+                : (pk >= 0 ? const Color(0xFF15803D) : const Color(0xFFDC2626)),
+          );
+          return Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: cs.outlineVariant),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Item: $name', style: const TextStyle(fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 4),
+                  Text(
+                    u == 'BAG' && kgPer > 0
+                        ? '$q $u (${kgLine.toStringAsFixed(kgLine == kgLine.roundToDouble() ? 0 : 1)} kg)'
+                        : '$q $u',
+                    style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 6),
+                  Text('Landing: ${fmt.format(land)}/kg', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  if (sell != null) Text('Selling: ${fmt.format(sell)}/kg', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  if (pk != null) Text('Profit: ${fmt.format(pk)}/kg', style: profitStyle),
+                  const Divider(height: 14),
+                  Text('Line total ${fmt.format(_lineFinal(l))}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                ],
+              ),
             ),
           );
         }),
-        const Divider(height: 16),
-        Text('TOTAL', style: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800)),
-        const SizedBox(height: 6),
-        row('Subtotal (lines)', fmt.format(subtotal)),
-        if (headerDisc > 0) row('Header discount', '- ${fmt.format(headerDisc)}'),
-        row('Tax (sum of lines)', fmt.format(taxTotal)),
-        if (_freightType == 'separate' && (_freight ?? 0) > 0) row('Freight', fmt.format(_freight ?? 0)),
-        if (brokerAmt > 0) row('Broker commission (${_commission ?? 0}%)', fmt.format(brokerAmt)),
-        const SizedBox(height: 6),
-        row('Grand total', fmt.format(grand), bold: true),
+        const SizedBox(height: 10),
+        Card(
+          color: cs.primaryContainer.withValues(alpha: 0.35),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('TOTAL', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900)),
+                const SizedBox(height: 6),
+                row('Total bags', tot.bags.toStringAsFixed(tot.bags == tot.bags.roundToDouble() ? 0 : 1)),
+                row('Total kg', tot.kg.toStringAsFixed(tot.kg == tot.kg.roundToDouble() ? 0 : 1)),
+                row('Subtotal', fmt.format(subtotal)),
+                if (headerDisc > 0) row('Header discount', '- ${fmt.format(headerDisc)}'),
+                row('Tax (lines)', fmt.format(taxTotal)),
+                if (_freightType == 'separate' && (_freight ?? 0) > 0) row('Freight', fmt.format(_freight ?? 0)),
+                if (brokerAmt > 0) row('Broker', fmt.format(brokerAmt)),
+                const Divider(height: 12),
+                row('Final total', fmt.format(grand), bold: true),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -1532,14 +1732,35 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
     } else if (_step == 1) {
       bottom = Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        child: FilledButton(
-          onPressed: () {
-            setState(() {
-              _step = 2;
-              _scheduleDraft();
-            });
-          },
-          child: const Text('Done'),
+        child: Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  _search.requestFocus();
+                },
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Add item'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: FilledButton(
+                onPressed: () {
+                  final err = _linesValidationError();
+                  if (err != null) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+                    return;
+                  }
+                  setState(() {
+                    _step = 2;
+                    _scheduleDraft();
+                  });
+                },
+                child: const Text('Done'),
+              ),
+            ),
+          ],
         ),
       );
     } else {

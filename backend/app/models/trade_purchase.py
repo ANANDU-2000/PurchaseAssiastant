@@ -81,6 +81,9 @@ class TradePurchaseLine(Base):
     selling_cost: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
     discount: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
     tax_percent: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
+    payment_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    hsn_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    description: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     purchase = relationship("TradePurchase", back_populates="lines")
     catalog_item = relationship("CatalogItem", foreign_keys=[catalog_item_id], lazy="selectin")

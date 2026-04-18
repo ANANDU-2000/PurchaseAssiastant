@@ -3,12 +3,34 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../auth/session_notifier.dart';
 import '../models/trade_purchase_models.dart';
 
+/// Primary history tab for API: `all` | `draft` | `due_soon` | `overdue` | `paid`.
+final purchaseHistoryPrimaryFilterProvider =
+    StateProvider<String>((ref) => 'all');
+
+/// Debounced search string sent to `GET .../trade-purchases?q=`.
+final purchaseHistorySearchProvider = StateProvider<String>((ref) => '');
+
+/// Optional secondary chip: `pending` | `paid` | `overdue` (client-side only).
+final purchaseHistorySecondaryFilterProvider =
+    StateProvider<String?>((ref) => null);
+
 final tradePurchasesListProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
+  final primary = ref.watch(purchaseHistoryPrimaryFilterProvider);
+  final secondary = ref.watch(purchaseHistorySecondaryFilterProvider);
+  final search = ref.watch(purchaseHistorySearchProvider);
+  final apiStatus = switch (secondary) {
+    'overdue' => 'overdue',
+    'paid' => 'paid',
+    _ => primary,
+  };
   return ref.read(hexaApiProvider).listTradePurchases(
         businessId: session.primaryBusiness.id,
+        limit: 200,
+        status: apiStatus,
+        q: search.trim().isEmpty ? null : search.trim(),
       );
 });
 
@@ -20,19 +42,22 @@ final tradePurchasesParsedProvider =
       .toList();
 });
 
-/// Counts for dashboard alert strip: overdue, due today, paid.
+/// Counts for dashboard / history banner.
 final purchaseAlertsProvider = Provider.autoDispose<Map<String, int>>((ref) {
   final async = ref.watch(tradePurchasesParsedProvider);
-  final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
   return async.maybeWhen(
     data: (list) {
+      var dueSoon = 0;
       var overdue = 0;
-      var dueToday = 0;
       var paid = 0;
+      var dueToday = 0;
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
       for (final p in list) {
         final st = p.statusEnum;
+        if (st == PurchaseStatus.dueSoon) dueSoon++;
         if (st == PurchaseStatus.overdue) overdue++;
+        if (st == PurchaseStatus.paid) paid++;
         if (p.dueDate != null) {
           final d = DateTime(p.dueDate!.year, p.dueDate!.month, p.dueDate!.day);
           if (d == today &&
@@ -41,11 +66,16 @@ final purchaseAlertsProvider = Provider.autoDispose<Map<String, int>>((ref) {
             dueToday++;
           }
         }
-        if (st == PurchaseStatus.paid) paid++;
       }
-      return {'overdue': overdue, 'dueToday': dueToday, 'paid': paid};
+      return {
+        'dueSoon': dueSoon,
+        'overdue': overdue,
+        'paid': paid,
+        'dueToday': dueToday,
+      };
     },
-    orElse: () => {'overdue': 0, 'dueToday': 0, 'paid': 0},
+    orElse: () =>
+        {'dueSoon': 0, 'overdue': 0, 'paid': 0, 'dueToday': 0},
   );
 });
 

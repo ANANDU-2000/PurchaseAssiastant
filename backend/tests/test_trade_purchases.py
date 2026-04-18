@@ -179,3 +179,77 @@ def test_purchase_response_includes_supplier_profile_and_line_hsn():
     lines = data.get("lines") or []
     assert len(lines) == 1
     assert lines[0].get("hsn_code") == "10063090"
+
+
+def test_line_payment_days_hsn_description_round_trip():
+    h, bid = _register_and_business()
+    body = {
+        "purchase_date": date.today().isoformat(),
+        "payment_days": 10,
+        "lines": [
+            {
+                **_line_body(),
+                "payment_days": 5,
+                "hsn_code": "12345678",
+                "description": "Lot A",
+            }
+        ],
+    }
+    cr = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
+    assert cr.status_code == 201, cr.text
+    lines = cr.json().get("lines") or []
+    assert len(lines) == 1
+    assert lines[0].get("payment_days") == 5
+    assert lines[0].get("hsn_code") == "12345678"
+    assert lines[0].get("description") == "Lot A"
+
+
+def test_list_due_soon_filter():
+    h, bid = _register_and_business()
+    body = {
+        "purchase_date": date.today().isoformat(),
+        "payment_days": 2,
+        "lines": [_line_body()],
+    }
+    cr = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
+    assert cr.status_code == 201, cr.text
+    pid = cr.json()["id"]
+    assert cr.json()["derived_status"] == "due_soon"
+
+    r_all = client.get(f"/v1/businesses/{bid}/trade-purchases", headers=h)
+    assert r_all.status_code == 200, r_all.text
+    ids_all = {x["id"] for x in r_all.json()}
+    assert pid in ids_all
+
+    r_ds = client.get(f"/v1/businesses/{bid}/trade-purchases?status=due_soon", headers=h)
+    assert r_ds.status_code == 200, r_ds.text
+    ids_ds = {x["id"] for x in r_ds.json()}
+    assert pid in ids_ds
+
+
+def test_list_q_filters_by_item_name():
+    h, bid = _register_and_business()
+    unique = f"ZetaGrain{uuid.uuid4().hex[:8]}"
+    body = {
+        "purchase_date": date.today().isoformat(),
+        "lines": [
+            {
+                "item_name": unique,
+                "qty": 1,
+                "unit": "kg",
+                "landing_cost": 10,
+                "tax_percent": 0,
+            }
+        ],
+    }
+    cr = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
+    assert cr.status_code == 201, cr.text
+    pid = cr.json()["id"]
+
+    r = client.get(
+        f"/v1/businesses/{bid}/trade-purchases?q={unique[:6]}",
+        headers=h,
+    )
+    assert r.status_code == 200, r.text
+    ids = {x["id"] for x in r.json()}
+    assert pid in ids

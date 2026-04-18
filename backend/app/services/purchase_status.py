@@ -36,14 +36,19 @@ def compute_status(
     remaining = total - paid
     if remaining <= 0 or paid >= total:
         return "paid"
-    if paid > 0:
-        return "partially_paid"
 
     when = now or datetime.now(timezone.utc)
     today = when.date() if isinstance(when, datetime) else when
-    if due_date is not None and today > due_date and remaining > 0:
-        return "overdue"
+    if due_date is not None and remaining > 0:
+        if today > due_date:
+            return "overdue"
+        delta = (due_date - today).days
+        if 0 <= delta <= 3:
+            return "due_soon"
 
-    if st in {"saved", "confirmed", "partially_paid", "paid", "overdue"}:
+    if paid > 0:
+        return "partially_paid"
+
+    if st in {"saved", "confirmed", "partially_paid", "paid", "overdue", "due_soon"}:
         return st
     return "confirmed"

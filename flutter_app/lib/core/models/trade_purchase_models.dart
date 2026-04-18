@@ -10,6 +10,7 @@ enum PurchaseStatus {
   partiallyPaid,
   paid,
   overdue,
+  dueSoon,
   cancelled,
   unknown,
 }
@@ -22,6 +23,7 @@ extension PurchaseStatusX on PurchaseStatus {
         PurchaseStatus.partiallyPaid => 'partially_paid',
         PurchaseStatus.paid => 'paid',
         PurchaseStatus.overdue => 'overdue',
+        PurchaseStatus.dueSoon => 'due_soon',
         PurchaseStatus.cancelled => 'cancelled',
         PurchaseStatus.unknown => 'unknown',
       };
@@ -33,6 +35,7 @@ extension PurchaseStatusX on PurchaseStatus {
         PurchaseStatus.partiallyPaid => 'Partial',
         PurchaseStatus.paid => 'Paid',
         PurchaseStatus.overdue => 'Overdue',
+        PurchaseStatus.dueSoon => 'Due soon',
         PurchaseStatus.cancelled => 'Cancelled',
         PurchaseStatus.unknown => '—',
       };
@@ -40,6 +43,7 @@ extension PurchaseStatusX on PurchaseStatus {
   Color get color => switch (this) {
         PurchaseStatus.paid => HexaColors.brandAccent,
         PurchaseStatus.overdue => HexaColors.loss,
+        PurchaseStatus.dueSoon => const Color(0xFFF59E0B),
         PurchaseStatus.partiallyPaid => const Color(0xFFF59E0B),
         PurchaseStatus.draft => HexaColors.neutral,
         PurchaseStatus.saved => HexaColors.neutral,
@@ -59,6 +63,7 @@ PurchaseStatus parsePurchaseStatus(String? raw) {
     'partially_paid' => PurchaseStatus.partiallyPaid,
     'paid' => PurchaseStatus.paid,
     'overdue' => PurchaseStatus.overdue,
+    'due_soon' => PurchaseStatus.dueSoon,
     'cancelled' => PurchaseStatus.cancelled,
     _ => PurchaseStatus.unknown,
   };
@@ -76,6 +81,8 @@ class TradePurchaseLine {
     this.taxPercent,
     this.catalogItemId,
     this.hsnCode,
+    this.paymentDays,
+    this.description,
   });
 
   final String id;
@@ -88,6 +95,8 @@ class TradePurchaseLine {
   final double? taxPercent;
   final String? catalogItemId;
   final String? hsnCode;
+  final int? paymentDays;
+  final String? description;
 
   factory TradePurchaseLine.fromJson(Map<String, dynamic> j) {
     return TradePurchaseLine(
@@ -101,6 +110,8 @@ class TradePurchaseLine {
       taxPercent: (j['tax_percent'] as num?)?.toDouble(),
       catalogItemId: j['catalog_item_id']?.toString(),
       hsnCode: j['hsn_code']?.toString(),
+      paymentDays: (j['payment_days'] as num?)?.toInt(),
+      description: j['description']?.toString(),
     );
   }
 }

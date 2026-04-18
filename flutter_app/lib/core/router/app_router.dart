@@ -23,6 +23,7 @@ import '../../features/home/presentation/home_page.dart';
 import '../../features/purchase/presentation/purchase_detail_page.dart';
 import '../../features/purchase/presentation/purchase_home_page.dart';
 import '../../features/purchase/presentation/purchase_wizard_page.dart';
+import '../../features/purchase/presentation/scan_bill_page.dart';
 import '../../features/notifications/presentation/notifications_page.dart';
 import '../../features/settings/presentation/business_profile_page.dart';
 import '../../features/settings/presentation/settings_page.dart';
@@ -245,6 +246,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
           child: const PurchaseWizardPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/purchase/scan',
+        name: 'purchase_scan',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const ScanBillPage(),
         ),
       ),
       GoRoute(

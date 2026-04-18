@@ -353,6 +353,30 @@ async def lifespan(app: FastAPI):
 
         await conn.run_sync(_ensure_trade_purchases_lifecycle_columns)
 
+        def _ensure_trade_purchase_line_columns(sync_conn):
+            insp = inspect(sync_conn)
+            if not insp.has_table("trade_purchase_lines"):
+                return
+            cols = {c["name"] for c in insp.get_columns("trade_purchase_lines")}
+            dialect = sync_conn.dialect.name
+            alters: list[str] = []
+            if "payment_days" not in cols:
+                alters.append("ALTER TABLE trade_purchase_lines ADD COLUMN payment_days INTEGER NULL")
+            if "hsn_code" not in cols:
+                alters.append("ALTER TABLE trade_purchase_lines ADD COLUMN hsn_code VARCHAR(32) NULL")
+            if "description" not in cols:
+                if dialect == "postgresql":
+                    alters.append("ALTER TABLE trade_purchase_lines ADD COLUMN IF NOT EXISTS description VARCHAR(512) NULL")
+                else:
+                    alters.append("ALTER TABLE trade_purchase_lines ADD COLUMN description VARCHAR(512) NULL")
+            for sql in alters:
+                try:
+                    sync_conn.exec_driver_sql(sql)
+                except Exception:  # noqa: BLE001
+                    pass
+
+        await conn.run_sync(_ensure_trade_purchase_line_columns)
+
     yield
     await engine.dispose()
 

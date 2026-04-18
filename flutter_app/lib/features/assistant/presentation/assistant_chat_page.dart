@@ -12,6 +12,7 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/health_provider.dart';
 import 'assistant_chat_theme.dart';
 import 'models/chat_message.dart';
+import 'providers/assistant_quick_prompts_provider.dart';
 import 'widgets/chat_background_pattern.dart';
 import 'widgets/chat_bubble.dart';
 import 'widgets/input_bar.dart';
@@ -115,6 +116,21 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
           'content': b.text,
         },
     ];
+  }
+
+  void _onQuickPrompt(AssistantQuickPrompt p) {
+    final loc = p.goLocation?.trim();
+    if (loc != null && loc.isNotEmpty) {
+      if (p.usePush) {
+        context.push(loc);
+      } else {
+        context.go(loc);
+      }
+    }
+    final msg = p.message?.trim();
+    if (msg != null && msg.isNotEmpty) {
+      unawaited(_sendWithText(msg));
+    }
   }
 
   Future<void> _sendWithText(String text) async {
@@ -434,7 +450,7 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  QuickPromptsBar(onPrompt: (msg) => unawaited(_sendWithText(msg))),
+                  QuickPromptsBar(onPrompt: _onQuickPrompt),
                   InputBar(
                     controller: _ctrl,
                     focusNode: _inputFocus,

@@ -18,6 +18,9 @@ class TradePurchaseLineIn(BaseModel):
     selling_cost: float | None = Field(None, ge=0)
     discount: float | None = Field(None, ge=0)
     tax_percent: float | None = Field(None, ge=0)
+    payment_days: int | None = Field(None, ge=0, le=3650)
+    hsn_code: str | None = Field(None, max_length=32)
+    description: str | None = Field(None, max_length=512)
 
 
 class TradePurchaseCreateRequest(BaseModel):
@@ -45,7 +48,9 @@ class TradePurchaseLineOut(BaseModel):
     selling_cost: float | None
     discount: float | None
     tax_percent: float | None
+    payment_days: int | None = None
     hsn_code: str | None = None
+    description: str | None = None
 
 
 class TradePurchaseOut(BaseModel):

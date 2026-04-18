@@ -172,8 +172,8 @@ class _HomePageState extends ConsumerState<HomePage>
                             counts: ref.watch(purchaseAlertsProvider),
                             onOverdue: () =>
                                 context.go('/purchase?filter=overdue'),
-                            onDueToday: () =>
-                                context.go('/purchase?filter=due_today'),
+                            onDueSoon: () =>
+                                context.go('/purchase?filter=due_soon'),
                             onPaid: () => context.go('/purchase?filter=paid'),
                           ),
                           const SizedBox(height: 10),
@@ -968,13 +968,13 @@ class _PurchaseAlertsRow extends StatelessWidget {
   const _PurchaseAlertsRow({
     required this.counts,
     required this.onOverdue,
-    required this.onDueToday,
+    required this.onDueSoon,
     required this.onPaid,
   });
 
   final Map<String, int> counts;
   final VoidCallback onOverdue;
-  final VoidCallback onDueToday;
+  final VoidCallback onDueSoon;
   final VoidCallback onPaid;
 
   @override
@@ -992,10 +992,10 @@ class _PurchaseAlertsRow extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: _AlertMini(
-            label: 'Due today',
-            value: '${counts['dueToday'] ?? 0}',
+            label: 'Due soon',
+            value: '${counts['dueSoon'] ?? 0}',
             color: const Color(0xFFF59E0B),
-            onTap: onDueToday,
+            onTap: onDueSoon,
           ),
         ),
         const SizedBox(width: 8),

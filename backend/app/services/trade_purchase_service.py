@@ -147,6 +147,7 @@ async def _sync_purchase_memory(
             )
         )
         row = dr.scalar_one_or_none()
+        line_pd = li.payment_days if li.payment_days is not None else body.payment_days
         if row is None:
             db.add(
                 SupplierItemDefault(
@@ -155,7 +156,7 @@ async def _sync_purchase_memory(
                     catalog_item_id=li.catalog_item_id,
                     last_price=float(li.landing_cost),
                     last_discount=float(li.discount) if li.discount is not None else None,
-                    last_payment_days=body.payment_days,
+                    last_payment_days=line_pd,
                     purchase_count=1,
                 )
             )
@@ -164,8 +165,8 @@ async def _sync_purchase_memory(
             row.last_price = float(li.landing_cost)
             if li.discount is not None:
                 row.last_discount = float(li.discount)
-            if body.payment_days is not None:
-                row.last_payment_days = body.payment_days
+            if line_pd is not None:
+                row.last_payment_days = line_pd
 
 
 async def next_human_id(db: AsyncSession, business_id: uuid.UUID) -> str:
@@ -224,16 +225,51 @@ async def check_duplicate(
 
 
 async def list_trade_purchases(
-    db: AsyncSession, business_id: uuid.UUID, limit: int = 100
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    limit: int = 100,
+    *,
+    status_filter: str | None = None,
+    q: str | None = None,
 ) -> list[TradePurchaseOut]:
+    """List purchases; optional status_filter: all|draft|due_soon|overdue|paid and search q."""
+    fetch_cap = min(max(limit * 5, limit), 500) if (status_filter and status_filter != "all") or q else min(limit, 500)
     res = await db.execute(
         select(TradePurchase)
         .where(TradePurchase.business_id == business_id)
         .options(*_trade_purchase_load_opts())
         .order_by(TradePurchase.purchase_date.desc(), TradePurchase.created_at.desc())
-        .limit(min(limit, 500))
+        .limit(fetch_cap)
     )
-    return [trade_purchase_to_out(p) for p in res.scalars().unique().all()]
+    rows = [trade_purchase_to_out(p) for p in res.scalars().unique().all()]
+    sf = (status_filter or "all").strip().lower()
+    if sf == "draft":
+        rows = [r for r in rows if (r.status or "").lower() in ("draft", "saved")]
+    elif sf == "due_soon":
+        rows = [r for r in rows if r.derived_status == "due_soon"]
+    elif sf == "overdue":
+        rows = [r for r in rows if r.derived_status == "overdue"]
+    elif sf == "paid":
+        rows = [r for r in rows if r.derived_status == "paid"]
+    needle = (q or "").strip().lower()
+    if needle:
+        out: list[TradePurchaseOut] = []
+        for r in rows:
+            if needle in (r.human_id or "").lower():
+                out.append(r)
+                continue
+            if needle in (r.supplier_name or "").lower():
+                out.append(r)
+                continue
+            if needle in (r.broker_name or "").lower():
+                out.append(r)
+                continue
+            for li in r.lines:
+                if needle in (li.item_name or "").lower():
+                    out.append(r)
+                    break
+        rows = out
+    return rows[: min(limit, 500)]
 
 
 async def get_trade_purchase(
@@ -300,6 +336,9 @@ async def create_trade_purchase(
                 selling_cost=li.selling_cost,
                 discount=li.discount,
                 tax_percent=li.tax_percent,
+                payment_days=li.payment_days,
+                hsn_code=(li.hsn_code.strip() if (li.hsn_code and li.hsn_code.strip()) else None),
+                description=(li.description.strip() if (li.description and li.description.strip()) else None),
             )
         )
     await _sync_purchase_memory(db, business_id, body)
@@ -364,6 +403,9 @@ async def update_trade_purchase(
                 selling_cost=li.selling_cost,
                 discount=li.discount,
                 tax_percent=li.tax_percent,
+                payment_days=li.payment_days,
+                hsn_code=(li.hsn_code.strip() if (li.hsn_code and li.hsn_code.strip()) else None),
+                description=(li.description.strip() if (li.description and li.description.strip()) else None),
             )
         )
     # Re-sync paid vs new total: clamp paid_amount
@@ -494,6 +536,9 @@ async def delete_trade_purchase(
 
 
 def _line_hsn(li: TradePurchaseLine) -> str | None:
+    raw = getattr(li, "hsn_code", None)
+    if raw is not None and str(raw).strip():
+        return str(raw).strip()
     ci = getattr(li, "catalog_item", None)
     if ci is None:
         return None
@@ -516,7 +561,9 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
             selling_cost=float(li.selling_cost) if li.selling_cost is not None else None,
             discount=float(li.discount) if li.discount is not None else None,
             tax_percent=float(li.tax_percent) if li.tax_percent is not None else None,
+            payment_days=getattr(li, "payment_days", None),
             hsn_code=_line_hsn(li),
+            description=getattr(li, "description", None),
         )
         for li in tp.lines
     ]

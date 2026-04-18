@@ -8,7 +8,7 @@ import '../providers/assistant_quick_prompts_provider.dart';
 class QuickPromptsBar extends ConsumerWidget {
   const QuickPromptsBar({super.key, required this.onPrompt});
 
-  final void Function(String message) onPrompt;
+  final void Function(AssistantQuickPrompt prompt) onPrompt;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -28,7 +28,7 @@ class QuickPromptsBar extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(20),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(20),
-                    onTap: () => onPrompt(p.message),
+                    onTap: () => onPrompt(p),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                       child: Text(

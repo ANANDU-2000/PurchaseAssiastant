@@ -1,22 +1,42 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Smart suggestion: label shown on chip → full text sent to the assistant.
+/// Smart chip: optional in-app navigation plus optional message to the assistant.
 class AssistantQuickPrompt {
-  const AssistantQuickPrompt({required this.label, required this.message});
+  const AssistantQuickPrompt({
+    required this.label,
+    this.message,
+    this.goLocation,
+    this.usePush = false,
+  });
 
   final String label;
-  final String message;
+  final String? message;
+  /// When set, opens this path (`context.go` unless [usePush] is true).
+  final String? goLocation;
+  final bool usePush;
 }
 
 /// Static prompt list (Riverpod so the bar can `watch` / test overrides).
 final assistantQuickPromptsProvider = Provider<List<AssistantQuickPrompt>>((ref) {
   return const [
-    AssistantQuickPrompt(label: 'Profit', message: 'Profit this month'),
+    AssistantQuickPrompt(
+      label: 'Profit',
+      goLocation: '/reports',
+      usePush: true,
+    ),
     AssistantQuickPrompt(
       label: 'New purchase',
-      message: 'Help me add a purchase: item, qty, buy price',
+      goLocation: '/purchase/new',
+      usePush: true,
     ),
-    AssistantQuickPrompt(label: 'Today', message: 'Summary today'),
-    AssistantQuickPrompt(label: 'Suppliers', message: 'Show suppliers summary'),
+    AssistantQuickPrompt(
+      label: 'Today',
+      goLocation: '/analytics',
+    ),
+    AssistantQuickPrompt(
+      label: 'Suppliers',
+      goLocation: '/search?section=suppliers',
+      usePush: true,
+    ),
   ];
 });

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -94,9 +94,13 @@ async def list_trade_purchases(
     db: Annotated[AsyncSession, Depends(get_db)],
     _m: Annotated[Membership, Depends(require_membership)],
     limit: int = Query(50, ge=1, le=200),
+    status: Literal["all", "draft", "due_soon", "overdue", "paid"] = Query("all"),
+    q: str | None = Query(None, max_length=200),
 ):
     del user
-    return await tps.list_trade_purchases(db, business_id, limit=limit)
+    return await tps.list_trade_purchases(
+        db, business_id, limit=limit, status_filter=status, q=q
+    )
 
 
 @router.post("", response_model=TradePurchaseOut, status_code=status.HTTP_201_CREATED)
