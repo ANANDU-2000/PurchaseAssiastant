@@ -21,6 +21,7 @@ import '../../features/contacts/presentation/category_items_page.dart';
 import '../../features/contacts/presentation/contacts_page.dart';
 import '../../features/contacts/presentation/supplier_create_wizard_page.dart';
 import '../../features/contacts/presentation/supplier_detail_page.dart';
+import '../../features/contacts/presentation/trade_ledger_page.dart';
 import '../../features/entries/presentation/entry_detail_page.dart';
 import '../../features/home/presentation/home_page.dart';
 import '../../features/purchase/presentation/purchase_detail_page.dart';
@@ -216,12 +217,38 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         },
       ),
       GoRoute(
+        path: '/supplier/:supplierId/ledger',
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['supplierId']!;
+          return iosPushPage(
+            key: state.pageKey,
+            child: TradeLedgerPage(
+              kind: TradeLedgerKind.supplier,
+              entityId: id,
+            ),
+          );
+        },
+      ),
+      GoRoute(
         path: '/broker/:brokerId',
         pageBuilder: (context, state) {
           final id = state.pathParameters['brokerId']!;
           return iosPushPage(
             key: state.pageKey,
             child: BrokerDetailPage(brokerId: id),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/broker/:brokerId/ledger',
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['brokerId']!;
+          return iosPushPage(
+            key: state.pageKey,
+            child: TradeLedgerPage(
+              kind: TradeLedgerKind.broker,
+              entityId: id,
+            ),
           );
         },
       ),

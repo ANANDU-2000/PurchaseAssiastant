@@ -418,19 +418,222 @@ class _LoginPageState extends ConsumerState<LoginPage>
     );
   }
 
+  /// Shared field block (used in hero layout and in keyboard-top scroll layout).
+  List<Widget> _loginFieldChildren(BuildContext context, {required bool showGoogle}) {
+    final eErr = _emailError();
+    final pErr = _passError();
+    return [
+      _fieldShell(
+        err: eErr != null,
+        child: TextField(
+          controller: _loginEmail,
+          focusNode: _emailFocus,
+          keyboardType: TextInputType.emailAddress,
+          textInputAction: TextInputAction.next,
+          autofillHints: const [AutofillHints.email],
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w500,
+          ),
+          onSubmitted: (_) => _passFocus.requestFocus(),
+          decoration: _fieldDeco(
+            'Email',
+            Icons.mail_outline_rounded,
+            err: eErr != null,
+          ),
+        ),
+      ),
+      _err(eErr),
+      _fieldShell(
+        err: pErr != null,
+        child: TextField(
+          controller: _loginPass,
+          focusNode: _passFocus,
+          obscureText: _obscure,
+          textInputAction: TextInputAction.done,
+          autofillHints: const [AutofillHints.password],
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w500,
+          ),
+          onSubmitted: (_) => _signIn(),
+          decoration: _fieldDeco(
+            'Password',
+            Icons.key_rounded,
+            err: pErr != null,
+            suffix: IconButton(
+              tooltip: _obscure ? 'Show password' : 'Hide password',
+              onPressed: () => setState(() => _obscure = !_obscure),
+              icon: Icon(
+                _obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                color: const Color(0xFF8E8E93),
+                size: 22,
+              ),
+            ),
+          ),
+        ),
+      ),
+      _err(pErr),
+      const SizedBox(height: 8),
+      Listener(
+        onPointerDown: (_) {
+          if (_isFormValid && !_loading) {
+            setState(() => _buttonPressed = true);
+          }
+        },
+        onPointerUp: (_) => setState(() => _buttonPressed = false),
+        onPointerCancel: (_) => setState(() => _buttonPressed = false),
+        child: AnimatedScale(
+          scale: (_buttonPressed && _isFormValid && !_loading) ? 0.98 : 1,
+          duration: const Duration(milliseconds: 100),
+          child: SizedBox(
+            width: double.infinity,
+            height: 54,
+            child: FilledButton(
+              onPressed: _loading ? null : (_isFormValid ? _signIn : null),
+              style: FilledButton.styleFrom(
+                backgroundColor: HexaColors.brandPrimary,
+                disabledBackgroundColor: const Color(0xFFE5E7EB),
+                disabledForegroundColor: const Color(0xFF6B7280),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                textStyle: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              child: _loading
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Sign In'),
+            ),
+          ),
+        ),
+      ),
+      Align(
+        alignment: Alignment.centerRight,
+        child: TextButton(
+          onPressed: _loading ? null : _forgotPassword,
+          child: const Text(
+            'Forgot password?',
+            style: TextStyle(
+              color: HexaColors.brandAccent,
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+            ),
+          ),
+        ),
+      ),
+      Center(
+        child: TextButton(
+          onPressed: _loading ? null : () => context.go('/signup'),
+          child: const Text(
+            'Create account',
+            style: TextStyle(
+              color: HexaColors.brandAccent,
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+            ),
+          ),
+        ),
+      ),
+      if (showGoogle) ...[
+        Row(
+          children: [
+            Expanded(child: Divider(color: Colors.grey.shade300)),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Text(
+                'or',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ),
+            Expanded(child: Divider(color: Colors.grey.shade300)),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: OutlinedButton(
+            onPressed: _loading ? null : _googleSignIn,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF0F172A),
+              side: BorderSide(color: Colors.grey.shade300),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: const Text(
+              'Continue with Google',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ),
+      ],
+      const SizedBox(height: 8),
+      Text(
+        '${AppConfig.appName} © 2026',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: 11,
+          color: Colors.grey.shade600,
+        ),
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final h = MediaQuery.sizeOf(context).height;
     final heroH = h * 0.45;
     final cardH = h * 0.60;
     final showGoogle = AppConfig.googleOAuthClientId.isNotEmpty;
+    final inset = MediaQuery.viewInsetsOf(context).bottom;
 
-    final eErr = _emailError();
-    final pErr = _passError();
+    if (inset > 8) {
+      return Scaffold(
+        backgroundColor: HexaColors.brandBackground,
+        resizeToAvoidBottomInset: true,
+        body: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: SafeArea(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(20, 12, 20, 16 + inset),
+              child: AutofillGroup(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _brandHeader(),
+                    const SizedBox(height: 16),
+                    _segmented(),
+                    const SizedBox(height: 18),
+                    ..._loginFieldChildren(context, showGoogle: showGoogle),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: Colors.black,
-      resizeToAvoidBottomInset: false,
+      resizeToAvoidBottomInset: true,
       body: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => FocusScope.of(context).unfocus(),
@@ -483,245 +686,10 @@ class _LoginPageState extends ConsumerState<LoginPage>
                                       child: ListView(
                                         physics: const ClampingScrollPhysics(),
                                         padding: EdgeInsets.zero,
-                                        children: [
-                                          _fieldShell(
-                                            err: eErr != null,
-                                            child: TextField(
-                                              controller: _loginEmail,
-                                              focusNode: _emailFocus,
-                                              keyboardType:
-                                                  TextInputType.emailAddress,
-                                              textInputAction:
-                                                  TextInputAction.next,
-                                              autofillHints: const [
-                                                AutofillHints.email,
-                                              ],
-                                              style: const TextStyle(
-                                                fontSize: 15,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                              onSubmitted: (_) =>
-                                                  _passFocus.requestFocus(),
-                                              decoration: _fieldDeco(
-                                                'Email',
-                                                Icons.mail_outline_rounded,
-                                                err: eErr != null,
-                                              ),
-                                            ),
-                                          ),
-                                          _err(eErr),
-                                          _fieldShell(
-                                            err: pErr != null,
-                                            child: TextField(
-                                              controller: _loginPass,
-                                              focusNode: _passFocus,
-                                              obscureText: _obscure,
-                                              textInputAction:
-                                                  TextInputAction.done,
-                                              autofillHints: const [
-                                                AutofillHints.password,
-                                              ],
-                                              style: const TextStyle(
-                                                fontSize: 15,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                              onSubmitted: (_) => _signIn(),
-                                              decoration: _fieldDeco(
-                                                'Password',
-                                                Icons.key_rounded,
-                                                err: pErr != null,
-                                                suffix: IconButton(
-                                                  tooltip: _obscure
-                                                      ? 'Show password'
-                                                      : 'Hide password',
-                                                  onPressed: () => setState(
-                                                    () => _obscure = !_obscure,
-                                                  ),
-                                                  icon: Icon(
-                                                    _obscure
-                                                        ? Icons
-                                                            .visibility_outlined
-                                                        : Icons
-                                                            .visibility_off_outlined,
-                                                    color:
-                                                        const Color(0xFF8E8E93),
-                                                    size: 22,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                          _err(pErr),
-                                          const SizedBox(height: 8),
-                                          Listener(
-                                            onPointerDown: (_) {
-                                              if (_isFormValid && !_loading) {
-                                                setState(() =>
-                                                    _buttonPressed = true);
-                                              }
-                                            },
-                                            onPointerUp: (_) => setState(
-                                              () => _buttonPressed = false,
-                                            ),
-                                            onPointerCancel: (_) => setState(
-                                              () => _buttonPressed = false,
-                                            ),
-                                            child: AnimatedScale(
-                                              scale: (_buttonPressed &&
-                                                      _isFormValid &&
-                                                      !_loading)
-                                                  ? 0.98
-                                                  : 1,
-                                              duration: const Duration(
-                                                milliseconds: 100,
-                                              ),
-                                              child: SizedBox(
-                                                width: double.infinity,
-                                                height: 54,
-                                                child: FilledButton(
-                                                  onPressed: _loading
-                                                      ? null
-                                                      : (_isFormValid
-                                                          ? _signIn
-                                                          : null),
-                                                  style: FilledButton.styleFrom(
-                                                    backgroundColor:
-                                                        HexaColors.brandPrimary,
-                                                    disabledBackgroundColor:
-                                                        const Color(0xFFE5E7EB),
-                                                    disabledForegroundColor:
-                                                        const Color(0xFF6B7280),
-                                                    foregroundColor:
-                                                        Colors.white,
-                                                    elevation: 0,
-                                                    shape:
-                                                        RoundedRectangleBorder(
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                        14,
-                                                      ),
-                                                    ),
-                                                    textStyle: const TextStyle(
-                                                      fontSize: 16,
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                    ),
-                                                  ),
-                                                  child: _loading
-                                                      ? const SizedBox(
-                                                          width: 22,
-                                                          height: 22,
-                                                          child:
-                                                              CircularProgressIndicator(
-                                                            strokeWidth: 2,
-                                                            color: Colors.white,
-                                                          ),
-                                                        )
-                                                      : const Text('Sign In'),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                          Align(
-                                            alignment: Alignment.centerRight,
-                                            child: TextButton(
-                                              onPressed: _loading
-                                                  ? null
-                                                  : _forgotPassword,
-                                              child: const Text(
-                                                'Forgot password?',
-                                                style: TextStyle(
-                                                  color: HexaColors.brandAccent,
-                                                  fontWeight: FontWeight.w600,
-                                                  fontSize: 14,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                          Center(
-                                            child: TextButton(
-                                              onPressed: _loading
-                                                  ? null
-                                                  : () => context.go('/signup'),
-                                              child: const Text(
-                                                'Create account',
-                                                style: TextStyle(
-                                                  color: HexaColors.brandAccent,
-                                                  fontWeight: FontWeight.w600,
-                                                  fontSize: 14,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                          if (showGoogle) ...[
-                                            Row(
-                                              children: [
-                                                Expanded(
-                                                  child: Divider(
-                                                    color: Colors.grey.shade300,
-                                                  ),
-                                                ),
-                                                Padding(
-                                                  padding: const EdgeInsets
-                                                      .symmetric(
-                                                    horizontal: 12,
-                                                  ),
-                                                  child: Text(
-                                                    'or',
-                                                    style: TextStyle(
-                                                      fontSize: 13,
-                                                      color:
-                                                          Colors.grey.shade600,
-                                                    ),
-                                                  ),
-                                                ),
-                                                Expanded(
-                                                  child: Divider(
-                                                    color: Colors.grey.shade300,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            const SizedBox(height: 8),
-                                            SizedBox(
-                                              width: double.infinity,
-                                              height: 48,
-                                              child: OutlinedButton(
-                                                onPressed: _loading
-                                                    ? null
-                                                    : _googleSignIn,
-                                                style: OutlinedButton.styleFrom(
-                                                  foregroundColor:
-                                                      const Color(0xFF0F172A),
-                                                  side: BorderSide(
-                                                    color: Colors.grey.shade300,
-                                                  ),
-                                                  shape: RoundedRectangleBorder(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                      14,
-                                                    ),
-                                                  ),
-                                                ),
-                                                child: const Text(
-                                                  'Continue with Google',
-                                                  style: TextStyle(
-                                                    fontWeight: FontWeight.w600,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                          const SizedBox(height: 8),
-                                          Text(
-                                            '${AppConfig.appName} © 2026',
-                                            textAlign: TextAlign.center,
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              color: Colors.grey.shade600,
-                                            ),
-                                          ),
-                                        ],
+                                        children: _loginFieldChildren(
+                                          context,
+                                          showGoogle: showGoogle,
+                                        ),
                                       ),
                                     ),
                                   ],

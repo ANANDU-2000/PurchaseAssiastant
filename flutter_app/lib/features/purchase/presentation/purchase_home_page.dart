@@ -6,8 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/providers/business_profile_provider.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
@@ -34,6 +36,43 @@ double _totalBagsOnPurchase(TradePurchase p) {
     if (ln.unit.toUpperCase().contains('BAG')) b += ln.qty;
   }
   return b;
+}
+
+String _purchaseSearchHaystack(TradePurchase p) {
+  final b = StringBuffer()
+    ..write(p.humanId)
+    ..write(' ')
+    ..write(p.supplierName ?? '')
+    ..write(' ')
+    ..write(p.brokerName ?? '');
+  for (final l in p.lines) {
+    b.write(' ');
+    b.write(l.itemName);
+  }
+  return b.toString();
+}
+
+String _histCsvCell(String raw) {
+  final s = raw.replaceAll('\r\n', ' ').replaceAll('\n', ' ').trim();
+  if (s.contains(',') || s.contains('"')) {
+    return '"${s.replaceAll('"', '""')}"';
+  }
+  return s;
+}
+
+List<TradePurchase> _filterPurchasesBySearch(
+  List<TradePurchase> base,
+  String searchQuery,
+) {
+  final sq = searchQuery.trim();
+  if (sq.isEmpty) return base;
+  return catalogFuzzyRank(
+    sq,
+    base,
+    _purchaseSearchHaystack,
+    minScore: sq.length <= 1 ? 8.0 : 22.0,
+    limit: 400,
+  );
 }
 
 String? _dueFooterLine(TradePurchase p) {
@@ -108,7 +147,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
 
   void _onSearchChanged() {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 200), () {
+    _debounce = Timer(const Duration(milliseconds: 150), () {
       if (!mounted) return;
       ref.read(purchaseHistorySearchProvider.notifier).state =
           _searchCtrl.text.trim();
@@ -172,7 +211,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
   }
 
   List<TradePurchase> _applySecondary(List<TradePurchase> all) {
-    final s = ref.watch(purchaseHistorySecondaryFilterProvider);
+    final s = ref.read(purchaseHistorySecondaryFilterProvider);
     if (s == null) return all;
     return all.where((p) {
       final st = p.statusEnum;
@@ -273,6 +312,36 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
     }
   }
 
+  void _selectAllVisible(List<TradePurchase> visible) {
+    if (visible.isEmpty) return;
+    setState(() {
+      _selectMode = true;
+      _selected
+        ..clear()
+        ..addAll(visible.map((e) => e.id));
+    });
+  }
+
+  Future<void> _exportSelectedCsv(List<TradePurchase> visible) async {
+    if (_selected.isEmpty) return;
+    final pick = visible.where((p) => _selected.contains(p.id)).toList();
+    if (pick.isEmpty) return;
+    final df = DateFormat('yyyy-MM-dd');
+    final buf = StringBuffer()
+      ..writeln('human_id,purchase_date,supplier,total_inr,remaining_inr,status');
+    for (final p in pick) {
+      buf.writeln(
+        '${_histCsvCell(p.humanId)},${df.format(p.purchaseDate)},'
+        '${_histCsvCell(p.supplierName ?? '')},${p.totalAmount.toStringAsFixed(2)},'
+        '${p.remaining.toStringAsFixed(2)},${_histCsvCell(p.derivedStatus)}',
+      );
+    }
+    await Share.share(
+      buf.toString(),
+      subject: 'Purchase export (${pick.length})',
+    );
+  }
+
   Future<void> _markPaidQuick(TradePurchase p) async {
     final session = ref.read(sessionProvider);
     if (session == null) return;
@@ -304,6 +373,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
     final secondary = ref.watch(purchaseHistorySecondaryFilterProvider);
     final alerts = ref.watch(purchaseAlertsProvider);
     final dueAlert = (alerts['dueSoon'] ?? 0) + (alerts['overdue'] ?? 0);
+    final searchQ = ref.watch(purchaseHistorySearchProvider);
 
     return Scaffold(
       backgroundColor: HexaColors.brandBackground,
@@ -333,6 +403,32 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
               ),
         actions: [
           if (_selectMode) ...[
+            IconButton(
+              tooltip: 'Select all (filtered list)',
+              onPressed: () {
+                final items = rows.asData?.value;
+                if (items == null) return;
+                final v = _filterPurchasesBySearch(
+                  _applySecondary(_withoutPendingDeletes(items)),
+                  ref.read(purchaseHistorySearchProvider),
+                );
+                _selectAllVisible(v);
+              },
+              icon: const Icon(Icons.select_all_rounded),
+            ),
+            IconButton(
+              tooltip: 'Export selected CSV',
+              onPressed: () async {
+                final items = rows.asData?.value;
+                if (items == null) return;
+                final v = _filterPurchasesBySearch(
+                  _applySecondary(_withoutPendingDeletes(items)),
+                  ref.read(purchaseHistorySearchProvider),
+                );
+                await _exportSelectedCsv(v);
+              },
+              icon: const Icon(Icons.ios_share_rounded),
+            ),
             IconButton(
               tooltip: 'Delete',
               onPressed: () => _bulkDelete(context),
@@ -395,8 +491,10 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                 onRetry: () => ref.invalidate(tradePurchasesListProvider),
               ),
               data: (List<TradePurchase> items) {
-                final visible =
-                    _applySecondary(_withoutPendingDeletes(items));
+                final visible = _filterPurchasesBySearch(
+                  _applySecondary(_withoutPendingDeletes(items)),
+                  searchQ,
+                );
                 return Column(
                   children: [
                     DueSoonBanner(
@@ -453,6 +551,18 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                             label: Text('Filtered: $secondary · Clear'),
                             onPressed: () => _selectPrimary('all'),
                           ),
+                        ),
+                      ),
+                    if (visible.isNotEmpty && (items.length != visible.length || items.length >= 200))
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                        child: Text(
+                          items.length >= 200
+                              ? 'Showing latest 200 · ${visible.length} match'
+                              : '${visible.length} of ${items.length}',
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
                         ),
                       ),
                     Expanded(

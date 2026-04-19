@@ -13,6 +13,22 @@ ThemeData buildHexaTheme(Brightness brightness) {
     displayColor: baseScheme.onSurface,
   );
   final textTheme = baseText.copyWith(
+    // POS audit: title 18 / label 14 / input 16
+    titleLarge: baseText.titleLarge?.copyWith(
+      fontSize: 18,
+      fontWeight: FontWeight.w800,
+      height: 1.2,
+    ),
+    labelMedium: baseText.labelMedium?.copyWith(
+      fontSize: 14,
+      fontWeight: FontWeight.w600,
+      height: 1.25,
+    ),
+    bodyLarge: baseText.bodyLarge?.copyWith(
+      fontSize: 16,
+      fontWeight: FontWeight.w500,
+      height: 1.35,
+    ),
     displayLarge: baseText.displayLarge?.copyWith(
       fontWeight: FontWeight.w700,
       letterSpacing: -0.9,
@@ -134,7 +150,7 @@ ThemeData buildHexaTheme(Brightness brightness) {
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: ButtonStyle(
-        minimumSize: const WidgetStatePropertyAll(Size(48, 56)),
+        minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
         tapTargetSize: MaterialTapTargetSize.padded,
         elevation: WidgetStateProperty.resolveWith((s) {
           if (s.contains(WidgetState.pressed)) return 0.0;
@@ -173,7 +189,7 @@ ThemeData buildHexaTheme(Brightness brightness) {
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: ButtonStyle(
-        minimumSize: const WidgetStatePropertyAll(Size(48, 56)),
+        minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
         tapTargetSize: MaterialTapTargetSize.padded,
         padding: const WidgetStatePropertyAll(
             EdgeInsets.symmetric(horizontal: 16, vertical: 14)),

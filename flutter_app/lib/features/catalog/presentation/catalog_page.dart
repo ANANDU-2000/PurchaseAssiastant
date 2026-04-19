@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,9 +24,26 @@ class CatalogPage extends ConsumerStatefulWidget {
 class _CatalogPageState extends ConsumerState<CatalogPage> {
   final _searchCtrl = TextEditingController();
   String _searchQuery = '';
+  Timer? _searchDebounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchCtrl.addListener(_onSearchChanged);
+  }
+
+  void _onSearchChanged() {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 150), () {
+      if (!mounted) return;
+      setState(() => _searchQuery = _searchCtrl.text);
+    });
+  }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
+    _searchCtrl.removeListener(_onSearchChanged);
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -164,6 +183,7 @@ class _CatalogPageState extends ConsumerState<CatalogPage> {
                     : IconButton(
                         icon: const Icon(Icons.close_rounded),
                         onPressed: () {
+                          _searchDebounce?.cancel();
                           _searchCtrl.clear();
                           setState(() => _searchQuery = '');
                         },
@@ -171,19 +191,20 @@ class _CatalogPageState extends ConsumerState<CatalogPage> {
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 isDense: true,
               ),
-              onChanged: (v) => setState(() => _searchQuery = v),
+              onChanged: (_) {},
             ),
           ),
-          if (_searchQuery.trim().length >= 2)
+          if (_searchQuery.trim().isNotEmpty)
             async.when(
               loading: () => const SizedBox.shrink(),
               error: (_, __) => const SizedBox.shrink(),
               data: (list) {
+                final q = _searchQuery.trim();
                 final sug = catalogFuzzyRank(
-                  _searchQuery,
+                  q,
                   list,
                   (c) => c['name']?.toString() ?? '',
-                  minScore: 38,
+                  minScore: q.length <= 1 ? 10.0 : 38,
                   limit: 6,
                 );
                 return Padding(
@@ -220,13 +241,14 @@ class _CatalogPageState extends ConsumerState<CatalogPage> {
               ),
               data: (list) {
                 final items = itemsAsync.maybeWhen(data: (x) => x, orElse: () => <Map<String, dynamic>>[]);
-                final display = _searchQuery.trim().isEmpty
+                final q = _searchQuery.trim();
+                final display = q.isEmpty
                     ? list
                     : catalogFuzzyRank(
-                        _searchQuery,
+                        q,
                         list,
                         (c) => c['name']?.toString() ?? '',
-                        minScore: 38,
+                        minScore: q.length <= 1 ? 10.0 : 38,
                         limit: 500,
                       );
 

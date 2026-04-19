@@ -12,13 +12,18 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/catalog_providers.dart';
+import '../../../core/providers/purchase_post_save_provider.dart';
 import '../../../core/providers/purchase_prefill_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
+import '../../../core/search/catalog_fuzzy.dart';
+import '../../../core/services/recent_catalog_items.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../shared/widgets/bag_default_unit_hint.dart';
 import '../../../shared/widgets/full_screen_form_scaffold.dart';
 import '../../../shared/widgets/search_picker_sheet.dart';
+import '../../../shared/widgets/typeahead_suggestions_card.dart';
+import '../../contacts/presentation/item_wizard_page.dart';
 import 'widgets/defaults_applied_card.dart';
 import 'widgets/purchase_saved_sheet.dart';
 
@@ -77,6 +82,10 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
   final List<Map<String, dynamic>> _lines = [];
   final List<GlobalKey> _lineCardKeys = <GlobalKey>[];
   List<Map<String, dynamic>> _searchHits = [];
+  /// Full catalog for instant typeahead (no API per keystroke).
+  List<Map<String, dynamic>> _catalogSearchCache = [];
+  bool _catalogSearchReady = false;
+  List<RecentCatalogItem> _recentItems = [];
   final Set<String> _supplierMappedItemIds = <String>{};
   final Set<String> _supplierRecentItemNames = <String>{};
   final Map<String, Map<String, dynamic>> _historyByItem = {};
@@ -89,15 +98,26 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
             ? widget.editingId!.trim()
             : null;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Load recents immediately so they show before catalog finishes.
+      loadRecentCatalogItems().then((items) {
+        if (mounted) setState(() => _recentItems = items);
+      });
+
       if (_editPurchaseId != null) {
-        await _bootstrapHistoryCache();
+        await Future.wait([
+          _bootstrapHistoryCache(),
+          _bootstrapCatalogSearchCache(),
+        ]);
         await _loadExistingForEdit(_editPurchaseId!);
         if (!mounted) return;
         await _hydrateSupplierMemoryFromSupplierId();
         return;
       }
-      await _loadDraft();
-      await _bootstrapHistoryCache();
+      await Future.wait([
+        _loadDraft(),
+        _bootstrapHistoryCache(),
+        _bootstrapCatalogSearchCache(),
+      ]);
       await _hydrateSupplierMemoryFromSupplierId();
       await _loadNextPurchaseId();
       if (!mounted) return;
@@ -178,6 +198,82 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
           ..addAll(history);
       });
     } catch (_) {}
+  }
+
+  Future<void> _bootstrapCatalogSearchCache() async {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    try {
+      final rows = await ref.read(catalogItemsListProvider.future);
+      if (!mounted) return;
+      setState(() {
+        _catalogSearchCache = rows
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+        _catalogSearchReady = true;
+        if (_search.text.trim().isNotEmpty) {
+          _searchHits = _rankedLocalSearchHits(_search.text);
+        }
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _catalogSearchReady = true;
+          if (_search.text.trim().isNotEmpty) {
+            _searchHits = _rankedLocalSearchHits(_search.text);
+          }
+        });
+      }
+    }
+  }
+
+  void _applyHistoryToSearchHit(Map<String, dynamic> m) {
+    final key = (m['name']?.toString() ?? '').trim().toLowerCase();
+    final h = _historyByItem[key];
+    if (h == null) return;
+    final prices = h['prices'] as List<double>;
+    final recent = prices.length > 5 ? prices.sublist(prices.length - 5) : prices;
+    final avg = recent.isEmpty ? null : recent.reduce((a, b) => a + b) / recent.length;
+    m['last_price'] = h['last_price'];
+    m['avg_5'] = avg;
+    m['last_date'] = h['last_date'];
+    m['used_count'] = h['used_count'];
+    final sups = h['supplier_ids'] as Set<String>?;
+    if (_supplierId != null && sups != null && sups.contains(_supplierId)) {
+      m['_same_supplier'] = true;
+    }
+  }
+
+  List<Map<String, dynamic>> _rankedLocalSearchHits(String raw) {
+    final q = raw.trim().toLowerCase();
+    if (q.isEmpty || !_catalogSearchReady) return [];
+    final scored = <Map<String, dynamic>>[];
+    for (final row in _catalogSearchCache) {
+      final m = Map<String, dynamic>.from(row);
+      final name = (m['name']?.toString() ?? '').toLowerCase();
+      if (name.isEmpty) continue;
+      double fuzzy;
+      if (q.length == 1) {
+        if (name.startsWith(q)) {
+          fuzzy = 96;
+        } else {
+          final words = name.split(RegExp(r'\s+'));
+          if (words.any((w) => w.startsWith(q))) {
+            fuzzy = 84;
+          } else {
+            continue;
+          }
+        }
+      } else {
+        fuzzy = catalogFuzzyScore(q, name);
+        if (fuzzy < 32) continue;
+      }
+      _applyHistoryToSearchHit(m);
+      m['_score'] = _searchScore(q, m) + fuzzy.round();
+      scored.add(m);
+    }
+    scored.sort((a, b) => ((b['_score'] as int?) ?? 0).compareTo((a['_score'] as int?) ?? 0));
+    return scored.take(40).toList();
   }
 
   Future<void> _loadNextPurchaseId() async {
@@ -540,6 +636,21 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
     return q * lc;
   }
 
+  /// Same units as [_lineGross] but using stored selling rate (per kg or per bag).
+  double _lineSellingGross(Map<String, dynamic> l) {
+    final sc = l['selling_cost'];
+    if (sc == null) return 0;
+    final q = (l['qty'] as num?)?.toDouble() ?? 0;
+    final v = (sc as num).toDouble();
+    final u = (l['unit'] ?? '').toString().toLowerCase();
+    final kgPer = (l['default_kg_per_bag'] as num?)?.toDouble() ?? 0;
+    if (u == 'bag') {
+      if (kgPer > 0) return q * v;
+      return 0;
+    }
+    return q * v;
+  }
+
   double _savedPerKgForBagLine(Map<String, dynamic> l) {
     final u = (l['unit'] ?? '').toString().toLowerCase();
     final kg = (l['default_kg_per_bag'] as num?)?.toDouble() ?? 0;
@@ -704,9 +815,10 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
 
   List<String> _allowedUnitsForLine(Map<String, dynamic> l) {
     final kg = (l['default_kg_per_bag'] as num?)?.toDouble() ?? 0;
-    if (kg > 0) return ['bag'];
+    if (kg > 0) return ['bag', 'kg'];
     var base = (l['default_unit']?.toString() ?? l['unit']?.toString() ?? 'kg').toLowerCase();
     if (base.isEmpty) base = 'kg';
+    if (base == 'bag') return ['bag', 'kg'];
     return [base];
   }
 
@@ -866,6 +978,24 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
       _dirty = true;
     });
     _scheduleDraft();
+
+    // Persist the pick to the LRU for instant recall next time.
+    final catalogId = h['id']?.toString() ?? '';
+    if (catalogId.isNotEmpty) {
+      final picked = RecentCatalogItem(
+        id: catalogId,
+        name: (h['name']?.toString() ?? h['item_name']?.toString() ?? '').trim(),
+        lastPrice: (h['last_price'] as num?)?.toDouble(),
+        unit: (h['default_purchase_unit']?.toString() ?? h['default_unit']?.toString()),
+        categoryName: h['category_name']?.toString(),
+        kgPerBag: (h['default_kg_per_bag'] as num?)?.toDouble(),
+      );
+      recordRecentCatalogItem(picked).then((_) async {
+        if (!mounted) return;
+        final updated = await loadRecentCatalogItems();
+        if (mounted) setState(() => _recentItems = updated);
+      });
+    }
   }
 
   String _lineUnitWarning(Map<String, dynamic> l) {
@@ -937,16 +1067,15 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
     return score;
   }
 
-  Future<void> _runSearch(String q) async {
+  /// Debounced server search — merges with local typeahead (same ids get server row).
+  Future<void> _runSearchRemote(String q) async {
     final session = ref.read(sessionProvider);
-    if (session == null || q.trim().length < 2) {
-      setState(() => _searchHits = []);
-      return;
-    }
+    final query = q.trim();
+    if (session == null || query.length < 2) return;
     try {
       final res = await ref.read(hexaApiProvider).unifiedSearch(
             businessId: session.primaryBusiness.id,
-            q: q.trim(),
+            q: query,
           );
       final items = res['catalog_items'];
       final list = <Map<String, dynamic>>[];
@@ -954,29 +1083,28 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
         for (final e in items.take(40)) {
           if (e is! Map) continue;
           final m = Map<String, dynamic>.from(e);
-          final key = (m['name']?.toString() ?? '').trim().toLowerCase();
-          final h = _historyByItem[key];
-          if (h != null) {
-            final prices = h['prices'] as List<double>;
-            final recent = prices.length > 5 ? prices.sublist(prices.length - 5) : prices;
-            final avg = recent.isEmpty ? null : recent.reduce((a, b) => a + b) / recent.length;
-            m['last_price'] = h['last_price'];
-            m['avg_5'] = avg;
-            m['last_date'] = h['last_date'];
-            m['used_count'] = h['used_count'];
-            final sups = h['supplier_ids'] as Set<String>?;
-            if (_supplierId != null && sups != null && sups.contains(_supplierId)) {
-              m['_same_supplier'] = true;
-            }
-          }
-          m['_score'] = _searchScore(q.trim().toLowerCase(), m);
+          _applyHistoryToSearchHit(m);
+          m['_score'] = _searchScore(query.toLowerCase(), m);
           list.add(m);
         }
       }
       list.sort((a, b) => ((b['_score'] as int?) ?? 0).compareTo((a['_score'] as int?) ?? 0));
-      if (mounted) setState(() => _searchHits = list);
+      final byId = <String, Map<String, dynamic>>{};
+      for (final m in _rankedLocalSearchHits(_search.text)) {
+        final id = m['id']?.toString();
+        if (id != null && id.isNotEmpty) byId[id] = Map<String, dynamic>.from(m);
+      }
+      for (final m in list) {
+        final id = m['id']?.toString();
+        if (id != null && id.isNotEmpty) {
+          byId[id] = m;
+        }
+      }
+      final merged = byId.values.toList()
+        ..sort((a, b) => ((b['_score'] as int?) ?? 0).compareTo((a['_score'] as int?) ?? 0));
+      if (mounted) setState(() => _searchHits = merged.take(40).toList());
     } catch (_) {
-      if (mounted) setState(() => _searchHits = []);
+      if (mounted) setState(() => _searchHits = _rankedLocalSearchHits(_search.text));
     }
   }
 
@@ -1240,16 +1368,28 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
       } catch (_) {}
       invalidateBusinessAggregates(ref);
       if (!mounted) return;
-      await showPurchaseSavedSheet(
+      if (_editPurchaseId == null) {
+        ref.read(purchasePostSaveProvider.notifier).state = PurchasePostSavePayload(
+          savedJson: Map<String, dynamic>.from(saved),
+          wasEdit: false,
+        );
+        context.go('/home');
+        await _loadNextPurchaseId();
+        return;
+      }
+      final next = await showPurchaseSavedSheet(
         context,
         ref,
         savedJson: saved,
-        wasEdit: _editPurchaseId != null,
+        wasEdit: true,
       );
-      if (_editPurchaseId == null) {
-        await _loadNextPurchaseId();
+      if (!mounted) return;
+      final sid = saved['id']?.toString();
+      if (next == 'detail' && sid != null && sid.isNotEmpty) {
+        context.go('/purchase/detail/$sid');
+      } else {
+        context.pop();
       }
-      if (mounted) context.pop();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1595,6 +1735,12 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
     final bagLand = (u == 'BAG' && kgPer > 0) ? landKg * kgPer : landKg;
     final bagSell = (sellKg != null && u == 'BAG' && kgPer > 0) ? sellKg * kgPer : sellKg;
     final total = _lineFinal(l);
+    final sellGross = _lineSellingGross(l);
+    final costNet = _lineNetAfterLineDiscount(l);
+    final sellNet = sellGross > 0
+        ? sellGross * (1 - ((l['discount'] as num?)?.toDouble() ?? 0).clamp(0.0, 100.0) / 100.0)
+        : 0.0;
+    final profitPreTax = sellNet > 0 ? (sellNet - costNet) : null;
     if (u == 'BAG' && kgPer > 0) {
       final kgTot = q * kgPer;
       return Column(
@@ -1612,6 +1758,15 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
           ),
           if (bagSell != null)
             Text('Selling per BAG → ${money.format(bagSell)}', style: const TextStyle(fontSize: 11.5)),
+          if (profitPreTax != null)
+            Text(
+              'Est. profit (ex line tax): ${money.format(profitPreTax)}',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: profitPreTax >= 0 ? HexaColors.brandAccent : HexaColors.loss,
+              ),
+            ),
         ],
       );
     }
@@ -1619,7 +1774,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          const Text(
             'Set kg per bag to compute line total (qty is number of bags).',
             style: TextStyle(
               fontWeight: FontWeight.w700,
@@ -1650,6 +1805,15 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
             color: Theme.of(context).colorScheme.primary,
           ),
         ),
+        if (profitPreTax != null)
+          Text(
+            'Est. profit (ex line tax): ${money.format(profitPreTax)}',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: profitPreTax >= 0 ? HexaColors.brandAccent : HexaColors.loss,
+            ),
+          ),
       ],
     );
   }
@@ -1660,7 +1824,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
     return ListView(
       padding: _pagePadding,
       children: [
-        _stepHeader('Items'),
+        _stepHeader('Lines — search, qty, rates'),
         TextField(
           controller: _search,
           focusNode: _searchFocus,
@@ -1672,44 +1836,134 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
           ),
           onChanged: (v) {
             _searchDebounce?.cancel();
-            _searchDebounce = Timer(const Duration(milliseconds: 250), () => _runSearch(v));
+            setState(() => _searchHits = _rankedLocalSearchHits(v));
+            final t = v.trim();
+            if (t.length < 2) return;
+            _searchDebounce = Timer(
+              const Duration(milliseconds: 150),
+              () => _runSearchRemote(t),
+            );
           },
         ),
+        if (!_catalogSearchReady && _search.text.trim().isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 6, bottom: 4),
+            child: Text(
+              'Loading catalog…',
+              style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
+            ),
+          ),
         const SizedBox(height: 6),
         if (_searchHits.isNotEmpty)
-          ..._searchHits.map((h) {
-            final name = h['name']?.toString() ?? h['item_name']?.toString() ?? 'Item';
-            final score = (h['_score'] as int?) ?? 0;
-            final used = h['used_count'];
-            final kgPer = (h['default_kg_per_bag'] as num?)?.toDouble() ?? 0;
-            final last = (h['last_price'] as num?)?.toDouble();
-            String? lastKg;
-            if (last != null) {
-              final pu = (h['default_purchase_unit']?.toString() ?? '').toLowerCase();
-              if (pu == 'bag' && kgPer > 0) {
-                lastKg = '${money.format(last / kgPer)}/kg';
-              } else {
-                lastKg = '${money.format(last)}/kg';
+          TypeaheadSuggestionsCard(
+            child: ListView(
+              shrinkWrap: true,
+              padding: EdgeInsets.zero,
+              children: _searchHits.map((h) {
+                final name =
+                    h['name']?.toString() ?? h['item_name']?.toString() ?? 'Item';
+                final score = (h['_score'] as int?) ?? 0;
+                final used = h['used_count'];
+                final kgPer = (h['default_kg_per_bag'] as num?)?.toDouble() ?? 0;
+                final last = (h['last_price'] as num?)?.toDouble();
+                final isRecent = h['_recent'] == true;
+                String? lastKg;
+                if (last != null) {
+                  final pu = (h['default_purchase_unit']?.toString() ?? '').toLowerCase();
+                  if (pu == 'bag' && kgPer > 0) {
+                    lastKg = '${money.format(last / kgPer)}/kg';
+                  } else {
+                    lastKg = '${money.format(last)}/kg';
+                  }
+                }
+                final subtitleParts = <String>[
+                  if (isRecent) 'Recent',
+                  if (!isRecent && lastKg != null) 'Last purchase: $lastKg',
+                  if (!isRecent && used is num && used > 0) 'Used ${used.toInt()}×',
+                  if (!isRecent && h['_same_supplier'] == true) 'Supplier: match',
+                  if ((h['category_name']?.toString() ?? '').trim().isNotEmpty)
+                    h['category_name'].toString(),
+                ];
+                return ListTile(
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
+                  leading: isRecent
+                      ? Icon(Icons.history_rounded, size: 18, color: cs.onSurfaceVariant)
+                      : null,
+                  title: Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: subtitleParts.isNotEmpty
+                      ? Text(subtitleParts.join(' · '))
+                      : null,
+                  trailing:
+                      score >= 100 && !isRecent ? const Icon(Icons.auto_awesome_rounded, size: 16) : null,
+                  onTap: () async {
+                    await _addLineFromCatalogHit(h);
+                  },
+                );
+              }).toList(),
+            ),
+          ),
+        if (_search.text.isEmpty && _recentItems.isNotEmpty && _searchHits.isEmpty)
+          TypeaheadSuggestionsCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+                  child: Text(
+                    'Recently added',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: cs.onSurfaceVariant,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                ),
+                for (final r in _recentItems)
+                  ListTile(
+                    dense: true,
+                    visualDensity: VisualDensity.compact,
+                    leading: Icon(Icons.history_rounded, size: 18, color: cs.onSurfaceVariant),
+                    title: Text(r.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: r.categoryName != null ? Text(r.categoryName!) : null,
+                    onTap: () async {
+                      await _addLineFromCatalogHit(r.toSearchHit());
+                    },
+                  ),
+              ],
+            ),
+          ),
+        if (_search.text.trim().isNotEmpty) ...[
+          const Divider(height: 1),
+          ListTile(
+            dense: true,
+            leading: Icon(Icons.add_circle_outline_rounded, color: cs.primary),
+            title: Text(
+              'New catalog item',
+              style: TextStyle(fontWeight: FontWeight.w800, color: cs.primary),
+            ),
+            subtitle: Text(
+              'Finish name & category in the form, then return here — search refreshes.',
+              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+            ),
+            onTap: () async {
+              await Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  fullscreenDialog: true,
+                  builder: (_) => const ItemWizardPage(),
+                ),
+              );
+              if (!mounted) return;
+              ref.invalidate(catalogItemsListProvider);
+              await _bootstrapCatalogSearchCache();
+              if (mounted) {
+                setState(() => _searchHits = _rankedLocalSearchHits(_search.text));
               }
-            }
-            final subtitleParts = <String>[
-              if (lastKg != null) 'Last purchase: $lastKg',
-              if (used is num && used > 0) 'Used ${used.toInt()}×',
-              if (h['_same_supplier'] == true) 'Supplier: match',
-              if ((h['category_name']?.toString() ?? '').trim().isNotEmpty)
-                h['category_name'].toString(),
-            ];
-            return ListTile(
-              dense: true,
-              visualDensity: VisualDensity.compact,
-              title: Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: Text(subtitleParts.join(' · ')),
-              trailing: score >= 100 ? const Icon(Icons.auto_awesome_rounded, size: 16) : null,
-              onTap: () async {
-                await _addLineFromCatalogHit(h);
-              },
-            );
-          }),
+            },
+          ),
+        ],
         const SizedBox(height: 6),
         ..._lines.asMap().entries.map((entry) {
           final i = entry.key;
@@ -2021,7 +2275,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
     return ListView(
       padding: _pagePadding,
       children: [
-        _stepHeader('Summary'),
+        _stepHeader('Review & save'),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(12),
@@ -2120,9 +2374,9 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
 
     final suppliers = ref.watch(suppliersListProvider);
     final title = switch (_step) {
-      0 => 'New Purchase',
-      1 => 'Purchase Items',
-      _ => 'Review Purchase',
+      0 => 'Purchase · Details',
+      1 => 'Purchase · Lines',
+      _ => 'Purchase · Review',
     };
 
     Widget body;
@@ -2186,21 +2440,29 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
       );
     } else {
       bottom = Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
         child: Row(
           children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: () {
-                  setState(() {
-                    _step = 0;
-                    _scheduleDraft();
-                  });
-                },
-                child: const Text('Edit'),
-              ),
+            OutlinedButton(
+              onPressed: () {
+                setState(() {
+                  _step = 0;
+                  _scheduleDraft();
+                });
+              },
+              child: const Text('Header'),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 6),
+            OutlinedButton(
+              onPressed: () {
+                setState(() {
+                  _step = 1;
+                  _scheduleDraft();
+                });
+              },
+              child: const Text('Lines'),
+            ),
+            const SizedBox(width: 8),
             Expanded(
               child: FilledButton(
                 onPressed: _savePurchase,

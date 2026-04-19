@@ -3,13 +3,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/providers/business_profile_provider.dart';
 import '../../../core/providers/analytics_breakdown_providers.dart';
 import '../../../core/providers/analytics_kpi_provider.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/full_reports_insights_providers.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/services/reports_pdf.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/shell_quick_ref_actions.dart';
 
@@ -48,6 +51,120 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
   _DatePreset _preset = _DatePreset.month;
   bool _visual = true;
   String _tableQuery = '';
+  bool _exporting = false;
+  bool _exportingPdf = false;
+
+  static String _csvCell(String raw) {
+    final s = raw.replaceAll('\r\n', ' ').replaceAll('\n', ' ').trim();
+    if (s.contains(',') || s.contains('"')) {
+      return '"${s.replaceAll('"', '""')}"';
+    }
+    return s;
+  }
+
+  Future<void> _exportTableCsv() async {
+    if (_exporting || _exportingPdf) return;
+    setState(() => _exporting = true);
+    try {
+      final items = await ref.read(analyticsItemsTableProvider.future);
+      final cats = await ref.read(analyticsCategoriesTableProvider.future);
+      final sups = await ref.read(analyticsSuppliersTableProvider.future);
+      final bros = await ref.read(analyticsBrokersTableProvider.future);
+      var rows = _rows(items, cats, sups, bros);
+      if (_tableQuery.trim().isNotEmpty) {
+        final q = _tableQuery.toLowerCase();
+        rows = rows.where((r) => _label(r).toLowerCase().contains(q)).toList();
+      }
+      rows = List<Map<String, dynamic>>.from(rows)
+        ..sort((a, b) => _metric(b).compareTo(_metric(a)));
+      if (rows.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Nothing to export for this view.')),
+          );
+        }
+        return;
+      }
+      final range = ref.read(analyticsDateRangeProvider);
+      final df = DateFormat('yyyy-MM-dd');
+      final buf = StringBuffer();
+      buf.writeln(
+        '# Purchase Assistant — ${_modeUiLabel(_mode)} — ${df.format(range.from)} to ${df.format(range.to)}',
+      );
+      buf.writeln('name,total_purchase_inr,total_profit_inr');
+      for (final r in rows) {
+        final name = _label(r);
+        final buy = (r['total_purchase'] as num?)?.toDouble() ?? 0;
+        final prof = (r['total_profit'] as num?)?.toDouble() ?? 0;
+        buf.writeln(
+          '${_csvCell(name)},${buy.toStringAsFixed(2)},${prof.toStringAsFixed(2)}',
+        );
+      }
+      await Share.share(
+        buf.toString(),
+        subject:
+            'Reports ${_modeUiLabel(_mode)} ${df.format(range.from)}–${df.format(range.to)}',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  Future<void> _exportReportsPdf() async {
+    if (_exportingPdf || _exporting) return;
+    setState(() => _exportingPdf = true);
+    try {
+      final kpi = await ref.read(analyticsKpiProvider.future);
+      final items = await ref.read(analyticsItemsTableProvider.future);
+      final cats = await ref.read(analyticsCategoriesTableProvider.future);
+      final sups = await ref.read(analyticsSuppliersTableProvider.future);
+      final bros = await ref.read(analyticsBrokersTableProvider.future);
+      var rows = _rows(items, cats, sups, bros);
+      if (_tableQuery.trim().isNotEmpty) {
+        final q = _tableQuery.toLowerCase();
+        rows = rows.where((r) => _label(r).toLowerCase().contains(q)).toList();
+      }
+      rows = List<Map<String, dynamic>>.from(rows)
+        ..sort((a, b) => _metric(b).compareTo(_metric(a)));
+      if (rows.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Nothing to export for this view.')),
+          );
+        }
+        return;
+      }
+      final range = ref.read(analyticsDateRangeProvider);
+      final biz = ref.read(invoiceBusinessProfileProvider);
+      await shareReportsSummaryPdf(
+        business: biz,
+        from: range.from,
+        to: range.to,
+        modeLabel: _modeUiLabel(_mode),
+        totalPurchase: kpi.totalPurchase,
+        totalProfit: kpi.totalProfit,
+        purchaseCount: kpi.purchaseCount,
+        tableRows: rows,
+        rowLabel: _label,
+        rowMetricPurchase: (r) => (r['total_purchase'] as num?) ?? 0,
+        rowMetricProfit: (r) => (r['total_profit'] as num?) ?? 0,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('PDF export failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exportingPdf = false);
+    }
+  }
 
   void _applyPreset(_DatePreset p) {
     final n = DateTime.now();
@@ -148,6 +265,28 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
         backgroundColor: HexaColors.brandBackground,
         foregroundColor: HexaColors.brandPrimary,
         actions: [
+          IconButton(
+            tooltip: 'Export summary PDF',
+            onPressed: (_exporting || _exportingPdf) ? null : _exportReportsPdf,
+            icon: _exportingPdf
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.picture_as_pdf_rounded),
+          ),
+          IconButton(
+            tooltip: 'Export table as CSV',
+            onPressed: (_exporting || _exportingPdf) ? null : _exportTableCsv,
+            icon: _exporting
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.ios_share_rounded),
+          ),
           ShellQuickRefActions(
             onRefresh: () => invalidateBusinessAggregates(ref),
           ),
@@ -167,12 +306,27 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                     error: (_, __) => FriendlyLoadError(
                       onRetry: () => ref.invalidate(analyticsKpiProvider),
                     ),
-                    data: _kpiStrip,
+                    data: (k) => Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (k.purchaseCount == 0) _noPurchasesInRangeCard(context),
+                        _kpiStrip(k),
+                      ],
+                    ),
                   ),
                   items.when(
                     loading: () => const SizedBox.shrink(),
                     error: (_, __) => const SizedBox.shrink(),
                     data: _lowMarginWatchlist,
+                  ),
+                  items.when(
+                    loading: () => const SizedBox.shrink(),
+                    error: (_, __) => const SizedBox.shrink(),
+                    data: (iRows) => sups.when(
+                      loading: () => const SizedBox.shrink(),
+                      error: (_, __) => const SizedBox.shrink(),
+                      data: (sRows) => _topMoversCards(context, iRows, sRows),
+                    ),
                   ),
                   goals.when(
                     loading: () => const SizedBox.shrink(),
@@ -260,15 +414,123 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                     error: (_, __) => const SizedBox.shrink(),
                     data: _trend,
                   ),
-                  const SizedBox(height: 12),
-                  items.when(
-                    loading: () => const SizedBox.shrink(),
-                    error: (_, __) => const SizedBox.shrink(),
-                    data: _compareMini,
-                  ),
                 ],
               ),
             ),
+    );
+  }
+
+  /// Compact “who / what moved money” — same window as the main table, no extra API.
+  Widget _topMoversCards(
+    BuildContext context,
+    List<Map<String, dynamic>> itemRows,
+    List<Map<String, dynamic>> supRows,
+  ) {
+    final sList = List<Map<String, dynamic>>.from(supRows)
+      ..sort((a, b) => _metric(b).compareTo(_metric(a)));
+    final iList = List<Map<String, dynamic>>.from(itemRows)
+      ..sort((a, b) => _metric(b).compareTo(_metric(a)));
+    final topS = sList.where((r) => _metric(r) > 0).take(5).toList();
+    final topI = iList.where((r) => _metric(r) > 0).take(5).toList();
+    if (topS.isEmpty && topI.isEmpty) return const SizedBox.shrink();
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Top suppliers',
+                      style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+                    ),
+                    Text(
+                      'By profit in this period',
+                      style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+                    ),
+                    const SizedBox(height: 8),
+                    if (topS.isEmpty)
+                      Text('—', style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant))
+                    else
+                      for (final r in topS)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  r['supplier_name']?.toString() ?? '—',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                              Text(
+                                _inr(_metric(r).round()),
+                                style: const TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                            ],
+                          ),
+                        ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Top items',
+                      style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+                    ),
+                    Text(
+                      'By profit in this period',
+                      style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+                    ),
+                    const SizedBox(height: 8),
+                    if (topI.isEmpty)
+                      Text('—', style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant))
+                    else
+                      for (final r in topI)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  r['item_name']?.toString() ?? '—',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                              Text(
+                                _inr(_metric(r).round()),
+                                style: const TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                            ],
+                          ),
+                        ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -436,6 +698,85 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
     );
   }
 
+  Widget _noPurchasesInRangeCard(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Nothing to report yet',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: HexaColors.brandPrimary,
+                  ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'This date range has no purchases. Insights, charts, and trends '
+              'appear after you record buys.',
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.35,
+                color: cs.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                FilledButton.icon(
+                  onPressed: () => context.go('/purchase/new'),
+                  icon: const Icon(Icons.add_rounded, size: 20),
+                  label: const Text('New purchase'),
+                ),
+                OutlinedButton(
+                  onPressed: () => context.go('/purchase'),
+                  child: const Text('Open purchase list'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _noChartRowsCard(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'No breakdown to chart',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Try another period, switch to Table view, or add purchases so '
+              '${_modeUiLabel(_mode).toLowerCase()} totals are non-zero.',
+              style: TextStyle(fontSize: 13, height: 1.35, color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.tonal(
+              onPressed: () => context.go('/purchase/new'),
+              child: const Text('Record a purchase'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _kpiStrip(AnalyticsKpi k) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -484,15 +825,11 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
     final total =
         usable.fold<double>(0, (s, r) => s + _metric(r).toDouble());
     if (usable.isEmpty || total <= 0) {
-      return const Card(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text('No chart data'),
-        ),
-      );
+      return _noChartRowsCard(context);
     }
-    if (usable.length == 1) {
-      final r = usable.first;
+    // < 3 slices: ring chart looks degenerate — show a readable bar comparison instead.
+    if (usable.length < 3) {
+      final palette = HexaColors.chartPalette;
       return Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -500,24 +837,51 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                _label(r),
-                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                _modeUiLabel(_mode),
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
               ),
-              const SizedBox(height: 8),
-              Text(
-                'A single row accounts for all profit in this range, so the ring chart would read 100% for one slice. '
-                'Switch to Table view above for a sortable list, or pick a longer period to compare more rows.',
-                style: TextStyle(
-                  fontSize: 13,
-                  height: 1.35,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+              const SizedBox(height: 12),
+              for (var i = 0; i < usable.length; i++) ...[
+                Row(
+                  children: [
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: palette[i % palette.length],
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(_label(usable[i]), style: const TextStyle(fontWeight: FontWeight.w600))),
+                    Text(_inr(_metric(usable[i]).round()), style: const TextStyle(fontWeight: FontWeight.w800)),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${((_metric(usable[i]).toDouble() / total) * 100).toStringAsFixed(0)}%',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'Amount: ${_inr(_metric(r).round())}',
-                style: const TextStyle(fontWeight: FontWeight.w800),
-              ),
+                const SizedBox(height: 6),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: _metric(usable[i]).toDouble() / total,
+                    minHeight: 8,
+                    backgroundColor: palette[i % palette.length].withAlpha(40),
+                    valueColor: AlwaysStoppedAnimation(palette[i % palette.length]),
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
+              if (usable.length == 1)
+                Text(
+                  'Only one row has data in this period. Pick a longer range to compare more.',
+                  style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                ),
             ],
           ),
         ),
@@ -630,24 +994,67 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
   }
 
   Widget _trend(List<AnalyticsDailyProfitPoint> pts) {
+    if (pts.isEmpty) return const SizedBox.shrink();
     final spots = <FlSpot>[];
     for (var i = 0; i < pts.length; i++) {
       spots.add(FlSpot(i.toDouble(), pts[i].profit));
     }
+    final profits = pts.map((p) => p.profit).toList();
+    final maxY = profits.reduce((a, b) => a > b ? a : b);
+    final minY = profits.reduce((a, b) => a < b ? a : b);
+    final hasRange = (maxY - minY).abs() > 1;
+    final totalProfit = profits.fold(0.0, (a, b) => a + b);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Profit trend',
-                style: TextStyle(fontWeight: FontWeight.w800)),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text('Profit trend',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+                ),
+                Text(
+                  'Total: ${_inr(totalProfit.round())}',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
             SizedBox(
               height: 140,
               child: LineChart(
                 LineChartData(
-                  gridData: const FlGridData(show: false),
-                  titlesData: const FlTitlesData(show: false),
+                  minY: hasRange ? minY * 0.9 : null,
+                  maxY: hasRange ? maxY * 1.1 : null,
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    horizontalInterval: hasRange ? (maxY - minY) / 3 : null,
+                    getDrawingHorizontalLine: (v) => FlLine(
+                      color: Colors.grey.withAlpha(40),
+                      strokeWidth: 1,
+                    ),
+                  ),
+                  titlesData: FlTitlesData(
+                    show: true,
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 46,
+                        getTitlesWidget: (v, _) => Text(
+                          _inr(v.round()),
+                          style: const TextStyle(fontSize: 8.5),
+                        ),
+                        interval: hasRange ? (maxY - minY) / 3 : null,
+                      ),
+                    ),
+                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    bottomTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  ),
                   borderData: FlBorderData(show: false),
                   lineBarsData: [
                     LineChartBarData(
@@ -656,6 +1063,10 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                       color: HexaColors.brandPrimary,
                       barWidth: 3,
                       dotData: const FlDotData(show: false),
+                      belowBarData: BarAreaData(
+                        show: true,
+                        color: HexaColors.brandPrimary.withAlpha(28),
+                      ),
                     ),
                   ],
                 ),
@@ -667,34 +1078,4 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
     );
   }
 
-  Widget _compareMini(List<Map<String, dynamic>> rows) {
-    final top = List<Map<String, dynamic>>.from(rows)
-      ..sort((a, b) => ((b['total_profit'] as num?) ?? 0)
-          .compareTo((a['total_profit'] as num?) ?? 0));
-    final pick = top.take(4).toList();
-    if (pick.isEmpty) return const SizedBox.shrink();
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Top items',
-                style: TextStyle(fontWeight: FontWeight.w800)),
-            for (final r in pick)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  children: [
-                    Expanded(
-                        child: Text(r['item_name']?.toString() ?? '—')),
-                    Text(_inr(((r['total_profit'] as num?) ?? 0).round())),
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
 }

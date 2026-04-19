@@ -42,8 +42,6 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
   final _supplierIds = <String>{};
   final _brokerIds = <String>{};
   String? _nameError;
-  final _supplierFilter = TextEditingController();
-  final _brokerFilter = TextEditingController();
   static const _typeGeneralValue = '__general__';
 
   @override
@@ -60,8 +58,6 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
     _tax.dispose();
     _landing.dispose();
     _selling.dispose();
-    _supplierFilter.dispose();
-    _brokerFilter.dispose();
     super.dispose();
   }
 
@@ -539,95 +535,194 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
     );
   }
 
+  Widget _supplierChipWrap(List<Map<String, dynamic>> allRows) {
+    final nameById = <String, String>{
+      for (final s in allRows)
+        if ((s['id']?.toString() ?? '').isNotEmpty) s['id'].toString(): s['name']?.toString() ?? '',
+    };
+    final ordered = _supplierIds.toList()..sort();
+    if (ordered.isEmpty) {
+      return Text(
+        'No suppliers linked yet — tap Add and pick from the searchable list.',
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+      );
+    }
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final id in ordered)
+          InputChip(
+            label: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 200),
+              child: Text(
+                nameById[id] ?? id,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            onDeleted: () {
+              setState(() {
+                _supplierIds.remove(id);
+                _markDirty();
+              });
+            },
+          ),
+      ],
+    );
+  }
+
   Widget _stepSupplierMap() {
     final async = ref.watch(suppliersListProvider);
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
       children: [
-        TextField(
-          controller: _supplierFilter,
-          onChanged: (_) => setState(() {}),
-          decoration: const InputDecoration(
-            labelText: 'Search suppliers',
-            prefixIcon: Icon(Icons.search_rounded),
-            border: OutlineInputBorder(),
-          ),
+        Text(
+          'Suppliers who sell this item',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
         ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            TextButton(
-              onPressed: () async {
-                final rows = await ref.read(suppliersListProvider.future);
-                setState(() {
-                  for (final e in rows) {
-                    final sid = Map<String, dynamic>.from(e as Map)['id']?.toString();
-                    if (sid != null && sid.isNotEmpty) _supplierIds.add(sid);
-                  }
-                  _markDirty();
-                });
-              },
-              child: const Text('Select all'),
-            ),
-            TextButton(
-              onPressed: () => setState(() {
-                _supplierIds.clear();
-                _markDirty();
-              }),
-              child: const Text('Clear all'),
-            ),
-          ],
+        const SizedBox(height: 6),
+        Text(
+          'Search-first: add one at a time. Selected names show as chips — tap × to remove.',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                height: 1.35,
+              ),
         ),
+        const SizedBox(height: 12),
         async.when(
           loading: () => const LinearProgressIndicator(),
           error: (_, __) => const Text('Could not load suppliers'),
           data: (rows) {
-            final q = _supplierFilter.text.trim();
             final list = rows.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-            final filtered = q.isEmpty
-                ? list
-                : catalogFuzzyRank(
-                    q,
-                    list,
-                    (s) =>
-                        '${s['name'] ?? ''} ${s['location'] ?? ''} ${s['phone'] ?? ''}',
-                    minScore: 18,
-                    limit: 500,
-                  );
-            if (filtered.isEmpty) {
-              return Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  'No suppliers match “$q”.',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
+            if (list.isEmpty) {
+              return const Padding(
+                padding: EdgeInsets.all(12),
+                child: Text('No suppliers yet — create one under Contacts first.'),
               );
             }
             return Column(
-              children: filtered.map((s) {
-                final sid = s['id']?.toString() ?? '';
-                final checked = _supplierIds.contains(sid);
-                final lbl = s['name']?.toString() ?? '';
-                return CheckboxListTile(
-                  dense: true,
-                  value: checked,
-                  onChanged: (v) {
-                    setState(() {
-                      if (v == true) {
-                        _supplierIds.add(sid);
-                      } else {
-                        _supplierIds.remove(sid);
-                      }
-                      _markDirty();
-                    });
-                  },
-                  title: Text(lbl),
-                  subtitle: Text(s['location']?.toString() ?? ''),
-                );
-              }).toList(),
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _supplierChipWrap(list),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.tonalIcon(
+                        onPressed: () async {
+                          final pickerRows = <SearchPickerRow<String>>[];
+                          for (final s in list) {
+                            if (_supplierIds.contains(s['id']?.toString())) continue;
+                            final loc = (s['location']?.toString() ?? '').trim();
+                            final ph = (s['phone']?.toString() ?? '').trim();
+                            final sub = [
+                              if (loc.isNotEmpty) loc,
+                              if (ph.isNotEmpty) ph,
+                            ].join(' · ');
+                            pickerRows.add(
+                              SearchPickerRow<String>(
+                                value: s['id']?.toString() ?? '',
+                                title: s['name']?.toString() ?? 'Supplier',
+                                subtitle: sub.isEmpty ? null : sub,
+                              ),
+                            );
+                          }
+                          if (pickerRows.isEmpty) {
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Every supplier is already linked.')),
+                            );
+                            return;
+                          }
+                          final id = await showSearchPickerSheet<String>(
+                            context: context,
+                            title: 'Add supplier',
+                            rows: pickerRows,
+                            initialChildFraction: 0.72,
+                          );
+                          if (!mounted || id == null || id.isEmpty) return;
+                          setState(() {
+                            _supplierIds.add(id);
+                            _markDirty();
+                          });
+                        },
+                        icon: const Icon(Icons.person_add_alt_1_outlined),
+                        label: const Text('Add supplier'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 12,
+                  children: [
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          for (final s in list) {
+                            final sid = s['id']?.toString();
+                            if (sid != null && sid.isNotEmpty) _supplierIds.add(sid);
+                          }
+                          _markDirty();
+                        });
+                      },
+                      child: const Text('Link all suppliers'),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _supplierIds.clear();
+                          _markDirty();
+                        });
+                      },
+                      child: const Text('Clear all'),
+                    ),
+                  ],
+                ),
+              ],
             );
           },
         ),
+      ],
+    );
+  }
+
+  Widget _brokerChipWrap(List<Map<String, dynamic>> allRows) {
+    final nameById = <String, String>{
+      for (final b in allRows)
+        if ((b['id']?.toString() ?? '').isNotEmpty) b['id'].toString(): b['name']?.toString() ?? '',
+    };
+    final ordered = _brokerIds.toList()..sort();
+    if (ordered.isEmpty) {
+      return Text(
+        'Optional — tap Add to link brokers who move this item.',
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+      );
+    }
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final id in ordered)
+          InputChip(
+            label: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 200),
+              child: Text(
+                nameById[id] ?? id,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            onDeleted: () {
+              setState(() {
+                _brokerIds.remove(id);
+                _markDirty();
+              });
+            },
+          ),
       ],
     );
   }
@@ -637,86 +732,112 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
       children: [
-        TextField(
-          controller: _brokerFilter,
-          onChanged: (_) => setState(() {}),
-          decoration: const InputDecoration(
-            labelText: 'Search brokers',
-            prefixIcon: Icon(Icons.search_rounded),
-            border: OutlineInputBorder(),
-          ),
+        Text(
+          'Brokers (optional)',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
         ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            TextButton(
-              onPressed: () async {
-                final rows = await ref.read(brokersListProvider.future);
-                setState(() {
-                  for (final e in rows) {
-                    final bid = Map<String, dynamic>.from(e as Map)['id']?.toString();
-                    if (bid != null && bid.isNotEmpty) _brokerIds.add(bid);
-                  }
-                  _markDirty();
-                });
-              },
-              child: const Text('Select all'),
-            ),
-            TextButton(
-              onPressed: () => setState(() {
-                _brokerIds.clear();
-                _markDirty();
-              }),
-              child: const Text('Clear all'),
-            ),
-          ],
+        const SizedBox(height: 6),
+        Text(
+          'Same pattern as suppliers: searchable sheet to add, chips to review.',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                height: 1.35,
+              ),
         ),
+        const SizedBox(height: 12),
         async.when(
           loading: () => const LinearProgressIndicator(),
           error: (_, __) => const Text('Could not load brokers'),
           data: (rows) {
-            final q = _brokerFilter.text.trim();
             final list = rows.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-            final filtered = q.isEmpty
-                ? list
-                : catalogFuzzyRank(
-                    q,
-                    list,
-                    (b) =>
-                        '${b['name'] ?? ''} ${b['location'] ?? ''} ${b['phone'] ?? ''}',
-                    minScore: 18,
-                    limit: 500,
-                  );
-            if (filtered.isEmpty) {
-              return Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  'No brokers match “$q”.',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
+            if (list.isEmpty) {
+              return const Padding(
+                padding: EdgeInsets.all(12),
+                child: Text('No brokers yet — you can skip this step.'),
               );
             }
             return Column(
-              children: filtered.map((b) {
-                final bid = b['id']?.toString() ?? '';
-                final checked = _brokerIds.contains(bid);
-                return CheckboxListTile(
-                  dense: true,
-                  value: checked,
-                  onChanged: (v) {
-                    setState(() {
-                      if (v == true) {
-                        _brokerIds.add(bid);
-                      } else {
-                        _brokerIds.remove(bid);
-                      }
-                      _markDirty();
-                    });
-                  },
-                  title: Text(b['name']?.toString() ?? ''),
-                  subtitle: Text('Commission: ${b['commission_value'] ?? '—'}'),
-                );
-              }).toList(),
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _brokerChipWrap(list),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.tonalIcon(
+                        onPressed: () async {
+                          final pickerRows = <SearchPickerRow<String>>[];
+                          for (final b in list) {
+                            if (_brokerIds.contains(b['id']?.toString())) continue;
+                            final loc = (b['location']?.toString() ?? '').trim();
+                            final comm = b['commission_value'];
+                            final commStr =
+                                comm == null ? '' : 'Commission: $comm'.trim();
+                            final sub = [
+                              if (loc.isNotEmpty) loc,
+                              if (commStr.isNotEmpty) commStr,
+                            ].join(' · ');
+                            pickerRows.add(
+                              SearchPickerRow<String>(
+                                value: b['id']?.toString() ?? '',
+                                title: b['name']?.toString() ?? 'Broker',
+                                subtitle: sub.isEmpty ? null : sub,
+                              ),
+                            );
+                          }
+                          if (pickerRows.isEmpty) {
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Every broker is already linked.')),
+                            );
+                            return;
+                          }
+                          final id = await showSearchPickerSheet<String>(
+                            context: context,
+                            title: 'Add broker',
+                            rows: pickerRows,
+                            initialChildFraction: 0.72,
+                          );
+                          if (!mounted || id == null || id.isEmpty) return;
+                          setState(() {
+                            _brokerIds.add(id);
+                            _markDirty();
+                          });
+                        },
+                        icon: const Icon(Icons.handshake_outlined),
+                        label: const Text('Add broker'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 12,
+                  children: [
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          for (final b in list) {
+                            final bid = b['id']?.toString();
+                            if (bid != null && bid.isNotEmpty) _brokerIds.add(bid);
+                          }
+                          _markDirty();
+                        });
+                      },
+                      child: const Text('Link all brokers'),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _brokerIds.clear();
+                          _markDirty();
+                        });
+                      },
+                      child: const Text('Clear all'),
+                    ),
+                  ],
+                ),
+              ],
             );
           },
         ),

@@ -297,6 +297,12 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
         ),
         actions: [
           IconButton(
+            tooltip: 'Trade purchase ledger',
+            icon: const Icon(Icons.receipt_long_outlined),
+            onPressed: () =>
+                context.push('/supplier/${widget.supplierId}/ledger'),
+          ),
+          IconButton(
             tooltip: 'Export CSV',
             icon: const Icon(Icons.ios_share_rounded),
             onPressed:

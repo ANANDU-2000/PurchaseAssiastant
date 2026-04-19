@@ -231,16 +231,31 @@ async def list_trade_purchases(
     *,
     status_filter: str | None = None,
     q: str | None = None,
+    supplier_id: uuid.UUID | None = None,
+    broker_id: uuid.UUID | None = None,
 ) -> list[TradePurchaseOut]:
     """List purchases; optional status_filter: all|draft|due_soon|overdue|paid and search q."""
-    fetch_cap = min(max(limit * 5, limit), 500) if (status_filter and status_filter != "all") or q else min(limit, 500)
-    res = await db.execute(
+    has_entity_filter = supplier_id is not None or broker_id is not None
+    if has_entity_filter:
+        fetch_cap = min(max(limit, 1), 500)
+    else:
+        fetch_cap = (
+            min(max(limit * 5, limit), 500)
+            if (status_filter and status_filter != "all") or q
+            else min(limit, 500)
+        )
+    stmt = (
         select(TradePurchase)
         .where(TradePurchase.business_id == business_id)
         .options(*_trade_purchase_load_opts())
         .order_by(TradePurchase.purchase_date.desc(), TradePurchase.created_at.desc())
-        .limit(fetch_cap)
     )
+    if supplier_id is not None:
+        stmt = stmt.where(TradePurchase.supplier_id == supplier_id)
+    if broker_id is not None:
+        stmt = stmt.where(TradePurchase.broker_id == broker_id)
+    stmt = stmt.limit(fetch_cap)
+    res = await db.execute(stmt)
     rows = [trade_purchase_to_out(p) for p in res.scalars().unique().all()]
     sf = (status_filter or "all").strip().lower()
     if sf == "draft":

@@ -11,11 +11,13 @@ import '../../../core/providers/analytics_breakdown_providers.dart';
 import '../../../core/providers/dashboard_period_provider.dart';
 import '../../../core/providers/dashboard_provider.dart';
 import '../../../core/providers/home_insights_provider.dart';
+import '../../../core/providers/purchase_post_save_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart'
     show
         purchaseAlertsProvider,
         purchaseUnitTotalsProvider,
         tradePurchasesListProvider;
+import '../../purchase/presentation/widgets/purchase_saved_sheet.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/shell_quick_ref_actions.dart';
@@ -55,6 +57,7 @@ class HomePage extends ConsumerStatefulWidget {
 class _HomePageState extends ConsumerState<HomePage>
     with WidgetsBindingObserver {
   Timer? _poll;
+  bool _handlingPurchasePostSave = false;
 
   @override
   void initState() {
@@ -94,6 +97,31 @@ class _HomePageState extends ConsumerState<HomePage>
 
   @override
   Widget build(BuildContext context) {
+    final postSave = ref.watch(purchasePostSaveProvider);
+    if (postSave != null && !_handlingPurchasePostSave) {
+      _handlingPurchasePostSave = true;
+      final payload = postSave;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) {
+          _handlingPurchasePostSave = false;
+          return;
+        }
+        ref.read(purchasePostSaveProvider.notifier).state = null;
+        _handlingPurchasePostSave = false;
+        final route = await showPurchaseSavedSheet(
+          context,
+          ref,
+          savedJson: payload.savedJson,
+          wasEdit: payload.wasEdit,
+        );
+        if (!context.mounted) return;
+        final sid = payload.savedJson['id']?.toString();
+        if (route == 'detail' && sid != null && sid.isNotEmpty) {
+          context.go('/purchase/detail/$sid');
+        }
+      });
+    }
+
     final period   = ref.watch(dashboardPeriodProvider);
     final dash     = ref.watch(dashboardProvider);
     final insights = ref.watch(homeInsightsProvider);

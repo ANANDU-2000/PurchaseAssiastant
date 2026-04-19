@@ -11,8 +11,9 @@ import '../auth/session_notifier.dart';
   return (from: iso(from), to: iso(to));
 }
 
+/// Kept alive — categories change rarely; avoids cold-load on every catalog open.
 final itemCategoriesListProvider =
-    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+    FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   return ref
@@ -20,8 +21,10 @@ final itemCategoriesListProvider =
       .listItemCategories(businessId: session.primaryBusiness.id);
 });
 
+/// Kept alive so the purchase wizard never cold-loads catalog twice per session.
 final catalogItemsListProvider =
-    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+    FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  // keepAlive: no autoDispose — survives navigation; invalidated only after add/edit.
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   return ref

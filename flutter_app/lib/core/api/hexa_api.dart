@@ -353,6 +353,8 @@ class HexaApi {
     int limit = 50,
     String status = 'all',
     String? q,
+    String? supplierId,
+    String? brokerId,
   }) async {
     final res = await _dio.get<dynamic>(
       '/v1/businesses/$businessId/trade-purchases',
@@ -360,6 +362,9 @@ class HexaApi {
         'limit': limit,
         'status': status,
         if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+        if (supplierId != null && supplierId.trim().isNotEmpty)
+          'supplier_id': supplierId.trim(),
+        if (brokerId != null && brokerId.trim().isNotEmpty) 'broker_id': brokerId.trim(),
       },
     );
     final data = res.data;

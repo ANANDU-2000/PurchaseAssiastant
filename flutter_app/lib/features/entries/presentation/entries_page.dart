@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -29,12 +31,16 @@ class EntriesPage extends ConsumerStatefulWidget {
 class _EntriesPageState extends ConsumerState<EntriesPage> {
   late final TextEditingController _searchCtrl;
   final _searchFocus = FocusNode();
+  Timer? _searchDebounce;
+  /// Debounced from [_searchCtrl] so fuzzy ranking does not run on every key.
+  String _filterQ = '';
 
   @override
   void initState() {
     super.initState();
     _searchCtrl =
         TextEditingController(text: ref.read(entrySearchQueryProvider));
+    _filterQ = _searchCtrl.text;
     _searchCtrl.addListener(_onSearchChanged);
     if (widget.requestSearchFocus) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -44,8 +50,20 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
   }
 
   void _onSearchChanged() {
-    ref.read(entrySearchQueryProvider.notifier).state = _searchCtrl.text;
-    setState(() {});
+    final t = _searchCtrl.text;
+    if (t.length < _filterQ.length) {
+      _searchDebounce?.cancel();
+      ref.read(entrySearchQueryProvider.notifier).state = t;
+      setState(() => _filterQ = t);
+      return;
+    }
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 150), () {
+      if (!mounted) return;
+      final latest = _searchCtrl.text;
+      ref.read(entrySearchQueryProvider.notifier).state = latest;
+      setState(() => _filterQ = latest);
+    });
   }
 
   /// Text used for typo-tolerant client filter (search does not refetch the list).
@@ -90,6 +108,7 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchCtrl.removeListener(_onSearchChanged);
     _searchCtrl.dispose();
     _searchFocus.dispose();
@@ -360,17 +379,21 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
         actions: [
           TextButton(
             onPressed: () {
+              _searchDebounce?.cancel();
               ref.read(entrySearchQueryProvider.notifier).state = '';
               _searchCtrl.text = '';
+              setState(() => _filterQ = '');
               Navigator.pop(ctx);
             },
             child: const Text('Clear'),
           ),
           FilledButton(
             onPressed: () {
-              ref.read(entrySearchQueryProvider.notifier).state =
-                  controller.text;
-              _searchCtrl.text = controller.text;
+              _searchDebounce?.cancel();
+              final t = controller.text;
+              ref.read(entrySearchQueryProvider.notifier).state = t;
+              _searchCtrl.text = t;
+              setState(() => _filterQ = t);
               Navigator.pop(ctx);
             },
             child: const Text('Apply'),
@@ -397,7 +420,7 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
       final n = b['name'] as String?;
       if (id != null && n != null) brokerNames[id] = n;
     }
-    final searchQ = ref.watch(entrySearchQueryProvider);
+    ref.watch(entrySearchQueryProvider);
     final fFrom = ref.watch(entryListFromProvider);
     final fTo = ref.watch(entryListToProvider);
     final fSup = ref.watch(entryListSupplierIdProvider);
@@ -406,9 +429,9 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: searchQ.trim().isEmpty
+        title: _filterQ.trim().isEmpty
             ? const Text('Purchase log')
-            : Text('Purchase log, "$searchQ"'),
+            : Text('Purchase log, "$_filterQ"'),
         actions: [
           IconButton(
             tooltip: 'Suppliers & contacts',
@@ -455,10 +478,11 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
                       IconButton(
                         icon: const Icon(Icons.close_rounded),
                         onPressed: () {
+                          _searchDebounce?.cancel();
                           _searchCtrl.clear();
                           ref.read(entrySearchQueryProvider.notifier).state =
                               '';
-                          setState(() {});
+                          setState(() => _filterQ = '');
                         },
                       ),
                   ],
@@ -529,7 +553,7 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
                       DateTime.fromMillisecondsSinceEpoch(0);
                   return db.compareTo(da);
                 });
-                final q = searchQ.trim();
+                final q = _filterQ.trim();
                 final visible = q.isEmpty
                     ? sorted
                     : catalogFuzzyRank(

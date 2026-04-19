@@ -7,7 +7,7 @@ import '../models/trade_purchase_models.dart';
 final purchaseHistoryPrimaryFilterProvider =
     StateProvider<String>((ref) => 'all');
 
-/// Debounced search string sent to `GET .../trade-purchases?q=`.
+/// Client-side filter only (not sent to list API — avoids refetch per keystroke).
 final purchaseHistorySearchProvider = StateProvider<String>((ref) => '');
 
 /// Optional secondary chip: `pending` | `paid` | `overdue` (client-side only).
@@ -20,7 +20,6 @@ final tradePurchasesListProvider =
   if (session == null) return [];
   final primary = ref.watch(purchaseHistoryPrimaryFilterProvider);
   final secondary = ref.watch(purchaseHistorySecondaryFilterProvider);
-  final search = ref.watch(purchaseHistorySearchProvider);
   final apiStatus = switch (secondary) {
     'overdue' => 'overdue',
     'paid' => 'paid',
@@ -30,7 +29,6 @@ final tradePurchasesListProvider =
         businessId: session.primaryBusiness.id,
         limit: 200,
         status: apiStatus,
-        q: search.trim().isEmpty ? null : search.trim(),
       );
 });
 

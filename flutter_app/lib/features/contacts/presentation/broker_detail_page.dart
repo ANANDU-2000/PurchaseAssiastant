@@ -175,6 +175,13 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
           ),
           orElse: () => const Text('Broker'),
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Trade purchase ledger',
+            icon: const Icon(Icons.receipt_long_outlined),
+            onPressed: () => context.push('/broker/${widget.brokerId}/ledger'),
+          ),
+        ],
       ),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),

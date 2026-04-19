@@ -22,6 +22,7 @@ class FullScreenFormScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final kb = MediaQuery.viewInsetsOf(context).bottom;
     return Scaffold(
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
@@ -50,7 +51,12 @@ class FullScreenFormScaffold extends StatelessWidget {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(child: body),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: kb),
+              child: body,
+            ),
+          ),
           Material(
             elevation: 8,
             color: Theme.of(context).colorScheme.surface,

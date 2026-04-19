@@ -241,20 +241,252 @@ class _SignupPageState extends ConsumerState<SignupPage>
     );
   }
 
+  List<Widget> _signupFieldChildren(BuildContext context) {
+    final nameErr = _nameError();
+    final emailErr = _emailError();
+    final passErr = _passError();
+    final pass2Err = _pass2Error();
+    return [
+      _fieldShell(
+        hasError: nameErr != null,
+        child: TextField(
+          controller: _nameCtrl,
+          focusNode: _nameFocus,
+          textInputAction: TextInputAction.next,
+          autofillHints: const [AutofillHints.name],
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w500,
+          ),
+          onSubmitted: (_) => _emailFocus.requestFocus(),
+          decoration: _fieldDeco(
+            'Name',
+            Icons.person_outline_rounded,
+            err: nameErr != null,
+          ),
+        ),
+      ),
+      _errorLine(nameErr),
+      _fieldShell(
+        hasError: emailErr != null,
+        child: TextField(
+          controller: _emailCtrl,
+          focusNode: _emailFocus,
+          keyboardType: TextInputType.emailAddress,
+          textInputAction: TextInputAction.next,
+          autofillHints: const [AutofillHints.email],
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w500,
+          ),
+          onSubmitted: (_) => _passFocus.requestFocus(),
+          decoration: _fieldDeco(
+            'Email',
+            Icons.mail_outline_rounded,
+            err: emailErr != null,
+          ),
+        ),
+      ),
+      _errorLine(emailErr),
+      _fieldShell(
+        hasError: passErr != null,
+        child: TextField(
+          controller: _passCtrl,
+          focusNode: _passFocus,
+          obscureText: _obscure1,
+          textInputAction: TextInputAction.next,
+          autofillHints: const [AutofillHints.newPassword],
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w500,
+          ),
+          onSubmitted: (_) => _pass2Focus.requestFocus(),
+          decoration: _fieldDeco(
+            'Password',
+            Icons.key_rounded,
+            err: passErr != null,
+            suffix: IconButton(
+              tooltip: _obscure1 ? 'Show password' : 'Hide password',
+              onPressed: () => setState(() => _obscure1 = !_obscure1),
+              icon: Icon(
+                _obscure1
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+                color: const Color(0xFF8E8E93),
+                size: 22,
+              ),
+            ),
+          ),
+        ),
+      ),
+      _errorLine(passErr),
+      if (passErr == null)
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(
+            'At least 8 characters',
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.grey.shade600,
+            ),
+          ),
+        ),
+      _fieldShell(
+        hasError: pass2Err != null,
+        child: TextField(
+          controller: _pass2Ctrl,
+          focusNode: _pass2Focus,
+          obscureText: _obscure2,
+          textInputAction: TextInputAction.done,
+          autofillHints: const [AutofillHints.newPassword],
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w500,
+          ),
+          onSubmitted: (_) => _submit(),
+          decoration: _fieldDeco(
+            'Confirm Password',
+            Icons.lock_outline_rounded,
+            err: pass2Err != null,
+            suffix: IconButton(
+              tooltip: _obscure2 ? 'Show password' : 'Hide password',
+              onPressed: () => setState(() => _obscure2 = !_obscure2),
+              icon: Icon(
+                _obscure2
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+                color: const Color(0xFF8E8E93),
+                size: 22,
+              ),
+            ),
+          ),
+        ),
+      ),
+      _errorLine(pass2Err),
+      if (_apiError != null) ...[
+        const SizedBox(height: 4),
+        Text(
+          _apiError!,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.red.shade700,
+            fontSize: 13,
+            height: 1.35,
+          ),
+        ),
+        const SizedBox(height: 12),
+      ],
+      const SizedBox(height: 8),
+      Listener(
+        onPointerDown: (_) {
+          if (_isFormValid && !_loading) {
+            setState(() => _buttonPressed = true);
+          }
+        },
+        onPointerUp: (_) => setState(() => _buttonPressed = false),
+        onPointerCancel: (_) => setState(() => _buttonPressed = false),
+        child: AnimatedScale(
+          scale: (_buttonPressed && _isFormValid && !_loading) ? 0.98 : 1,
+          duration: const Duration(milliseconds: 100),
+          child: SizedBox(
+            width: double.infinity,
+            height: 54,
+            child: FilledButton(
+              onPressed: _loading ? null : (_isFormValid ? _submit : null),
+              style: FilledButton.styleFrom(
+                backgroundColor: HexaColors.brandPrimary,
+                disabledBackgroundColor: HexaColors.brandDisabledBg,
+                disabledForegroundColor: HexaColors.brandDisabledText,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                textStyle: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              child: _loading
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Create Account'),
+            ),
+          ),
+        ),
+      ),
+      TextButton(
+        onPressed: _loading ? null : () => context.go('/login'),
+        child: const Text(
+          'Already have account? Login',
+          style: TextStyle(
+            color: HexaColors.brandAccent,
+            fontWeight: FontWeight.w600,
+            fontSize: 14,
+          ),
+        ),
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final h = MediaQuery.sizeOf(context).height;
     final heroH = h * 0.45;
     final cardH = h * 0.60;
+    final inset = MediaQuery.viewInsetsOf(context).bottom;
 
-    final nameErr = _nameError();
-    final emailErr = _emailError();
-    final passErr = _passError();
-    final pass2Err = _pass2Error();
+    if (inset > 8) {
+      return Scaffold(
+        backgroundColor: HexaColors.brandBackground,
+        resizeToAvoidBottomInset: true,
+        body: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: SafeArea(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(20, 12, 20, 16 + inset),
+              child: AutofillGroup(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Create Account',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        color: HexaColors.brandPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Start managing your purchases',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade600,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    ..._signupFieldChildren(context),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: Colors.black,
-      resizeToAvoidBottomInset: false,
+      resizeToAvoidBottomInset: true,
       body: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => FocusScope.of(context).unfocus(),
@@ -318,240 +550,7 @@ class _SignupPageState extends ConsumerState<SignupPage>
                                   child: ListView(
                                     physics: const ClampingScrollPhysics(),
                                     padding: EdgeInsets.zero,
-                                    children: [
-                                      _fieldShell(
-                                        hasError: nameErr != null,
-                                        child: TextField(
-                                          controller: _nameCtrl,
-                                          focusNode: _nameFocus,
-                                          textInputAction: TextInputAction.next,
-                                          autofillHints: const [
-                                            AutofillHints.name,
-                                          ],
-                                          style: const TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                          onSubmitted: (_) =>
-                                              _emailFocus.requestFocus(),
-                                          decoration: _fieldDeco(
-                                            'Name',
-                                            Icons.person_outline_rounded,
-                                            err: nameErr != null,
-                                          ),
-                                        ),
-                                      ),
-                                      _errorLine(nameErr),
-                                      _fieldShell(
-                                        hasError: emailErr != null,
-                                        child: TextField(
-                                          controller: _emailCtrl,
-                                          focusNode: _emailFocus,
-                                          keyboardType:
-                                              TextInputType.emailAddress,
-                                          textInputAction: TextInputAction.next,
-                                          autofillHints: const [
-                                            AutofillHints.email,
-                                          ],
-                                          style: const TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                          onSubmitted: (_) =>
-                                              _passFocus.requestFocus(),
-                                          decoration: _fieldDeco(
-                                            'Email',
-                                            Icons.mail_outline_rounded,
-                                            err: emailErr != null,
-                                          ),
-                                        ),
-                                      ),
-                                      _errorLine(emailErr),
-                                      _fieldShell(
-                                        hasError: passErr != null,
-                                        child: TextField(
-                                          controller: _passCtrl,
-                                          focusNode: _passFocus,
-                                          obscureText: _obscure1,
-                                          textInputAction: TextInputAction.next,
-                                          autofillHints: const [
-                                            AutofillHints.newPassword,
-                                          ],
-                                          style: const TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                          onSubmitted: (_) =>
-                                              _pass2Focus.requestFocus(),
-                                          decoration: _fieldDeco(
-                                            'Password',
-                                            Icons.key_rounded,
-                                            err: passErr != null,
-                                            suffix: IconButton(
-                                              tooltip: _obscure1
-                                                  ? 'Show password'
-                                                  : 'Hide password',
-                                              onPressed: () => setState(
-                                                () => _obscure1 = !_obscure1,
-                                              ),
-                                              icon: Icon(
-                                                _obscure1
-                                                    ? Icons.visibility_outlined
-                                                    : Icons
-                                                        .visibility_off_outlined,
-                                                color: const Color(0xFF8E8E93),
-                                                size: 22,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      _errorLine(passErr),
-                                      if (passErr == null)
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                            left: 4,
-                                            bottom: 8,
-                                          ),
-                                          child: Text(
-                                            'At least 8 characters',
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              color: Colors.grey.shade600,
-                                            ),
-                                          ),
-                                        ),
-                                      _fieldShell(
-                                        hasError: pass2Err != null,
-                                        child: TextField(
-                                          controller: _pass2Ctrl,
-                                          focusNode: _pass2Focus,
-                                          obscureText: _obscure2,
-                                          textInputAction: TextInputAction.done,
-                                          autofillHints: const [
-                                            AutofillHints.newPassword,
-                                          ],
-                                          style: const TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                          onSubmitted: (_) => _submit(),
-                                          decoration: _fieldDeco(
-                                            'Confirm Password',
-                                            Icons.lock_outline_rounded,
-                                            err: pass2Err != null,
-                                            suffix: IconButton(
-                                              tooltip: _obscure2
-                                                  ? 'Show password'
-                                                  : 'Hide password',
-                                              onPressed: () => setState(
-                                                () => _obscure2 = !_obscure2,
-                                              ),
-                                              icon: Icon(
-                                                _obscure2
-                                                    ? Icons.visibility_outlined
-                                                    : Icons
-                                                        .visibility_off_outlined,
-                                                color: const Color(0xFF8E8E93),
-                                                size: 22,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      _errorLine(pass2Err),
-                                      if (_apiError != null) ...[
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          _apiError!,
-                                          textAlign: TextAlign.center,
-                                          style: TextStyle(
-                                            color: Colors.red.shade700,
-                                            fontSize: 13,
-                                            height: 1.35,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 12),
-                                      ],
-                                      const SizedBox(height: 8),
-                                      Listener(
-                                        onPointerDown: (_) {
-                                          if (_isFormValid && !_loading) {
-                                            setState(
-                                                () => _buttonPressed = true);
-                                          }
-                                        },
-                                        onPointerUp: (_) => setState(
-                                            () => _buttonPressed = false),
-                                        onPointerCancel: (_) => setState(
-                                            () => _buttonPressed = false),
-                                        child: AnimatedScale(
-                                          scale: (_buttonPressed &&
-                                                  _isFormValid &&
-                                                  !_loading)
-                                              ? 0.98
-                                              : 1,
-                                          duration: const Duration(
-                                            milliseconds: 100,
-                                          ),
-                                          child: SizedBox(
-                                            width: double.infinity,
-                                            height: 54,
-                                            child: FilledButton(
-                                              onPressed: _loading
-                                                  ? null
-                                                  : (_isFormValid
-                                                      ? _submit
-                                                      : null),
-                                              style: FilledButton.styleFrom(
-                                                backgroundColor:
-                                                    HexaColors.brandPrimary,
-                                                disabledBackgroundColor:
-                                                    HexaColors.brandDisabledBg,
-                                                disabledForegroundColor:
-                                                    HexaColors
-                                                        .brandDisabledText,
-                                                foregroundColor: Colors.white,
-                                                elevation: 0,
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius:
-                                                      BorderRadius.circular(14),
-                                                ),
-                                                textStyle: const TextStyle(
-                                                  fontSize: 16,
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                              ),
-                                              child: _loading
-                                                  ? const SizedBox(
-                                                      width: 22,
-                                                      height: 22,
-                                                      child:
-                                                          CircularProgressIndicator(
-                                                        strokeWidth: 2,
-                                                        color: Colors.white,
-                                                      ),
-                                                    )
-                                                  : const Text(
-                                                      'Create Account'),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      TextButton(
-                                        onPressed: _loading
-                                            ? null
-                                            : () => context.go('/login'),
-                                        child: const Text(
-                                          'Already have account? Login',
-                                          style: TextStyle(
-                                            color: HexaColors.brandAccent,
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 14,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
+                                    children: _signupFieldChildren(context),
                                   ),
                                 ),
                               ],
