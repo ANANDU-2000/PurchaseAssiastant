@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,6 +10,7 @@ import 'package:intl/intl.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
+import '../../../core/providers/business_write_revision.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/theme/hexa_colors.dart';
@@ -32,6 +35,7 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
   late ({String from, String to}) _range;
   final _searchCtrl = TextEditingController();
   String _searchQuery = '';
+  Timer? _searchDebounce;
   final Set<String> _selected = {};
   bool _selectionMode = false;
   /// Item IDs hidden immediately while delete API runs (restored on failure).
@@ -41,10 +45,21 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
   void initState() {
     super.initState();
     _range = catalogInsightsDefaultRange();
+    _searchCtrl.addListener(_onSearchChanged);
+  }
+
+  void _onSearchChanged() {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 150), () {
+      if (!mounted) return;
+      setState(() => _searchQuery = _searchCtrl.text);
+    });
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
+    _searchCtrl.removeListener(_onSearchChanged);
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -211,9 +226,9 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
                           Consumer(
                             builder: (context, ref, _) {
                               if (targetCat == null) {
-                                return OutlinedButton(
+                                return const OutlinedButton(
                                   onPressed: null,
-                                  child: const Align(
+                                  child: Align(
                                     alignment: Alignment.centerLeft,
                                     child: Text('Select a category first'),
                                   ),
@@ -436,6 +451,15 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
             limit: 500,
           );
 
+    ref.listen<int>(businessDataWriteRevisionProvider, (prev, next) {
+      if (prev == null || next <= prev) return;
+      for (final it in itemsInType) {
+        final id = it['id']?.toString();
+        if (id == null || id.isEmpty) continue;
+        ref.invalidate(catalogItemInsightsProvider(_insightKey(id)));
+      }
+    });
+
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: !_selectionMode,
@@ -500,6 +524,7 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
                     : IconButton(
                         icon: const Icon(Icons.close_rounded),
                         onPressed: () {
+                          _searchDebounce?.cancel();
                           _searchCtrl.clear();
                           setState(() => _searchQuery = '');
                         },
@@ -507,7 +532,6 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 isDense: true,
               ),
-              onChanged: (v) => setState(() => _searchQuery = v),
             ),
             const SizedBox(height: 12),
             if (filtered.isEmpty)

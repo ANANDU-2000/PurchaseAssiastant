@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/providers/business_write_revision.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/theme/hexa_colors.dart';
@@ -152,6 +153,17 @@ class _CatalogPageState extends ConsumerState<CatalogPage> {
     final async = ref.watch(itemCategoriesListProvider);
     final itemsAsync = ref.watch(catalogItemsListProvider);
     final range = catalogInsightsDefaultRange();
+
+    ref.listen<int>(businessDataWriteRevisionProvider, (prev, next) {
+      if (prev == null || next <= prev) return;
+      async.whenData((list) {
+        for (final c in list) {
+          final id = c['id']?.toString();
+          if (id == null || id.isEmpty) continue;
+          ref.invalidate(categoryInsightsProvider('$id|${range.from}|${range.to}'));
+        }
+      });
+    });
 
     return Scaffold(
       appBar: AppBar(

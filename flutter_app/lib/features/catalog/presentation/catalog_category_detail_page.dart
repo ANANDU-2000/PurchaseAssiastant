@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/providers/business_write_revision.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/theme/hexa_colors.dart';
@@ -64,6 +65,12 @@ class _CatalogCategoryDetailPageState
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(businessDataWriteRevisionProvider, (prev, next) {
+      if (prev != null && next > prev) {
+        ref.invalidate(categoryInsightsProvider(_insightKey()));
+      }
+    });
+
     final catsAsync = ref.watch(itemCategoriesListProvider);
     final itemsAsync = ref.watch(catalogItemsListProvider);
     final typesAsync = ref.watch(categoryTypesListProvider(widget.categoryId));
