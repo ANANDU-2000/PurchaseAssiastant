@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/theme/hexa_colors.dart';
@@ -98,6 +99,7 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
       }
     }
     ref.invalidate(catalogItemsListProvider);
+    invalidateBusinessAggregates(ref);
     setState(() {
       _selected.clear();
       _selectionMode = false;
@@ -279,6 +281,7 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
                         itemId: id,
                       );
                   ref.invalidate(catalogItemsListProvider);
+                  invalidateBusinessAggregates(ref);
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
                   }

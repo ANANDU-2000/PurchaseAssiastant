@@ -402,19 +402,31 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
       children: [
-        TextField(
-          controller: _hsn,
-          decoration: _d('HSN Code'),
-          onChanged: (_) => _markDirty(),
+        ExpansionTile(
+          initiallyExpanded: false,
+          tilePadding: EdgeInsets.zero,
+          title: const Text(
+            'Advanced: HSN & tax %',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+          ),
+          subtitle: const Text('Optional — hide until you need compliance fields'),
+          children: [
+            TextField(
+              controller: _hsn,
+              decoration: _d('HSN Code'),
+              onChanged: (_) => _markDirty(),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _tax,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: _d('Tax %'),
+              onChanged: (_) => _markDirty(),
+            ),
+            const SizedBox(height: 8),
+          ],
         ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _tax,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: _d('Tax %'),
-          onChanged: (_) => _markDirty(),
-        ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         TextField(
           controller: _landing,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),

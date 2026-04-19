@@ -15,15 +15,13 @@ import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/purchase_prefill_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
-import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../shared/widgets/bag_default_unit_hint.dart';
 import '../../../shared/widgets/full_screen_form_scaffold.dart';
+import '../../../shared/widgets/search_picker_sheet.dart';
 import 'widgets/defaults_applied_card.dart';
 import 'widgets/purchase_saved_sheet.dart';
 
-const _supplierPickNew = '__new_supplier__';
-const _brokerPickNew = '__new_broker__';
 const _brokerPickNone = '__broker_none__';
 
 class PurchaseWizardPage extends ConsumerStatefulWidget {
@@ -973,6 +971,138 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
     return null;
   }
 
+  String _supplierButtonLabel(List<Map<String, dynamic>> rows) {
+    if (_supplierId == null || _supplierId!.isEmpty) {
+      return 'Tap to choose supplier';
+    }
+    for (final r in rows) {
+      if (r['id']?.toString() == _supplierId) {
+        return r['name']?.toString() ?? 'Supplier';
+      }
+    }
+    return 'Tap to choose supplier';
+  }
+
+  String _brokerButtonLabel(List<Map<String, dynamic>> brokers) {
+    if (_brokerId == null || _brokerId!.isEmpty) {
+      return 'No broker';
+    }
+    for (final b in brokers) {
+      if (b['id']?.toString() == _brokerId) {
+        return b['name']?.toString() ?? 'Broker';
+      }
+    }
+    return 'No broker';
+  }
+
+  Future<void> _openSupplierPicker(List<Map<String, dynamic>> rows) async {
+    final pickerRows = <SearchPickerRow<String>>[
+      for (final r in rows)
+        if ((r['id']?.toString() ?? '').isNotEmpty)
+          SearchPickerRow<String>(
+            value: r['id']?.toString() ?? '',
+            title: r['name']?.toString() ?? '—',
+            subtitle: (r['location']?.toString() ?? '').trim().isEmpty
+                ? null
+                : r['location']?.toString(),
+          ),
+    ];
+    final id = await showSearchPickerSheet<String>(
+      context: context,
+      title: 'Choose supplier',
+      rows: pickerRows,
+      selectedValue: _supplierId,
+      footerBuilder: (sheetCtx) => [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: OutlinedButton.icon(
+            onPressed: () {
+              Navigator.pop(sheetCtx);
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (context.mounted) context.push('/contacts/supplier/new');
+              });
+            },
+            icon: const Icon(Icons.add_business_outlined),
+            label: const Text('New supplier'),
+          ),
+        ),
+      ],
+    );
+    if (!mounted || id == null) return;
+    setState(() {
+      _supplierId = id;
+      final s = rows.firstWhere(
+        (r) => r['id']?.toString() == id,
+        orElse: () => <String, dynamic>{},
+      );
+      if (s.isNotEmpty) {
+        _applySupplierDefaults(s);
+        _refreshSupplierMemory(s);
+        _syncBrokerCommissionFromList(ref.read(brokersListProvider).valueOrNull, force: true);
+      }
+      _markDirty();
+    });
+    unawaited(_refreshSupplierWarning());
+  }
+
+  Future<void> _openBrokerPicker(List<Map<String, dynamic>> brokers) async {
+    final pickerRows = <SearchPickerRow<String>>[
+      const SearchPickerRow<String>(
+        value: _brokerPickNone,
+        title: 'No broker',
+        subtitle: 'Skip commission on this purchase',
+      ),
+      for (final b in brokers)
+        if ((b['id']?.toString() ?? '').isNotEmpty)
+          SearchPickerRow<String>(
+            value: b['id']?.toString() ?? '',
+            title: b['name']?.toString() ?? '—',
+            subtitle: (b['location']?.toString() ?? '').trim().isEmpty
+                ? null
+                : b['location']?.toString(),
+          ),
+    ];
+    final initial = _brokerId != null && brokers.any((b) => b['id']?.toString() == _brokerId)
+        ? _brokerId!
+        : _brokerPickNone;
+    final id = await showSearchPickerSheet<String>(
+      context: context,
+      title: 'Broker (optional)',
+      rows: pickerRows,
+      selectedValue: initial,
+      footerBuilder: (sheetCtx) => [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: OutlinedButton.icon(
+            onPressed: () {
+              Navigator.pop(sheetCtx);
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (context.mounted) context.go('/contacts');
+              });
+            },
+            icon: const Icon(Icons.person_add_alt_1_outlined),
+            label: const Text('Manage brokers'),
+          ),
+        ),
+      ],
+    );
+    if (!mounted || id == null) return;
+    if (id == _brokerPickNone) {
+      setState(() {
+        _brokerId = null;
+        _commission = null;
+        _commissionCtrl.clear();
+        _markDirty();
+      });
+      return;
+    }
+    setState(() {
+      _brokerId = id;
+      _syncBrokerCommissionFromList(brokers, force: true);
+      _markDirty();
+    });
+  }
+
   Future<void> _savePurchase() async {
     final session = ref.read(sessionProvider);
     if (session == null) return;
@@ -1064,6 +1194,9 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
             );
       }
       ref.invalidate(tradePurchasesListProvider);
+      try {
+        await ref.read(tradePurchasesListProvider.future);
+      } catch (_) {}
       invalidateBusinessAggregates(ref);
       if (!mounted) return;
       await showPurchaseSavedSheet(
@@ -1255,154 +1388,76 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
                 ],
               );
             }
-            final entries = <DropdownMenuEntry<String>>[
-              ...rows.map(
-                (r) => DropdownMenuEntry<String>(
-                  value: r['id']?.toString() ?? '',
-                  label: r['name']?.toString() ?? '',
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Supplier *',
+                  style: Theme.of(context)
+                      .textTheme
+                      .labelLarge
+                      ?.copyWith(fontWeight: FontWeight.w800),
                 ),
-              ),
-              const DropdownMenuEntry<String>(
-                value: _supplierPickNew,
-                label: '+ New supplier',
-              ),
-            ];
-            final nameById = {
-              for (final r in rows) r['id']?.toString() ?? '': r['name']?.toString() ?? '',
-            };
-            return LayoutBuilder(
-              builder: (context, c) {
-                return DropdownMenu<String>(
-                  width: c.maxWidth,
-                  menuHeight: 360,
-                  enableFilter: true,
-                  enableSearch: true,
-                  requestFocusOnTap: true,
-                  label: const Text('Supplier *'),
-                  hintText: 'Search or pick supplier',
-                  initialSelection: _supplierId != null && rows.any((r) => r['id']?.toString() == _supplierId)
-                      ? _supplierId
-                      : null,
-                  filterCallback: (list, filter) {
-                    final q = filter.trim();
-                    if (q.isEmpty) return list;
-                    final tail = list.where((e) => e.value == _supplierPickNew).toList();
-                    final main = list.where((e) => e.value != _supplierPickNew).toList();
-                    final ids = main.map((e) => e.value).toList();
-                    final ranked = catalogFuzzyRank(
-                      q,
-                      ids,
-                      (id) => nameById[id] ?? '',
-                      minScore: 18,
-                      limit: 200,
-                    );
-                    if (ranked.isEmpty) return [...tail];
-                    final set = ranked.toSet();
-                    return [...main.where((e) => set.contains(e.value)), ...tail];
-                  },
-                  onSelected: (v) {
-                    if (v == null) return;
-                    if (v == _supplierPickNew) {
-                      context.push('/contacts/supplier/new');
-                      return;
-                    }
-                    setState(() {
-                      _supplierId = v;
-                      final s = rows.firstWhere(
-                        (r) => r['id']?.toString() == v,
-                        orElse: () => <String, dynamic>{},
-                      );
-                      if (s.isNotEmpty) {
-                        _applySupplierDefaults(s);
-                        _refreshSupplierMemory(s);
-                        _syncBrokerCommissionFromList(ref.read(brokersListProvider).valueOrNull, force: true);
-                      }
-                      _markDirty();
-                    });
-                    unawaited(_refreshSupplierWarning());
-                  },
-                  dropdownMenuEntries: entries,
-                );
-              },
+                const SizedBox(height: 6),
+                OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    alignment: Alignment.centerLeft,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+                  ),
+                  onPressed: () => _openSupplierPicker(rows),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _supplierButtonLabel(rows),
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const Icon(Icons.search_rounded),
+                    ],
+                  ),
+                ),
+              ],
             );
           },
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 10),
         ref.watch(brokersListProvider).when(
               loading: () => const SizedBox.shrink(),
               error: (_, __) => const SizedBox.shrink(),
               data: (brokers) {
-                final entries = <DropdownMenuEntry<String>>[
-                  const DropdownMenuEntry<String>(
-                    value: _brokerPickNone,
-                    label: 'None',
-                  ),
-                  ...brokers.map(
-                    (b) => DropdownMenuEntry<String>(
-                      value: b['id']?.toString() ?? '',
-                      label: b['name']?.toString() ?? '',
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Broker (optional)',
+                      style: Theme.of(context)
+                          .textTheme
+                          .labelLarge
+                          ?.copyWith(fontWeight: FontWeight.w800),
                     ),
-                  ),
-                  const DropdownMenuEntry<String>(
-                    value: _brokerPickNew,
-                    label: '+ New broker',
-                  ),
-                ];
-                final nameById = {
-                  for (final b in brokers) b['id']?.toString() ?? '': b['name']?.toString() ?? '',
-                };
-                final initial = _brokerId != null && brokers.any((b) => b['id']?.toString() == _brokerId)
-                    ? _brokerId!
-                    : _brokerPickNone;
-                return LayoutBuilder(
-                  builder: (context, c) {
-                    return DropdownMenu<String>(
-                      width: c.maxWidth,
-                      menuHeight: 360,
-                      enableFilter: true,
-                      enableSearch: true,
-                      requestFocusOnTap: true,
-                      label: const Text('Broker (optional)'),
-                      hintText: 'Search brokers',
-                      initialSelection: initial,
-                      filterCallback: (list, filter) {
-                        final q = filter.trim();
-                        if (q.isEmpty) return list;
-                        final tail = list.where((e) => e.value == _brokerPickNew || e.value == _brokerPickNone).toList();
-                        final main = list.where((e) => e.value != _brokerPickNew && e.value != _brokerPickNone).toList();
-                        final ids = main.map((e) => e.value).toList();
-                        final ranked = catalogFuzzyRank(
-                          q,
-                          ids,
-                          (id) => nameById[id] ?? '',
-                          minScore: 18,
-                          limit: 200,
-                        );
-                        if (ranked.isEmpty) return [...tail];
-                        final set = ranked.toSet();
-                        return [...main.where((e) => set.contains(e.value)), ...tail];
-                      },
-                      onSelected: (v) {
-                        if (v == null) return;
-                        if (v == _brokerPickNew) {
-                          context.push('/contacts');
-                          return;
-                        }
-                        setState(() {
-                          if (v == _brokerPickNone) {
-                            _brokerId = null;
-                            _commission = null;
-                            _commissionCtrl.clear();
-                          } else {
-                            _brokerId = v;
-                            _syncBrokerCommissionFromList(brokers, force: true);
-                          }
-                          _markDirty();
-                        });
-                      },
-                      dropdownMenuEntries: entries,
-                    );
-                  },
+                    const SizedBox(height: 6),
+                    OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        alignment: Alignment.centerLeft,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+                      ),
+                      onPressed: () => _openBrokerPicker(brokers),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _brokerButtonLabel(brokers),
+                              style: const TextStyle(fontWeight: FontWeight.w700),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const Icon(Icons.search_rounded),
+                        ],
+                      ),
+                    ),
+                  ],
                 );
               },
             ),

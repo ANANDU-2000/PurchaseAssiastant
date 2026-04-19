@@ -204,6 +204,9 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
             purchaseId: p.id,
           );
       ref.invalidate(tradePurchasesListProvider);
+      try {
+        await ref.read(tradePurchasesListProvider.future);
+      } catch (_) {}
       invalidateBusinessAggregates(ref);
       if (!mounted) return;
       messenger.showSnackBar(const SnackBar(content: Text('Deleted')));
@@ -241,6 +244,9 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
       _selected.clear();
     });
     ref.invalidate(tradePurchasesListProvider);
+    try {
+      await ref.read(tradePurchasesListProvider.future);
+    } catch (_) {}
     invalidateBusinessAggregates(ref);
   }
 
@@ -253,6 +259,9 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
             purchaseId: p.id,
           );
       ref.invalidate(tradePurchasesListProvider);
+      try {
+        await ref.read(tradePurchasesListProvider.future);
+      } catch (_) {}
       invalidateBusinessAggregates(ref);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Marked paid')));

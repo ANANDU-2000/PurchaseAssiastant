@@ -395,6 +395,38 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
         ),
       );
     }
+    if (usable.length == 1) {
+      final r = usable.first;
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _label(r),
+                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'A single row accounts for all profit in this range, so the ring chart would read 100% for one slice. '
+                'Switch to Table view above for a sortable list, or pick a longer period to compare more rows.',
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.35,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Amount: ${_inr(_metric(r).round())}',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     final palette = HexaColors.chartPalette;
     return Card(
       child: Padding(
