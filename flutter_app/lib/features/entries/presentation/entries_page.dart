@@ -11,6 +11,7 @@ import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../shared/widgets/app_settings_action.dart';
+import '../../../shared/widgets/search_picker_sheet.dart';
 import '../../../core/widgets/friendly_load_error.dart'
     show FriendlyLoadError, kFriendlyLoadNetworkSubtitle;
 import '../../../shared/widgets/hexa_empty_state.dart';
@@ -255,21 +256,48 @@ class _EntriesPageState extends ConsumerState<EntriesPage> {
                       if (picked != null) setModal(() => nt = picked);
                     },
                   ),
-                  DropdownButtonFormField<String?>(
-                    key: ValueKey(ns ?? '∅'),
-                    initialValue: ns,
-                    decoration: const InputDecoration(labelText: 'Supplier'),
-                    items: [
-                      const DropdownMenuItem<String?>(
-                          value: null, child: Text('Any supplier')),
-                      ...supplierList.map(
-                        (s) => DropdownMenuItem<String?>(
-                          value: s['id']?.toString(),
-                          child: Text(s['name']?.toString() ?? ''),
+                  Text('Supplier', style: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 6),
+                  OutlinedButton(
+                    onPressed: () async {
+                      final rows = <SearchPickerRow<String>>[
+                        const SearchPickerRow<String>(
+                          value: '',
+                          title: 'Any supplier',
                         ),
+                        for (final s in supplierList)
+                          if ((s['id']?.toString() ?? '').isNotEmpty)
+                            SearchPickerRow<String>(
+                              value: s['id']!.toString(),
+                              title: s['name']?.toString() ?? '—',
+                            ),
+                      ];
+                      final id = await showSearchPickerSheet<String>(
+                        context: context,
+                        title: 'Filter by supplier',
+                        rows: rows,
+                        selectedValue: ns ?? '',
+                      );
+                      if (!context.mounted) return;
+                      if (id != null) {
+                        setModal(() => ns = id.isEmpty ? null : id);
+                      }
+                    },
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        () {
+                          if ((ns ?? '').isEmpty) return 'Any supplier';
+                          for (final s in supplierList) {
+                            if (s['id']?.toString() == ns) {
+                              return s['name']?.toString() ?? 'Supplier';
+                            }
+                          }
+                          return 'Supplier';
+                        }(),
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    ],
-                    onChanged: (v) => setModal(() => ns = v),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Row(

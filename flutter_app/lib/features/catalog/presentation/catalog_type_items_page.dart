@@ -11,6 +11,7 @@ import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../shared/widgets/search_picker_sheet.dart';
 
 /// Items under a subcategory (category type).
 class CatalogTypeItemsPage extends ConsumerStatefulWidget {
@@ -33,6 +34,8 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
   String _searchQuery = '';
   final Set<String> _selected = {};
   bool _selectionMode = false;
+  /// Item IDs hidden immediately while delete API runs (restored on failure).
+  final Set<String> _pendingDeleteItemIds = {};
 
   @override
   void initState() {
@@ -83,7 +86,16 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
     if (ok != true) return;
     final session = ref.read(sessionProvider);
     if (session == null) return;
-    for (final id in _selected.toList()) {
+    final ids = _selected.toList();
+    setState(() {
+      for (final id in ids) {
+        _pendingDeleteItemIds.add(id);
+      }
+      _selected.clear();
+      _selectionMode = false;
+    });
+    var stoppedEarly = false;
+    for (final id in ids) {
       try {
         await ref.read(hexaApiProvider).deleteCatalogItem(
               businessId: session.primaryBusiness.id,
@@ -91,21 +103,25 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
             );
       } on DioException catch (e) {
         if (mounted) {
+          setState(() => _pendingDeleteItemIds.remove(id));
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(friendlyApiError(e))),
           );
         }
+        stoppedEarly = true;
         break;
       }
     }
     ref.invalidate(catalogItemsListProvider);
+    try {
+      await ref.read(catalogItemsListProvider.future);
+    } catch (_) {}
     invalidateBusinessAggregates(ref);
-    setState(() {
-      _selected.clear();
-      _selectionMode = false;
-    });
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
+      setState(() => _pendingDeleteItemIds.removeAll(ids));
+      if (!stoppedEarly) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
+      }
     }
   }
 
@@ -126,9 +142,26 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
             builder: (ctx, setSt) {
               return Consumer(
                 builder: (context, ref, _) {
-                  final typesAsync = targetCat == null
-                      ? null
-                      : ref.watch(categoryTypesListProvider(targetCat!));
+                  String catLabel() {
+                    if (targetCat == null) return 'Choose category';
+                    for (final c in cats) {
+                      if (c['id']?.toString() == targetCat) {
+                        return c['name']?.toString() ?? '—';
+                      }
+                    }
+                    return 'Choose category';
+                  }
+
+                  String typeLabel(List<Map<String, dynamic>> types) {
+                    if (targetType == null) return 'Choose subcategory';
+                    for (final t in types) {
+                      if (t['id']?.toString() == targetType) {
+                        return t['name']?.toString() ?? '—';
+                      }
+                    }
+                    return 'Choose subcategory';
+                  }
+
                   return Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
                     child: SingleChildScrollView(
@@ -140,52 +173,103 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
                             style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
                           ),
                           const SizedBox(height: 12),
-                          DropdownButtonFormField<String>(
-                            // ignore: deprecated_member_use
-                            value: targetCat,
-                            decoration: const InputDecoration(
-                              labelText: 'Category',
-                              border: OutlineInputBorder(),
+                          Text('Category', style: Theme.of(ctx).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 6),
+                          OutlinedButton(
+                            onPressed: () async {
+                              final rows = <SearchPickerRow<String>>[
+                                for (final c in cats)
+                                  if ((c['id']?.toString() ?? '').isNotEmpty)
+                                    SearchPickerRow<String>(
+                                      value: c['id']!.toString(),
+                                      title: c['name']?.toString() ?? '—',
+                                    ),
+                              ];
+                              final id = await showSearchPickerSheet<String>(
+                                context: ctx,
+                                title: 'Search category',
+                                rows: rows,
+                                selectedValue: targetCat,
+                              );
+                              if (!ctx.mounted) return;
+                              if (id != null) {
+                                setSt(() {
+                                  targetCat = id;
+                                  targetType = null;
+                                });
+                              }
+                            },
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(catLabel(), overflow: TextOverflow.ellipsis),
                             ),
-                            items: [
-                              for (final c in cats)
-                                DropdownMenuItem(
-                                  value: c['id']?.toString(),
-                                  child: Text(c['name']?.toString() ?? ''),
-                                ),
-                            ],
-                            onChanged: (v) => setSt(() {
-                              targetCat = v;
-                              targetType = null;
-                            }),
                           ),
-                          const SizedBox(height: 12),
-                          if (typesAsync != null)
-                            typesAsync.when(
-                              loading: () => const Padding(
-                                padding: EdgeInsets.all(12),
-                                child: LinearProgressIndicator(),
-                              ),
-                              error: (_, __) => const Text('Could not load subcategories'),
-                              data: (types) {
-                                return DropdownButtonFormField<String>(
-                                  // ignore: deprecated_member_use
-                                  value: targetType,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Subcategory',
-                                    border: OutlineInputBorder(),
+                          const SizedBox(height: 14),
+                          Text('Subcategory',
+                              style: Theme.of(ctx).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 6),
+                          Consumer(
+                            builder: (context, ref, _) {
+                              if (targetCat == null) {
+                                return OutlinedButton(
+                                  onPressed: null,
+                                  child: const Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Text('Select a category first'),
                                   ),
-                                  items: [
-                                    for (final t in types)
-                                      DropdownMenuItem(
-                                        value: t['id']?.toString(),
-                                        child: Text(t['name']?.toString() ?? ''),
-                                      ),
-                                  ],
-                                  onChanged: (v) => setSt(() => targetType = v),
                                 );
-                              },
-                            ),
+                              }
+                              final typesAsync = ref.watch(categoryTypesListProvider(targetCat!));
+                              return typesAsync.when(
+                                loading: () => const OutlinedButton(
+                                  onPressed: null,
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Text('Loading subcategories…'),
+                                  ),
+                                ),
+                                error: (_, __) => const OutlinedButton(
+                                  onPressed: null,
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Text('Could not load subcategories'),
+                                  ),
+                                ),
+                                data: (typesRaw) {
+                                  final types = typesRaw
+                                      .map((e) => Map<String, dynamic>.from(e as Map))
+                                      .toList();
+                                  return OutlinedButton(
+                                    onPressed: () async {
+                                      final rows = <SearchPickerRow<String>>[
+                                        for (final t in types)
+                                          if ((t['id']?.toString() ?? '').isNotEmpty)
+                                            SearchPickerRow<String>(
+                                              value: t['id']!.toString(),
+                                              title: t['name']?.toString() ?? '—',
+                                            ),
+                                      ];
+                                      final id = await showSearchPickerSheet<String>(
+                                        context: ctx,
+                                        title: 'Search subcategory',
+                                        rows: rows,
+                                        selectedValue: targetType,
+                                      );
+                                      if (!ctx.mounted) return;
+                                      if (id != null) setSt(() => targetType = id);
+                                    },
+                                    child: Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        typeLabel(types),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              );
+                            },
+                          ),
                           const SizedBox(height: 20),
                           FilledButton(
                             onPressed: targetCat == null || targetType == null
@@ -275,18 +359,24 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
                 if (ok != true) return;
                 final session = ref.read(sessionProvider);
                 if (session == null) return;
+                setState(() => _pendingDeleteItemIds.add(id));
                 try {
                   await ref.read(hexaApiProvider).deleteCatalogItem(
                         businessId: session.primaryBusiness.id,
                         itemId: id,
                       );
                   ref.invalidate(catalogItemsListProvider);
+                  try {
+                    await ref.read(catalogItemsListProvider.future);
+                  } catch (_) {}
                   invalidateBusinessAggregates(ref);
                   if (mounted) {
+                    setState(() => _pendingDeleteItemIds.remove(id));
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
                   }
                 } on DioException catch (e) {
                   if (mounted) {
+                    setState(() => _pendingDeleteItemIds.remove(id));
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
                   }
                 }
@@ -331,6 +421,7 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
     final itemsInType = itemsAsync.maybeWhen(
       data: (items) => items
           .where((it) => it['type_id']?.toString() == widget.typeId)
+          .where((it) => !_pendingDeleteItemIds.contains(it['id']?.toString()))
           .toList(),
       orElse: () => <Map<String, dynamic>>[],
     );
@@ -364,6 +455,20 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
         ),
         actions: _selectionMode
             ? [
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _selected.clear();
+                      for (final it in filtered) {
+                        final id = it['id']?.toString();
+                        if (id != null && id.isNotEmpty) {
+                          _selected.add(id);
+                        }
+                      }
+                    });
+                  },
+                  child: const Text('Select all'),
+                ),
                 TextButton(onPressed: _bulkDelete, child: const Text('Delete')),
                 TextButton(onPressed: _pickMoveTarget, child: const Text('Move')),
               ]

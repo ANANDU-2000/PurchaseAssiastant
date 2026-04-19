@@ -8,6 +8,7 @@ import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
+import '../../../shared/widgets/search_picker_sheet.dart';
 
 final _brokerProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, brokerId) async {
@@ -196,28 +197,39 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
               child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
               children: [
-                DropdownButtonFormField<String>(
-                  key: ValueKey(_rangePreset),
-                  initialValue: _rangePreset,
-                  decoration: const InputDecoration(
-                    labelText: 'Date range',
-                    isDense: true,
-                  ),
-                  isExpanded: true,
-                  items: const [
-                    DropdownMenuItem(
-                        value: '7', child: Text('Last 7 days')),
-                    DropdownMenuItem(
-                        value: '30', child: Text('Last 30 days')),
-                    DropdownMenuItem(
-                        value: '90', child: Text('Last 90 days')),
-                    DropdownMenuItem(
-                        value: '0', child: Text('All time')),
-                  ],
-                  onChanged: (v) {
-                    if (v == null) return;
+                Text('Date range',
+                    style: tt.labelLarge?.copyWith(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 6),
+                OutlinedButton(
+                  onPressed: () async {
+                    const rows = [
+                      SearchPickerRow<String>(value: '7', title: 'Last 7 days'),
+                      SearchPickerRow<String>(value: '30', title: 'Last 30 days'),
+                      SearchPickerRow<String>(value: '90', title: 'Last 90 days'),
+                      SearchPickerRow<String>(value: '0', title: 'All time'),
+                    ];
+                    final v = await showSearchPickerSheet<String>(
+                      context: context,
+                      title: 'Date range',
+                      rows: rows,
+                      selectedValue: _rangePreset,
+                      initialChildFraction: 0.42,
+                    );
+                    if (!context.mounted || v == null) return;
                     _preset(int.parse(v));
                   },
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      switch (_rangePreset) {
+                        '7' => 'Last 7 days',
+                        '30' => 'Last 30 days',
+                        '90' => 'Last 90 days',
+                        _ => 'All time',
+                      },
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),

@@ -55,7 +55,7 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
       ChatMessage(
         id: 'welcome',
         text: 'Ask in plain words, e.g. create supplier Ravi, or add a purchase. '
-            'You will see a preview first. Reply YES to save or NO to cancel.\n'
+            'You will see a preview first. Tap Save on the card (a short confirm appears), or type YES / NO in chat.\n'
             'Hold the mic in the bar below to dictate (Malayalam or English).',
         isUser: false,
         at: DateTime.now(),
@@ -131,6 +131,31 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
     final msg = p.message?.trim();
     if (msg != null && msg.isNotEmpty) {
       unawaited(_sendWithText(msg));
+    }
+  }
+
+  Future<void> _confirmPreviewThenYes() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Save to your workspace?'),
+        content: const Text(
+          'This confirms the preview and saves the same data to the server.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Back'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Confirm & save'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await _sendWithText('YES');
     }
   }
 
@@ -402,13 +427,13 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
                         EntityPreviewCard(
                           parse: parsedEntity,
                           onCancel: () => unawaited(_sendWithText('NO')),
-                          onSave: () => unawaited(_sendWithText('YES')),
+                          onSave: () => unawaited(_confirmPreviewThenYes()),
                         )
                       else if (showCard && parsedPurchase != null)
                         PreviewCard(
                           entryDraft: m.draftSnapshot!,
                           onCancel: () => unawaited(_sendWithText('NO')),
-                          onSave: () => unawaited(_sendWithText('YES')),
+                          onSave: () => unawaited(_confirmPreviewThenYes()),
                         )
                       else if (m.showPreviewActions && !showCard)
                         Padding(
@@ -432,7 +457,7 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
                               const SizedBox(width: 10),
                               Expanded(
                                 child: FilledButton(
-                                  onPressed: () => unawaited(_sendWithText('YES')),
+                                  onPressed: () => unawaited(_confirmPreviewThenYes()),
                                   style: FilledButton.styleFrom(
                                     backgroundColor: AssistantChatTheme.accent,
                                     foregroundColor: Colors.white,

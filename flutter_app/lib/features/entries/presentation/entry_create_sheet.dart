@@ -19,10 +19,14 @@ import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/bag_default_unit_hint.dart';
+import '../../../shared/widgets/search_picker_sheet.dart';
 import '../../contacts/presentation/supplier_create_wizard_page.dart';
 import '../domain/quick_entry_parser.dart';
 import 'smart_price_panel.dart';
 part 'entry_create_sheet_modals.part.dart';
+
+const _entryPickNoSupplier = '__entry_pick_no_supplier__';
+const _entryPickNoBroker = '__entry_pick_no_broker__';
 
 enum _CommissionMode { totalRupees, percentOfPurchase, perUnitRupees }
 
@@ -729,30 +733,110 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
   }
 
   Future<void> _openSupplierPicker(List<Map<String, dynamic>> suppliers) async {
-    await showModalBottomSheet<void>(
+    final rows = <SearchPickerRow<String>>[
+      const SearchPickerRow<String>(
+        value: _entryPickNoSupplier,
+        title: 'No supplier',
+        subtitle: 'Skip for this entry',
+      ),
+      for (final s in suppliers)
+        if ((s['id']?.toString() ?? '').isNotEmpty)
+          SearchPickerRow<String>(
+            value: s['id']!.toString(),
+            title: s['name']?.toString() ?? '—',
+            subtitle: (s['location']?.toString() ?? '').trim().isEmpty
+                ? null
+                : s['location']?.toString(),
+          ),
+    ];
+    final initial = _supplierId != null &&
+            suppliers.any((r) => r['id']?.toString() == _supplierId)
+        ? _supplierId!
+        : _entryPickNoSupplier;
+    final id = await showSearchPickerSheet<String>(
       context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.55,
-        minChildSize: 0.35,
-        maxChildSize: 0.92,
-        builder: (ctx, scrollController) => _SupplierPickerSheet(
-          scrollController: scrollController,
-          suppliers: suppliers,
-          selectedId: _supplierId,
-          onPick: (id) {
-            Navigator.pop(ctx);
-            _onSupplierChanged(id, suppliers);
-          },
+      title: 'Supplier (optional)',
+      rows: rows,
+      selectedValue: initial,
+      footerBuilder: (sheetCtx) => [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: OutlinedButton.icon(
+            onPressed: () {
+              Navigator.pop(sheetCtx);
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) unawaited(_openSupplierCreateWizard());
+              });
+            },
+            icon: const Icon(Icons.add_business_outlined),
+            label: const Text('New supplier'),
+          ),
         ),
-      ),
+      ],
     );
+    if (!mounted || id == null) return;
+    final sid = id == _entryPickNoSupplier ? null : id;
+    _onSupplierChanged(sid, suppliers);
+  }
+
+  String _brokerButtonLabel(List<Map<String, dynamic>> brokers) {
+    if (_brokerId == null || _brokerId!.isEmpty) {
+      return 'Tap to choose broker';
+    }
+    for (final b in brokers) {
+      if (b['id']?.toString() == _brokerId) {
+        return b['name']?.toString() ?? 'Broker';
+      }
+    }
+    return 'Tap to choose broker';
+  }
+
+  Future<void> _openBrokerPicker(List<Map<String, dynamic>> brokers) async {
+    final rows = <SearchPickerRow<String>>[
+      const SearchPickerRow<String>(
+        value: _entryPickNoBroker,
+        title: 'No broker',
+        subtitle: 'Skip for this entry',
+      ),
+      for (final b in brokers)
+        if ((b['id']?.toString() ?? '').isNotEmpty)
+          SearchPickerRow<String>(
+            value: b['id']!.toString(),
+            title: b['name']?.toString() ?? '—',
+            subtitle: (b['location']?.toString() ?? '').trim().isEmpty
+                ? null
+                : b['location']?.toString(),
+          ),
+    ];
+    final initial = _brokerId != null &&
+            brokers.any((b) => b['id']?.toString() == _brokerId)
+        ? _brokerId!
+        : _entryPickNoBroker;
+    final id = await showSearchPickerSheet<String>(
+      context: context,
+      title: 'Broker (optional)',
+      rows: rows,
+      selectedValue: initial,
+      footerBuilder: (sheetCtx) => [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: OutlinedButton.icon(
+            onPressed: () {
+              Navigator.pop(sheetCtx);
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) unawaited(_addBrokerDialog());
+              });
+            },
+            icon: const Icon(Icons.person_add_alt_1_outlined),
+            label: const Text('New broker'),
+          ),
+        ),
+      ],
+    );
+    if (!mounted || id == null) return;
+    setState(() {
+      _brokerId = id == _entryPickNoBroker ? null : id;
+    });
   }
 
   Future<void> _addBrokerDialog() async {
@@ -1085,19 +1169,42 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                           .titleLarge
                           ?.copyWith(fontWeight: FontWeight.w800)),
                   const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    key: ValueKey(selectedCat),
-                    initialValue: selectedCat,
-                    decoration: const InputDecoration(labelText: 'Category *'),
-                    items: cats
-                        .map(
-                          (c) => DropdownMenuItem<String>(
-                            value: c['id']?.toString(),
-                            child: Text(c['name']?.toString() ?? ''),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (v) => setSt(() => selectedCat = v),
+                  Text('Category *',
+                      style: Theme.of(ctx).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 6),
+                  OutlinedButton(
+                    onPressed: () async {
+                      final rows = <SearchPickerRow<String>>[
+                        for (final c in cats)
+                          if ((c['id']?.toString() ?? '').isNotEmpty)
+                            SearchPickerRow<String>(
+                              value: c['id']!.toString(),
+                              title: c['name']?.toString() ?? '—',
+                            ),
+                      ];
+                      final id = await showSearchPickerSheet<String>(
+                        context: ctx,
+                        title: 'Search category',
+                        rows: rows,
+                        selectedValue: selectedCat,
+                      );
+                      if (!ctx.mounted) return;
+                      if (id != null) setSt(() => selectedCat = id);
+                    },
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        () {
+                          for (final c in cats) {
+                            if (c['id']?.toString() == selectedCat) {
+                              return c['name']?.toString() ?? 'Choose category';
+                            }
+                          }
+                          return 'Choose category';
+                        }(),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -1107,19 +1214,39 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                     decoration: const InputDecoration(labelText: 'Name *'),
                   ),
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<String?>(
-                    key: ValueKey(unit),
-                    initialValue: unit,
-                    decoration: const InputDecoration(
-                        labelText: 'Default unit (optional)'),
-                    items: const [
-                      DropdownMenuItem(value: null, child: Text('—')),
-                      DropdownMenuItem(value: 'kg', child: Text('kg')),
-                      DropdownMenuItem(value: 'bag', child: Text('bag')),
-                      DropdownMenuItem(value: 'box', child: Text('box')),
-                      DropdownMenuItem(value: 'piece', child: Text('pc')),
-                    ],
-                    onChanged: (v) => setSt(() => unit = v),
+                  Text('Default unit (optional)',
+                      style: Theme.of(ctx).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 6),
+                  OutlinedButton(
+                    onPressed: () async {
+                      const none = '__unit_none__';
+                      final id = await showSearchPickerSheet<String>(
+                        context: ctx,
+                        title: 'Default unit',
+                        rows: const [
+                          SearchPickerRow(value: none, title: '— (unspecified)'),
+                          SearchPickerRow(value: 'kg', title: 'kg'),
+                          SearchPickerRow(value: 'bag', title: 'bag'),
+                          SearchPickerRow(value: 'box', title: 'box'),
+                          SearchPickerRow(value: 'piece', title: 'pc'),
+                        ],
+                        selectedValue: unit ?? none,
+                      );
+                      if (!ctx.mounted) return;
+                      if (id != null) {
+                        setSt(() => unit = id == none ? null : id);
+                      }
+                    },
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        switch (unit) {
+                          null => '— (unspecified)',
+                          final u => u,
+                        },
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ),
                   if (unit == 'bag') ...[
                     const SizedBox(height: 10),
@@ -1172,6 +1299,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
       ref.invalidate(itemCategoriesListProvider);
       ref.invalidate(contactsItemsProvider);
       ref.invalidate(contactsCategoriesProvider);
+      invalidateBusinessAggregates(ref);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('Item created — use Catalog icon on line')));
@@ -1232,20 +1360,45 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                           .titleLarge
                           ?.copyWith(fontWeight: FontWeight.w800)),
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    key: ValueKey(itemId ?? ''),
-                    initialValue: itemId,
-                    decoration:
-                        const InputDecoration(labelText: 'Catalog item *'),
-                    items: items
-                        .map(
-                          (it) => DropdownMenuItem<String>(
-                            value: it['id']?.toString(),
-                            child: Text(it['name']?.toString() ?? ''),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (v) => setSt(() => itemId = v),
+                  Text('Catalog item *',
+                      style: Theme.of(ctx).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 6),
+                  OutlinedButton(
+                    onPressed: () async {
+                      final rows = <SearchPickerRow<String>>[
+                        for (final it in items)
+                          if ((it['id']?.toString() ?? '').isNotEmpty)
+                            SearchPickerRow<String>(
+                              value: it['id']!.toString(),
+                              title: it['name']?.toString() ?? '—',
+                              subtitle: (it['category_name']?.toString() ?? '').trim().isEmpty
+                                  ? null
+                                  : it['category_name']?.toString(),
+                            ),
+                      ];
+                      final id = await showSearchPickerSheet<String>(
+                        context: ctx,
+                        title: 'Search catalog item',
+                        rows: rows,
+                        selectedValue: itemId,
+                      );
+                      if (!ctx.mounted) return;
+                      if (id != null) setSt(() => itemId = id);
+                    },
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        () {
+                          for (final it in items) {
+                            if (it['id']?.toString() == itemId) {
+                              return it['name']?.toString() ?? 'Choose item';
+                            }
+                          }
+                          return 'Choose item';
+                        }(),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -1293,6 +1446,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
             defaultKgPerBag: kg,
           );
       ref.invalidate(catalogItemsListProvider);
+      invalidateBusinessAggregates(ref);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('Variant created — pick it from the catalog line')));
@@ -1575,11 +1729,11 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                       onRetry: () => ref.invalidate(brokersListProvider),
                     ),
                     data: (list) {
-                      final selectedBrokerName = list
-                          .cast<Map<String, dynamic>>()
+                      final brokers =
+                          list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+                      final selectedBrokerName = brokers
                           .where((b) => b['id']?.toString() == _brokerId)
                           .map((b) => b['name']?.toString() ?? '')
-                          .cast<String>()
                           .firstWhere(
                             (name) => name.isNotEmpty,
                             orElse: () => '',
@@ -1622,7 +1776,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                                 ),
                               ),
                               TextButton(
-                                onPressed: _busy ? null : _addBrokerDialog,
+                                onPressed: _busy ? null : () => _openBrokerPicker(brokers),
                                 child: const Text('Change'),
                               ),
                             ],
@@ -1633,28 +1787,27 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(
-                            child: DropdownButtonFormField<String?>(
-                              key: ValueKey(_brokerId ?? '∅'),
-                              initialValue: _brokerId,
-                              decoration: const InputDecoration(
-                                labelText: 'Broker (optional)',
-                                prefixIcon: Icon(Icons.handshake_outlined),
-                                helperText:
-                                    'Auto-fills from supplier when linked',
+                            child: OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                alignment: Alignment.centerLeft,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 16),
                               ),
-                              items: [
-                                const DropdownMenuItem<String?>(
-                                    value: null, child: Text('None')),
-                                ...list.map(
-                                  (b) => DropdownMenuItem<String?>(
-                                    value: b['id']?.toString(),
-                                    child: Text(b['name']?.toString() ?? ''),
+                              onPressed:
+                                  _busy ? null : () => _openBrokerPicker(brokers),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      _brokerButtonLabel(brokers),
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.w700),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                   ),
-                                ),
-                              ],
-                              onChanged: _busy
-                                  ? null
-                                  : (v) => setState(() => _brokerId = v),
+                                  const Icon(Icons.search_rounded),
+                                ],
+                              ),
                             ),
                           ),
                           Padding(
@@ -1782,11 +1935,11 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                       onRetry: () => ref.invalidate(brokersListProvider),
                     ),
                     data: (list) {
-                      final selectedBrokerName = list
-                          .cast<Map<String, dynamic>>()
+                      final brokers =
+                          list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+                      final selectedBrokerName = brokers
                           .where((b) => b['id']?.toString() == _brokerId)
                           .map((b) => b['name']?.toString() ?? '')
-                          .cast<String>()
                           .firstWhere(
                             (name) => name.isNotEmpty,
                             orElse: () => '',
@@ -1829,7 +1982,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                                 ),
                               ),
                               TextButton(
-                                onPressed: _busy ? null : _addBrokerDialog,
+                                onPressed: _busy ? null : () => _openBrokerPicker(brokers),
                                 child: const Text('Change'),
                               ),
                             ],
@@ -1840,28 +1993,27 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(
-                            child: DropdownButtonFormField<String?>(
-                              key: ValueKey(_brokerId ?? '∅'),
-                              initialValue: _brokerId,
-                              decoration: const InputDecoration(
-                                labelText: 'Broker (optional)',
-                                prefixIcon: Icon(Icons.handshake_outlined),
-                                helperText:
-                                    'Auto-fills from supplier when linked',
+                            child: OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                alignment: Alignment.centerLeft,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 16),
                               ),
-                              items: [
-                                const DropdownMenuItem<String?>(
-                                    value: null, child: Text('None')),
-                                ...list.map(
-                                  (b) => DropdownMenuItem<String?>(
-                                    value: b['id']?.toString(),
-                                    child: Text(b['name']?.toString() ?? ''),
+                              onPressed:
+                                  _busy ? null : () => _openBrokerPicker(brokers),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      _brokerButtonLabel(brokers),
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.w700),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                   ),
-                                ),
-                              ],
-                              onChanged: _busy
-                                  ? null
-                                  : (v) => setState(() => _brokerId = v),
+                                  const Icon(Icons.search_rounded),
+                                ],
+                              ),
                             ),
                           ),
                           Padding(

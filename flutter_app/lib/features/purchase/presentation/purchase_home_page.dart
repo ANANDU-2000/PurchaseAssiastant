@@ -205,6 +205,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
     if (ok != true || !mounted) return;
     final session = ref.read(sessionProvider);
     if (session == null) return;
+    setState(() => _pendingDeleteIds.add(p.id));
     try {
       await ref.read(hexaApiProvider).deleteTradePurchase(
             businessId: session.primaryBusiness.id,
@@ -216,8 +217,12 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
       } catch (_) {}
       invalidateBusinessAggregates(ref);
       if (!mounted) return;
+      setState(() => _pendingDeleteIds.remove(p.id));
       messenger.showSnackBar(const SnackBar(content: Text('Deleted')));
     } catch (e) {
+      if (mounted) {
+        setState(() => _pendingDeleteIds.remove(p.id));
+      }
       if (!mounted) return;
       messenger.showSnackBar(SnackBar(content: Text('$e')));
     }

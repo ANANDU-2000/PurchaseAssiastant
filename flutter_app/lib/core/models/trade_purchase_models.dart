@@ -83,6 +83,9 @@ class TradePurchaseLine {
     this.hsnCode,
     this.paymentDays,
     this.description,
+    this.defaultUnit,
+    this.defaultKgPerBag,
+    this.defaultPurchaseUnit,
   });
 
   final String id;
@@ -97,6 +100,10 @@ class TradePurchaseLine {
   final String? hsnCode;
   final int? paymentDays;
   final String? description;
+  /// From catalog when line is linked; used for BAG/kg display and edit wizard.
+  final String? defaultUnit;
+  final double? defaultKgPerBag;
+  final String? defaultPurchaseUnit;
 
   factory TradePurchaseLine.fromJson(Map<String, dynamic> j) {
     return TradePurchaseLine(
@@ -112,6 +119,9 @@ class TradePurchaseLine {
       hsnCode: j['hsn_code']?.toString(),
       paymentDays: (j['payment_days'] as num?)?.toInt(),
       description: j['description']?.toString(),
+      defaultUnit: j['default_unit']?.toString(),
+      defaultKgPerBag: (j['default_kg_per_bag'] as num?)?.toDouble(),
+      defaultPurchaseUnit: j['default_purchase_unit']?.toString(),
     );
   }
 }

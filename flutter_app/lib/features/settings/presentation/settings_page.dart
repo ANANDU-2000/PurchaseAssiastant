@@ -17,6 +17,7 @@ import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/prefs_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/theme/theme_context_ext.dart';
+import '../../../shared/widgets/search_picker_sheet.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -705,25 +706,36 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                             style: tt.labelLarge
                                 ?.copyWith(fontWeight: FontWeight.w800)),
                         const SizedBox(height: 8),
-                        DropdownButtonFormField<String>(
-                          key: ValueKey(_billingPlanCode),
-                          initialValue: _billingPlanCode,
-                          decoration: const InputDecoration(
-                            labelText: 'Plan',
-                            border: OutlineInputBorder(),
-                          ),
-                          items: const [
-                            DropdownMenuItem(
-                                value: 'basic', child: Text('Basic')),
-                            DropdownMenuItem(value: 'pro', child: Text('Pro')),
-                            DropdownMenuItem(
-                                value: 'premium', child: Text('Premium')),
-                          ],
-                          onChanged: (v) {
-                            if (v == null) return;
+                        Text('Plan',
+                            style: tt.labelLarge?.copyWith(fontWeight: FontWeight.w800)),
+                        const SizedBox(height: 6),
+                        OutlinedButton(
+                          onPressed: () async {
+                            final v = await showSearchPickerSheet<String>(
+                              context: context,
+                              title: 'Choose plan',
+                              rows: const [
+                                SearchPickerRow(value: 'basic', title: 'Basic'),
+                                SearchPickerRow(value: 'pro', title: 'Pro'),
+                                SearchPickerRow(value: 'premium', title: 'Premium'),
+                              ],
+                              selectedValue: _billingPlanCode,
+                              initialChildFraction: 0.42,
+                            );
+                            if (!mounted || v == null) return;
                             setState(() => _billingPlanCode = v);
                             unawaited(_fetchBillingQuote());
                           },
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              switch (_billingPlanCode) {
+                                'pro' => 'Pro',
+                                'premium' => 'Premium',
+                                _ => 'Basic',
+                              },
+                            ),
+                          ),
                         ),
                         const SizedBox(height: 8),
                         SwitchListTile(

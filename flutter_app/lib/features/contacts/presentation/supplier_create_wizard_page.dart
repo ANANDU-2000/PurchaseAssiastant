@@ -424,6 +424,22 @@ class _SupplierCreateWizardPageState
     return _discChip;
   }
 
+  /// Blocks create/rename when another supplier already uses this name (case-insensitive).
+  String? _blockingDuplicateName(String candidate) {
+    final c = candidate.trim().toLowerCase();
+    if (c.isEmpty) return null;
+    final self = widget.supplierId?.trim();
+    for (final r in _supplierRows) {
+      final id = r['id']?.toString();
+      if (self != null && self.isNotEmpty && id == self) continue;
+      final ex = (r['name']?.toString() ?? '').trim().toLowerCase();
+      if (ex.isNotEmpty && ex == c) {
+        return r['name']?.toString() ?? ex;
+      }
+    }
+    return null;
+  }
+
   Future<bool> _confirmFuzzyIfNeeded() async {
     final n = _name.text.trim();
     if (n.isEmpty) return true;
@@ -468,6 +484,17 @@ class _SupplierCreateWizardPageState
 
   Future<void> _saveSupplier() async {
     if (!_validateStep0()) {
+      setState(() => _step = 0);
+      return;
+    }
+    final dupExact = _blockingDuplicateName(_name.text);
+    if (dupExact != null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Supplier "$dupExact" already exists. Use a different name.'),
+        ),
+      );
       setState(() => _step = 0);
       return;
     }

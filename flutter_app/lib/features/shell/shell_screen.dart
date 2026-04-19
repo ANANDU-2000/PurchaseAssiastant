@@ -37,6 +37,10 @@ class ShellScreen extends ConsumerWidget {
     final hideShellChrome =
         loc == '/assistant' || loc.startsWith('/assistant/');
 
+    final bottomFabClearance = hideShellChrome
+        ? 0.0
+        : 56.0 + MediaQuery.viewPaddingOf(context).bottom;
+
     return Scaffold(
       key: ValueKey<String>('shell_${routePath}_$idx'),
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -67,7 +71,12 @@ class ShellScreen extends ConsumerWidget {
                 ),
               ),
             ),
-          Expanded(child: navigationShell),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: bottomFabClearance),
+              child: navigationShell,
+            ),
+          ),
         ],
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,

@@ -169,6 +169,11 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                     ),
                     data: _kpiStrip,
                   ),
+                  items.when(
+                    loading: () => const SizedBox.shrink(),
+                    error: (_, __) => const SizedBox.shrink(),
+                    data: _lowMarginWatchlist,
+                  ),
                   goals.when(
                     loading: () => const SizedBox.shrink(),
                     error: (_, __) => const SizedBox.shrink(),
@@ -337,6 +342,97 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
           ),
         ],
       ],
+    );
+  }
+
+  /// Surfaces item lines with weak markup (same [margin_pct] as analytics API).
+  Widget _lowMarginWatchlist(List<Map<String, dynamic>> itemRows) {
+    final scored = <Map<String, dynamic>>[];
+    for (final r in itemRows) {
+      final m = (r['margin_pct'] as num?)?.toDouble();
+      if (m == null || !m.isFinite) continue;
+      final profit = (r['total_profit'] as num?)?.toDouble() ?? 0;
+      final lines = (r['line_count'] as num?)?.toInt() ?? 0;
+      if (lines < 1) continue;
+      if (profit < 0 || m < 8) {
+        scored.add(r);
+      }
+    }
+    scored.sort((a, b) {
+      final ma = (a['margin_pct'] as num?)?.toDouble() ?? 0;
+      final mb = (b['margin_pct'] as num?)?.toDouble() ?? 0;
+      return ma.compareTo(mb);
+    });
+    final pick = scored.take(6).toList();
+    if (pick.isEmpty) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, size: 20, color: cs.tertiary),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Low margin watchlist',
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Items in this period with markup under 8% vs line cost (or negative). '
+                'Review sell vs landing on these lines.',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  height: 1.35,
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 10),
+              for (final r in pick)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              r['item_name']?.toString() ?? '—',
+                              style: const TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                            if ((r['category_name']?.toString() ?? '').trim().isNotEmpty)
+                              Text(
+                                r['category_name'].toString(),
+                                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                              ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        '${(r['margin_pct'] as num?)?.toStringAsFixed(1) ?? '—'}%',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          color: ((r['margin_pct'] as num?)?.toDouble() ?? 0) < 0
+                              ? HexaColors.loss
+                              : cs.onSurface,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

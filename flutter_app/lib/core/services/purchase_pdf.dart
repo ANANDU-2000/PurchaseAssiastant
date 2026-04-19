@@ -246,6 +246,26 @@ pw.Widget _lineTableHeader() {
   );
 }
 
+pw.Widget _particularsCell(TradePurchaseLine l) {
+  final u = l.unit.toLowerCase();
+  final kpb = l.defaultKgPerBag;
+  final showKg = u.contains('bag') && kpb != null && kpb > 0;
+  return pw.Padding(
+    padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+    child: pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(l.itemName, style: const pw.TextStyle(fontSize: 8.5)),
+        if (showKg)
+          pw.Text(
+            '${l.qty} bag(s) × $kpb kg/bag',
+            style: const pw.TextStyle(fontSize: 7, color: _muted),
+          ),
+      ],
+    ),
+  );
+}
+
 pw.Widget _lineRow(int index, TradePurchaseLine l) {
   final amt = l.qty * l.landingCost;
   return pw.Table(
@@ -270,7 +290,7 @@ pw.Widget _lineRow(int index, TradePurchaseLine l) {
         ),
         children: [
           _cell('$index', align: pw.TextAlign.center, fontSize: 8.5),
-          _cell(l.itemName, fontSize: 8.5),
+          _particularsCell(l),
           _cell(l.hsnCode?.trim().isNotEmpty == true ? l.hsnCode! : '—', align: pw.TextAlign.center, fontSize: 8),
           _cell(_money.format(l.qty), align: pw.TextAlign.right, fontSize: 8.5),
           _cell(l.unit, align: pw.TextAlign.center, fontSize: 8),

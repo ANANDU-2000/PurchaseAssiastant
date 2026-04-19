@@ -12,8 +12,10 @@ import '../../../core/widgets/friendly_load_error.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/catalog_providers.dart';
+import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/contacts_hub_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
+import '../../../core/providers/trade_purchases_provider.dart';
 import '../../../core/search/catalog_fuzzy.dart';
 import '../../../shared/widgets/app_settings_action.dart';
 import 'broker_wizard_page.dart';
@@ -684,6 +686,8 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
           businessId: session.primaryBusiness.id, supplierId: id);
       ref.invalidate(suppliersListProvider);
       ref.invalidate(contactsSuppliersEnrichedProvider);
+      ref.invalidate(tradePurchasesListProvider);
+      invalidateBusinessAggregates(ref);
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('Deleted')));
@@ -743,6 +747,8 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
           .deleteBroker(businessId: session.primaryBusiness.id, brokerId: id);
       ref.invalidate(brokersListProvider);
       ref.invalidate(contactsBrokersEnrichedProvider);
+      ref.invalidate(tradePurchasesListProvider);
+      invalidateBusinessAggregates(ref);
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('Deleted')));

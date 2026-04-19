@@ -11,6 +11,7 @@ import '../../../core/providers/catalog_providers.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/bag_default_unit_hint.dart';
+import '../../../shared/widgets/search_picker_sheet.dart';
 
 class CatalogItemDetailPage extends ConsumerStatefulWidget {
   const CatalogItemDetailPage({super.key, required this.itemId});
@@ -56,20 +57,31 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                DropdownButtonFormField<String?>(
-                  key: ValueKey(unit),
-                  initialValue: unit,
-                  decoration: const InputDecoration(
-                    labelText: 'Default unit (optional)',
+                Text('Default unit (optional)',
+                    style: Theme.of(ctx).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 6),
+                OutlinedButton(
+                  onPressed: () async {
+                    const none = '__unit_none__';
+                    final id = await showSearchPickerSheet<String>(
+                      context: ctx,
+                      title: 'Default unit',
+                      rows: const [
+                        SearchPickerRow(value: none, title: '— (unspecified)'),
+                        SearchPickerRow(value: 'kg', title: 'kg'),
+                        SearchPickerRow(value: 'bag', title: 'bag'),
+                        SearchPickerRow(value: 'box', title: 'box'),
+                        SearchPickerRow(value: 'piece', title: 'piece'),
+                      ],
+                      selectedValue: unit ?? none,
+                    );
+                    if (!ctx.mounted) return;
+                    if (id != null) setSt(() => unit = id == none ? null : id);
+                  },
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(unit == null ? '— (unspecified)' : '$unit'),
                   ),
-                  items: const [
-                    DropdownMenuItem(value: null, child: Text('—')),
-                    DropdownMenuItem(value: 'kg', child: Text('kg')),
-                    DropdownMenuItem(value: 'bag', child: Text('bag')),
-                    DropdownMenuItem(value: 'box', child: Text('box')),
-                    DropdownMenuItem(value: 'piece', child: Text('piece')),
-                  ],
-                  onChanged: (v) => setSt(() => unit = v),
                 ),
                 if (unit == 'bag') ...[
                   const SizedBox(height: 12),

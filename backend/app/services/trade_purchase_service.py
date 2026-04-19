@@ -549,24 +549,42 @@ def _line_hsn(li: TradePurchaseLine) -> str | None:
     return s or None
 
 
+def _catalog_item_unit_hints(li: TradePurchaseLine) -> tuple[str | None, float | None, str | None]:
+    ci = getattr(li, "catalog_item", None)
+    if ci is None:
+        return None, None, None
+    du = getattr(ci, "default_unit", None)
+    dpu = getattr(ci, "default_purchase_unit", None)
+    kpb = getattr(ci, "default_kg_per_bag", None)
+    du_s = str(du).strip().lower() if du is not None and str(du).strip() else None
+    dpu_s = str(dpu).strip().lower() if dpu is not None and str(dpu).strip() else None
+    kpb_f = float(kpb) if kpb is not None else None
+    return du_s, kpb_f, dpu_s
+
+
 def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
-    lines = [
-        TradePurchaseLineOut(
-            id=li.id,
-            catalog_item_id=li.catalog_item_id,
-            item_name=li.item_name,
-            qty=float(li.qty),
-            unit=li.unit,
-            landing_cost=float(li.landing_cost),
-            selling_cost=float(li.selling_cost) if li.selling_cost is not None else None,
-            discount=float(li.discount) if li.discount is not None else None,
-            tax_percent=float(li.tax_percent) if li.tax_percent is not None else None,
-            payment_days=getattr(li, "payment_days", None),
-            hsn_code=_line_hsn(li),
-            description=getattr(li, "description", None),
+    lines = []
+    for li in tp.lines:
+        du_s, kpb_f, dpu_s = _catalog_item_unit_hints(li)
+        lines.append(
+            TradePurchaseLineOut(
+                id=li.id,
+                catalog_item_id=li.catalog_item_id,
+                item_name=li.item_name,
+                qty=float(li.qty),
+                unit=li.unit,
+                landing_cost=float(li.landing_cost),
+                selling_cost=float(li.selling_cost) if li.selling_cost is not None else None,
+                discount=float(li.discount) if li.discount is not None else None,
+                tax_percent=float(li.tax_percent) if li.tax_percent is not None else None,
+                payment_days=getattr(li, "payment_days", None),
+                hsn_code=_line_hsn(li),
+                description=getattr(li, "description", None),
+                default_unit=du_s,
+                default_kg_per_bag=kpb_f,
+                default_purchase_unit=dpu_s,
+            )
         )
-        for li in tp.lines
-    ]
     total_dec = _dec(tp.total_amount)
     paid_dec = _dec(getattr(tp, "paid_amount", None))
     remaining = float(max(total_dec - paid_dec, Decimal("0")))

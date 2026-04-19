@@ -75,6 +75,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
   String? _supplierWarning;
 
   final List<Map<String, dynamic>> _lines = [];
+  final List<GlobalKey> _lineCardKeys = <GlobalKey>[];
   List<Map<String, dynamic>> _searchHits = [];
   final Set<String> _supplierMappedItemIds = <String>{};
   final Set<String> _supplierRecentItemNames = <String>{};
@@ -310,6 +311,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
             l['unit'] = allow.first;
           }
         }
+        _resetLineCardKeys();
       }
       _dirty = false;
       _syncBrokerCommissionFromList(ref.read(brokersListProvider).valueOrNull, force: false);
@@ -378,6 +380,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
         _lines
           ..clear()
           ..addAll(_linesFromPurchaseJson(p));
+        _resetLineCardKeys();
         _dirty = false;
       });
     } catch (_) {}
@@ -402,9 +405,35 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
         'hsn_code': m['hsn_code']?.toString(),
         'description': m['description']?.toString(),
         'catalog_item_id': m['catalog_item_id']?.toString(),
+        if (m['default_unit'] != null) 'default_unit': m['default_unit'].toString().toLowerCase(),
+        if (m['default_kg_per_bag'] != null)
+          'default_kg_per_bag': (m['default_kg_per_bag'] as num).toDouble(),
+        if (m['default_purchase_unit'] != null)
+          'default_purchase_unit': m['default_purchase_unit'].toString().toLowerCase(),
       });
     }
     return out;
+  }
+
+  void _resetLineCardKeys() {
+    _lineCardKeys
+      ..clear()
+      ..addAll(List<GlobalKey>.generate(_lines.length, (_) => GlobalKey()));
+  }
+
+  void _scrollLineIntoView(int index) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (index < 0 || index >= _lineCardKeys.length) return;
+      final ctx = _lineCardKeys[index].currentContext;
+      if (ctx == null) return;
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: 0.12,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+      );
+    });
   }
 
   void _scheduleDraft() {
@@ -831,6 +860,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
         newLine['unit'] = allow.first;
       }
       _lines.add(newLine);
+      _lineCardKeys.add(GlobalKey());
       _search.clear();
       _searchHits = [];
       _dirty = true;
@@ -950,22 +980,26 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
     }
   }
 
-  String? _linesValidationError() {
-    for (final l in _lines) {
+  ({String message, int lineIndex})? _linesValidationIssue() {
+    for (var i = 0; i < _lines.length; i++) {
+      final l = _lines[i];
       final q = (l['qty'] as num?)?.toDouble() ?? 0;
       if (q <= 0) {
-        return 'Each line needs quantity greater than zero.';
+        return (message: 'Each line needs quantity greater than zero.', lineIndex: i);
       }
       final rate = (l['landing_cost'] as num?)?.toDouble() ?? 0;
       if (rate < 0) {
         final name = l['item_name']?.toString() ?? 'Item';
-        return 'Line "$name" has a negative landing rate.';
+        return (message: 'Line "$name" has a negative landing rate.', lineIndex: i);
       }
       final u = (l['unit'] ?? '').toString().toLowerCase();
       final kg = (l['default_kg_per_bag'] as num?)?.toDouble() ?? 0;
       if (u == 'bag' && kg <= 0) {
         final name = l['item_name']?.toString() ?? 'Item';
-        return 'Line "$name": bag unit needs kg-per-bag on the catalog item.';
+        return (
+          message: 'Line "$name": bag unit needs kg-per-bag on the catalog item.',
+          lineIndex: i,
+        );
       }
     }
     return null;
@@ -1112,9 +1146,16 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
       );
       return;
     }
-    final lineErr = _linesValidationError();
-    if (lineErr != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(lineErr)));
+    final lineIssue = _linesValidationIssue();
+    if (lineIssue != null) {
+      if (_step != 1) {
+        setState(() => _step = 1);
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(lineIssue.message)));
+        _scrollLineIntoView(lineIssue.lineIndex);
+      });
       return;
     }
     final body = {
@@ -1677,7 +1718,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
           final udisp = uopts.isNotEmpty ? uopts.first.toUpperCase() : 'KG';
           final qtyErr = ((l['qty'] as num?)?.toDouble() ?? 0) <= 0;
           return Card(
-            key: ValueKey('line_$i'),
+            key: i < _lineCardKeys.length ? _lineCardKeys[i] : ValueKey('line_$i'),
             elevation: 1,
             shadowColor: Colors.black26,
             margin: const EdgeInsets.only(bottom: 10),
@@ -1702,8 +1743,12 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
                         onPressed: () {
                           setState(() {
                             _lines.removeAt(i);
-                            _markDirty();
+                            if (i < _lineCardKeys.length) {
+                              _lineCardKeys.removeAt(i);
+                            }
+                            _dirty = true;
                           });
+                          _scheduleDraft();
                         },
                         icon: const Icon(Icons.delete_outline_rounded),
                       ),
@@ -2122,9 +2167,10 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
             Expanded(
               child: FilledButton(
                 onPressed: () {
-                  final err = _linesValidationError();
-                  if (err != null) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+                  final issue = _linesValidationIssue();
+                  if (issue != null) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(issue.message)));
+                    _scrollLineIntoView(issue.lineIndex);
                     return;
                   }
                   setState(() {

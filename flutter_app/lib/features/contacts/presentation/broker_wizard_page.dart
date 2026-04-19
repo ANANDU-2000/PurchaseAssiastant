@@ -11,7 +11,9 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/contacts_hub_provider.dart';
+import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
+import '../../../core/providers/trade_purchases_provider.dart';
 import '../../../shared/widgets/full_screen_form_scaffold.dart';
 import 'supplier_create_wizard_page.dart';
 
@@ -160,6 +162,22 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
     return _nameError == null;
   }
 
+  /// Blocks create/rename when another broker already uses this name (case-insensitive).
+  String? _blockingDuplicateBrokerName(String candidate) {
+    final c = candidate.trim().toLowerCase();
+    if (c.isEmpty) return null;
+    final self = widget.brokerId?.trim();
+    for (final b in _brokerRows) {
+      final id = b['id']?.toString();
+      if (self != null && self.isNotEmpty && id == self) continue;
+      final bn = (b['name']?.toString() ?? '').trim().toLowerCase();
+      if (bn.isNotEmpty && bn == c) {
+        return b['name']?.toString() ?? bn;
+      }
+    }
+    return null;
+  }
+
   Future<void> _runItemSearch(String q) async {
     _itemDebounce?.cancel();
     if (q.trim().length < 2) {
@@ -190,6 +208,17 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
 
   Future<void> _save() async {
     if (!_validateStep0()) {
+      setState(() => _step = 0);
+      return;
+    }
+    final dupExact = _blockingDuplicateBrokerName(_name.text);
+    if (dupExact != null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Broker "$dupExact" already exists. Use a different name.'),
+        ),
+      );
       setState(() => _step = 0);
       return;
     }
@@ -277,6 +306,8 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
       ref.invalidate(contactsBrokersEnrichedProvider);
       ref.invalidate(suppliersListProvider);
       ref.invalidate(contactsSuppliersEnrichedProvider);
+      ref.invalidate(tradePurchasesListProvider);
+      invalidateBusinessAggregates(ref);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -286,6 +317,14 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
       context.pop();
     } on DioException catch (e) {
       if (!mounted) return;
+      final code = e.response?.statusCode;
+      if (code == 409) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('A broker with this name already exists.')),
+        );
+        setState(() => _step = 0);
+        return;
+      }
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
     } catch (e) {

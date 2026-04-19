@@ -140,11 +140,39 @@ class _DetailBodyState extends ConsumerState<_DetailBody> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(child: Text(l.itemName, maxLines: 2)),
-                    Text('${l.qty} ${l.unit}'),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(l.itemName, maxLines: 2),
+                          if (l.unit.toLowerCase() == 'bag' &&
+                              l.defaultKgPerBag != null &&
+                              l.defaultKgPerBag! > 0)
+                            Text(
+                              '${l.qty.toStringAsFixed(l.qty == l.qty.roundToDouble() ? 0 : 1)} bag → '
+                              '${(l.qty * l.defaultKgPerBag!).toStringAsFixed(1)} kg @ ${_inr(l.landingCost.round())}/bag',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                height: 1.25,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
                     const SizedBox(width: 8),
-                    Text(_inr((l.qty * l.landingCost).round())),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text('${l.qty} ${l.unit}'),
+                        Text(
+                          _inr((l.qty * l.landingCost).round()),
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),

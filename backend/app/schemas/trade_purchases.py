@@ -51,6 +51,10 @@ class TradePurchaseLineOut(BaseModel):
     payment_days: int | None = None
     hsn_code: str | None = None
     description: str | None = None
+    # From linked catalog item (for BAG/kg math in clients; omitted when no catalog row).
+    default_unit: str | None = None
+    default_kg_per_bag: float | None = None
+    default_purchase_unit: str | None = None
 
 
 class TradePurchaseOut(BaseModel):

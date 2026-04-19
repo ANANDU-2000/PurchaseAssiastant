@@ -12,9 +12,11 @@ import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
+import '../../../core/providers/trade_purchases_provider.dart';
 import '../../../core/search/catalog_fuzzy.dart';
 import '../../../shared/widgets/bag_default_unit_hint.dart';
 import '../../../shared/widgets/full_screen_form_scaffold.dart';
+import '../../../shared/widgets/search_picker_sheet.dart';
 
 class ItemWizardPage extends ConsumerStatefulWidget {
   const ItemWizardPage({super.key, this.initialCategoryId});
@@ -179,6 +181,45 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
     }
   }
 
+  /// True when an item with the same name already exists for this category + type (General = null type).
+  Future<bool> _blockingDuplicateCatalogItem(String businessId) async {
+    final name = _name.text.trim().toLowerCase();
+    if (name.isEmpty) return false;
+    final cat = _selectedCategoryId;
+    if (cat == null || cat.isEmpty) return false;
+    final typ = _selectedTypeId;
+    try {
+      final rows = await ref.read(hexaApiProvider).listCatalogItems(
+            businessId: businessId,
+            categoryId: cat,
+            typeId: (typ != null && typ.isNotEmpty) ? typ : null,
+          );
+      for (final m in rows) {
+        final rowType = m['type_id']?.toString();
+        final sameType = (typ == null || typ.isEmpty)
+            ? (rowType == null || rowType.isEmpty)
+            : rowType == typ;
+        if (!sameType) continue;
+        final iname = (m['name']?.toString() ?? '').trim().toLowerCase();
+        if (iname == name) {
+          if (!mounted) return true;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'An item with this name already exists for this category and subcategory.',
+              ),
+            ),
+          );
+          setState(() => _step = 0);
+          return true;
+        }
+      }
+    } catch (_) {
+      // Server still returns 409 if we miss a race.
+    }
+    return false;
+  }
+
   Future<void> _save() async {
     if (!_validateBasic()) {
       setState(() => _step = 0);
@@ -187,6 +228,7 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
     final session = ref.read(sessionProvider);
     if (session == null) return;
     final bid = session.primaryBusiness.id;
+    if (await _blockingDuplicateCatalogItem(bid)) return;
     try {
       final created = await ref.read(hexaApiProvider).createCatalogItem(
             businessId: bid,
@@ -209,6 +251,7 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
       }
       ref.invalidate(catalogItemsListProvider);
       ref.invalidate(itemCategoriesListProvider);
+      ref.invalidate(tradePurchasesListProvider);
       invalidateBusinessAggregates(ref);
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -216,6 +259,22 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
       context.pop();
     } on DioException catch (e) {
       if (!mounted) return;
+      if (e.response?.statusCode == 409) {
+        final d = e.response?.data;
+        var msg =
+            'An item with this name already exists for this category and type.';
+        if (d is Map) {
+          final det = d['detail'];
+          if (det is Map && det['message'] != null) {
+            msg = det['message'].toString();
+          } else if (d['message'] != null) {
+            msg = d['message'].toString();
+          }
+        }
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+        setState(() => _step = 0);
+        return;
+      }
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
     } catch (e) {
@@ -366,24 +425,45 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
           onChanged: (_) => _markDirty(),
         ),
         const SizedBox(height: 8),
-        DropdownButtonFormField<String?>(
-          key: ValueKey(_unit),
-          initialValue: _unit,
-          decoration: _d('Unit Type'),
-          items: const [
-            DropdownMenuItem(value: null, child: Text('—')),
-            DropdownMenuItem(value: 'kg', child: Text('kg')),
-            DropdownMenuItem(value: 'bag', child: Text('bag')),
-            DropdownMenuItem(value: 'box', child: Text('box')),
-            DropdownMenuItem(value: 'tin', child: Text('tin')),
-            DropdownMenuItem(value: 'piece', child: Text('pc')),
-          ],
-          onChanged: (v) {
-            setState(() {
-              _unit = v;
-              _markDirty();
-            });
+        Text('Unit type',
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 6),
+        OutlinedButton(
+          onPressed: () async {
+            const none = '__unit_none__';
+            final id = await showSearchPickerSheet<String>(
+              context: context,
+              title: 'Unit type',
+              rows: const [
+                SearchPickerRow(value: none, title: '—'),
+                SearchPickerRow(value: 'kg', title: 'kg'),
+                SearchPickerRow(value: 'bag', title: 'bag'),
+                SearchPickerRow(value: 'box', title: 'box'),
+                SearchPickerRow(value: 'tin', title: 'tin'),
+                SearchPickerRow(value: 'piece', title: 'pc'),
+              ],
+              selectedValue: _unit ?? none,
+              initialChildFraction: 0.5,
+            );
+            if (!mounted) return;
+            if (id != null) {
+              setState(() {
+                _unit = id == none ? null : id;
+                _markDirty();
+              });
+            }
           },
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              switch (_unit) {
+                null => '—',
+                'piece' => 'pc',
+                final u => u,
+              },
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ),
         if (_unit == 'bag') ...[
           const SizedBox(height: 8),
