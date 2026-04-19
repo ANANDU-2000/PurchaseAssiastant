@@ -2,11 +2,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'analytics_breakdown_providers.dart';
 import 'analytics_kpi_provider.dart';
+import 'brokers_list_provider.dart';
 import 'contacts_hub_provider.dart';
 import 'dashboard_provider.dart';
 import 'entries_list_provider.dart';
 import 'full_reports_insights_providers.dart';
 import 'home_insights_provider.dart';
+import 'suppliers_list_provider.dart';
 
 /// KPIs and tables that depend on [analyticsDateRangeProvider] and/or entries.
 void invalidateAnalyticsData(WidgetRef ref) {
@@ -23,6 +25,9 @@ void invalidateAnalyticsData(WidgetRef ref) {
 
 /// After purchases, entries, or other business writes, bust derived KPIs so
 /// Home, Reports, Contacts KPIs, and lists do not show stale numbers.
+///
+/// Also invalidates the keepAlive supplier/broker list providers so pickers
+/// and preference JSON always reflect the latest server state.
 void invalidateBusinessAggregates(WidgetRef ref) {
   invalidateAnalyticsData(ref);
   ref.invalidate(dashboardProvider);
@@ -33,4 +38,8 @@ void invalidateBusinessAggregates(WidgetRef ref) {
   ref.invalidate(contactsBrokersEnrichedProvider);
   ref.invalidate(contactsCategoriesProvider);
   ref.invalidate(contactsItemsProvider);
+  // keepAlive list providers — must be explicitly busted after any write that
+  // touches supplier/broker rows (purchase save, item wizard, entry create).
+  ref.invalidate(suppliersListProvider);
+  ref.invalidate(brokersListProvider);
 }

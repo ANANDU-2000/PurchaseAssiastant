@@ -131,6 +131,9 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
   Future<void> _reload() async {
     final session = ref.read(sessionProvider);
     if (session == null) return;
+    // Bust the Riverpod detail provider so the header card (name, phone, etc.)
+    // also reflects any server-side edits — not just metrics/entries.
+    ref.invalidate(_supplierProvider(widget.supplierId));
     setState(() => _loading = true);
     final fmt = DateFormat('yyyy-MM-dd');
     final api = ref.read(hexaApiProvider);

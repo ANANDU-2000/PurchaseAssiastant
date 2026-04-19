@@ -52,6 +52,9 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
   Future<void> _reload() async {
     final session = ref.read(sessionProvider);
     if (session == null) return;
+    // Bust the Riverpod detail provider so the header (name, commission, etc.)
+    // always reflects the latest server state, not just metrics/entries.
+    ref.invalidate(_brokerProvider(widget.brokerId));
     setState(() => _loading = true);
     final fmt = DateFormat('yyyy-MM-dd');
     final api = ref.read(hexaApiProvider);

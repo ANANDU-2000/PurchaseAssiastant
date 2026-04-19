@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/analytics_breakdown_providers.dart';
+import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/dashboard_period_provider.dart';
 import '../../../core/providers/dashboard_provider.dart';
 import '../../../core/providers/home_insights_provider.dart';
@@ -65,8 +66,8 @@ class _HomePageState extends ConsumerState<HomePage>
     WidgetsBinding.instance.addObserver(this);
     _poll = Timer.periodic(const Duration(minutes: 10), (_) {
       if (!mounted) return;
-      ref.invalidate(dashboardProvider);
-      ref.invalidate(homeInsightsProvider);
+      ref.invalidate(tradePurchasesListProvider);
+      invalidateBusinessAggregates(ref);
     });
   }
 
@@ -80,15 +81,16 @@ class _HomePageState extends ConsumerState<HomePage>
   @override
   void didChangeAppLifecycleState(AppLifecycleState s) {
     if (s == AppLifecycleState.resumed && mounted) {
-      ref.invalidate(dashboardProvider);
-      ref.invalidate(homeInsightsProvider);
+      // Full cascade on resume — purchase list, analytics, contacts, and
+      // keepAlive supplier/broker lists all need refreshing after app returns.
+      ref.invalidate(tradePurchasesListProvider);
+      invalidateBusinessAggregates(ref);
     }
   }
 
   Future<void> _refresh() async {
-    ref.invalidate(dashboardProvider);
-    ref.invalidate(homeInsightsProvider);
     ref.invalidate(tradePurchasesListProvider);
+    invalidateBusinessAggregates(ref);
     await Future.wait([
       ref.read(dashboardProvider.future),
       ref.read(homeInsightsProvider.future),

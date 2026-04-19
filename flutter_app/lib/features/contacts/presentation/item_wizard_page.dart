@@ -248,6 +248,11 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
       ref.invalidate(catalogItemsListProvider);
       ref.invalidate(itemCategoriesListProvider);
       ref.invalidate(tradePurchasesListProvider);
+      // suppliersListProvider / brokersListProvider are keepAlive — after
+      // _syncSupplierItemMap/_syncBrokerItemMap patched their preferences_json
+      // they must be explicitly refreshed so pickers show the new mapping.
+      ref.invalidate(suppliersListProvider);
+      ref.invalidate(brokersListProvider);
       invalidateBusinessAggregates(ref);
       if (!mounted) return;
       ScaffoldMessenger.of(context)
