@@ -11,6 +11,7 @@ import '../../../core/providers/analytics_breakdown_providers.dart';
 import '../../../core/providers/analytics_kpi_provider.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/full_reports_insights_providers.dart';
+import '../../../core/providers/reports_prior_period_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/services/reports_pdf.dart';
@@ -289,7 +290,10 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                 : const Icon(Icons.ios_share_rounded),
           ),
           ShellQuickRefActions(
-            onRefresh: () => invalidateBusinessAggregates(ref),
+            onRefresh: () {
+              ref.invalidate(tradePurchasesListProvider);
+              invalidateBusinessAggregates(ref);
+            },
           ),
         ],
       ),
@@ -317,6 +321,12 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                         _kpiStrip(k),
                       ],
                     ),
+                  ),
+                  const SizedBox(height: 8),
+                  ref.watch(reportsPriorPeriodDeltaProvider).when(
+                    loading: () => const SizedBox.shrink(),
+                    error: (_, __) => const SizedBox.shrink(),
+                    data: (d) => _priorPeriodVersusCard(context, d),
                   ),
                   items.when(
                     loading: () => const SizedBox.shrink(),
@@ -774,6 +784,90 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
             FilledButton.tonal(
               onPressed: () => context.go('/purchase/new'),
               child: const Text('Record a purchase'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatDeltaPct(double? pct) {
+    if (pct == null) return 'No prior baseline';
+    if (pct.abs() > 999) return pct > 0 ? 'Up sharply vs prior' : 'Down sharply vs prior';
+    final sign = pct >= 0 ? '+' : '';
+    return '$sign${pct.toStringAsFixed(1)}%';
+  }
+
+  Widget _priorPeriodVersusCard(BuildContext context, ReportsPriorPeriodDelta d) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final df = DateFormat('dd MMM yyyy');
+    final profit = d.profitPctVsPrior();
+    final spend = d.purchasePctVsPrior();
+    final profitLabel = _formatDeltaPct(profit);
+    final spendLabel = _formatDeltaPct(spend);
+    final profitColor = profit == null
+        ? cs.onSurfaceVariant
+        : (profit >= 0 ? const Color(0xFF15803D) : const Color(0xFFDC2626));
+    final spendColor = spend == null
+        ? cs.onSurfaceVariant
+        : (spend <= 0 ? const Color(0xFF15803D) : const Color(0xFFDC2626));
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Vs previous period (same length)',
+              style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Compared to ${df.format(d.priorFrom)} – ${df.format(d.priorTo)}',
+              style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Profit',
+                        style: tt.labelMedium?.copyWith(color: cs.onSurfaceVariant),
+                      ),
+                      Text(
+                        profitLabel,
+                        style: tt.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          color: profitColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Spend',
+                        style: tt.labelMedium?.copyWith(color: cs.onSurfaceVariant),
+                      ),
+                      Text(
+                        spendLabel,
+                        style: tt.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          color: spendColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
         ),

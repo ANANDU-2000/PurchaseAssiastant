@@ -9,6 +9,7 @@ import 'dashboard_provider.dart';
 import 'entries_list_provider.dart';
 import 'full_reports_insights_providers.dart';
 import 'home_insights_provider.dart';
+import 'reports_prior_period_provider.dart';
 import 'suppliers_list_provider.dart';
 
 /// KPIs and tables that depend on [analyticsDateRangeProvider] and/or entries.
@@ -22,6 +23,7 @@ void invalidateAnalyticsData(WidgetRef ref) {
   ref.invalidate(analyticsBestSupplierInsightProvider);
   ref.invalidate(fullReportsInsightsProvider);
   ref.invalidate(fullReportsGoalsProvider);
+  ref.invalidate(reportsPriorPeriodDeltaProvider);
 }
 
 /// After purchases, entries, or other business writes, bust derived KPIs so

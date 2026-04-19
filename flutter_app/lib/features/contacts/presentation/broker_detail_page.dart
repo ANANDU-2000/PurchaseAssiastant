@@ -226,6 +226,8 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
             child: SafeArea(
               bottom: false,
               child: ListView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
               children: [
                 Text('Date range',
