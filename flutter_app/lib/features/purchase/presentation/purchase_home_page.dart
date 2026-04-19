@@ -63,6 +63,8 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
   Timer? _debounce;
   bool _selectMode = false;
   final _selected = <String>{};
+  /// Purchase IDs hidden immediately while delete API runs (rolled back on failure).
+  final _pendingDeleteIds = <String>{};
   String _lastRouteFilter = '';
 
   @override
@@ -164,6 +166,11 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
     );
   }
 
+  List<TradePurchase> _withoutPendingDeletes(List<TradePurchase> all) {
+    if (_pendingDeleteIds.isEmpty) return all;
+    return all.where((p) => !_pendingDeleteIds.contains(p.id)).toList();
+  }
+
   List<TradePurchase> _applySecondary(List<TradePurchase> all) {
     final s = ref.watch(purchaseHistorySecondaryFilterProvider);
     if (s == null) return all;
@@ -231,23 +238,34 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
     if (ok != true || !mounted) return;
     final session = ref.read(sessionProvider);
     if (session == null) return;
-    for (final id in _selected.toList()) {
+    final ids = _selected.toList();
+    setState(() {
+      for (final id in ids) {
+        _pendingDeleteIds.add(id);
+      }
+      _selectMode = false;
+      _selected.clear();
+    });
+    for (final id in ids) {
       try {
         await ref.read(hexaApiProvider).deleteTradePurchase(
               businessId: session.primaryBusiness.id,
               purchaseId: id,
             );
-      } catch (_) {}
+      } catch (_) {
+        if (mounted) {
+          setState(() => _pendingDeleteIds.remove(id));
+        }
+      }
     }
-    setState(() {
-      _selectMode = false;
-      _selected.clear();
-    });
     ref.invalidate(tradePurchasesListProvider);
     try {
       await ref.read(tradePurchasesListProvider.future);
     } catch (_) {}
     invalidateBusinessAggregates(ref);
+    if (mounted) {
+      setState(() => _pendingDeleteIds.removeAll(ids));
+    }
   }
 
   Future<void> _markPaidQuick(TradePurchase p) async {
@@ -325,7 +343,10 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
             ),
           ] else ...[
             ShellQuickRefActions(
-              onRefresh: () => ref.invalidate(tradePurchasesListProvider),
+              onRefresh: () {
+                ref.invalidate(tradePurchasesListProvider);
+                invalidateBusinessAggregates(ref);
+              },
             ),
             PopupMenuButton<String>(
               tooltip: 'More',
@@ -369,7 +390,8 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                 onRetry: () => ref.invalidate(tradePurchasesListProvider),
               ),
               data: (List<TradePurchase> items) {
-                final visible = _applySecondary(items);
+                final visible =
+                    _applySecondary(_withoutPendingDeletes(items));
                 return Column(
                   children: [
                     DueSoonBanner(
