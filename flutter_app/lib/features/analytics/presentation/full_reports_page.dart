@@ -16,7 +16,6 @@ import '../../../core/providers/trade_purchases_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/services/reports_pdf.dart';
 import '../../../core/widgets/friendly_load_error.dart';
-import '../../../shared/widgets/shell_quick_ref_actions.dart';
 
 enum _ReportMode { overview, category, supplier, broker, item }
 
@@ -49,12 +48,42 @@ class FullReportsPage extends ConsumerStatefulWidget {
 }
 
 class _FullReportsPageState extends ConsumerState<FullReportsPage> {
+  /// Vertical rhythm for Reports list and cards.
+  static const double _sectionGap = 24;
+  static const double _filterGap = 12;
+  static const double _cardPad = 18;
+  static const double _buttonGap = 14;
+
   _ReportMode _mode = _ReportMode.overview;
   _DatePreset _preset = _DatePreset.month;
   bool _visual = true;
   String _tableQuery = '';
   bool _exporting = false;
   bool _exportingPdf = false;
+
+  final _tableSearchCtrl = TextEditingController();
+  final _tableFilterFocus = FocusNode();
+
+  @override
+  void dispose() {
+    _tableSearchCtrl.dispose();
+    _tableFilterFocus.dispose();
+    super.dispose();
+  }
+
+  void _focusReportsTableSearch() {
+    setState(() => _visual = false);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _tableFilterFocus.requestFocus();
+      }
+    });
+  }
+
+  void _refreshReportsData() {
+    ref.invalidate(tradePurchasesListProvider);
+    invalidateBusinessAggregates(ref);
+  }
 
   static String _csvCell(String raw) {
     final s = raw.replaceAll('\r\n', ' ').replaceAll('\n', ' ').trim();
@@ -259,6 +288,8 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
     final goals = ref.watch(fullReportsGoalsProvider);
     final session = ref.watch(sessionProvider);
 
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
@@ -269,54 +300,165 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                 onPressed: () => context.pop(),
               )
             : null,
-        title: const Text('Reports'),
+        titleSpacing: 16,
+        title: Text(
+          'Reports',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: onSurface,
+          ),
+        ),
         backgroundColor: Colors.transparent,
-        foregroundColor: HexaColors.brandPrimary,
+        surfaceTintColor: Colors.transparent,
+        scrolledUnderElevation: 0,
+        actionsIconTheme: IconThemeData(
+          size: 23,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Divider(
+            height: 1,
+            thickness: 1,
+            color: HexaColors.brandBorder.withValues(alpha: 0.65),
+          ),
+        ),
         actions: [
           IconButton(
-            tooltip: 'Export summary PDF',
-            onPressed: (_exporting || _exportingPdf) ? null : _exportReportsPdf,
-            icon: _exportingPdf
-                ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.picture_as_pdf_rounded),
+            tooltip: 'Search table',
+            onPressed: _focusReportsTableSearch,
+            icon: const Icon(Icons.search_rounded),
           ),
-          IconButton(
-            tooltip: 'Export table as CSV',
-            onPressed: (_exporting || _exportingPdf) ? null : _exportTableCsv,
-            icon: _exporting
-                ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.ios_share_rounded),
-          ),
-          ShellQuickRefActions(
-            onRefresh: () {
-              ref.invalidate(tradePurchasesListProvider);
-              invalidateBusinessAggregates(ref);
+          const SizedBox(width: 12),
+          PopupMenuButton<String>(
+            tooltip: 'More',
+            icon: const Icon(Icons.more_vert_rounded),
+            padding: EdgeInsets.zero,
+            offset: const Offset(0, kToolbarHeight - 12),
+            itemBuilder: (ctx) => [
+              PopupMenuItem(
+                value: 'pdf',
+                enabled: !_exporting && !_exportingPdf,
+                child: ListTile(
+                  leading: _exportingPdf
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.picture_as_pdf_outlined),
+                  title: const Text('Export summary PDF'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'csv',
+                enabled: !_exporting && !_exportingPdf,
+                child: ListTile(
+                  leading: _exporting
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.ios_share_outlined),
+                  title: const Text('Export table as CSV'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'refresh',
+                child: ListTile(
+                  leading: Icon(Icons.refresh_rounded),
+                  title: Text('Refresh data'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem(
+                value: 'global_search',
+                child: ListTile(
+                  leading: Icon(Icons.travel_explore_outlined),
+                  title: Text('Global search'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'catalog',
+                child: ListTile(
+                  leading: Icon(Icons.inventory_2_outlined),
+                  title: Text('Catalog'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'contacts',
+                child: ListTile(
+                  leading: Icon(Icons.groups_outlined),
+                  title: Text('Contacts'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'notifications',
+                child: ListTile(
+                  leading: Icon(Icons.notifications_outlined),
+                  title: Text('Alerts'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'settings',
+                child: ListTile(
+                  leading: Icon(Icons.settings_outlined),
+                  title: Text('Settings'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
+            onSelected: (v) {
+              switch (v) {
+                case 'pdf':
+                  _exportReportsPdf();
+                case 'csv':
+                  _exportTableCsv();
+                case 'refresh':
+                  _refreshReportsData();
+                case 'global_search':
+                  context.push('/search');
+                case 'catalog':
+                  context.push('/catalog');
+                case 'contacts':
+                  context.push('/contacts');
+                case 'notifications':
+                  context.push('/notifications');
+                case 'settings':
+                  context.go('/settings');
+              }
             },
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: session == null
           ? const Center(child: Text('Sign in'))
           : RefreshIndicator(
               onRefresh: () async {
-                ref.invalidate(tradePurchasesListProvider);
-                invalidateBusinessAggregates(ref);
+                _refreshReportsData();
               },
-              child: ListView(
+              child: SingleChildScrollView(
                 keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 120),
-                children: [
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16)
+                    .copyWith(bottom: 120),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
                   _filterBar(),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: _sectionGap),
                   kpi.when(
                     loading: () => const LinearProgressIndicator(),
                     error: (_, __) => FriendlyLoadError(
@@ -330,17 +472,19 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: _sectionGap),
                   ref.watch(reportsPriorPeriodDeltaProvider).when(
                     loading: () => const SizedBox.shrink(),
                     error: (_, __) => const SizedBox.shrink(),
                     data: (d) => _priorPeriodVersusCard(context, d),
                   ),
+                  const SizedBox(height: _sectionGap),
                   items.when(
                     loading: () => const SizedBox.shrink(),
                     error: (_, __) => const SizedBox.shrink(),
                     data: _lowMarginWatchlist,
                   ),
+                  const SizedBox(height: _sectionGap),
                   items.when(
                     loading: () => const SizedBox.shrink(),
                     error: (_, __) => const SizedBox.shrink(),
@@ -350,6 +494,7 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                       data: (sRows) => _topMoversCards(context, iRows, sRows),
                     ),
                   ),
+                  const SizedBox(height: _sectionGap),
                   goals.when(
                     loading: () => const SizedBox.shrink(),
                     error: (_, __) => const SizedBox.shrink(),
@@ -363,24 +508,41 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                               }
                               final p = (k.totalProfit / pg.toDouble())
                                   .clamp(0.0, 1.0);
-                              return Padding(
-                                padding: const EdgeInsets.only(top: 10),
-                                child: Card(
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(12),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        const Text('Profit goal (this month)',
-                                            style: TextStyle(
-                                                fontWeight: FontWeight.w800)),
-                                        const SizedBox(height: 6),
-                                        LinearProgressIndicator(value: p),
-                                        Text(
-                                            '${(p * 100).toStringAsFixed(0)}% of ${_inr(pg.round())}'),
-                                      ],
-                                    ),
+                              final tt = Theme.of(context).textTheme;
+                              final cs = Theme.of(context).colorScheme;
+                              return Card(
+                                clipBehavior: Clip.antiAlias,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(_cardPad),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Profit goal (this month)',
+                                        style: tt.titleSmall?.copyWith(
+                                          fontWeight: FontWeight.w800,
+                                          height: 1.25,
+                                        ),
+                                      ),
+                                      const SizedBox(height: _filterGap),
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(6),
+                                        child: LinearProgressIndicator(
+                                          value: p,
+                                          minHeight: 8,
+                                          backgroundColor:
+                                              cs.surfaceContainerHighest.withValues(alpha: 0.6),
+                                        ),
+                                      ),
+                                      const SizedBox(height: _filterGap),
+                                      Text(
+                                        '${(p * 100).toStringAsFixed(0)}% of ${_inr(pg.round())}',
+                                        style: tt.bodyMedium?.copyWith(
+                                          color: cs.onSurfaceVariant,
+                                          height: 1.35,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               );
@@ -388,7 +550,7 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                             orElse: () => const SizedBox.shrink(),
                           ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: _sectionGap),
                   items.when(
                     loading: () => const Padding(
                       padding: EdgeInsets.all(40),
@@ -424,19 +586,20 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: _sectionGap),
                   insights.when(
                     loading: () => const SizedBox.shrink(),
                     error: (_, __) => const SizedBox.shrink(),
                     data: _insightCards,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: _sectionGap),
                   trend.when(
                     loading: () => const SizedBox.shrink(),
                     error: (_, __) => const SizedBox.shrink(),
                     data: _trend,
                   ),
-                ],
+                  ],
+                ),
               ),
             ),
     );
@@ -457,121 +620,190 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
     if (topS.isEmpty && topI.isEmpty) return const SizedBox.shrink();
     final tt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Top suppliers',
-                      style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: Card(
+            clipBehavior: Clip.antiAlias,
+            child: Padding(
+              padding: const EdgeInsets.all(_cardPad),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Top suppliers',
+                    style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                  Text(
+                    'By profit in this period',
+                    style: tt.labelSmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                      height: 1.35,
                     ),
-                    Text(
-                      'By profit in this period',
-                      style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
-                    ),
-                    const SizedBox(height: 8),
-                    if (topS.isEmpty)
-                      Text('—', style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant))
-                    else
-                      for (final r in topS)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 6),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  r['supplier_name']?.toString() ?? '—',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: _filterGap),
+                  if (topS.isEmpty)
+                    Text('—', style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant))
+                  else
+                    for (final r in topS)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: _filterGap),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                r['supplier_name']?.toString() ?? '—',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: tt.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  height: 1.25,
                                 ),
                               ),
-                              Text(
-                                _inr(_metric(r).round()),
-                                style: const TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                            Text(
+                              _inr(_metric(r).round()),
+                              style: tt.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                height: 1.2,
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                  ],
-                ),
+                      ),
+                ],
               ),
             ),
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Top items',
-                      style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+        ),
+        const SizedBox(width: _filterGap),
+        Expanded(
+          child: Card(
+            clipBehavior: Clip.antiAlias,
+            child: Padding(
+              padding: const EdgeInsets.all(_cardPad),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Top items',
+                    style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                  Text(
+                    'By profit in this period',
+                    style: tt.labelSmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                      height: 1.35,
                     ),
-                    Text(
-                      'By profit in this period',
-                      style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
-                    ),
-                    const SizedBox(height: 8),
-                    if (topI.isEmpty)
-                      Text('—', style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant))
-                    else
-                      for (final r in topI)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 6),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  r['item_name']?.toString() ?? '—',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: _filterGap),
+                  if (topI.isEmpty)
+                    Text('—', style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant))
+                  else
+                    for (final r in topI)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: _filterGap),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                r['item_name']?.toString() ?? '—',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: tt.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  height: 1.25,
                                 ),
                               ),
-                              Text(
-                                _inr(_metric(r).round()),
-                                style: const TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                            Text(
+                              _inr(_metric(r).round()),
+                              style: tt.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                height: 1.2,
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                  ],
-                ),
+                      ),
+                ],
               ),
             ),
           ),
-        ],
+        ),
+      ],
+    );
+  }
+
+  static const TextStyle _filterChipLabelStyle = TextStyle(
+    fontSize: 12.5,
+    fontWeight: FontWeight.w600,
+    height: 1.15,
+  );
+
+  /// Calmer than body text so chips stay the focal control.
+  TextStyle _filterSectionLabelStyle(ColorScheme cs, TextTheme tt) {
+    return tt.labelLarge?.copyWith(
+          fontWeight: FontWeight.w600,
+          color: cs.onSurfaceVariant,
+          letterSpacing: 0.2,
+          height: 1.2,
+        ) ??
+        TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: 13,
+          color: cs.onSurfaceVariant,
+          height: 1.2,
+        );
+  }
+
+  Widget _compactFilterChip({
+    required String label,
+    required bool selected,
+    required ValueChanged<bool> onSelected,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return FilterChip(
+      label: Text(label, style: _filterChipLabelStyle),
+      selected: selected,
+      onSelected: onSelected,
+      showCheckmark: false,
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      labelPadding: const EdgeInsets.symmetric(horizontal: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+      side: BorderSide(
+        color: selected ? cs.primary : cs.outlineVariant,
       ),
+      selectedColor: cs.primaryContainer.withValues(alpha: 0.55),
     );
   }
 
   Widget _filterBar() {
     final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final groupStyle = _filterSectionLabelStyle(cs, tt);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('View', style: tt.labelMedium?.copyWith(fontWeight: FontWeight.w800)),
-        const SizedBox(height: 4),
+        Text('View', style: groupStyle),
+        const SizedBox(height: _filterGap),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
+          clipBehavior: Clip.none,
+          padding: EdgeInsets.zero,
           child: Row(
             children: [
               for (final m in _ReportMode.values)
                 Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: FilterChip(
-                    label: Text(_modeUiLabel(m)),
+                  padding: const EdgeInsets.only(right: _filterGap),
+                  child: _compactFilterChip(
+                    label: _modeUiLabel(m),
                     selected: _mode == m,
                     onSelected: (_) => setState(() => _mode = m),
                   ),
@@ -579,18 +811,20 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
             ],
           ),
         ),
-        const SizedBox(height: 10),
-        Text('Period', style: tt.labelMedium?.copyWith(fontWeight: FontWeight.w800)),
-        const SizedBox(height: 4),
+        const SizedBox(height: _filterGap),
+        Text('Period', style: groupStyle),
+        const SizedBox(height: _filterGap),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
+          clipBehavior: Clip.none,
+          padding: EdgeInsets.zero,
           child: Row(
             children: [
               for (final p in _DatePreset.values)
                 Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: FilterChip(
-                    label: Text(_presetUiLabel(p)),
+                  padding: const EdgeInsets.only(right: _filterGap),
+                  child: _compactFilterChip(
+                    label: _presetUiLabel(p),
                     selected: _preset == p,
                     onSelected: (_) => _applyPreset(p),
                   ),
@@ -598,29 +832,53 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
             ],
           ),
         ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            FilterChip(
-              label: const Text('Charts'),
-              selected: _visual,
-              onSelected: (_) => setState(() => _visual = true),
-            ),
-            const SizedBox(width: 8),
-            FilterChip(
-              label: const Text('Table'),
-              selected: !_visual,
-              onSelected: (_) => setState(() => _visual = false),
-            ),
-          ],
+        const SizedBox(height: _filterGap),
+        Text('Mode', style: groupStyle),
+        const SizedBox(height: _filterGap),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          clipBehavior: Clip.none,
+          child: Row(
+            children: [
+              _compactFilterChip(
+                label: 'Charts',
+                selected: _visual,
+                onSelected: (_) => setState(() => _visual = true),
+              ),
+              const SizedBox(width: _filterGap),
+              _compactFilterChip(
+                label: 'Table',
+                selected: !_visual,
+                onSelected: (_) => setState(() => _visual = false),
+              ),
+            ],
+          ),
         ),
         if (!_visual) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: _filterGap),
           TextField(
-            decoration: const InputDecoration(
+            controller: _tableSearchCtrl,
+            focusNode: _tableFilterFocus,
+            scrollPadding: const EdgeInsets.only(bottom: 120),
+            decoration: InputDecoration(
               hintText: 'Filter table…',
-              prefixIcon: Icon(Icons.search_rounded),
+              prefixIcon: const Icon(Icons.search_rounded),
               isDense: true,
+              filled: true,
+              fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.35),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: cs.outlineVariant),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: cs.outlineVariant),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: cs.primary, width: 1.5),
+              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             ),
             onChanged: (s) => setState(() => _tableQuery = s),
           ),
@@ -650,38 +908,43 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
     final pick = scored.take(6).toList();
     if (pick.isEmpty) return const SizedBox.shrink();
     final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: Card(
+    final tt = Theme.of(context).textTheme;
+    return Card(
+        clipBehavior: Clip.antiAlias,
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(_cardPad),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.warning_amber_rounded, size: 20, color: cs.tertiary),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Low margin watchlist',
-                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                  Icon(Icons.warning_amber_rounded, size: 22, color: cs.tertiary),
+                  const SizedBox(width: _filterGap),
+                  Expanded(
+                    child: Text(
+                      'Low margin watchlist',
+                      style: tt.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        height: 1.25,
+                      ),
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: _filterGap),
               Text(
                 'Items in this period with markup under 8% vs line cost (or negative). '
                 'Review sell vs landing on these lines.',
-                style: TextStyle(
-                  fontSize: 12.5,
-                  height: 1.35,
+                style: tt.bodySmall?.copyWith(
                   color: cs.onSurfaceVariant,
+                  height: 1.45,
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: _filterGap),
               for (final r in pick)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.only(bottom: _filterGap),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -691,23 +954,31 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                           children: [
                             Text(
                               r['item_name']?.toString() ?? '—',
-                              style: const TextStyle(fontWeight: FontWeight.w800),
+                              style: tt.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                height: 1.25,
+                              ),
                             ),
                             if ((r['category_name']?.toString() ?? '').trim().isNotEmpty)
                               Text(
                                 r['category_name'].toString(),
-                                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                                style: tt.labelSmall?.copyWith(
+                                  color: cs.onSurfaceVariant,
+                                  height: 1.35,
+                                ),
                               ),
                           ],
                         ),
                       ),
+                      const SizedBox(width: _filterGap),
                       Text(
                         '${(r['margin_pct'] as num?)?.toStringAsFixed(1) ?? '—'}%',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w900,
+                        style: tt.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
                           color: ((r['margin_pct'] as num?)?.toDouble() ?? 0) < 0
                               ? HexaColors.loss
                               : cs.onSurface,
+                          height: 1.2,
                         ),
                       ),
                     ],
@@ -716,53 +987,97 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
             ],
           ),
         ),
-      ),
     );
   }
 
   Widget _noPurchasesInRangeCard(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Nothing to report yet',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    color: HexaColors.brandPrimary,
-                  ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'This date range has no purchases. Insights, charts, and trends '
-              'appear after you record buys.',
-              style: TextStyle(
-                fontSize: 13,
-                height: 1.35,
-                color: cs.onSurfaceVariant,
+    final tt = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: _sectionGap),
+      child: Material(
+        color: cs.surface,
+        elevation: 2,
+        shadowColor: Colors.black.withValues(alpha: 0.10),
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Nothing to report yet',
+                style: tt.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 18,
+                      height: 1.25,
+                      letterSpacing: -0.2,
+                      color: HexaColors.brandPrimary,
+                    ) ??
+                    const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      height: 1.25,
+                      letterSpacing: -0.2,
+                      color: HexaColors.brandPrimary,
+                    ),
               ),
-            ),
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                FilledButton.icon(
-                  onPressed: () => context.go('/purchase/new'),
-                  icon: const Icon(Icons.add_rounded, size: 20),
-                  label: const Text('New purchase'),
+              const SizedBox(height: _filterGap),
+              Text(
+                'This date range has no purchases. Insights, charts, and trends '
+                'appear after you record buys.',
+                style: tt.bodyMedium?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  height: 1.5,
                 ),
-                OutlinedButton(
-                  onPressed: () => context.go('/purchase'),
-                  child: const Text('Open purchase list'),
-                ),
-              ],
-            ),
-          ],
+              ),
+              const SizedBox(height: _sectionGap),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  FilledButton.icon(
+                    onPressed: () => context.go('/purchase/new'),
+                    icon: const Icon(Icons.add_rounded, size: 20),
+                    label: const Text('New purchase'),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 52),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      elevation: 3,
+                      shadowColor: Colors.black.withValues(alpha: 0.2),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: _buttonGap),
+                  OutlinedButton(
+                    onPressed: () => context.go('/purchase'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 48),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      foregroundColor: cs.onSurfaceVariant,
+                      side: BorderSide(
+                        color: HexaColors.brandBorder.withValues(alpha: 0.75),
+                        width: 1,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Text(
+                      'Open purchase list',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -771,6 +1086,7 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
   Widget _noChartRowsCard(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Card(
+      clipBehavior: Clip.antiAlias,
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -782,15 +1098,27 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                     fontWeight: FontWeight.w900,
                   ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: _filterGap),
             Text(
               'Try another period, switch to Table view, or add purchases so '
               '${_modeUiLabel(_mode).toLowerCase()} totals are non-zero.',
-              style: TextStyle(fontSize: 13, height: 1.35, color: cs.onSurfaceVariant),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    height: 1.45,
+                  ),
             ),
-            const SizedBox(height: 12),
-            FilledButton.tonal(
+            const SizedBox(height: _buttonGap),
+            FilledButton(
               onPressed: () => context.go('/purchase/new'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(double.infinity, 52),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                elevation: 3,
+                shadowColor: Colors.black.withValues(alpha: 0.2),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
               child: const Text('Record a purchase'),
             ),
           ],
@@ -829,22 +1157,27 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
         : (spend <= 0 ? const Color(0xFF15803D) : const Color(0xFFDC2626));
 
     return Card(
+      clipBehavior: Clip.antiAlias,
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(_cardPad),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               'Vs previous period (same length)',
-              style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+              style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: _filterGap),
             Text(
               'Compared to ${df.format(d.priorFrom)} – ${df.format(d.priorTo)}',
-              style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+              style: tt.bodySmall?.copyWith(
+                color: cs.onSurfaceVariant,
+                height: 1.35,
+              ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: _filterGap),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
                   child: Column(
@@ -852,13 +1185,19 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                     children: [
                       Text(
                         'Profit',
-                        style: tt.labelMedium?.copyWith(color: cs.onSurfaceVariant),
+                        style: tt.labelSmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.2,
+                        ),
                       ),
+                      const SizedBox(height: 6),
                       Text(
                         profitLabel,
                         style: tt.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w900,
+                          fontWeight: FontWeight.w800,
                           color: profitColor,
+                          height: 1.2,
                         ),
                       ),
                     ],
@@ -870,13 +1209,19 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                     children: [
                       Text(
                         'Spend',
-                        style: tt.labelMedium?.copyWith(color: cs.onSurfaceVariant),
+                        style: tt.labelSmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.2,
+                        ),
                       ),
+                      const SizedBox(height: 6),
                       Text(
                         spendLabel,
                         style: tt.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w900,
+                          fontWeight: FontWeight.w800,
                           color: spendColor,
+                          height: 1.2,
                         ),
                       ),
                     ],
@@ -893,6 +1238,7 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
   Widget _kpiStrip(AnalyticsKpi k) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
+      clipBehavior: Clip.none,
       child: Row(
         children: [
           _pill('Spend', _inr(k.totalPurchase.round())),
@@ -910,22 +1256,36 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
   }
 
   Widget _pill(String t, String v) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.only(right: _filterGap),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: cs.surface,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: HexaColors.brandBorder),
+          border: Border.all(color: HexaColors.brandBorder.withValues(alpha: 0.85)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(t,
-                style:
-                    const TextStyle(fontSize: 11, color: HexaColors.neutral)),
-            Text(v, style: const TextStyle(fontWeight: FontWeight.w800)),
+            Text(
+              t,
+              style: tt.labelSmall?.copyWith(
+                color: cs.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.15,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              v,
+              style: tt.titleSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                height: 1.15,
+              ),
+            ),
           ],
         ),
       ),
@@ -943,17 +1303,19 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
     // < 3 slices: ring chart looks degenerate — show a readable bar comparison instead.
     if (usable.length < 3) {
       final palette = HexaColors.chartPalette;
+      final tt = Theme.of(context).textTheme;
       return Card(
+        clipBehavior: Clip.antiAlias,
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(_cardPad),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 _modeUiLabel(_mode),
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: _filterGap),
               for (var i = 0; i < usable.length; i++) ...[
                 Row(
                   children: [
@@ -965,20 +1327,27 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                         shape: BoxShape.circle,
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(_label(usable[i]), style: const TextStyle(fontWeight: FontWeight.w600))),
-                    Text(_inr(_metric(usable[i]).round()), style: const TextStyle(fontWeight: FontWeight.w800)),
-                    const SizedBox(width: 6),
+                    const SizedBox(width: _filterGap),
+                    Expanded(
+                      child: Text(
+                        _label(usable[i]),
+                        style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    Text(
+                      _inr(_metric(usable[i]).round()),
+                      style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(width: _filterGap),
                     Text(
                       '${((_metric(usable[i]).toDouble() / total) * 100).toStringAsFixed(0)}%',
-                      style: TextStyle(
-                        fontSize: 12,
+                      style: tt.labelSmall?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: _filterGap),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(4),
                   child: LinearProgressIndicator(
@@ -988,12 +1357,15 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                     valueColor: AlwaysStoppedAnimation(palette[i % palette.length]),
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: _filterGap),
               ],
               if (usable.length == 1)
                 Text(
                   'Only one row has data in this period. Pick a longer range to compare more.',
-                  style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  style: tt.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    height: 1.4,
+                  ),
                 ),
             ],
           ),
@@ -1001,13 +1373,20 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
       );
     }
     final palette = HexaColors.chartPalette;
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     return Card(
+      clipBehavior: Clip.antiAlias,
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(_cardPad),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(_modeUiLabel(_mode),
-                style: const TextStyle(fontWeight: FontWeight.w800)),
+            Text(
+              _modeUiLabel(_mode),
+              style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: _filterGap),
             SizedBox(
               height: 200,
               child: PieChart(
@@ -1032,9 +1411,16 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                 ),
               ),
             ),
-            Text(_inr(total.round()),
-                style: const TextStyle(
-                    fontSize: 18, fontWeight: FontWeight.w900)),
+            const SizedBox(height: _filterGap),
+            Text(
+              _inr(total.round()),
+              textAlign: TextAlign.center,
+              style: tt.titleLarge?.copyWith(
+                fontWeight: FontWeight.w900,
+                color: cs.onSurface,
+                height: 1.15,
+              ),
+            ),
           ],
         ),
       ),
@@ -1042,10 +1428,24 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
   }
 
   Widget _table(List<Map<String, dynamic>> rows) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     return Card(
+      clipBehavior: Clip.antiAlias,
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: DataTable(
+          headingRowColor: WidgetStateProperty.all(
+            cs.surfaceContainerHighest.withValues(alpha: 0.45),
+          ),
+          headingTextStyle: tt.labelSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: cs.onSurfaceVariant,
+            letterSpacing: 0.2,
+          ),
+          dataTextStyle: tt.bodyMedium,
+          columnSpacing: 28,
+          horizontalMargin: _cardPad,
           columns: const [
             DataColumn(label: Text('Name')),
             DataColumn(label: Text('Amount')),
@@ -1064,42 +1464,70 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
     );
   }
 
+  Widget _insightRow({
+    required IconData icon,
+    required String text,
+    Color? iconColor,
+  }) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 22, color: iconColor ?? cs.primary),
+        const SizedBox(width: _filterGap),
+        Expanded(
+          child: Text(
+            text,
+            style: tt.bodyMedium?.copyWith(height: 1.4),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _insightCards(Map<String, dynamic> m) {
     final hasBest = m['best_item'] != null;
     final hasCheap = m['cheapest_supplier'] != null;
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     return Card(
+      clipBehavior: Clip.antiAlias,
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(_cardPad),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Insights',
-                style: TextStyle(fontWeight: FontWeight.w800)),
+            Text(
+              'Insights',
+              style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+            ),
             if (!hasBest && !hasCheap)
               Padding(
-                padding: const EdgeInsets.only(top: 6),
+                padding: const EdgeInsets.only(top: _filterGap),
                 child: Text(
                   'No insight highlights for this range yet. Try a longer period or add more purchase lines with sell prices.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    height: 1.35,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  style: tt.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    height: 1.45,
                   ),
                 ),
               ),
-            if (hasBest)
-              ListTile(
-                dense: true,
-                leading:
-                    const Icon(Icons.trending_up_rounded, color: Colors.green),
-                title: Text('Best: ${m['best_item']}'),
+            if (hasBest) ...[
+              const SizedBox(height: _filterGap),
+              _insightRow(
+                icon: Icons.trending_up_rounded,
+                iconColor: const Color(0xFF15803D),
+                text: 'Best: ${m['best_item']}',
               ),
-            if (hasCheap)
-              ListTile(
-                dense: true,
-                leading: const Icon(Icons.savings_outlined),
-                title: Text('Lowest cost supplier: ${m['cheapest_supplier']}'),
+            ],
+            if (hasCheap) ...[
+              const SizedBox(height: _filterGap),
+              _insightRow(
+                icon: Icons.savings_outlined,
+                text: 'Lowest cost supplier: ${m['cheapest_supplier']}',
               ),
+            ],
           ],
         ),
       ),
@@ -1117,25 +1545,35 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
     final minY = profits.reduce((a, b) => a < b ? a : b);
     final hasRange = (maxY - minY).abs() > 1;
     final totalProfit = profits.fold(0.0, (a, b) => a + b);
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     return Card(
+      clipBehavior: Clip.antiAlias,
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(_cardPad),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
               children: [
-                const Expanded(
-                  child: Text('Profit trend',
-                      style: TextStyle(fontWeight: FontWeight.w800)),
+                Expanded(
+                  child: Text(
+                    'Profit trend',
+                    style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                  ),
                 ),
                 Text(
                   'Total: ${_inr(totalProfit.round())}',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  style: tt.labelLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: _filterGap),
             SizedBox(
               height: 140,
               child: LineChart(
@@ -1147,7 +1585,7 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                     drawVerticalLine: false,
                     horizontalInterval: hasRange ? (maxY - minY) / 3 : null,
                     getDrawingHorizontalLine: (v) => FlLine(
-                      color: Colors.grey.withAlpha(40),
+                      color: cs.outlineVariant.withValues(alpha: 0.45),
                       strokeWidth: 1,
                     ),
                   ),
@@ -1159,7 +1597,10 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                         reservedSize: 46,
                         getTitlesWidget: (v, _) => Text(
                           _inr(v.round()),
-                          style: const TextStyle(fontSize: 8.5),
+                          style: tt.labelSmall?.copyWith(
+                            fontSize: 9,
+                            color: cs.onSurfaceVariant,
+                          ),
                         ),
                         interval: hasRange ? (maxY - minY) / 3 : null,
                       ),
