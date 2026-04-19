@@ -35,6 +35,8 @@ class _SignupPageState extends ConsumerState<SignupPage>
   static const double _gapFooter = 24;
   /// Extra scroll padding below card content (beyond [SafeArea] insets).
   static const double _pageBottomPad = 16;
+  /// Extra space when scrolling focused fields above the keyboard.
+  static const EdgeInsets _fieldScrollPadding = EdgeInsets.only(bottom: 100);
 
   final _nameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
@@ -45,6 +47,12 @@ class _SignupPageState extends ConsumerState<SignupPage>
   final _emailFocus = FocusNode();
   final _passFocus = FocusNode();
   final _pass2Focus = FocusNode();
+
+  final _authScrollController = ScrollController();
+  final _nameFieldKey = GlobalKey();
+  final _emailFieldKey = GlobalKey();
+  final _passwordFieldKey = GlobalKey();
+  final _confirmPasswordFieldKey = GlobalKey();
 
   late final AnimationController _cardAnim;
   late final Animation<double> _cardFade;
@@ -77,6 +85,10 @@ class _SignupPageState extends ConsumerState<SignupPage>
         }
       });
     }
+    _nameFocus.addListener(_onNameFocusScroll);
+    _emailFocus.addListener(_onSignupEmailFocusScroll);
+    _passFocus.addListener(_onSignupPasswordFocusScroll);
+    _pass2Focus.addListener(_onConfirmPasswordFocusScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _cardAnim.forward();
     });
@@ -113,6 +125,11 @@ class _SignupPageState extends ConsumerState<SignupPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _nameFocus.removeListener(_onNameFocusScroll);
+    _emailFocus.removeListener(_onSignupEmailFocusScroll);
+    _passFocus.removeListener(_onSignupPasswordFocusScroll);
+    _pass2Focus.removeListener(_onConfirmPasswordFocusScroll);
+    _authScrollController.dispose();
     _cardAnim.dispose();
     _nameCtrl.dispose();
     _emailCtrl.dispose();
@@ -123,6 +140,38 @@ class _SignupPageState extends ConsumerState<SignupPage>
     _passFocus.dispose();
     _pass2Focus.dispose();
     super.dispose();
+  }
+
+  void _onNameFocusScroll() {
+    if (_nameFocus.hasFocus) _scrollFocusedFieldIntoView(_nameFieldKey);
+  }
+
+  void _onSignupEmailFocusScroll() {
+    if (_emailFocus.hasFocus) _scrollFocusedFieldIntoView(_emailFieldKey);
+  }
+
+  void _onSignupPasswordFocusScroll() {
+    if (_passFocus.hasFocus) _scrollFocusedFieldIntoView(_passwordFieldKey);
+  }
+
+  void _onConfirmPasswordFocusScroll() {
+    if (_pass2Focus.hasFocus) {
+      _scrollFocusedFieldIntoView(_confirmPasswordFieldKey);
+    }
+  }
+
+  void _scrollFocusedFieldIntoView(GlobalKey fieldKey) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ctx = fieldKey.currentContext;
+      if (ctx == null) return;
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: 0.18,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOutCubic,
+      );
+    });
   }
 
   bool _emailValid(String v) {
@@ -632,136 +681,152 @@ class _SignupPageState extends ConsumerState<SignupPage>
       ),
       const SizedBox(height: _gapTitleToInput),
       _sectionLabel('Your profile'),
-      TextField(
-        controller: _nameCtrl,
-        focusNode: _nameFocus,
-        textInputAction: TextInputAction.next,
-        autofillHints: const [AutofillHints.name],
-        style: const TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w600,
-          color: HexaColors.inputText,
-        ),
-        onSubmitted: (_) => _emailFocus.requestFocus(),
-        decoration: _fieldDeco(
-          'Full name',
-          'Jane Doe',
-          Icons.person_outline_rounded,
-          err: nameErr != null,
-          suffix: _suffixSuccessCheck(_nameOk()),
+      KeyedSubtree(
+        key: _nameFieldKey,
+        child: TextField(
+          controller: _nameCtrl,
+          focusNode: _nameFocus,
+          textInputAction: TextInputAction.next,
+          scrollPadding: _fieldScrollPadding,
+          autofillHints: const [AutofillHints.name],
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            color: HexaColors.inputText,
+          ),
+          onSubmitted: (_) => _emailFocus.requestFocus(),
+          decoration: _fieldDeco(
+            'Full name',
+            'Jane Doe',
+            Icons.person_outline_rounded,
+            err: nameErr != null,
+            suffix: _suffixSuccessCheck(_nameOk()),
+          ),
         ),
       ),
       _err(nameErr),
       const SizedBox(height: _gapInput),
-      TextField(
-        controller: _emailCtrl,
-        focusNode: _emailFocus,
-        keyboardType: TextInputType.emailAddress,
-        textInputAction: TextInputAction.next,
-        autofillHints: const [AutofillHints.email],
-        style: const TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w600,
-          color: HexaColors.inputText,
-        ),
-        onSubmitted: (_) => _passFocus.requestFocus(),
-        decoration: _fieldDeco(
-          'Work email',
-          'you@company.com',
-          Icons.mail_outline_rounded,
-          err: emailErr != null,
-          suffix: _suffixSuccessCheck(_emailOk()),
+      KeyedSubtree(
+        key: _emailFieldKey,
+        child: TextField(
+          controller: _emailCtrl,
+          focusNode: _emailFocus,
+          keyboardType: TextInputType.emailAddress,
+          textInputAction: TextInputAction.next,
+          scrollPadding: _fieldScrollPadding,
+          autofillHints: const [AutofillHints.email],
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            color: HexaColors.inputText,
+          ),
+          onSubmitted: (_) => _passFocus.requestFocus(),
+          decoration: _fieldDeco(
+            'Work email',
+            'you@company.com',
+            Icons.mail_outline_rounded,
+            err: emailErr != null,
+            suffix: _suffixSuccessCheck(_emailOk()),
+          ),
         ),
       ),
       _err(emailErr),
       const SizedBox(height: _gapSection),
       _sectionLabel('Security'),
-      TextField(
-        controller: _passCtrl,
-        focusNode: _passFocus,
-        obscureText: _obscure1,
-        textInputAction: TextInputAction.next,
-        autofillHints: const [AutofillHints.newPassword],
-        style: const TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w600,
-          color: HexaColors.inputText,
-        ),
-        onSubmitted: (_) => _pass2Focus.requestFocus(),
-        decoration: _fieldDeco(
-          'Password',
-          'Create a strong password',
-          Icons.lock_outline_rounded,
-          err: passErr != null,
-          suffixMaxWidth: 128,
-          suffix: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _suffixSuccessCheck(_passStrongOk()),
-              IconButton(
-                tooltip: _obscure1 ? 'Show password' : 'Hide password',
-                style: IconButton.styleFrom(
-                  minimumSize: const Size(48, 48),
-                  padding: const EdgeInsets.all(8),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
+      KeyedSubtree(
+        key: _passwordFieldKey,
+        child: TextField(
+          controller: _passCtrl,
+          focusNode: _passFocus,
+          obscureText: _obscure1,
+          textInputAction: TextInputAction.next,
+          scrollPadding: _fieldScrollPadding,
+          autofillHints: const [AutofillHints.newPassword],
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            color: HexaColors.inputText,
+          ),
+          onSubmitted: (_) => _pass2Focus.requestFocus(),
+          decoration: _fieldDeco(
+            'Password',
+            'Create a strong password',
+            Icons.lock_outline_rounded,
+            err: passErr != null,
+            suffixMaxWidth: 128,
+            suffix: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _suffixSuccessCheck(_passStrongOk()),
+                IconButton(
+                  tooltip: _obscure1 ? 'Show password' : 'Hide password',
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size(48, 48),
+                    padding: const EdgeInsets.all(8),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  onPressed: () => setState(() => _obscure1 = !_obscure1),
+                  icon: Icon(
+                    _obscure1
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                    color: HexaColors.textBody,
+                    size: 22,
+                  ),
                 ),
-                onPressed: () => setState(() => _obscure1 = !_obscure1),
-                icon: Icon(
-                  _obscure1
-                      ? Icons.visibility_outlined
-                      : Icons.visibility_off_outlined,
-                  color: HexaColors.textBody,
-                  size: 22,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
       _err(passErr),
       _passwordStrengthBlock(),
       const SizedBox(height: _gapInput),
-      TextField(
-        controller: _pass2Ctrl,
-        focusNode: _pass2Focus,
-        obscureText: _obscure2,
-        textInputAction: TextInputAction.done,
-        autofillHints: const [AutofillHints.newPassword],
-        style: const TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w600,
-          color: HexaColors.inputText,
-        ),
-        onSubmitted: (_) => _submit(),
-        decoration: _fieldDeco(
-          'Confirm password',
-          'Re-enter your password',
-          Icons.lock_person_outlined,
-          err: pass2Err != null,
-          suffixMaxWidth: 128,
-          suffix: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _suffixSuccessCheck(_pass2Ok()),
-              IconButton(
-                tooltip: _obscure2 ? 'Show password' : 'Hide password',
-                style: IconButton.styleFrom(
-                  minimumSize: const Size(48, 48),
-                  padding: const EdgeInsets.all(8),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
+      KeyedSubtree(
+        key: _confirmPasswordFieldKey,
+        child: TextField(
+          controller: _pass2Ctrl,
+          focusNode: _pass2Focus,
+          obscureText: _obscure2,
+          textInputAction: TextInputAction.done,
+          scrollPadding: _fieldScrollPadding,
+          autofillHints: const [AutofillHints.newPassword],
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            color: HexaColors.inputText,
+          ),
+          onSubmitted: (_) => _submit(),
+          decoration: _fieldDeco(
+            'Confirm password',
+            'Re-enter your password',
+            Icons.lock_person_outlined,
+            err: pass2Err != null,
+            suffixMaxWidth: 128,
+            suffix: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _suffixSuccessCheck(_pass2Ok()),
+                IconButton(
+                  tooltip: _obscure2 ? 'Show password' : 'Hide password',
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size(48, 48),
+                    padding: const EdgeInsets.all(8),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  onPressed: () => setState(() => _obscure2 = !_obscure2),
+                  icon: Icon(
+                    _obscure2
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                    color: HexaColors.textBody,
+                    size: 22,
+                  ),
                 ),
-                onPressed: () => setState(() => _obscure2 = !_obscure2),
-                icon: Icon(
-                  _obscure2
-                      ? Icons.visibility_outlined
-                      : Icons.visibility_off_outlined,
-                  color: HexaColors.textBody,
-                  size: 22,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -926,7 +991,6 @@ class _SignupPageState extends ConsumerState<SignupPage>
   }
 
   Widget _buildMobileAuthScaffold(BuildContext context) {
-    final viewInsetBottom = MediaQuery.viewInsetsOf(context).bottom;
     return Scaffold(
       backgroundColor: Colors.black,
       resizeToAvoidBottomInset: true,
@@ -969,31 +1033,32 @@ class _SignupPageState extends ConsumerState<SignupPage>
                     const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
                 child: LayoutBuilder(
                   builder: (context, constraints) {
+                    final keyboardBottom =
+                        MediaQuery.viewInsetsOf(context).bottom + 20;
                     return SingleChildScrollView(
+                      controller: _authScrollController,
                       physics: const ClampingScrollPhysics(),
                       keyboardDismissBehavior:
                           ScrollViewKeyboardDismissBehavior.onDrag,
                       clipBehavior: Clip.hardEdge,
+                      padding: EdgeInsets.only(bottom: keyboardBottom),
                       child: ConstrainedBox(
                         constraints: BoxConstraints(
                           minHeight: constraints.maxHeight,
                         ),
                         child: FadeTransition(
                           opacity: _cardFade,
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8),
-                                child: _signupMobileBrandingHeader(),
-                              ),
-                              Padding(
-                                padding: EdgeInsets.only(
-                                  top: 18,
-                                  bottom: 26 + viewInsetBottom,
+                          child: Form(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: _signupMobileBrandingHeader(),
                                 ),
-                                child: AuthGlassFormPanel(
+                                const SizedBox(height: 18),
+                                AuthGlassFormPanel(
                                   child: AutofillGroup(
                                     child: Column(
                                       mainAxisSize: MainAxisSize.min,
@@ -1003,8 +1068,8 @@ class _SignupPageState extends ConsumerState<SignupPage>
                                     ),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -1027,11 +1092,13 @@ class _SignupPageState extends ConsumerState<SignupPage>
       opacity: _cardFade,
       child: AuthGlassFormPanel(
         padding: inset,
-        child: AutofillGroup(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: _signupFormFields(context),
+        child: Form(
+          child: AutofillGroup(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: _signupFormFields(context),
+            ),
           ),
         ),
       ),
@@ -1066,10 +1133,16 @@ class _SignupPageState extends ConsumerState<SignupPage>
                   flex: 9,
                   child: Center(
                     child: SingleChildScrollView(
+                      controller: _authScrollController,
                       keyboardDismissBehavior:
                           ScrollViewKeyboardDismissBehavior.onDrag,
                       clipBehavior: Clip.hardEdge,
-                      padding: const EdgeInsets.fromLTRB(24, 32, 24, 32 + _pageBottomPad),
+                      padding: EdgeInsets.fromLTRB(
+                        24,
+                        32,
+                        24,
+                        32 + _pageBottomPad + inset,
+                      ),
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 420),
                         child: _signupCard(context),

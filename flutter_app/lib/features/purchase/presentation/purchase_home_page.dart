@@ -97,7 +97,11 @@ class PurchaseHomePage extends ConsumerStatefulWidget {
 }
 
 class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
+  /// Narrow layout: simplified app bar (title + search + menu).
+  static const double _compactAppBarBreakpoint = 600;
+
   final _searchCtrl = TextEditingController();
+  final _searchFocus = FocusNode();
   final _scroll = ScrollController();
   Timer? _debounce;
   bool _selectMode = false;
@@ -164,6 +168,10 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
     ref.read(purchaseHistoryPrimaryFilterProvider.notifier).state = 'all';
     ref.read(purchaseHistorySecondaryFilterProvider.notifier).state = key;
     context.go('/purchase?filter=$key');
+  }
+
+  void _focusHistorySearch() {
+    FocusScope.of(context).requestFocus(_searchFocus);
   }
 
   Future<void> _openMoreFilters() async {
@@ -374,6 +382,9 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
     final alerts = ref.watch(purchaseAlertsProvider);
     final dueAlert = (alerts['dueSoon'] ?? 0) + (alerts['overdue'] ?? 0);
     final searchQ = ref.watch(purchaseHistorySearchProvider);
+    final narrow =
+        MediaQuery.sizeOf(context).width < _compactAppBarBreakpoint;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -382,25 +393,50 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
         scrolledUnderElevation: 0,
+        toolbarHeight: kToolbarHeight,
+        titleSpacing: narrow ? 16 : null,
+        actionsIconTheme: IconThemeData(
+          size: narrow ? 23 : 22,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+        bottom: narrow
+            ? PreferredSize(
+                preferredSize: const Size.fromHeight(1),
+                child: Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: HexaColors.brandBorder.withValues(alpha: 0.65),
+                ),
+              )
+            : null,
         title: _selectMode
             ? Text('${_selected.length} selected',
                 style: const TextStyle(fontWeight: FontWeight.w800))
-            : const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('Purchase History',
-                      style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          color: HexaColors.brandPrimary)),
-                  Text('All trade purchases',
-                      style: TextStyle(
-                          fontSize: 11,
-                          color: HexaColors.neutral,
-                          fontWeight: FontWeight.w500)),
-                ],
-              ),
+            : narrow
+                ? Text(
+                    'History',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: onSurface,
+                    ),
+                  )
+                : const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('Purchase History',
+                          style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              color: HexaColors.brandPrimary)),
+                      Text('All trade purchases',
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: HexaColors.neutral,
+                              fontWeight: FontWeight.w500)),
+                    ],
+                  ),
         actions: [
           if (_selectMode) ...[
             IconButton(
@@ -442,6 +478,118 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
               }),
               icon: const Icon(Icons.close_rounded),
             ),
+          ] else if (narrow) ...[
+            IconButton(
+              tooltip: 'Search',
+              onPressed: _focusHistorySearch,
+              icon: const Icon(Icons.search_rounded),
+            ),
+            const SizedBox(width: 12),
+            PopupMenuButton<String>(
+              tooltip: 'More',
+              icon: const Icon(Icons.more_vert_rounded),
+              padding: EdgeInsets.zero,
+              offset: const Offset(0, kToolbarHeight - 12),
+              itemBuilder: (ctx) => [
+                const PopupMenuItem(
+                  value: 'new',
+                  child: ListTile(
+                    leading: Icon(Icons.add_rounded),
+                    title: Text('New purchase'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'scan',
+                  child: ListTile(
+                    leading: Icon(Icons.document_scanner_outlined),
+                    title: Text('Scan bill'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'filters',
+                  child: ListTile(
+                    leading: Icon(Icons.filter_list_rounded),
+                    title: Text('More filters'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'refresh',
+                  child: ListTile(
+                    leading: Icon(Icons.refresh_rounded),
+                    title: Text('Refresh list'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+                const PopupMenuDivider(),
+                const PopupMenuItem(
+                  value: 'catalog',
+                  child: ListTile(
+                    leading: Icon(Icons.inventory_2_outlined),
+                    title: Text('Catalog'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'contacts',
+                  child: ListTile(
+                    leading: Icon(Icons.groups_outlined),
+                    title: Text('Contacts'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'notifications',
+                  child: ListTile(
+                    leading: Icon(Icons.notifications_outlined),
+                    title: Text('Alerts'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'settings',
+                  child: ListTile(
+                    leading: Icon(Icons.settings_outlined),
+                    title: Text('Settings'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'global_search',
+                  child: ListTile(
+                    leading: Icon(Icons.travel_explore_outlined),
+                    title: Text('Global search'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              ],
+              onSelected: (v) {
+                switch (v) {
+                  case 'new':
+                    context.push('/purchase/new');
+                  case 'scan':
+                    context.push('/purchase/scan');
+                  case 'filters':
+                    _openMoreFilters();
+                  case 'refresh':
+                    ref.invalidate(tradePurchasesListProvider);
+                    invalidateBusinessAggregates(ref);
+                  case 'catalog':
+                    context.push('/catalog');
+                  case 'contacts':
+                    context.push('/contacts');
+                  case 'notifications':
+                    context.push('/notifications');
+                  case 'settings':
+                    context.go('/settings');
+                  case 'global_search':
+                    context.push('/search');
+                }
+              },
+            ),
+            const SizedBox(width: 8),
           ] else ...[
             ShellQuickRefActions(
               onRefresh: () {
@@ -505,9 +653,11 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                       onTap: () => _selectPrimary('due_soon'),
                     ),
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
                       child: TextField(
                         controller: _searchCtrl,
+                        focusNode: _searchFocus,
+                        scrollPadding: const EdgeInsets.only(bottom: 120),
                         decoration: const InputDecoration(
                           hintText: 'Search supplier, purchase ID, item name…',
                           filled: true,

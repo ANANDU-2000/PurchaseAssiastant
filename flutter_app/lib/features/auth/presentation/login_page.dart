@@ -35,11 +35,17 @@ class _LoginPageState extends ConsumerState<LoginPage>
   static const double _gapFooter = 24;
   /// Extra scroll padding below card content (beyond [SafeArea] insets).
   static const double _pageBottomPad = 16;
+  /// Extra space when scrolling focused fields above the keyboard.
+  static const EdgeInsets _fieldScrollPadding = EdgeInsets.only(bottom: 100);
 
   final _loginEmail = TextEditingController();
   final _loginPass = TextEditingController();
   final _emailFocus = FocusNode();
   final _passFocus = FocusNode();
+
+  final _authScrollController = ScrollController();
+  final _emailFieldKey = GlobalKey();
+  final _passwordFieldKey = GlobalKey();
 
   late final AnimationController _cardAnim;
   late final Animation<double> _cardFade;
@@ -70,6 +76,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
     );
     _loginEmail.addListener(() => setState(() {}));
     _loginPass.addListener(() => setState(() {}));
+    _emailFocus.addListener(_onEmailFocusScroll);
+    _passFocus.addListener(_onPasswordFocusScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _cardAnim.forward();
     });
@@ -135,12 +143,42 @@ class _LoginPageState extends ConsumerState<LoginPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _emailFocus.removeListener(_onEmailFocusScroll);
+    _passFocus.removeListener(_onPasswordFocusScroll);
+    _authScrollController.dispose();
     _cardAnim.dispose();
     _loginEmail.dispose();
     _loginPass.dispose();
     _emailFocus.dispose();
     _passFocus.dispose();
     super.dispose();
+  }
+
+  void _onEmailFocusScroll() {
+    if (_emailFocus.hasFocus) {
+      _scrollFocusedFieldIntoView(_emailFieldKey);
+    }
+  }
+
+  void _onPasswordFocusScroll() {
+    if (_passFocus.hasFocus) {
+      _scrollFocusedFieldIntoView(_passwordFieldKey);
+    }
+  }
+
+  /// Scrolls the active [TextField] into view above the keyboard.
+  void _scrollFocusedFieldIntoView(GlobalKey fieldKey) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ctx = fieldKey.currentContext;
+      if (ctx == null) return;
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: 0.18,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOutCubic,
+      );
+    });
   }
 
   bool _emailValid(String v) {
@@ -557,6 +595,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
         focusNode: _emailFocus,
         keyboardType: TextInputType.emailAddress,
         textInputAction: TextInputAction.next,
+        scrollPadding: _fieldScrollPadding,
         autofillHints: const [AutofillHints.email],
         style: const TextStyle(
           fontSize: 15,
@@ -573,38 +612,42 @@ class _LoginPageState extends ConsumerState<LoginPage>
       ),
       _err(eErr),
       const SizedBox(height: _gapInput),
-      TextField(
-        controller: _loginPass,
-        focusNode: _passFocus,
-        obscureText: _obscure,
-        textInputAction: TextInputAction.done,
-        autofillHints: const [AutofillHints.password],
-        style: const TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w600,
-          color: HexaColors.inputText,
-        ),
-        onSubmitted: (_) => _signIn(),
-        decoration: _fieldDeco(
-          'Password',
-          'Enter your password',
-          Icons.lock_outline_rounded,
-          err: pErr != null,
-          suffix: IconButton(
-            tooltip: _obscure ? 'Show password' : 'Hide password',
-            style: IconButton.styleFrom(
-              minimumSize: const Size(48, 48),
-              padding: const EdgeInsets.all(8),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              visualDensity: VisualDensity.compact,
-            ),
-            onPressed: () => setState(() => _obscure = !_obscure),
-            icon: Icon(
-              _obscure
-                  ? Icons.visibility_outlined
-                  : Icons.visibility_off_outlined,
-              color: HexaColors.textBody,
-              size: 22,
+      KeyedSubtree(
+        key: _passwordFieldKey,
+        child: TextField(
+          controller: _loginPass,
+          focusNode: _passFocus,
+          obscureText: _obscure,
+          textInputAction: TextInputAction.done,
+          scrollPadding: _fieldScrollPadding,
+          autofillHints: const [AutofillHints.password],
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            color: HexaColors.inputText,
+          ),
+          onSubmitted: (_) => _signIn(),
+          decoration: _fieldDeco(
+            'Password',
+            'Enter your password',
+            Icons.lock_outline_rounded,
+            err: pErr != null,
+            suffix: IconButton(
+              tooltip: _obscure ? 'Show password' : 'Hide password',
+              style: IconButton.styleFrom(
+                minimumSize: const Size(48, 48),
+                padding: const EdgeInsets.all(8),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+              ),
+              onPressed: () => setState(() => _obscure = !_obscure),
+              icon: Icon(
+                _obscure
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+                color: HexaColors.textBody,
+                size: 22,
+              ),
             ),
           ),
         ),
@@ -784,7 +827,6 @@ class _LoginPageState extends ConsumerState<LoginPage>
   /// Full-screen background + frosted form (mobile + keyboard-open).
   Widget _buildMobileAuthScaffold(BuildContext context,
       {required bool showGoogle}) {
-    final viewInsetBottom = MediaQuery.viewInsetsOf(context).bottom;
     return Scaffold(
       backgroundColor: Colors.black,
       resizeToAvoidBottomInset: true,
@@ -827,31 +869,32 @@ class _LoginPageState extends ConsumerState<LoginPage>
                     const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
                 child: LayoutBuilder(
                   builder: (context, constraints) {
+                    final keyboardBottom =
+                        MediaQuery.viewInsetsOf(context).bottom + 20;
                     return SingleChildScrollView(
+                      controller: _authScrollController,
                       physics: const ClampingScrollPhysics(),
                       keyboardDismissBehavior:
                           ScrollViewKeyboardDismissBehavior.onDrag,
                       clipBehavior: Clip.hardEdge,
+                      padding: EdgeInsets.only(bottom: keyboardBottom),
                       child: ConstrainedBox(
                         constraints: BoxConstraints(
                           minHeight: constraints.maxHeight,
                         ),
                         child: FadeTransition(
                           opacity: _cardFade,
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8),
-                                child: _loginMobileBrandingHeader(),
-                              ),
-                              Padding(
-                                padding: EdgeInsets.only(
-                                  top: 18,
-                                  bottom: 26 + viewInsetBottom,
+                          child: Form(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: _loginMobileBrandingHeader(),
                                 ),
-                                child: AuthGlassFormPanel(
+                                const SizedBox(height: 18),
+                                AuthGlassFormPanel(
                                   child: AutofillGroup(
                                     child: Column(
                                       mainAxisSize: MainAxisSize.min,
@@ -864,8 +907,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
                                     ),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -932,10 +975,16 @@ class _LoginPageState extends ConsumerState<LoginPage>
                   flex: 9,
                   child: Center(
                     child: SingleChildScrollView(
+                      controller: _authScrollController,
                       keyboardDismissBehavior:
                           ScrollViewKeyboardDismissBehavior.onDrag,
                       clipBehavior: Clip.hardEdge,
-                      padding: const EdgeInsets.fromLTRB(24, 32, 24, 32 + _pageBottomPad),
+                      padding: EdgeInsets.fromLTRB(
+                        24,
+                        32,
+                        24,
+                        32 + _pageBottomPad + inset,
+                      ),
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 420),
                         child: _loginCard(context, showGoogle: showGoogle),
