@@ -11,6 +11,7 @@ import '../../../core/providers/analytics_breakdown_providers.dart';
 import '../../../core/providers/analytics_kpi_provider.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/full_reports_insights_providers.dart';
+import '../../../core/providers/trade_purchases_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/services/reports_pdf.dart';
 import '../../../core/widgets/friendly_load_error.dart';
@@ -295,7 +296,10 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
       body: session == null
           ? const Center(child: Text('Sign in'))
           : RefreshIndicator(
-              onRefresh: () async => invalidateBusinessAggregates(ref),
+              onRefresh: () async {
+                ref.invalidate(tradePurchasesListProvider);
+                invalidateBusinessAggregates(ref);
+              },
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 120),
                 children: [

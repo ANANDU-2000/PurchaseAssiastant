@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/prefs_provider.dart';
 import '../../../core/search/catalog_fuzzy.dart';
@@ -163,6 +164,7 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
           );
       await ref.read(sharedPreferencesProvider).remove(_draftKey(widget.categoryId, widget.typeId));
       ref.invalidate(catalogItemsListProvider);
+      invalidateBusinessAggregates(ref);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Item created')),

@@ -10,10 +10,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/brokers_list_provider.dart';
+import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/contacts_hub_provider.dart';
 import '../../../core/providers/purchase_prefill_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
+import '../../../core/providers/trade_purchases_provider.dart';
 import '../../../shared/widgets/full_screen_form_scaffold.dart';
 
 const _kDraftKey = 'supplier_create_wizard_draft_v1';
@@ -555,6 +557,8 @@ class _SupplierCreateWizardPageState
       await _clearDraft(bid);
       ref.invalidate(suppliersListProvider);
       ref.invalidate(contactsSuppliersEnrichedProvider);
+      ref.invalidate(tradePurchasesListProvider);
+      invalidateBusinessAggregates(ref);
       setState(() {
         _dirty = false;
         _savedOnce = true;
@@ -644,6 +648,7 @@ class _SupplierCreateWizardPageState
       final id = b['id']?.toString();
       ref.invalidate(brokersListProvider);
       ref.invalidate(contactsBrokersEnrichedProvider);
+      invalidateBusinessAggregates(ref);
       if (id != null && id.isNotEmpty) {
         setState(() {
           _brokerIds.add(id);

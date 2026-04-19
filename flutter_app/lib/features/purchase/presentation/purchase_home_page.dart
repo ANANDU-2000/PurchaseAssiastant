@@ -488,7 +488,10 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                   child: CircularProgressIndicator(
                       color: HexaColors.brandPrimary, strokeWidth: 2)),
               error: (_, __) => FriendlyLoadError(
-                onRetry: () => ref.invalidate(tradePurchasesListProvider),
+                onRetry: () {
+                  ref.invalidate(tradePurchasesListProvider);
+                  invalidateBusinessAggregates(ref);
+                },
               ),
               data: (List<TradePurchase> items) {
                 final visible = _filterPurchasesBySearch(
