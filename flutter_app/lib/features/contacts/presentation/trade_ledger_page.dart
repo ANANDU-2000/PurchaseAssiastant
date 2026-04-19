@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/models/trade_purchase_models.dart';
+import '../../../core/providers/business_write_revision.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../shared/widgets/hexa_empty_state.dart';
 
@@ -89,6 +90,12 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(businessDataWriteRevisionProvider, (prev, next) {
+      if (prev != null && next > prev && mounted) {
+        _load();
+      }
+    });
+
     final sumTotal = _rows.fold<double>(0, (s, p) => s + p.totalAmount);
     final sumDue = _rows.fold<double>(0, (s, p) => s + p.remaining);
     final cs = Theme.of(context).colorScheme;

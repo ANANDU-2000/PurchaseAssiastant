@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'analytics_breakdown_providers.dart';
+import 'business_write_revision.dart';
 import 'analytics_kpi_provider.dart';
 import 'brokers_list_provider.dart';
 import 'contacts_hub_provider.dart';
@@ -42,4 +43,7 @@ void invalidateBusinessAggregates(WidgetRef ref) {
   // touches supplier/broker rows (purchase save, item wizard, entry create).
   ref.invalidate(suppliersListProvider);
   ref.invalidate(brokersListProvider);
+  // Open ledger / item-insight screens use local or family providers — nudge
+  // them to refetch after any aggregate-invalidating write.
+  bumpBusinessDataWriteRevision(ref);
 }

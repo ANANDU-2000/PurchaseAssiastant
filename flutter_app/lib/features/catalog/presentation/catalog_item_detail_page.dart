@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/providers/business_write_revision.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
@@ -157,6 +158,14 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(businessDataWriteRevisionProvider, (prev, next) {
+      if (prev != null && next > prev) {
+        ref.invalidate(catalogItemDetailProvider(widget.itemId));
+        ref.invalidate(catalogItemInsightsProvider(_insightKey()));
+        ref.invalidate(catalogItemLinesProvider(_insightKey()));
+      }
+    });
+
     final itemAsync = ref.watch(catalogItemDetailProvider(widget.itemId));
     final insAsync = ref.watch(catalogItemInsightsProvider(_insightKey()));
     final linesAsync = ref.watch(catalogItemLinesProvider(_insightKey()));
