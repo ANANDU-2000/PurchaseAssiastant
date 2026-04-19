@@ -12,10 +12,8 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/entry_quick_picks_provider.dart';
+import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/contacts_hub_provider.dart';
-import '../../../core/providers/dashboard_provider.dart';
-import '../../../core/providers/entries_list_provider.dart';
-import '../../../core/providers/home_insights_provider.dart';
 import '../../../core/providers/notifications_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
@@ -646,9 +644,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
     );
     if (!mounted) return;
     if (res['id'] != null) {
-      ref.invalidate(entriesListProvider);
-      ref.invalidate(dashboardProvider);
-      ref.invalidate(homeInsightsProvider);
+      invalidateBusinessAggregates(ref);
       if (_landingPriceSpike) {
         final sample = _lines.isNotEmpty ? _lines.first.item.text.trim() : '';
         ref.read(notificationsProvider.notifier).addPriceSpikeAlert(

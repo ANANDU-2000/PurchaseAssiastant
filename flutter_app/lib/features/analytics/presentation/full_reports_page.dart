@@ -7,6 +7,8 @@ import 'package:intl/intl.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/analytics_breakdown_providers.dart';
 import '../../../core/providers/analytics_kpi_provider.dart';
+import '../../../core/providers/business_aggregates_invalidation.dart';
+import '../../../core/providers/full_reports_insights_providers.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/shell_quick_ref_actions.dart';
@@ -18,31 +20,20 @@ enum _DatePreset { today, d7, d30, month }
 String _inr(num n) =>
     NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(n);
 
-final _insightsProvider =
-    FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
-  final session = ref.watch(sessionProvider);
-  if (session == null) return {};
-  final range = ref.watch(analyticsDateRangeProvider);
-  final fmt = DateFormat('yyyy-MM-dd');
-  return ref.read(hexaApiProvider).analyticsInsights(
-        businessId: session.primaryBusiness.id,
-        from: fmt.format(range.from),
-        to: fmt.format(range.to),
-      );
-});
+String _modeUiLabel(_ReportMode m) => switch (m) {
+      _ReportMode.overview => 'Overview',
+      _ReportMode.category => 'Categories',
+      _ReportMode.supplier => 'Suppliers',
+      _ReportMode.broker => 'Brokers',
+      _ReportMode.item => 'Items',
+    };
 
-final _goalsProvider =
-    FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
-  final session = ref.watch(sessionProvider);
-  if (session == null) return null;
-  final n = DateTime.now();
-  final period =
-      '${n.year.toString().padLeft(4, '0')}-${n.month.toString().padLeft(2, '0')}';
-  return ref.read(hexaApiProvider).getAnalyticsGoals(
-        businessId: session.primaryBusiness.id,
-        period: period,
-      );
-});
+String _presetUiLabel(_DatePreset p) => switch (p) {
+      _DatePreset.today => 'Today',
+      _DatePreset.d7 => '7 days',
+      _DatePreset.d30 => '30 days',
+      _DatePreset.month => 'This month',
+    };
 
 /// Full-screen reports (also used as shell Reports tab at `/reports`).
 class FullReportsPage extends ConsumerStatefulWidget {
@@ -83,14 +74,7 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
   }
 
   void _invalidateAnalytics() {
-    ref.invalidate(analyticsKpiProvider);
-    ref.invalidate(analyticsItemsTableProvider);
-    ref.invalidate(analyticsCategoriesTableProvider);
-    ref.invalidate(analyticsSuppliersTableProvider);
-    ref.invalidate(analyticsBrokersTableProvider);
-    ref.invalidate(analyticsDailyProfitProvider);
-    ref.invalidate(_insightsProvider);
-    ref.invalidate(_goalsProvider);
+    invalidateAnalyticsData(ref);
   }
 
   List<Map<String, dynamic>> _rows(
@@ -146,8 +130,8 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
     final sups = ref.watch(analyticsSuppliersTableProvider);
     final bros = ref.watch(analyticsBrokersTableProvider);
     final trend = ref.watch(analyticsDailyProfitProvider);
-    final insights = ref.watch(_insightsProvider);
-    final goals = ref.watch(_goalsProvider);
+    final insights = ref.watch(fullReportsInsightsProvider);
+    final goals = ref.watch(fullReportsGoalsProvider);
     final session = ref.watch(sessionProvider);
 
     return Scaffold(
@@ -164,13 +148,15 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
         backgroundColor: HexaColors.brandBackground,
         foregroundColor: HexaColors.brandPrimary,
         actions: [
-          ShellQuickRefActions(onRefresh: () => _invalidateAnalytics()),
+          ShellQuickRefActions(
+            onRefresh: () => invalidateBusinessAggregates(ref),
+          ),
         ],
       ),
       body: session == null
           ? const Center(child: Text('Sign in'))
           : RefreshIndicator(
-              onRefresh: () async => _invalidateAnalytics(),
+              onRefresh: () async => invalidateBusinessAggregates(ref),
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 120),
                 children: [
@@ -220,22 +206,6 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                             },
                             orElse: () => const SizedBox.shrink(),
                           ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      ChoiceChip(
-                        label: const Text('Visual'),
-                        selected: _visual,
-                        onSelected: (v) => setState(() => _visual = v),
-                      ),
-                      const SizedBox(width: 8),
-                      ChoiceChip(
-                        label: const Text('Table'),
-                        selected: !_visual,
-                        onSelected: (v) => setState(() => _visual = !v),
-                      ),
-                    ],
                   ),
                   const SizedBox(height: 8),
                   items.when(
@@ -298,9 +268,12 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
   }
 
   Widget _filterBar() {
+    final tt = Theme.of(context).textTheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Text('View', style: tt.labelMedium?.copyWith(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 4),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
@@ -308,8 +281,8 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
               for (final m in _ReportMode.values)
                 Padding(
                   padding: const EdgeInsets.only(right: 6),
-                  child: ChoiceChip(
-                    label: Text(m.name),
+                  child: FilterChip(
+                    label: Text(_modeUiLabel(m)),
                     selected: _mode == m,
                     onSelected: (_) => setState(() => _mode = m),
                   ),
@@ -317,7 +290,9 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
             ],
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 10),
+        Text('Period', style: tt.labelMedium?.copyWith(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 4),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
@@ -326,7 +301,7 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                 Padding(
                   padding: const EdgeInsets.only(right: 6),
                   child: FilterChip(
-                    label: Text(p.name),
+                    label: Text(_presetUiLabel(p)),
                     selected: _preset == p,
                     onSelected: (_) => _applyPreset(p),
                   ),
@@ -334,14 +309,33 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
             ],
           ),
         ),
-        if (!_visual)
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            FilterChip(
+              label: const Text('Charts'),
+              selected: _visual,
+              onSelected: (_) => setState(() => _visual = true),
+            ),
+            const SizedBox(width: 8),
+            FilterChip(
+              label: const Text('Table'),
+              selected: !_visual,
+              onSelected: (_) => setState(() => _visual = false),
+            ),
+          ],
+        ),
+        if (!_visual) ...[
+          const SizedBox(height: 8),
           TextField(
             decoration: const InputDecoration(
-              hintText: 'Search…',
+              hintText: 'Filter table…',
               prefixIcon: Icon(Icons.search_rounded),
+              isDense: true,
             ),
             onChanged: (s) => setState(() => _tableQuery = s),
           ),
+        ],
       ],
     );
   }
@@ -407,7 +401,7 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
         padding: const EdgeInsets.all(12),
         child: Column(
           children: [
-            Text(_mode.name,
+            Text(_modeUiLabel(_mode),
                 style: const TextStyle(fontWeight: FontWeight.w800)),
             SizedBox(
               height: 200,
@@ -466,6 +460,8 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
   }
 
   Widget _insightCards(Map<String, dynamic> m) {
+    final hasBest = m['best_item'] != null;
+    final hasCheap = m['cheapest_supplier'] != null;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -474,14 +470,26 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
           children: [
             const Text('Insights',
                 style: TextStyle(fontWeight: FontWeight.w800)),
-            if (m['best_item'] != null)
+            if (!hasBest && !hasCheap)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  'No insight highlights for this range yet. Try a longer period or add more purchase lines with sell prices.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.35,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            if (hasBest)
               ListTile(
                 dense: true,
                 leading:
                     const Icon(Icons.trending_up_rounded, color: Colors.green),
                 title: Text('Best: ${m['best_item']}'),
               ),
-            if (m['cheapest_supplier'] != null)
+            if (hasCheap)
               ListTile(
                 dense: true,
                 leading: const Icon(Icons.savings_outlined),

@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/providers/business_profile_provider.dart';
+import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
 import '../../../core/services/purchase_pdf.dart';
 import '../../../core/theme/hexa_colors.dart';
@@ -338,6 +339,7 @@ class _DetailBodyState extends ConsumerState<_DetailBody> {
           );
       ref.invalidate(tradePurchasesListProvider);
       ref.invalidate(_purchaseDetailProvider(p.id));
+      invalidateBusinessAggregates(ref);
       widget.onRefresh();
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

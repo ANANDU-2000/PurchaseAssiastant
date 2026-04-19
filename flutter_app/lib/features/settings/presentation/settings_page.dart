@@ -13,6 +13,7 @@ import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/models/session.dart';
+import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/prefs_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/theme/theme_context_ext.dart';
@@ -607,6 +608,28 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       const Text('Bag, kg, piece — enforced on entry lines.'),
                 ),
               ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text('Troubleshooting',
+              style: tt.titleSmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          Card(
+            color: context.adaptiveCard,
+            child: ListTile(
+              leading: Icon(Icons.sync_rounded, color: cs.primary),
+              title: const Text('Refresh all stats'),
+              subtitle: const Text(
+                'Reloads home, reports, contacts KPIs, and your purchase log from the server. Use when totals look wrong after deletes or edits.',
+              ),
+              onTap: () {
+                invalidateBusinessAggregates(ref);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Refreshing numbers…')),
+                );
+              },
             ),
           ),
           if (showBillingSection) ...[

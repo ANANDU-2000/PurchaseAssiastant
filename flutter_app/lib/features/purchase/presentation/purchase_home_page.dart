@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/providers/business_profile_provider.dart';
+import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
 import 'widgets/due_soon_banner.dart';
 import '../../../core/services/purchase_pdf.dart';
@@ -203,6 +204,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
             purchaseId: p.id,
           );
       ref.invalidate(tradePurchasesListProvider);
+      invalidateBusinessAggregates(ref);
       if (!mounted) return;
       messenger.showSnackBar(const SnackBar(content: Text('Deleted')));
     } catch (e) {
@@ -239,6 +241,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
       _selected.clear();
     });
     ref.invalidate(tradePurchasesListProvider);
+    invalidateBusinessAggregates(ref);
   }
 
   Future<void> _markPaidQuick(TradePurchase p) async {
@@ -250,6 +253,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
             purchaseId: p.id,
           );
       ref.invalidate(tradePurchasesListProvider);
+      invalidateBusinessAggregates(ref);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Marked paid')));
       }

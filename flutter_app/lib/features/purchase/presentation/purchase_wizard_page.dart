@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/brokers_list_provider.dart';
+import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/purchase_prefill_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
@@ -1063,6 +1064,7 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
             );
       }
       ref.invalidate(tradePurchasesListProvider);
+      invalidateBusinessAggregates(ref);
       if (!mounted) return;
       await showPurchaseSavedSheet(
         context,
