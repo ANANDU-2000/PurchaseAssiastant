@@ -17,9 +17,11 @@ import '../../../core/providers/purchase_prefill_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
 import '../../../core/widgets/form_feedback.dart';
-import '../../../shared/widgets/full_screen_form_scaffold.dart';
 
 const _kDraftKey = 'supplier_create_wizard_draft_v1';
+
+/// Keeps focused fields visible above the keyboard when scrolling.
+const EdgeInsets _kTextFieldScrollPadding = EdgeInsets.only(bottom: 120);
 
 const _stepTitles = <String>[
   'Basic details',
@@ -102,6 +104,14 @@ class _SupplierCreateWizardPageState
   final _phoneFocus = FocusNode();
   final _waFocus = FocusNode();
   final _locFocus = FocusNode();
+  final _gstFocus = FocusNode();
+  final _addrFocus = FocusNode();
+  final _notesFocus = FocusNode();
+  final _customPayFocus = FocusNode();
+  final _customDiscFocus = FocusNode();
+  final _deliveredFocus = FocusNode();
+  final _billtyFocus = FocusNode();
+  final _itemSearchFocus = FocusNode();
 
   String? _nameError;
   String? _phoneError;
@@ -131,9 +141,79 @@ class _SupplierCreateWizardPageState
     super.initState();
     _phone.addListener(_syncWaFromPhone);
     _name.addListener(_scheduleDupCheck);
+    for (final n in <FocusNode>[
+      _nameFocus,
+      _phoneFocus,
+      _waFocus,
+      _locFocus,
+      _gstFocus,
+      _addrFocus,
+      _notesFocus,
+      _customPayFocus,
+      _customDiscFocus,
+      _deliveredFocus,
+      _billtyFocus,
+      _itemSearchFocus,
+    ]) {
+      n.addListener(() {
+        if (n.hasFocus) _scrollFocusedFieldIntoView(n);
+      });
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_bootstrap());
       _nameFocus.requestFocus();
+    });
+  }
+
+  /// Scrolls the focused field into view above the keyboard / bottom bar.
+  void _scrollFocusedFieldIntoView(FocusNode node) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !node.hasFocus) return;
+      final ctx = node.context;
+      if (ctx == null) return;
+      Scrollable.ensureVisible(
+        ctx,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+        alignment: 0.14,
+      );
+    });
+  }
+
+  void _focusAfterCustomPay() {
+    if (_discCustom) {
+      _customDiscFocus.requestFocus();
+    } else {
+      _deliveredFocus.requestFocus();
+    }
+  }
+
+  void _unfocusForm() {
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
+  void _focusFirstFieldForStep(int step) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      switch (step) {
+        case 1:
+          _gstFocus.requestFocus();
+          break;
+        case 2:
+          if (_payCustom) {
+            _customPayFocus.requestFocus();
+          } else if (_discCustom) {
+            _customDiscFocus.requestFocus();
+          } else {
+            _deliveredFocus.requestFocus();
+          }
+          break;
+        case 4:
+          _itemSearchFocus.requestFocus();
+          break;
+        default:
+          break;
+      }
     });
   }
 
@@ -614,10 +694,12 @@ class _SupplierCreateWizardPageState
           children: [
             TextField(
               controller: name,
+              scrollPadding: _kTextFieldScrollPadding,
               decoration: const InputDecoration(labelText: 'Name *'),
             ),
             TextField(
               controller: comm,
+              scrollPadding: _kTextFieldScrollPadding,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
                 labelText: 'Commission % (optional)',
@@ -717,9 +799,8 @@ class _SupplierCreateWizardPageState
   }
 
   Widget _buildStep0() {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _stepHeader('Supplier basics'),
         if (_dupHint != null) ...[
@@ -748,6 +829,7 @@ class _SupplierCreateWizardPageState
         TextField(
           controller: _name,
           focusNode: _nameFocus,
+          scrollPadding: _kTextFieldScrollPadding,
           textCapitalization: TextCapitalization.words,
           decoration: _dec('Supplier name *', error: _nameError),
           textInputAction: TextInputAction.next,
@@ -758,6 +840,7 @@ class _SupplierCreateWizardPageState
         TextField(
           controller: _phone,
           focusNode: _phoneFocus,
+          scrollPadding: _kTextFieldScrollPadding,
           keyboardType: TextInputType.phone,
           decoration: _dec('Phone *', error: _phoneError),
           textInputAction: TextInputAction.next,
@@ -768,6 +851,7 @@ class _SupplierCreateWizardPageState
         TextField(
           controller: _wa,
           focusNode: _waFocus,
+          scrollPadding: _kTextFieldScrollPadding,
           keyboardType: TextInputType.phone,
           decoration: _dec(
             'WhatsApp',
@@ -781,40 +865,53 @@ class _SupplierCreateWizardPageState
         TextField(
           controller: _loc,
           focusNode: _locFocus,
+          scrollPadding: _kTextFieldScrollPadding,
           textCapitalization: TextCapitalization.sentences,
           decoration: _dec('Location', hint: 'Optional'),
           textInputAction: TextInputAction.done,
           onChanged: (_) => _markDirty(),
+          onSubmitted: (_) => _unfocusForm(),
         ),
       ],
     );
   }
 
   Widget _buildStep1() {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _stepHeader('GST & notes'),
         TextField(
           controller: _gst,
+          focusNode: _gstFocus,
+          scrollPadding: _kTextFieldScrollPadding,
           textCapitalization: TextCapitalization.characters,
           decoration: _dec('GST number', hint: 'Important for invoices'),
+          textInputAction: TextInputAction.next,
           onChanged: (_) => _markDirty(),
+          onSubmitted: (_) => _addrFocus.requestFocus(),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _addr,
+          focusNode: _addrFocus,
+          scrollPadding: _kTextFieldScrollPadding,
           maxLines: 2,
           decoration: _dec('Address', hint: 'Optional'),
+          textInputAction: TextInputAction.next,
           onChanged: (_) => _markDirty(),
+          onSubmitted: (_) => _notesFocus.requestFocus(),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _notes,
+          focusNode: _notesFocus,
+          scrollPadding: _kTextFieldScrollPadding,
           maxLines: 3,
           decoration: _dec('Notes', hint: 'Optional'),
+          textInputAction: TextInputAction.done,
           onChanged: (_) => _markDirty(),
+          onSubmitted: (_) => _unfocusForm(),
         ),
       ],
     );
@@ -837,6 +934,11 @@ class _SupplierCreateWizardPageState
             }
             _markDirty();
           });
+          if (custom) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _customPayFocus.requestFocus();
+            });
+          }
         },
       );
     }
@@ -870,6 +972,11 @@ class _SupplierCreateWizardPageState
             }
             _markDirty();
           });
+          if (custom) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _customDiscFocus.requestFocus();
+            });
+          }
         },
       );
     }
@@ -888,9 +995,8 @@ class _SupplierCreateWizardPageState
   }
 
   Widget _buildStep2() {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _stepHeader('Defaults for new purchases'),
         const Text('Payment days'),
@@ -900,9 +1006,13 @@ class _SupplierCreateWizardPageState
           const SizedBox(height: 8),
           TextField(
             controller: _customPay,
+            focusNode: _customPayFocus,
+            scrollPadding: _kTextFieldScrollPadding,
             keyboardType: TextInputType.number,
             decoration: _dec('Custom payment days'),
+            textInputAction: TextInputAction.next,
             onChanged: (_) => _markDirty(),
+            onSubmitted: (_) => _focusAfterCustomPay(),
           ),
         ],
         const SizedBox(height: 16),
@@ -913,24 +1023,36 @@ class _SupplierCreateWizardPageState
           const SizedBox(height: 8),
           TextField(
             controller: _customDisc,
+            focusNode: _customDiscFocus,
+            scrollPadding: _kTextFieldScrollPadding,
             keyboardType: TextInputType.number,
             decoration: _dec('Custom discount %'),
+            textInputAction: TextInputAction.next,
             onChanged: (_) => _markDirty(),
+            onSubmitted: (_) => _deliveredFocus.requestFocus(),
           ),
         ],
         const SizedBox(height: 16),
         TextField(
           controller: _delivered,
+          focusNode: _deliveredFocus,
+          scrollPadding: _kTextFieldScrollPadding,
           keyboardType: TextInputType.number,
           decoration: _dec('Default delivered rate', hint: 'Optional'),
+          textInputAction: TextInputAction.next,
           onChanged: (_) => _markDirty(),
+          onSubmitted: (_) => _billtyFocus.requestFocus(),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _billty,
+          focusNode: _billtyFocus,
+          scrollPadding: _kTextFieldScrollPadding,
           keyboardType: TextInputType.number,
           decoration: _dec('Default billty rate', hint: 'Optional'),
+          textInputAction: TextInputAction.done,
           onChanged: (_) => _markDirty(),
+          onSubmitted: (_) => _unfocusForm(),
         ),
         const SizedBox(height: 16),
         const Text('Freight'),
@@ -954,9 +1076,8 @@ class _SupplierCreateWizardPageState
 
   Widget _buildStep3() {
     final brokers = ref.watch(brokersListProvider);
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _stepHeader('Brokers on this supplier'),
         OutlinedButton.icon(
@@ -1095,8 +1216,12 @@ class _SupplierCreateWizardPageState
         const SizedBox(height: 8),
         TextField(
           controller: _itemSearch,
+          focusNode: _itemSearchFocus,
+          scrollPadding: _kTextFieldScrollPadding,
           decoration: _dec('Search items or categories', hint: 'Type 2+ letters'),
+          textInputAction: TextInputAction.next,
           onChanged: _runItemSearch,
+          onSubmitted: (_) => _unfocusForm(),
         ),
         if (_itemHits.isNotEmpty)
           ..._itemHits.map((h) {
@@ -1198,9 +1323,8 @@ class _SupplierCreateWizardPageState
   }
 
   Widget _buildStep5() {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _stepHeader('AI assistant memory'),
         SwitchListTile(
@@ -1242,8 +1366,8 @@ class _SupplierCreateWizardPageState
     final notesPreview =
         notes.length > 96 ? '${notes.substring(0, 96)}…' : notes;
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _stepHeader('Review Supplier'),
         Text(
@@ -1519,40 +1643,53 @@ class _SupplierCreateWizardPageState
     }
   }
 
-  Widget _bottomBar() {
+  Widget _wizardBottomBar() {
     final isSummary = _step == 6;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      child: Row(
-        children: [
-          if (!isSummary)
-            TextButton(
-              onPressed: _handleExitRequest,
-              child: const Text('Cancel'),
-            ),
-          if (!isSummary) const Spacer(),
-          if (isSummary) ...[
-            TextButton(
-              onPressed: () => setState(() => _step = 0),
-              child: const Text('Edit'),
-            ),
-            const Spacer(),
-            FilledButton(
-              onPressed: _saveSupplier,
-              child: const Text('Save'),
-            ),
-          ] else
-            FilledButton(
-              onPressed: () {
-                if (_step == 0 && !_validateStep0()) return;
-                setState(() {
-                  _step = (_step + 1).clamp(0, 6);
-                  _dirty = true;
-                });
-              },
-              child: const Text('Next'),
-            ),
-        ],
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            if (isSummary) ...[
+              Expanded(
+                child: TextButton(
+                  onPressed: () => setState(() => _step = 0),
+                  child: const Text('Edit'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton(
+                  onPressed: _saveSupplier,
+                  child: const Text('Save'),
+                ),
+              ),
+            ] else ...[
+              Expanded(
+                child: TextButton(
+                  onPressed: _handleExitRequest,
+                  child: const Text('Cancel'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton(
+                  onPressed: () {
+                    if (_step == 0 && !_validateStep0()) return;
+                    final nextStep = (_step + 1).clamp(0, 6);
+                    setState(() {
+                      _step = nextStep;
+                      _dirty = true;
+                    });
+                    _unfocusForm();
+                    _focusFirstFieldForStep(nextStep);
+                  },
+                  child: const Text('Next'),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -1577,29 +1714,80 @@ class _SupplierCreateWizardPageState
     _phoneFocus.dispose();
     _waFocus.dispose();
     _locFocus.dispose();
+    _gstFocus.dispose();
+    _addrFocus.dispose();
+    _notesFocus.dispose();
+    _customPayFocus.dispose();
+    _customDiscFocus.dispose();
+    _deliveredFocus.dispose();
+    _billtyFocus.dispose();
+    _itemSearchFocus.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final viewInsetsBottom = MediaQuery.viewInsetsOf(context).bottom;
+    final title = widget.supplierId != null ? 'Edit supplier' : 'New supplier';
+    final subtitle = '${_stepTitles[_step]} · Step ${_step + 1} of 7';
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
         await _handleExitRequest();
       },
-      child: FullScreenFormScaffold(
-        title: widget.supplierId != null ? 'Edit supplier' : 'New supplier',
-        subtitle: '${_stepTitles[_step]} · Step ${_step + 1} of 7',
-        onBackPressed: () {
-          if (_step > 0) {
-            setState(() => _step--);
-          } else {
-            unawaited(_handleExitRequest());
-          }
-        },
-        body: _bodyForStep(),
-        bottom: _bottomBar(),
+      child: Scaffold(
+        resizeToAvoidBottomInset: true,
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            onPressed: () {
+              if (_step > 0) {
+                setState(() => _step--);
+              } else {
+                unawaited(_handleExitRequest());
+              }
+            },
+          ),
+          automaticallyImplyLeading: false,
+          centerTitle: true,
+          title: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(title),
+              Text(
+                subtitle,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+            ],
+          ),
+        ),
+        body: SafeArea(
+          bottom: false,
+          child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 16,
+              bottom: viewInsetsBottom + 100,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _bodyForStep(),
+              ],
+            ),
+          ),
+        ),
+        bottomNavigationBar: Material(
+          elevation: 8,
+          surfaceTintColor: Colors.transparent,
+          color: Theme.of(context).colorScheme.surface,
+          child: _wizardBottomBar(),
+        ),
       ),
     );
   }
