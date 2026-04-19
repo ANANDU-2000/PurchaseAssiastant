@@ -1472,6 +1472,8 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
     }
 
     return ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
       padding: _pagePadding,
       children: [
         _stepHeader('Purchase header'),
@@ -1822,6 +1824,8 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
     final money = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
     final cs = Theme.of(context).colorScheme;
     return ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
       padding: _pagePadding,
       children: [
         _stepHeader('Lines — search, qty, rates'),
@@ -2273,6 +2277,8 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
     }
 
     return ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
       padding: _pagePadding,
       children: [
         _stepHeader('Review & save'),
@@ -2404,70 +2410,132 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
         ),
       );
     } else if (_step == 1) {
+      final moneyBar = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+      final nLines = _lines.length;
+      final sub = _linesSubtotal();
       bottom = Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  _searchFocus.requestFocus();
-                },
-                icon: const Icon(Icons.add_rounded),
-                label: const Text('Add item'),
+            if (nLines > 0)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '$nLines line${nLines == 1 ? '' : 's'} · Subtotal (excl. header disc.)',
+                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                      ),
+                    ),
+                    Text(
+                      moneyBar.format(sub),
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w900,
+                          ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: FilledButton(
-                onPressed: () {
-                  final issue = _linesValidationIssue();
-                  if (issue != null) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(issue.message)));
-                    _scrollLineIntoView(issue.lineIndex);
-                    return;
-                  }
-                  setState(() {
-                    _step = 2;
-                    _scheduleDraft();
-                  });
-                },
-                child: const Text('Done'),
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      _searchFocus.requestFocus();
+                    },
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text('Add item'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () {
+                      final issue = _linesValidationIssue();
+                      if (issue != null) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(issue.message)));
+                        _scrollLineIntoView(issue.lineIndex);
+                        return;
+                      }
+                      setState(() {
+                        _step = 2;
+                        _scheduleDraft();
+                      });
+                    },
+                    child: const Text('Review'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
       );
     } else {
+      final moneyGrand = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+      final grand = _grandTotal();
       bottom = Padding(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            OutlinedButton(
-              onPressed: () {
-                setState(() {
-                  _step = 0;
-                  _scheduleDraft();
-                });
-              },
-              child: const Text('Header'),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Text(
+                    'Grand total',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                ),
+                Text(
+                  moneyGrand.format(grand),
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w900,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                ),
+              ],
             ),
-            const SizedBox(width: 6),
-            OutlinedButton(
-              onPressed: () {
-                setState(() {
-                  _step = 1;
-                  _scheduleDraft();
-                });
-              },
-              child: const Text('Lines'),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: FilledButton(
-                onPressed: _savePurchase,
-                child: const Text('Save'),
-              ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                OutlinedButton(
+                  onPressed: () {
+                    setState(() {
+                      _step = 0;
+                      _scheduleDraft();
+                    });
+                  },
+                  child: const Text('Header'),
+                ),
+                const SizedBox(width: 6),
+                OutlinedButton(
+                  onPressed: () {
+                    setState(() {
+                      _step = 1;
+                      _scheduleDraft();
+                    });
+                  },
+                  child: const Text('Lines'),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: _savePurchase,
+                    child: const Text('Save purchase'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

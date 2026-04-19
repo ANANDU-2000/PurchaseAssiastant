@@ -270,6 +270,12 @@ class _CatalogPageState extends ConsumerState<CatalogPage> {
                     ref.invalidate(catalogItemsListProvider);
                     await ref.read(itemCategoriesListProvider.future);
                     await ref.read(catalogItemsListProvider.future);
+                    final r = catalogInsightsDefaultRange();
+                    for (final c in list) {
+                      final id = c['id']?.toString();
+                      if (id == null || id.isEmpty) continue;
+                      ref.invalidate(categoryInsightsProvider('$id|${r.from}|${r.to}'));
+                    }
                   },
                   child: display.isEmpty
                       ? ListView(

@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/config/app_config.dart';
+import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/hexa_empty_state.dart';
@@ -119,6 +120,7 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
   Map<String, dynamic>? _metrics;
   List<dynamic>? _entries;
   List<Map<String, dynamic>>? _supplierRankRows;
+  List<TradePurchase> _recentTrades = const [];
 
   @override
   void initState() {
@@ -155,11 +157,29 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
         rank = await api.analyticsSuppliers(
             businessId: session.primaryBusiness.id, from: f, to: t);
       } catch (_) {}
+      var recentTrades = <TradePurchase>[];
+      try {
+        final traw = await api.listTradePurchases(
+          businessId: session.primaryBusiness.id,
+          limit: 5,
+          status: 'all',
+          supplierId: widget.supplierId,
+        );
+        for (final row in traw) {
+          try {
+            recentTrades.add(
+              TradePurchase.fromJson(Map<String, dynamic>.from(row as Map)),
+            );
+          } catch (_) {}
+        }
+        recentTrades.sort((a, b) => b.purchaseDate.compareTo(a.purchaseDate));
+      } catch (_) {}
       if (mounted) {
         setState(() {
           _metrics = m;
           _entries = e;
           _supplierRankRows = rank;
+          _recentTrades = recentTrades;
           _loading = false;
         });
       }
@@ -464,6 +484,61 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                           tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
                   const SizedBox(height: 10),
                   _metricsGrid(_metrics!, tt),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Recent trade purchases (PUR)',
+                    style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 8),
+                  if (_recentTrades.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(
+                        'No PUR bills yet — record one with this supplier.',
+                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                      ),
+                    )
+                  else
+                    Card(
+                      margin: EdgeInsets.zero,
+                      child: Column(
+                        children: [
+                          for (final p in _recentTrades.take(5))
+                            ListTile(
+                              dense: true,
+                              title: Text(
+                                p.humanId,
+                                style: const TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                              subtitle: Text(
+                                '${DateFormat.yMMMd().format(p.purchaseDate)} · ${p.derivedStatus}',
+                                style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                              ),
+                              trailing: Text(
+                                NumberFormat.currency(
+                                  locale: 'en_IN',
+                                  symbol: '₹',
+                                  decimalDigits: 0,
+                                ).format(p.totalAmount.round()),
+                                style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                              ),
+                              onTap: () => context.push('/purchase/detail/${p.id}'),
+                            ),
+                          ListTile(
+                            dense: true,
+                            leading: Icon(Icons.receipt_long_outlined, size: 20, color: cs.primary),
+                            title: Text(
+                              'Full PUR ledger',
+                              style: TextStyle(
+                                color: cs.primary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            onTap: () => context.push('/supplier/${widget.supplierId}/ledger'),
+                          ),
+                        ],
+                      ),
+                    ),
                   const SizedBox(height: 16),
                   Text('Price vs other suppliers',
                       style:
