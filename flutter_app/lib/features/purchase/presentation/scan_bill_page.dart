@@ -87,10 +87,10 @@ class _ScanBillPageState extends ConsumerState<ScanBillPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: HexaColors.brandBackground,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('Scan bill'),
-        backgroundColor: HexaColors.brandBackground,
+        backgroundColor: Colors.transparent,
         foregroundColor: HexaColors.brandPrimary,
       ),
       body: ListView(

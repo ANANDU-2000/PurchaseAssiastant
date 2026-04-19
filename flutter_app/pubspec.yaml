@@ -53,6 +53,8 @@ flutter_launcher_icons:
 flutter:
   uses-material-design: true
   assets:
+    - assets/auth/login_bg.png
+    - assets/auth/signup_bg.png
     - assets/images/app_logo.png
     - assets/images/getstarted.png
     - assets/signup/harisree.png

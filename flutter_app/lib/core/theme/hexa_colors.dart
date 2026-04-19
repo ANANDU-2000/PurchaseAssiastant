@@ -8,9 +8,33 @@ abstract final class HexaColors {
   static const brandAccent     = Color(0xFF159A8A);
   static const brandGold       = Color(0xFFD4AF37);
   static const brandGoldLight  = Color(0xFFF5E4A0);
+  /// Page chrome behind transparent [Scaffold]s (auth sheets stay solid white).
   static const brandBackground = Color(0xFFF7F9F6);
   static const brandCard       = Color(0xFFFFFFFF);
-  static const brandBorder     = Color(0xFFE6ECE8);
+  static const brandBorder     = Color(0xFFE2E8E6);
+
+  /// Global text fields — neutral chrome (Tailwind gray-200).
+  static const inputBorderGrey = Color(0xFFE5E7EB);
+  /// Primary field text (#111).
+  static const inputText = Color(0xFF111111);
+  /// Placeholder / hint — light grey, still readable on white.
+  static const inputHint = Color(0xFF9CA3AF);
+  /// Focus ring `rgba(21,154,138,0.2)` (same hue as [brandAccent]).
+  static const inputFocusRing = Color(0x33159A8A);
+  /// Error focus ring `rgba(220,38,38,0.2)`.
+  static const inputErrorFocusRing = Color(0x33DC2626);
+
+  /// Soft fintech shell — cool grey → white (used by [MaterialApp] builder).
+  static LinearGradient get appShellGradient => const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Color(0xFFECEFF1),
+          Color(0xFFF5F7F6),
+          Color(0xFFFFFFFF),
+        ],
+        stops: [0.0, 0.42, 1.0],
+      );
 
   static const brandDisabledBg   = Color(0xFFD1E8E3);
   static const brandDisabledText = Color(0xFF9CA3AF);
@@ -107,13 +131,23 @@ abstract final class HexaColors {
         ),
       ];
 
-  static List<BoxShadow> cardShadow(BuildContext context) => [
+  /// Premium card lift — teal-tinted umbra + soft ambient (context-free for themes).
+  static List<BoxShadow> get premiumCardShadow => [
+        BoxShadow(
+          color: brandPrimary.withValues(alpha: 0.08),
+          blurRadius: 28,
+          offset: const Offset(0, 10),
+          spreadRadius: 0,
+        ),
         BoxShadow(
           color: Colors.black.withValues(alpha: 0.06),
-          blurRadius: 12,
+          blurRadius: 16,
           offset: const Offset(0, 4),
         ),
       ];
+
+  static List<BoxShadow> cardShadow(BuildContext context) =>
+      premiumCardShadow;
 
   static List<BoxShadow> heroShadow() => [
         BoxShadow(

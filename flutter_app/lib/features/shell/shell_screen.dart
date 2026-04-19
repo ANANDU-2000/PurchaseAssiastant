@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/design_system/hexa_ds_tokens.dart';
 import '../../core/providers/connectivity_provider.dart';
 import '../../core/theme/hexa_colors.dart';
 
@@ -39,7 +40,7 @@ class ShellScreen extends ConsumerWidget {
 
     final bottomFabClearance = hideShellChrome
         ? 0.0
-        : 56.0 + MediaQuery.viewPaddingOf(context).bottom;
+        : 64.0 + MediaQuery.viewPaddingOf(context).bottom;
 
     return Scaffold(
       key: ValueKey<String>('shell_${routePath}_$idx'),
@@ -48,26 +49,35 @@ class ShellScreen extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (offline)
-            Material(
-              color: const Color(0xFFF59E0B),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                child: Row(
-                  children: [
-                    const Icon(Icons.flash_on_rounded, size: 18, color: Color(0xFF1C1917)),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Offline — showing cached data. New purchases need a connection.',
-                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                              color: const Color(0xFF1C1917),
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
-                              height: 1.25,
-                            ),
+            Semantics(
+              liveRegion: true,
+              container: true,
+              label: "You're offline — showing cached data",
+              child: Material(
+                color: const Color(0xFFF59E0B),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: HexaDsLayout.pageGutter,
+                    vertical: HexaDsSpace.xs + 2,
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.wifi_off_rounded,
+                          size: 18, color: Color(0xFF1C1917)),
+                      const SizedBox(width: HexaDsLayout.inlineGap),
+                      Expanded(
+                        child: Text(
+                          "You're offline — showing cached data",
+                          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                                color: const Color(0xFF1C1917),
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12,
+                                height: 1.25,
+                              ),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -94,25 +104,32 @@ class _FabButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 60,
-      height: 60,
-      margin: const EdgeInsets.only(top: 4),
-      decoration: BoxDecoration(
-        gradient: HexaColors.ctaGradient,
-        shape: BoxShape.circle,
-        boxShadow: HexaColors.heroShadow(),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        shape: const CircleBorder(),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: () {
-            HapticFeedback.mediumImpact();
-            context.push('/purchase/new');
-          },
-          child: const Icon(Icons.add_rounded, size: 28, color: Colors.white),
+    return Semantics(
+      label: 'New purchase',
+      button: true,
+      enabled: true,
+      excludeSemantics: true,
+      child: Container(
+        width: 60,
+        height: 60,
+        margin: const EdgeInsets.only(top: HexaDsSpace.xs),
+        decoration: BoxDecoration(
+          gradient: HexaColors.ctaGradient,
+          shape: BoxShape.circle,
+          boxShadow: HexaColors.heroShadow(),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: () {
+              HapticFeedback.mediumImpact();
+              context.push('/purchase/new');
+            },
+            child: const Icon(Icons.add_rounded, size: 28, color: Colors.white),
+          ),
         ),
       ),
     );
@@ -138,7 +155,7 @@ class _BottomBar extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: SizedBox(
-          height: 62,
+          height: 64,
           child: Row(
             children: [
               Expanded(
@@ -205,37 +222,48 @@ class _TabItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final active = selected ? HexaColors.brandPrimary : Colors.grey.shade500;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              padding: EdgeInsets.symmetric(
-                  horizontal: selected ? 14 : 0, vertical: 2),
-              decoration: selected
-                  ? BoxDecoration(
-                      color: HexaColors.brandPrimary.withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(20),
-                    )
-                  : null,
-              child: Icon(icon, size: 22, color: active),
-            ),
-            const SizedBox(height: 3),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                color: active,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+    final cs = Theme.of(context).colorScheme;
+    final active =
+        selected ? HexaColors.brandPrimary : cs.onSurfaceVariant;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      hint: selected ? 'Current tab' : 'Switch to $label tab',
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: HexaDsSpace.xs),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 22, color: active),
+              const SizedBox(height: HexaDsSpace.xs),
+              Text(
+                label,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      fontSize: 11,
+                      letterSpacing: 0.12,
+                      color: active,
+                      fontWeight:
+                          selected ? FontWeight.w800 : FontWeight.w600,
+                    ),
               ),
-            ),
-          ],
+              const SizedBox(height: HexaDsSpace.xs),
+              AnimatedContainer(
+                duration: HexaDsMotion.fast,
+                curve: HexaDsMotion.enter,
+                height: 3,
+                width: selected ? 24 : 0,
+                decoration: BoxDecoration(
+                  color: HexaColors.brandPrimary,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

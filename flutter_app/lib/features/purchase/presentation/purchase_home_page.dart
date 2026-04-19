@@ -376,10 +376,10 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
     final searchQ = ref.watch(purchaseHistorySearchProvider);
 
     return Scaffold(
-      backgroundColor: HexaColors.brandBackground,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        backgroundColor: HexaColors.brandBackground,
+        backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
         scrolledUnderElevation: 0,
         title: _selectMode
@@ -579,7 +579,12 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                               key: PageStorageKey<String>('hist_${primary}_${secondary ?? ''}_${ref.watch(purchaseHistorySearchProvider)}'),
                               controller: _scroll,
                               padding: EdgeInsets.fromLTRB(
-                                  16, 8, 16, 96 + MediaQuery.of(context).padding.bottom),
+                                  16,
+                                  8,
+                                  16,
+                                  80 +
+                                      MediaQuery.viewPaddingOf(context)
+                                          .bottom),
                               itemCount: visible.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 10),
                               itemBuilder: (context, i) {

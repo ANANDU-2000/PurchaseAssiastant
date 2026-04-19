@@ -242,7 +242,7 @@ class _SearchPickerBodyState<T> extends State<_SearchPickerBody<T>> {
 
     return SafeArea(
       child: Padding(
-        padding: EdgeInsets.only(bottom: mq.viewInsets.bottom),
+        padding: EdgeInsets.only(bottom: mq.viewInsets.bottom + 16),
         child: SizedBox(
           height: h,
           child: Column(

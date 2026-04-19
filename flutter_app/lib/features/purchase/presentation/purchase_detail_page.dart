@@ -36,10 +36,10 @@ class PurchaseDetailPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(_purchaseDetailProvider(purchaseId));
     return Scaffold(
-      backgroundColor: HexaColors.brandBackground,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('Purchase'),
-        backgroundColor: HexaColors.brandBackground,
+        backgroundColor: Colors.transparent,
         foregroundColor: HexaColors.brandPrimary,
       ),
       body: async.when(

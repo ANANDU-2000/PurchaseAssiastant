@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 abstract final class HexaDesignTokens {
   static const double screenPadding = 16;
   static const double fieldGap = 12;
+  /// Section vertical rhythm — 8px grid (2 × 8).
   static const double sectionGap = 16;
+  static const double sectionGapLoose = 24;
+  static const double sectionGapXL = 32;
 
   /// Primary screen title (toolbar / section headers).
   static const double titleApp = 18;

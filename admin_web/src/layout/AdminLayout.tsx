@@ -2,17 +2,17 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { setAdminToken } from '../lib/api'
 
 const navItems = [
-  { to: '/', label: 'Overview' },
-  { to: '/users', label: 'Users' },
-  { to: '/businesses', label: 'Businesses' },
-  { to: '/subscriptions', label: 'Subscriptions' },
-  { to: '/api-usage', label: 'Usage' },
-  { to: '/api-keys', label: 'Access keys' },
-  { to: '/feature-flags', label: 'Feature flags' },
-  { to: '/logs', label: 'Logs' },
-  { to: '/integrations', label: 'Integrations' },
-  { to: '/whatsapp', label: 'WhatsApp' },
-  { to: '/settings', label: 'Settings' },
+  { to: '/', label: 'Overview', icon: '📊' },
+  { to: '/users', label: 'Users', icon: '👤' },
+  { to: '/businesses', label: 'Businesses', icon: '🏢' },
+  { to: '/subscriptions', label: 'Subscriptions', icon: '💳' },
+  { to: '/api-usage', label: 'Usage', icon: '📈' },
+  { to: '/api-keys', label: 'Access keys', icon: '🔑' },
+  { to: '/feature-flags', label: 'Feature flags', icon: '🚩' },
+  { to: '/logs', label: 'Logs', icon: '📜' },
+  { to: '/integrations', label: 'Integrations', icon: '🔌' },
+  { to: '/whatsapp', label: 'WhatsApp', icon: '💬' },
+  { to: '/settings', label: 'Settings', icon: '⚙️' },
 ]
 
 export default function AdminLayout() {
@@ -39,10 +39,17 @@ export default function AdminLayout() {
               end={item.to === '/'}
               className={({ isActive }) => (isActive ? 'active' : undefined)}
             >
-              {item.label}
+              <span className="admin-nav-icon" aria-hidden>
+                {item.icon}
+              </span>
+              <span>{item.label}</span>
             </NavLink>
           ))}
         </nav>
+        <footer className="admin-footer">
+          <p>Purchase Assistant · operator console</p>
+          <p className="admin-footer-muted">Signed-in sessions are stored in this browser only.</p>
+        </footer>
       </aside>
       <main className="admin-main">
         <Outlet />

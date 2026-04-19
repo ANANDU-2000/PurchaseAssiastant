@@ -31,7 +31,7 @@ extension PurchaseStatusX on PurchaseStatus {
   String get label => switch (this) {
         PurchaseStatus.draft => 'Draft',
         PurchaseStatus.saved => 'Saved',
-        PurchaseStatus.confirmed => 'Pending',
+        PurchaseStatus.confirmed => 'Confirmed',
         PurchaseStatus.partiallyPaid => 'Partial',
         PurchaseStatus.paid => 'Paid',
         PurchaseStatus.overdue => 'Overdue',
@@ -47,7 +47,7 @@ extension PurchaseStatusX on PurchaseStatus {
         PurchaseStatus.partiallyPaid => const Color(0xFFF59E0B),
         PurchaseStatus.draft => HexaColors.neutral,
         PurchaseStatus.saved => HexaColors.neutral,
-        PurchaseStatus.confirmed => HexaColors.profit,
+        PurchaseStatus.confirmed => HexaColors.brandAccent,
         PurchaseStatus.cancelled => HexaColors.loss,
         PurchaseStatus.unknown => HexaColors.neutral,
       };

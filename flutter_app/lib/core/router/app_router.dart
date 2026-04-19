@@ -99,14 +99,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/login',
-        pageBuilder: (context, state) => iosPushPage(
+        pageBuilder: (context, state) => hexaAuthFadePage(
           key: state.pageKey,
           child: const LoginPage(),
         ),
       ),
       GoRoute(
         path: '/signup',
-        pageBuilder: (context, state) => iosPushPage(
+        pageBuilder: (context, state) => hexaAuthFadePage(
           key: state.pageKey,
           child: const SignupPage(),
         ),

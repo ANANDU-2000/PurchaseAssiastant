@@ -1558,10 +1558,12 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
       }
       final Map<String, dynamic> saved;
       if (_editPurchaseId != null) {
+        final purchaseId = _editPurchaseId!.trim();
+        if (purchaseId.isEmpty) return;
         final upd = Map<String, dynamic>.from(body)..remove('human_id');
         saved = await ref.read(hexaApiProvider).updateTradePurchase(
               businessId: session.primaryBusiness.id,
-              purchaseId: _editPurchaseId!,
+              purchaseId: purchaseId,
               body: upd,
             );
       } else {
@@ -2608,9 +2610,10 @@ class _PurchaseWizardPageState extends ConsumerState<PurchaseWizardPage> {
       },
       child: Theme(
         data: baseTheme.copyWith(
-          inputDecorationTheme: const InputDecorationTheme(
+          inputDecorationTheme: baseTheme.inputDecorationTheme.copyWith(
             isDense: true,
-            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           ),
         ),
         child: FullScreenFormScaffold(

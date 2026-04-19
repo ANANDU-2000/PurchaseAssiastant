@@ -6,6 +6,7 @@ import 'core/platform/remove_boot_overlay.dart';
 import 'core/providers/tenant_branding_provider.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/hexa_colors.dart';
 
 class HexaApp extends ConsumerWidget {
   const HexaApp({super.key});
@@ -24,7 +25,11 @@ class HexaApp extends ConsumerWidget {
       routerConfig: router,
       builder: (context, child) {
         removeBootOverlayIfPresent();
-        return child ?? const SizedBox.shrink();
+        final body = child ?? const SizedBox.shrink();
+        return DecoratedBox(
+          decoration: BoxDecoration(gradient: HexaColors.appShellGradient),
+          child: body,
+        );
       },
       scrollBehavior: const MaterialScrollBehavior().copyWith(
         physics: const BouncingScrollPhysics(),

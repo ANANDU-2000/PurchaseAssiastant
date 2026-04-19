@@ -163,7 +163,7 @@ class _ItemAnalyticsDetailPageState
                 16,
                 8,
                 16,
-                28 + MediaQuery.of(context).padding.bottom,
+                28 + MediaQuery.viewPaddingOf(context).bottom,
               ),
               children: [
                 _DecisionCard(

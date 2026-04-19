@@ -8,6 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
 import 'core/auth/session_notifier.dart' show sessionProvider;
+import 'core/theme/app_theme.dart';
+import 'core/theme/hexa_colors.dart';
 import 'core/notifications/local_notifications_service.dart';
 import 'core/platform/remove_boot_overlay.dart';
 import 'core/providers/prefs_provider.dart'
@@ -84,11 +86,17 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
     if (_error != null) {
       return MaterialApp(
         debugShowCheckedModeBanner: false,
+        theme: buildHexaTheme(Brightness.light),
         builder: (context, child) {
           removeBootOverlayIfPresent();
-          return child ?? const SizedBox.shrink();
+          final c = child ?? const SizedBox.shrink();
+          return DecoratedBox(
+            decoration: BoxDecoration(gradient: HexaColors.appShellGradient),
+            child: c,
+          );
         },
         home: Scaffold(
+          backgroundColor: Colors.transparent,
           body: SafeArea(
             child: Center(
               child: Padding(
@@ -120,16 +128,17 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
     if (_container == null) {
       return MaterialApp(
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0E4F46)),
-          useMaterial3: true,
-        ),
+        theme: buildHexaTheme(Brightness.light),
         builder: (context, child) {
           removeBootOverlayIfPresent();
-          return child ?? const SizedBox.shrink();
+          final c = child ?? const SizedBox.shrink();
+          return DecoratedBox(
+            decoration: BoxDecoration(gradient: HexaColors.appShellGradient),
+            child: c,
+          );
         },
         home: const Scaffold(
-          backgroundColor: Color(0xFFF7F9F6),
+          backgroundColor: Colors.transparent,
           body: Center(
             child: SizedBox(
               width: 28,

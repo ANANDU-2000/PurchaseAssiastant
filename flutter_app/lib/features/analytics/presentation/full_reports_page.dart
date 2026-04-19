@@ -260,7 +260,7 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
     final session = ref.watch(sessionProvider);
 
     return Scaffold(
-      backgroundColor: HexaColors.brandBackground,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         automaticallyImplyLeading: false,
         leading: GoRouter.of(context).canPop()
@@ -270,7 +270,7 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
               )
             : null,
         title: const Text('Reports'),
-        backgroundColor: HexaColors.brandBackground,
+        backgroundColor: Colors.transparent,
         foregroundColor: HexaColors.brandPrimary,
         actions: [
           IconButton(
