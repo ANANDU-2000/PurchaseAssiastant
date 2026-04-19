@@ -294,6 +294,8 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
         ),
         body: SafeArea(
           child: ListView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             children: [
               TextField(

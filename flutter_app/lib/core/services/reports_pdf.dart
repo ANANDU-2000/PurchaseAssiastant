@@ -23,7 +23,10 @@ Future<void> shareReportsSummaryPdf({
   required String Function(Map<String, dynamic> r) rowLabel,
   required num Function(Map<String, dynamic> r) rowMetricPurchase,
   required num Function(Map<String, dynamic> r) rowMetricProfit,
+  /// Optional ASCII note (e.g. prior-window profit/spend % from Reports screen).
+  String? priorPeriodNote,
 }) async {
+  final priorPdf = priorPeriodNote?.trim();
   final doc = pw.Document();
   doc.addPage(
     pw.Page(
@@ -53,6 +56,17 @@ Future<void> shareReportsSummaryPdf({
           pw.Text('Purchases: $purchaseCount', style: const pw.TextStyle(fontSize: 10)),
           pw.Text('Total spend: ${_rs(totalPurchase)}', style: const pw.TextStyle(fontSize: 10)),
           pw.Text('Total profit: ${_rs(totalProfit)}', style: const pw.TextStyle(fontSize: 10)),
+          if (priorPdf != null && priorPdf.isNotEmpty) ...[
+            pw.SizedBox(height: 10),
+            pw.Text(
+              'Vs prior period (same-length window)',
+              style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.Text(
+              priorPdf,
+              style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey800),
+            ),
+          ],
           pw.SizedBox(height: 12),
           pw.Text(
             'Top rows (this view)',

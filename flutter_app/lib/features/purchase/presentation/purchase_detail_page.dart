@@ -73,17 +73,25 @@ class _DetailBodyState extends ConsumerState<_DetailBody> {
   Widget build(BuildContext context) {
     final p = widget.p;
     final st = p.statusEnum;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
-      children: [
-        _headerCard(p, st),
-        const SizedBox(height: 12),
-        _itemsCard(p),
-        const SizedBox(height: 12),
-        _paymentCard(p),
-        const SizedBox(height: 12),
-        _actionsRow(context, ref, p),
-      ],
+    return RefreshIndicator(
+      onRefresh: () async {
+        widget.onRefresh();
+        await ref.read(_purchaseDetailProvider(p.id).future);
+      },
+      child: ListView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+        children: [
+          _headerCard(p, st),
+          const SizedBox(height: 12),
+          _itemsCard(p),
+          const SizedBox(height: 12),
+          _paymentCard(p),
+          const SizedBox(height: 12),
+          _actionsRow(context, ref, p),
+        ],
+      ),
     );
   }
 

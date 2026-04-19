@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../../core/providers/business_write_revision.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/search/catalog_fuzzy.dart';
+import '../../../core/search/search_highlight.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 
@@ -23,16 +26,28 @@ class _CatalogCategoryDetailPageState
     extends ConsumerState<CatalogCategoryDetailPage> {
   late ({String from, String to}) _range;
   final _searchCtrl = TextEditingController();
-  String _searchQuery = '';
+  String _debouncedSearch = '';
+  Timer? _searchDebounce;
 
   @override
   void initState() {
     super.initState();
     _range = catalogInsightsDefaultRange();
+    _searchCtrl.addListener(_onSearchTick);
+  }
+
+  void _onSearchTick() {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 150), () {
+      if (!mounted) return;
+      setState(() => _debouncedSearch = _searchCtrl.text);
+    });
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
+    _searchCtrl.removeListener(_onSearchTick);
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -107,6 +122,8 @@ class _CatalogCategoryDetailPageState
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: ListView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
           padding: const EdgeInsets.all(16),
           children: [
             TextField(
@@ -114,19 +131,23 @@ class _CatalogCategoryDetailPageState
               decoration: InputDecoration(
                 hintText: 'Search subcategories',
                 prefixIcon: const Icon(Icons.search_rounded),
-                suffixIcon: _searchQuery.trim().isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.close_rounded),
-                        onPressed: () {
-                          _searchCtrl.clear();
-                          setState(() => _searchQuery = '');
-                        },
-                      ),
+                suffixIcon: ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: _searchCtrl,
+                  builder: (_, val, __) {
+                    if (val.text.trim().isEmpty) return const SizedBox.shrink();
+                    return IconButton(
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () {
+                        _searchDebounce?.cancel();
+                        _searchCtrl.clear();
+                        setState(() => _debouncedSearch = '');
+                      },
+                    );
+                  },
+                ),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 isDense: true,
               ),
-              onChanged: (v) => setState(() => _searchQuery = v),
             ),
             const SizedBox(height: 12),
             Text(
@@ -221,10 +242,10 @@ class _CatalogCategoryDetailPageState
                         ?.copyWith(color: HexaColors.textSecondary),
                   );
                 }
-                final filtered = _searchQuery.trim().isEmpty
+                final filtered = _debouncedSearch.trim().isEmpty
                     ? types
                     : catalogFuzzyRank(
-                        _searchQuery,
+                        _debouncedSearch,
                         types,
                         (t) => t['name']?.toString() ?? '',
                         minScore: 38,
@@ -245,6 +266,7 @@ class _CatalogCategoryDetailPageState
                         context,
                         typeId: t['id']?.toString() ?? '',
                         typeName: t['name']?.toString() ?? '',
+                        highlightQuery: _debouncedSearch.trim(),
                         itemCount: itemsInCat
                             .where(
                               (it) =>
@@ -266,6 +288,7 @@ class _CatalogCategoryDetailPageState
     BuildContext context, {
     required String typeId,
     required String typeName,
+    required String highlightQuery,
     required int itemCount,
   }) {
     return Card(
@@ -303,9 +326,24 @@ class _CatalogCategoryDetailPageState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      typeName,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    Text.rich(
+                      TextSpan(
+                        children: highlightSearchQuery(
+                          typeName,
+                          highlightQuery,
+                          baseStyle: const TextStyle(fontWeight: FontWeight.w700),
+                          highlightStyle: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: Theme.of(context).colorScheme.primary,
+                            backgroundColor: Theme.of(context)
+                                .colorScheme
+                                .primaryContainer
+                                .withValues(alpha: 0.4),
+                          ),
+                        ),
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
                     Text(

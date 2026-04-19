@@ -291,6 +291,8 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
         ? const AsyncData<List<Map<String, dynamic>>>([])
         : ref.watch(categoryTypesListProvider(_selectedCategoryId!));
     return ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
       children: [
         cats.when(
@@ -481,6 +483,8 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
 
   Widget _stepTaxAndPricing() {
     return ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
       children: [
         ExpansionTile(
@@ -581,6 +585,8 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
   Widget _stepSupplierMap() {
     final async = ref.watch(suppliersListProvider);
     return ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
       children: [
         Text(
@@ -735,6 +741,8 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
   Widget _stepBrokerMap() {
     final async = ref.watch(brokersListProvider);
     return ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
       children: [
         Text(
@@ -877,6 +885,8 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
     }
 
     return ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
       children: [
         _card('Basic', [
@@ -956,6 +966,17 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
         children: [
           TextButton(onPressed: _exit, child: const Text('Cancel')),
           const Spacer(),
+          if (!finalStep && (_step == 2 || _step == 3))
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _step = 4;
+                  _dirty = true;
+                });
+              },
+              child: const Text('Skip to review'),
+            ),
+          if (!finalStep && (_step == 2 || _step == 3)) const SizedBox(width: 4),
           if (finalStep)
             FilledButton(onPressed: _save, child: const Text('Save Item'))
           else

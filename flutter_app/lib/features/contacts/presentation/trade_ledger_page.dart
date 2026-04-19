@@ -131,6 +131,8 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(
+                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                    physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                     children: [
                       Card(

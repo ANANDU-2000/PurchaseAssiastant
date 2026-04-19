@@ -23,6 +23,15 @@ class _ScanBillPageState extends ConsumerState<ScanBillPage> {
   String? _note;
   final List<Map<String, dynamic>> _items = [];
 
+  String _previewRateCaption(Map<String, dynamic> m) {
+    final u = (m['unit']?.toString() ?? 'kg').toLowerCase();
+    final r = (m['landing_cost'] as num?)?.toDouble() ?? 0;
+    if (u == 'bag') {
+      return '₹${r.toStringAsFixed(2)} per bag — purchase wizard uses kg/bag from your catalog for totals';
+    }
+    return '₹${r.toStringAsFixed(2)} per $u';
+  }
+
   @override
   void dispose() {
     _paste.dispose();
@@ -85,6 +94,8 @@ class _ScanBillPageState extends ConsumerState<ScanBillPage> {
         foregroundColor: HexaColors.brandPrimary,
       ),
       body: ListView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
         padding: const EdgeInsets.all(16),
         children: [
           const Text(
@@ -149,7 +160,9 @@ class _ScanBillPageState extends ConsumerState<ScanBillPage> {
               return Card(
                 child: ListTile(
                   title: Text(m['item_name']?.toString() ?? ''),
-                  subtitle: Text('${m['qty']} ${m['unit']} @ ₹${m['landing_cost']}'),
+                  subtitle: Text(
+                    '${m['qty']} ${m['unit']} · ${_previewRateCaption(m)}',
+                  ),
                   trailing: IconButton(
                     icon: const Icon(Icons.close_rounded),
                     onPressed: () => setState(() => _items.removeAt(i)),

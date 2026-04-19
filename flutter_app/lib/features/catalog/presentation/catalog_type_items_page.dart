@@ -13,6 +13,7 @@ import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/business_write_revision.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/search/catalog_fuzzy.dart';
+import '../../../core/search/search_highlight.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../shared/widgets/search_picker_sheet.dart';
 
@@ -512,6 +513,8 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: ListView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
           children: [
             TextField(
@@ -519,16 +522,20 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
               decoration: InputDecoration(
                 hintText: 'Search items (fuzzy)',
                 prefixIcon: const Icon(Icons.search_rounded),
-                suffixIcon: _searchQuery.trim().isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.close_rounded),
-                        onPressed: () {
-                          _searchDebounce?.cancel();
-                          _searchCtrl.clear();
-                          setState(() => _searchQuery = '');
-                        },
-                      ),
+                suffixIcon: ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: _searchCtrl,
+                  builder: (_, val, __) {
+                    if (val.text.isEmpty) return const SizedBox.shrink();
+                    return IconButton(
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () {
+                        _searchDebounce?.cancel();
+                        _searchCtrl.clear();
+                        setState(() => _searchQuery = '');
+                      },
+                    );
+                  },
+                ),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 isDense: true,
               ),
@@ -593,9 +600,28 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  name,
-                                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                                Text.rich(
+                                  TextSpan(
+                                    children: highlightSearchQuery(
+                                      name,
+                                      _searchQuery.trim(),
+                                      baseStyle: const TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 16,
+                                      ),
+                                      highlightStyle: TextStyle(
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 16,
+                                        color: Theme.of(context).colorScheme.primary,
+                                        backgroundColor: Theme.of(context)
+                                            .colorScheme
+                                            .primaryContainer
+                                            .withValues(alpha: 0.4),
+                                      ),
+                                    ),
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                                 const SizedBox(height: 4),
                                 Text(

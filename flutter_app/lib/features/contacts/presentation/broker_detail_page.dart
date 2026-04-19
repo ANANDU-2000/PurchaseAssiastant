@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/models/trade_purchase_models.dart';
+import '../../../core/providers/purchase_prefill_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/search_picker_sheet.dart';
@@ -186,6 +187,18 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
     final groups = _barGroups();
 
     return Scaffold(
+      floatingActionButton: async.maybeWhen(
+        data: (_) => FloatingActionButton.extended(
+          onPressed: () {
+            ref.read(pendingPurchaseBrokerIdProvider.notifier).state =
+                widget.brokerId;
+            context.pushNamed('purchase_new');
+          },
+          icon: const Icon(Icons.add_shopping_cart_rounded),
+          label: const Text('New purchase'),
+        ),
+        orElse: () => null,
+      ),
       appBar: AppBar(
         leading: IconButton(
             icon: const Icon(Icons.arrow_back_rounded),

@@ -12,6 +12,7 @@ import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/models/trade_purchase_models.dart';
+import '../../../core/providers/purchase_prefill_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/hexa_empty_state.dart';
@@ -310,6 +311,18 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
     final fmt = DateFormat.yMMMd();
 
     return Scaffold(
+      floatingActionButton: async.maybeWhen(
+        data: (_) => FloatingActionButton.extended(
+          onPressed: () {
+            ref.read(pendingPurchaseSupplierIdProvider.notifier).state =
+                widget.supplierId;
+            context.pushNamed('purchase_new');
+          },
+          icon: const Icon(Icons.add_shopping_cart_rounded),
+          label: const Text('New purchase'),
+        ),
+        orElse: () => null,
+      ),
       appBar: AppBar(
         leading: IconButton(
             icon: const Icon(Icons.arrow_back_rounded),
@@ -349,7 +362,9 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
           return RefreshIndicator(
             onRefresh: _reload,
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 88),
               children: [
                 const SizedBox(height: 8),
                 Container(

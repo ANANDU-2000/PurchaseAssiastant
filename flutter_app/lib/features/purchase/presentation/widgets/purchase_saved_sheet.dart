@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -17,7 +16,7 @@ String _whatsappSummary(TradePurchase p) {
   final buf = StringBuffer();
   buf.writeln('*Purchase ${p.humanId}*');
   buf.writeln(DateFormat('dd MMM yyyy').format(p.purchaseDate));
-  if (p.supplierName.trim().isNotEmpty) {
+  if ((p.supplierName ?? '').trim().isNotEmpty) {
     buf.writeln('Supplier: ${p.supplierName}');
   }
   for (final l in p.lines) {

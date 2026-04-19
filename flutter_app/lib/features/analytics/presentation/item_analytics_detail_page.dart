@@ -157,6 +157,8 @@ class _ItemAnalyticsDetailPageState
                 ref.invalidate(_pipProvider(widget.itemName)),
             color: HexaColors.primaryMid,
             child: ListView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
               padding: EdgeInsets.fromLTRB(
                 16,
                 8,

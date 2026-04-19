@@ -572,6 +572,10 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                       child: visible.isEmpty
                           ? _HistoryEmpty(onAdd: () => context.push('/purchase/new'))
                           : ListView.separated(
+                              keyboardDismissBehavior:
+                                  ScrollViewKeyboardDismissBehavior.onDrag,
+                              physics: const AlwaysScrollableScrollPhysics(
+                                  parent: BouncingScrollPhysics()),
                               key: PageStorageKey<String>('hist_${primary}_${secondary ?? ''}_${ref.watch(purchaseHistorySearchProvider)}'),
                               controller: _scroll,
                               padding: EdgeInsets.fromLTRB(

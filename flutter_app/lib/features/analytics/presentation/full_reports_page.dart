@@ -144,6 +144,11 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
       }
       final range = ref.read(analyticsDateRangeProvider);
       final biz = ref.read(invoiceBusinessProfileProvider);
+      String? priorNote;
+      try {
+        final d = await ref.read(reportsPriorPeriodDeltaProvider.future);
+        priorNote = _priorPeriodStringForPdf(d);
+      } catch (_) {}
       await shareReportsSummaryPdf(
         business: biz,
         from: range.from,
@@ -156,6 +161,7 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
         rowLabel: _label,
         rowMetricPurchase: (r) => (r['total_purchase'] as num?) ?? 0,
         rowMetricProfit: (r) => (r['total_profit'] as num?) ?? 0,
+        priorPeriodNote: priorNote,
       );
     } catch (e) {
       if (mounted) {
@@ -305,6 +311,8 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                 invalidateBusinessAggregates(ref);
               },
               child: ListView(
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 120),
                 children: [
                   _filterBar(),
@@ -796,6 +804,13 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
     if (pct.abs() > 999) return pct > 0 ? 'Up sharply vs prior' : 'Down sharply vs prior';
     final sign = pct >= 0 ? '+' : '';
     return '$sign${pct.toStringAsFixed(1)}%';
+  }
+
+  String _priorPeriodStringForPdf(ReportsPriorPeriodDelta d) {
+    final df = DateFormat('dd MMM yyyy');
+    final profit = _formatDeltaPct(d.profitPctVsPrior());
+    final spend = _formatDeltaPct(d.purchasePctVsPrior());
+    return 'Compared to ${df.format(d.priorFrom)} – ${df.format(d.priorTo)}. Profit $profit; spend $spend.';
   }
 
   Widget _priorPeriodVersusCard(BuildContext context, ReportsPriorPeriodDelta d) {

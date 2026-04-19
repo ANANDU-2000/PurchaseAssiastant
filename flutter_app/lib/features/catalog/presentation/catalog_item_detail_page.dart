@@ -220,6 +220,8 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
           return RefreshIndicator(
             onRefresh: _refresh,
             child: ListView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
               children: [
                 if (catName != null && catName.isNotEmpty)

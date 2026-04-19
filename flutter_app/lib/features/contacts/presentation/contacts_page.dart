@@ -17,6 +17,7 @@ import '../../../core/providers/contacts_hub_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
 import '../../../core/search/catalog_fuzzy.dart';
+import '../../../core/search/search_highlight.dart';
 import '../../../shared/widgets/app_settings_action.dart';
 import 'broker_wizard_page.dart';
 import 'item_wizard_page.dart';
@@ -99,11 +100,13 @@ class _SupplierCard extends StatelessWidget {
     required this.onWhatsApp,
     required this.onEdit,
     required this.onDelete,
+    this.highlightQuery = '',
   });
 
   final Map<String, dynamic> data;
   final Map<String, dynamic>? metrics;
   final bool isOwner;
+  final String highlightQuery;
   final VoidCallback onOpen;
   final void Function(String? phone) onDial;
   final void Function(String? wa) onWhatsApp;
@@ -113,6 +116,7 @@ class _SupplierCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     final id = data['id']?.toString();
     final m = metrics;
     final deals = (m?['deals'] as num?)?.toInt();
@@ -130,6 +134,20 @@ class _SupplierCard extends StatelessWidget {
     final phone = data['phone']?.toString();
     final wa = data['whatsapp_number']?.toString();
     final loc = data['location']?.toString() ?? '';
+    final titleBase =
+        tt.titleMedium?.copyWith(fontWeight: FontWeight.w800) ?? const TextStyle(fontWeight: FontWeight.w800);
+    final locBase = tt.bodySmall?.copyWith(color: HexaColors.textSecondary) ??
+        const TextStyle(color: HexaColors.textSecondary);
+    final hlStyle = TextStyle(
+      fontWeight: FontWeight.w900,
+      color: cs.primary,
+      backgroundColor: cs.primaryContainer.withValues(alpha: 0.4),
+    );
+    final locHlStyle = locBase.copyWith(
+      fontWeight: FontWeight.w800,
+      color: cs.primary,
+      backgroundColor: cs.primaryContainer.withValues(alpha: 0.35),
+    );
 
     return Card(
       elevation: 0,
@@ -164,9 +182,18 @@ class _SupplierCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(nm,
-                            style: tt.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w800)),
+                        Text.rich(
+                          TextSpan(
+                            children: highlightSearchQuery(
+                              nm,
+                              highlightQuery,
+                              baseStyle: titleBase,
+                              highlightStyle: hlStyle,
+                            ),
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                         if (loc.isNotEmpty)
                           Padding(
                             padding: const EdgeInsets.only(top: 4),
@@ -176,9 +203,19 @@ class _SupplierCard extends StatelessWidget {
                                     size: 16, color: HexaColors.textSecondary),
                                 const SizedBox(width: 4),
                                 Expanded(
-                                    child: Text(loc,
-                                        style: tt.bodySmall?.copyWith(
-                                            color: HexaColors.textSecondary))),
+                                  child: Text.rich(
+                                    TextSpan(
+                                      children: highlightSearchQuery(
+                                        loc,
+                                        highlightQuery,
+                                        baseStyle: locBase,
+                                        highlightStyle: locHlStyle,
+                                      ),
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -285,11 +322,13 @@ class _BrokerCard extends StatelessWidget {
     required this.onOpen,
     required this.onEdit,
     required this.onDelete,
+    this.highlightQuery = '',
   });
 
   final Map<String, dynamic> data;
   final Map<String, dynamic>? metrics;
   final bool isOwner;
+  final String highlightQuery;
   final VoidCallback onOpen;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
@@ -297,6 +336,7 @@ class _BrokerCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     final id = data['id']?.toString();
     final m = metrics;
     final deals = (m?['deals'] as num?)?.toInt();
@@ -306,6 +346,13 @@ class _BrokerCard extends StatelessWidget {
     final cv = data['commission_value'];
     final isPct = ct == 'percent';
     final nm = data['name']?.toString() ?? '—';
+    final titleBase =
+        tt.titleMedium?.copyWith(fontWeight: FontWeight.w800) ?? const TextStyle(fontWeight: FontWeight.w800);
+    final hlStyle = TextStyle(
+      fontWeight: FontWeight.w900,
+      color: cs.primary,
+      backgroundColor: cs.primaryContainer.withValues(alpha: 0.4),
+    );
 
     return Card(
       elevation: 0,
@@ -324,8 +371,7 @@ class _BrokerCard extends StatelessWidget {
               Row(
                 children: [
                   CircleAvatar(
-                    backgroundColor:
-                        Theme.of(context).colorScheme.secondaryContainer,
+                    backgroundColor: cs.secondaryContainer,
                     child: Icon(isPct
                         ? Icons.percent_rounded
                         : Icons.currency_rupee_rounded),
@@ -335,9 +381,18 @@ class _BrokerCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(nm,
-                            style: tt.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w800)),
+                        Text.rich(
+                          TextSpan(
+                            children: highlightSearchQuery(
+                              nm,
+                              highlightQuery,
+                              baseStyle: titleBase,
+                              highlightStyle: hlStyle,
+                            ),
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                         const SizedBox(height: 4),
                         Text(
                           isPct
@@ -426,7 +481,6 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() => setState(() {}));
-    _searchCtrl.addListener(() => setState(() {}));
   }
 
   @override
@@ -448,7 +502,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
       });
       return;
     }
-    _debounce = Timer(const Duration(milliseconds: 400), () async {
+    _debounce = Timer(const Duration(milliseconds: 150), () async {
       if (!mounted) return;
       final session = ref.read(sessionProvider);
       if (session == null) return;
@@ -789,6 +843,8 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                       ?.copyWith(color: HexaColors.textSecondary)));
         }
         return ListView.separated(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
           itemCount: suppliers.length,
           separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -799,6 +855,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
               data: m,
               metrics: null,
               isOwner: isOwner,
+              highlightQuery: _searchQuery,
               onOpen: id == null ? () {} : () => context.push('/supplier/$id'),
               onDial: _dial,
               onWhatsApp: _openWhatsApp,
@@ -816,6 +873,8 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                       ?.copyWith(color: HexaColors.textSecondary)));
         }
         return ListView.separated(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
           itemCount: brokers.length,
           separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -826,6 +885,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
               data: b,
               metrics: null,
               isOwner: isOwner,
+              highlightQuery: _searchQuery,
               onOpen: id == null ? () {} : () => context.push('/broker/$id'),
               onEdit: () => _editBroker(b),
               onDelete: () => _deleteBroker(b),
@@ -841,11 +901,14 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                       ?.copyWith(color: HexaColors.textSecondary)));
         }
         return ListView.separated(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
           itemCount: cats.length,
           separatorBuilder: (_, __) => const SizedBox(height: 8),
           itemBuilder: (context, i) {
             final name = cats[i].toString();
+            final cs = Theme.of(context).colorScheme;
             return Card(
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
@@ -853,8 +916,23 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
               child: ListTile(
                 leading: const Icon(Icons.folder_outlined,
                     color: HexaColors.primaryMid),
-                title: Text(name,
-                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                title: Text.rich(
+                  TextSpan(
+                    children: highlightSearchQuery(
+                      name,
+                      _searchQuery,
+                      baseStyle: const TextStyle(fontWeight: FontWeight.w700),
+                      highlightStyle: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: cs.primary,
+                        backgroundColor:
+                            cs.primaryContainer.withValues(alpha: 0.4),
+                      ),
+                    ),
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 subtitle: const Text('Open items in this category'),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => context.push(
@@ -872,11 +950,14 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                       ?.copyWith(color: HexaColors.textSecondary)));
         }
         return ListView.separated(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
           itemCount: items.length,
           separatorBuilder: (_, __) => const SizedBox(height: 8),
           itemBuilder: (context, i) {
             final n = items[i].toString();
+            final cs = Theme.of(context).colorScheme;
             return Card(
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
@@ -884,8 +965,23 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
               child: ListTile(
                 leading: const Icon(Icons.inventory_2_outlined,
                     color: HexaColors.primaryMid),
-                title: Text(n,
-                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                title: Text.rich(
+                  TextSpan(
+                    children: highlightSearchQuery(
+                      n,
+                      _searchQuery,
+                      baseStyle: const TextStyle(fontWeight: FontWeight.w700),
+                      highlightStyle: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: cs.primary,
+                        backgroundColor:
+                            cs.primaryContainer.withValues(alpha: 0.4),
+                      ),
+                    ),
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 subtitle: const Text('Item analytics'),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () =>
@@ -927,11 +1023,11 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Catalog',
+            Text('Contacts',
                 style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
             const SizedBox(height: 2),
             Text(
-              'Suppliers · brokers · categories · items — pick when adding a purchase',
+              'Suppliers · brokers · categories · names for purchases. Units & variants: Catalog screen.',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: tt.labelSmall?.copyWith(
@@ -943,6 +1039,11 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Item catalog (units, variants)',
+            onPressed: () => context.push('/catalog'),
+            icon: const Icon(Icons.inventory_2_outlined),
+          ),
           IconButton(
             tooltip: 'Add',
             onPressed: _addForCurrentTab,
@@ -985,15 +1086,19 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
               decoration: InputDecoration(
                 hintText: 'Search suppliers, items, categories…',
                 prefixIcon: const Icon(Icons.search_rounded),
-                suffixIcon: _searchCtrl.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear_rounded),
-                        onPressed: () {
-                          _searchCtrl.clear();
-                          _scheduleSearch('');
-                        },
-                      )
-                    : null,
+                suffixIcon: ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: _searchCtrl,
+                  builder: (_, val, __) {
+                    if (val.text.isEmpty) return const SizedBox.shrink();
+                    return IconButton(
+                      icon: const Icon(Icons.clear_rounded),
+                      onPressed: () {
+                        _searchCtrl.clear();
+                        _scheduleSearch('');
+                      },
+                    );
+                  },
+                ),
                 border:
                     OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
@@ -1056,9 +1161,27 @@ class _SuppliersTab extends ConsumerStatefulWidget {
 
 class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
   final _filterCtrl = TextEditingController();
+  String _filterDisplay = '';
+  Timer? _filterDebounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _filterCtrl.addListener(_onFilterTick);
+  }
+
+  void _onFilterTick() {
+    _filterDebounce?.cancel();
+    _filterDebounce = Timer(const Duration(milliseconds: 150), () {
+      if (!mounted) return;
+      setState(() => _filterDisplay = _filterCtrl.text);
+    });
+  }
 
   @override
   void dispose() {
+    _filterDebounce?.cancel();
+    _filterCtrl.removeListener(_onFilterTick);
     _filterCtrl.dispose();
     super.dispose();
   }
@@ -1088,8 +1211,8 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
               await ref.read(contactsSuppliersEnrichedProvider.future);
             },
             child: ListView(
-              physics: const BouncingScrollPhysics(
-                parent: AlwaysScrollableScrollPhysics()),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
               children: const [
                 SizedBox(
                     height: 120, child: Center(child: Text('No suppliers yet')))
@@ -1097,7 +1220,7 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
             ),
           );
         }
-        final q = _filterCtrl.text.trim();
+        final q = _filterDisplay.trim();
         final filtered = q.isEmpty
             ? list
             : catalogFuzzyRank(
@@ -1114,19 +1237,23 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: TextField(
                 controller: _filterCtrl,
-                onChanged: (_) => setState(() {}),
                 decoration: InputDecoration(
                   hintText: 'Filter suppliers (fuzzy)…',
                   prefixIcon: const Icon(Icons.filter_alt_outlined),
-                  suffixIcon: _filterCtrl.text.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear_rounded),
-                          onPressed: () {
-                            _filterCtrl.clear();
-                            setState(() {});
-                          },
-                        )
-                      : null,
+                  suffixIcon: ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _filterCtrl,
+                    builder: (_, val, __) {
+                      if (val.text.isEmpty) return const SizedBox.shrink();
+                      return IconButton(
+                        icon: const Icon(Icons.clear_rounded),
+                        onPressed: () {
+                          _filterDebounce?.cancel();
+                          _filterCtrl.clear();
+                          setState(() => _filterDisplay = '');
+                        },
+                      );
+                    },
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -1136,13 +1263,31 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
             ),
             Expanded(
               child: filtered.isEmpty
-                  ? Center(
-                      child: Text(
-                        'No suppliers match “$q”.',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodyMedium
-                            ?.copyWith(color: HexaColors.textSecondary),
+                  ? RefreshIndicator(
+                      onRefresh: () async {
+                        ref.invalidate(contactsSuppliersEnrichedProvider);
+                        await ref.read(contactsSuppliersEnrichedProvider.future);
+                      },
+                      child: ListView(
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        physics: const AlwaysScrollableScrollPhysics(
+                            parent: BouncingScrollPhysics()),
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                        children: [
+                          SizedBox(
+                            height: 200,
+                            child: Center(
+                              child: Text(
+                                'No suppliers match “$q”.',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(color: HexaColors.textSecondary),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     )
                   : RefreshIndicator(
@@ -1151,8 +1296,10 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
                         await ref.read(contactsSuppliersEnrichedProvider.future);
                       },
                       child: ListView.separated(
-                        physics: const BouncingScrollPhysics(
-                            parent: AlwaysScrollableScrollPhysics()),
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        physics: const AlwaysScrollableScrollPhysics(
+                            parent: BouncingScrollPhysics()),
                         padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
                         itemCount: filtered.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -1164,6 +1311,7 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
                             data: Map<String, dynamic>.from(s),
                             metrics: m,
                             isOwner: isOwner,
+                            highlightQuery: q,
                             onOpen: id == null
                                 ? () {}
                                 : () => context.push('/supplier/$id'),
@@ -1195,9 +1343,27 @@ class _BrokersTab extends ConsumerStatefulWidget {
 
 class _BrokersTabState extends ConsumerState<_BrokersTab> {
   final _filterCtrl = TextEditingController();
+  String _filterDisplay = '';
+  Timer? _filterDebounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _filterCtrl.addListener(_onFilterTick);
+  }
+
+  void _onFilterTick() {
+    _filterDebounce?.cancel();
+    _filterDebounce = Timer(const Duration(milliseconds: 150), () {
+      if (!mounted) return;
+      setState(() => _filterDisplay = _filterCtrl.text);
+    });
+  }
 
   @override
   void dispose() {
+    _filterDebounce?.cancel();
+    _filterCtrl.removeListener(_onFilterTick);
     _filterCtrl.dispose();
     super.dispose();
   }
@@ -1220,8 +1386,26 @@ class _BrokersTabState extends ConsumerState<_BrokersTab> {
         onRetry: () => ref.invalidate(contactsBrokersEnrichedProvider),
       ),
       data: (list) {
-        if (list.isEmpty) return const Center(child: Text('No brokers yet'));
-        final q = _filterCtrl.text.trim();
+        if (list.isEmpty) {
+          return RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(contactsBrokersEnrichedProvider);
+              await ref.read(contactsBrokersEnrichedProvider.future);
+            },
+            child: ListView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics()),
+              children: const [
+                SizedBox(
+                  height: 120,
+                  child: Center(child: Text('No brokers yet')),
+                ),
+              ],
+            ),
+          );
+        }
+        final q = _filterDisplay.trim();
         final filtered = q.isEmpty
             ? list
             : catalogFuzzyRank(
@@ -1238,19 +1422,23 @@ class _BrokersTabState extends ConsumerState<_BrokersTab> {
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: TextField(
                 controller: _filterCtrl,
-                onChanged: (_) => setState(() {}),
                 decoration: InputDecoration(
                   hintText: 'Filter brokers (fuzzy)…',
                   prefixIcon: const Icon(Icons.filter_alt_outlined),
-                  suffixIcon: _filterCtrl.text.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear_rounded),
-                          onPressed: () {
-                            _filterCtrl.clear();
-                            setState(() {});
-                          },
-                        )
-                      : null,
+                  suffixIcon: ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _filterCtrl,
+                    builder: (_, val, __) {
+                      if (val.text.isEmpty) return const SizedBox.shrink();
+                      return IconButton(
+                        icon: const Icon(Icons.clear_rounded),
+                        onPressed: () {
+                          _filterDebounce?.cancel();
+                          _filterCtrl.clear();
+                          setState(() => _filterDisplay = '');
+                        },
+                      );
+                    },
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -1260,13 +1448,31 @@ class _BrokersTabState extends ConsumerState<_BrokersTab> {
             ),
             Expanded(
               child: filtered.isEmpty
-                  ? Center(
-                      child: Text(
-                        'No brokers match “$q”.',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodyMedium
-                            ?.copyWith(color: HexaColors.textSecondary),
+                  ? RefreshIndicator(
+                      onRefresh: () async {
+                        ref.invalidate(contactsBrokersEnrichedProvider);
+                        await ref.read(contactsBrokersEnrichedProvider.future);
+                      },
+                      child: ListView(
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        physics: const AlwaysScrollableScrollPhysics(
+                            parent: BouncingScrollPhysics()),
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                        children: [
+                          SizedBox(
+                            height: 200,
+                            child: Center(
+                              child: Text(
+                                'No brokers match “$q”.',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(color: HexaColors.textSecondary),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     )
                   : RefreshIndicator(
@@ -1275,8 +1481,10 @@ class _BrokersTabState extends ConsumerState<_BrokersTab> {
                         await ref.read(contactsBrokersEnrichedProvider.future);
                       },
                       child: ListView.separated(
-                        physics: const BouncingScrollPhysics(
-                            parent: AlwaysScrollableScrollPhysics()),
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        physics: const AlwaysScrollableScrollPhysics(
+                            parent: BouncingScrollPhysics()),
                         padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
                         itemCount: filtered.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -1288,6 +1496,7 @@ class _BrokersTabState extends ConsumerState<_BrokersTab> {
                             data: Map<String, dynamic>.from(b),
                             metrics: m,
                             isOwner: isOwner,
+                            highlightQuery: q,
                             onOpen: id == null
                                 ? () {}
                                 : () => context.push('/broker/$id'),
@@ -1330,23 +1539,40 @@ class _CategoriesTab extends ConsumerWidget {
           data: (items) {
             if (cats.isEmpty) {
               final cs = Theme.of(context).colorScheme;
-              return Center(
-                child: Padding(
+              return RefreshIndicator(
+                onRefresh: () async {
+                  ref.invalidate(itemCategoriesListProvider);
+                  ref.invalidate(catalogItemsListProvider);
+                  await ref.read(itemCategoriesListProvider.future);
+                },
+                child: ListView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  physics: const AlwaysScrollableScrollPhysics(
+                      parent: BouncingScrollPhysics()),
                   padding: const EdgeInsets.all(24),
-                  child: Text(
-                    'No categories yet. Use ＋ Category to add one — same list as Settings → Item catalog.',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(color: cs.onSurfaceVariant),
-                  ),
+                  children: [
+                    SizedBox(
+                      height: 200,
+                      child: Center(
+                        child: Text(
+                          'No categories yet. Use ＋ Category to add one — same list as Settings → Item catalog.',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(color: cs.onSurfaceVariant),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               );
             }
             return ListView.separated(
-              physics: const BouncingScrollPhysics(
-                  parent: AlwaysScrollableScrollPhysics()),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics()),
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
               itemCount: cats.length,
               separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -1424,23 +1650,41 @@ class _ItemsTab extends ConsumerWidget {
           data: (items) {
             if (items.isEmpty) {
               final cs = Theme.of(context).colorScheme;
-              return Center(
-                child: Padding(
+              return RefreshIndicator(
+                onRefresh: () async {
+                  ref.invalidate(itemCategoriesListProvider);
+                  ref.invalidate(catalogItemsListProvider);
+                  await ref.read(itemCategoriesListProvider.future);
+                  await ref.read(catalogItemsListProvider.future);
+                },
+                child: ListView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  physics: const AlwaysScrollableScrollPhysics(
+                      parent: BouncingScrollPhysics()),
                   padding: const EdgeInsets.all(24),
-                  child: Text(
-                    'No catalog items yet. Use ＋ Item or Settings → Item catalog.',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(color: cs.onSurfaceVariant),
-                  ),
+                  children: [
+                    SizedBox(
+                      height: 200,
+                      child: Center(
+                        child: Text(
+                          'No catalog items yet. Use ＋ Item or Settings → Item catalog.',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(color: cs.onSurfaceVariant),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               );
             }
             return ListView.separated(
-              physics: const BouncingScrollPhysics(
-                  parent: AlwaysScrollableScrollPhysics()),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics()),
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
               itemCount: items.length,
               separatorBuilder: (_, __) => const SizedBox(height: 8),
