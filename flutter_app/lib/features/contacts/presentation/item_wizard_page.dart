@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
@@ -14,6 +13,7 @@ import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
 import '../../../core/search/catalog_fuzzy.dart';
+import '../../../core/widgets/form_feedback.dart';
 import '../../../shared/widgets/bag_default_unit_hint.dart';
 import '../../../shared/widgets/full_screen_form_scaffold.dart';
 import '../../../shared/widgets/search_picker_sheet.dart';
@@ -276,12 +276,14 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
         setState(() => _step = 0);
         return;
       }
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+      showRetryableErrorSnackBar(context, e, onRetry: () {
+        if (context.mounted) unawaited(_save());
+      });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+      showRetryableErrorSnackBar(context, e, onRetry: () {
+        if (context.mounted) unawaited(_save());
+      });
     }
   }
 

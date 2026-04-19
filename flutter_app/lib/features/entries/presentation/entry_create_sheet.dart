@@ -17,6 +17,7 @@ import '../../../core/providers/contacts_hub_provider.dart';
 import '../../../core/providers/notifications_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/widgets/form_feedback.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/bag_default_unit_hint.dart';
 import '../../../shared/widgets/search_picker_sheet.dart';
@@ -144,6 +145,24 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
 
   void _onFormFieldChanged() {
     if (mounted) setState(() {});
+  }
+
+  Future<void> _removeLineAfterConfirm(int lineIndex) async {
+    if (lineIndex < 0 || lineIndex >= _lines.length || _lines.length <= 1) {
+      return;
+    }
+    final ok = await confirmDestructiveAction(
+      context,
+      title: 'Remove this line?',
+      message:
+          'This removes the line from the draft. You can add another line before saving.',
+      confirmLabel: 'Remove',
+    );
+    if (!ok || !mounted) return;
+    setState(() {
+      final l = _lines.removeAt(lineIndex);
+      l.dispose();
+    });
   }
 
   @override
@@ -583,19 +602,22 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
             await _runSaveAttempt(forceDuplicate: true);
           } catch (e2) {
             if (mounted) {
-              ScaffoldMessenger.of(context)
-                  .showSnackBar(SnackBar(content: Text(friendlyApiError(e2))));
+              showRetryableErrorSnackBar(context, e2, onRetry: () {
+                if (context.mounted) unawaited(_finalizeSaveAfterPreview());
+              });
             }
           }
         }
       } else if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+        showRetryableErrorSnackBar(context, e, onRetry: () {
+          if (context.mounted) unawaited(_finalizeSaveAfterPreview());
+        });
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+        showRetryableErrorSnackBar(context, e, onRetry: () {
+          if (context.mounted) unawaited(_finalizeSaveAfterPreview());
+        });
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -2795,14 +2817,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                 if (_lines.length > 1)
                   IconButton(
                     icon: Icon(Icons.delete_outline_rounded, color: cs.error),
-                    onPressed: _busy
-                        ? null
-                        : () {
-                            setState(() {
-                              l.dispose();
-                              _lines.removeAt(lineIndex);
-                            });
-                          },
+                    onPressed: _busy ? null : () => _removeLineAfterConfirm(lineIndex),
                   ),
               ],
             ),
@@ -3075,14 +3090,7 @@ class _EntryCreateSheetState extends ConsumerState<EntryCreateSheet> {
                 if (_lines.length > 1)
                   IconButton(
                     icon: Icon(Icons.delete_outline_rounded, color: cs.error),
-                    onPressed: _busy
-                        ? null
-                        : () {
-                            setState(() {
-                              l.dispose();
-                              _lines.removeAt(lineIndex);
-                            });
-                          },
+                    onPressed: _busy ? null : () => _removeLineAfterConfirm(lineIndex),
                   ),
               ],
             ),

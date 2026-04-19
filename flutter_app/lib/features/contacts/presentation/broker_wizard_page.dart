@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/catalog_providers.dart';
@@ -14,8 +13,15 @@ import '../../../core/providers/contacts_hub_provider.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
+import '../../../core/widgets/form_feedback.dart';
+import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/full_screen_form_scaffold.dart';
 import 'supplier_create_wizard_page.dart';
+
+bool _validPhoneDigits(String raw) {
+  final d = raw.replaceAll(RegExp(r'\D'), '');
+  return d.length >= 10 && d.length <= 15;
+}
 
 class BrokerWizardPage extends ConsumerStatefulWidget {
   const BrokerWizardPage({super.key, this.brokerId});
@@ -46,6 +52,8 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
   final Set<String> _itemIds = {};
   final Map<String, String> _itemLabels = {};
   String? _nameError;
+  String? _phoneError;
+  String? _commissionError;
 
   List<Map<String, dynamic>> _brokerRows = [];
   String? _dupHint;
@@ -157,9 +165,23 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
 
   bool _validateStep0() {
     _nameError = null;
+    _phoneError = null;
     if (_name.text.trim().isEmpty) _nameError = 'Required';
+    if (!_validPhoneDigits(_phone.text)) {
+      _phoneError = 'Enter a valid phone (10–15 digits)';
+    }
     setState(() {});
-    return _nameError == null;
+    return _nameError == null && _phoneError == null;
+  }
+
+  bool _validateStep1() {
+    _commissionError = null;
+    final commRaw = _commission.text.trim();
+    if (commRaw.isNotEmpty && double.tryParse(commRaw) == null) {
+      _commissionError = 'Enter a valid number';
+    }
+    setState(() {});
+    return _commissionError == null;
   }
 
   /// Blocks create/rename when another broker already uses this name (case-insensitive).
@@ -209,6 +231,10 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
   Future<void> _save() async {
     if (!_validateStep0()) {
       setState(() => _step = 0);
+      return;
+    }
+    if (!_validateStep1()) {
+      setState(() => _step = 1);
       return;
     }
     final dupExact = _blockingDuplicateBrokerName(_name.text);
@@ -325,12 +351,14 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
         setState(() => _step = 0);
         return;
       }
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+      showRetryableErrorSnackBar(context, e, onRetry: () {
+        if (context.mounted) unawaited(_save());
+      });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
+      showRetryableErrorSnackBar(context, e, onRetry: () {
+        if (context.mounted) unawaited(_save());
+      });
     }
   }
 
@@ -379,7 +407,7 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
         const SizedBox(height: 8),
         TextField(
           controller: _phone,
-          decoration: _d('Phone *'),
+          decoration: _d('Phone *').copyWith(errorText: _phoneError),
           keyboardType: TextInputType.phone,
           onChanged: (_) => _markDirty(),
           textInputAction: TextInputAction.next,
@@ -433,8 +461,9 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
           controller: _commission,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: _d(_commissionType == 'percent'
-              ? 'Commission Value (%)'
-              : 'Commission Value (₹)'),
+                  ? 'Commission Value (%)'
+                  : 'Commission Value (₹)')
+              .copyWith(errorText: _commissionError),
           onChanged: (_) => _markDirty(),
         ),
       ],
@@ -471,7 +500,10 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
         const SizedBox(height: 8),
         suppliersAsync.when(
           loading: () => const LinearProgressIndicator(),
-          error: (_, __) => const Text('Could not load suppliers'),
+          error: (_, __) => FriendlyLoadError(
+            message: 'Could not load suppliers',
+            onRetry: () => ref.invalidate(suppliersListProvider),
+          ),
           data: (rows) {
             final filtered = rows
                 .map((e) => Map<String, dynamic>.from(e as Map))
@@ -669,6 +701,7 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
             FilledButton(
               onPressed: () {
                 if (_step == 0 && !_validateStep0()) return;
+                if (_step == 1 && !_validateStep1()) return;
                 setState(() {
                   _step++;
                   _dirty = true;

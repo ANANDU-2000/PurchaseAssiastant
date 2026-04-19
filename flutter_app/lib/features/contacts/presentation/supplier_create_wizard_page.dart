@@ -16,6 +16,7 @@ import '../../../core/providers/contacts_hub_provider.dart';
 import '../../../core/providers/purchase_prefill_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
+import '../../../core/widgets/form_feedback.dart';
 import '../../../shared/widgets/full_screen_form_scaffold.dart';
 
 const _kDraftKey = 'supplier_create_wizard_draft_v1';
@@ -590,14 +591,14 @@ class _SupplierCreateWizardPageState
         setState(() => _step = 0);
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(friendlyApiError(e))),
-      );
+      showRetryableErrorSnackBar(context, e, onRetry: () {
+        if (context.mounted) unawaited(_saveSupplier());
+      });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(friendlyApiError(e))),
-      );
+      showRetryableErrorSnackBar(context, e, onRetry: () {
+        if (context.mounted) unawaited(_saveSupplier());
+      });
     }
   }
 

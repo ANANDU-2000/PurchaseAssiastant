@@ -5,13 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/prefs_provider.dart';
 import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/widgets/form_feedback.dart';
 import '../../../shared/widgets/bag_default_unit_hint.dart';
 
 const _kUnits = <String>['bag', 'box', 'kg', 'piece'];
@@ -196,9 +196,15 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
         return;
       }
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(friendlyApiError(e))),
-        );
+        showRetryableErrorSnackBar(context, e, onRetry: () {
+          if (context.mounted) _create();
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        showRetryableErrorSnackBar(context, e, onRetry: () {
+          if (context.mounted) _create();
+        });
       }
     } finally {
       if (mounted) setState(() => _saving = false);
