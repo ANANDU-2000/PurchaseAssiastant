@@ -121,16 +121,7 @@ class _SupplierCard extends StatelessWidget {
     final m = metrics;
     final deals = (m?['deals'] as num?)?.toInt();
     final avg = (m?['avg_landing'] as num?)?.toDouble();
-    final profit = (m?['total_profit'] as num?)?.toDouble();
-    final tq = (m?['total_qty'] as num?)?.toDouble() ?? 0;
     final nm = data['name']?.toString() ?? '—';
-    var marginStr = '—';
-    if (m != null && tq > 0 && avg != null && avg > 0) {
-      final cost = avg * tq;
-      if (cost > 0) {
-        marginStr = '${((profit ?? 0) / cost * 100).toStringAsFixed(0)}%';
-      }
-    }
     final phone = data['phone']?.toString();
     final wa = data['whatsapp_number']?.toString();
     final loc = data['location']?.toString() ?? '';
@@ -298,12 +289,9 @@ class _SupplierCard extends StatelessWidget {
                   _StatPill(
                     icon: Icons.currency_rupee_rounded,
                     text: avg != null
-                        ? 'Avg: ₹${avg.toStringAsFixed(0)}'
-                        : 'Avg: —',
+                        ? '90d avg: ₹${avg.toStringAsFixed(0)}'
+                        : '90d avg: —',
                   ),
-                  const SizedBox(width: 8),
-                  _StatPill(
-                      icon: Icons.percent_rounded, text: 'Margin: $marginStr'),
                 ],
               ),
             ],

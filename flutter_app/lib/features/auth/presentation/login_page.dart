@@ -9,10 +9,12 @@ import '../../../core/auth/google_sign_in_helper.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/theme/hexa_colors.dart';
-import '../../../core/theme/hexa_outline_input_border.dart';
-import 'widgets/auth_glass_form_panel.dart';
+import 'auth_brand_assets.dart';
+import 'widgets/auth_input_styles.dart';
+import 'widgets/auth_network_error_banner.dart';
+import 'widgets/auth_page_shell.dart';
 
-/// Desktop: split brand panel + card. Mobile: full-screen photo, scrim, frosted form.
+/// Keyboard-safe, centered card login (no hero image) — iOS + web friendly.
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
 
@@ -20,78 +22,41 @@ class LoginPage extends ConsumerStatefulWidget {
   ConsumerState<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends ConsumerState<LoginPage>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
-  static const _logoAsset = 'assets/images/app_logo.png';
-  static const _panelBgAsset = 'assets/auth/login_bg.png';
-
-  /// Vertical rhythm for auth card (title → inputs → actions → footer).
-  static const double _gapTitleToInput = 16;
-  static const double _gapSection = 24;
-  /// Input band: default spacing between fields (12–16).
-  static const double _gapInputMin = 12;
-  static const double _gapInput = 14;
-  static const double _gapButton = 20;
-  static const double _gapFooter = 24;
-  /// Extra scroll padding below card content (beyond [SafeArea] insets).
-  static const double _pageBottomPad = 16;
-  /// Extra space when scrolling focused fields above the keyboard.
-  static const EdgeInsets _fieldScrollPadding = EdgeInsets.only(bottom: 100);
-
+class _LoginPageState extends ConsumerState<LoginPage> {
   final _loginEmail = TextEditingController();
   final _loginPass = TextEditingController();
   final _emailFocus = FocusNode();
   final _passFocus = FocusNode();
 
-  final _authScrollController = ScrollController();
-  final _emailFieldKey = GlobalKey();
-  final _passwordFieldKey = GlobalKey();
-
-  late final AnimationController _cardAnim;
-  late final Animation<double> _cardFade;
-
   bool _loading = false;
   bool _obscure = true;
   bool _showValidation = false;
-  bool _buttonPressed = false;
-  bool _logoPrecached = false;
+  bool _showNetworkBanner = false;
+  DioException? _lastNetworkError;
+  String? _inlineAuthError;
+  int _segmentIndex = 0;
   bool _didRedirectSignup = false;
   bool _handledDupEmailQuery = false;
-  Size? _lastViewPhysicalSize;
-
-  /// Split layout (left hero / right card) at this width and above.
-  static const double _desktopSplitMinWidth = 768;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _cardAnim = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 420),
-    );
-    _cardFade = CurvedAnimation(
-      parent: _cardAnim,
-      curve: Curves.easeOutCubic,
-    );
-    _loginEmail.addListener(() => setState(() {}));
-    _loginPass.addListener(() => setState(() {}));
-    _emailFocus.addListener(_onEmailFocusScroll);
-    _passFocus.addListener(_onPasswordFocusScroll);
+    _loginEmail.addListener(_clearInlineErrors);
+    _loginPass.addListener(_clearInlineErrors);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _cardAnim.forward();
+      if (mounted) _tryResumeSession();
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _tryResumeSession());
+  }
+
+  void _clearInlineErrors() {
+    if (_inlineAuthError != null) {
+      setState(() => _inlineAuthError = null);
+    }
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_logoPrecached) {
-      _logoPrecached = true;
-      precacheImage(const AssetImage(_logoAsset), context);
-      precacheImage(const AssetImage(_panelBgAsset), context);
-    }
     if (!_handledDupEmailQuery) {
       try {
         final q = GoRouterState.of(context).uri.queryParameters['msg'];
@@ -99,8 +64,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
           _handledDupEmailQuery = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
-            _authSnack(
-                'This email is already registered. Please sign in below.');
+            _authSnack('This email is already registered. Please sign in below.');
             if (!mounted) return;
             context.go('/login');
           });
@@ -123,62 +87,14 @@ class _LoginPageState extends ConsumerState<LoginPage>
   }
 
   @override
-  void didChangeMetrics() {
-    super.didChangeMetrics();
-    if (!kIsWeb) return;
-    final views = WidgetsBinding.instance.platformDispatcher.views;
-    if (views.isEmpty) return;
-    final v = views.first;
-    if (v.viewInsets.bottom > 0) return;
-    final sz = v.physicalSize;
-    final prev = _lastViewPhysicalSize;
-    _lastViewPhysicalSize = sz;
-    if (prev == null || prev == sz) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      FocusManager.instance.primaryFocus?.unfocus();
-    });
-  }
-
-  @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _emailFocus.removeListener(_onEmailFocusScroll);
-    _passFocus.removeListener(_onPasswordFocusScroll);
-    _authScrollController.dispose();
-    _cardAnim.dispose();
+    _loginEmail.removeListener(_clearInlineErrors);
+    _loginPass.removeListener(_clearInlineErrors);
     _loginEmail.dispose();
     _loginPass.dispose();
     _emailFocus.dispose();
     _passFocus.dispose();
     super.dispose();
-  }
-
-  void _onEmailFocusScroll() {
-    if (_emailFocus.hasFocus) {
-      _scrollFocusedFieldIntoView(_emailFieldKey);
-    }
-  }
-
-  void _onPasswordFocusScroll() {
-    if (_passFocus.hasFocus) {
-      _scrollFocusedFieldIntoView(_passwordFieldKey);
-    }
-  }
-
-  /// Scrolls the active [TextField] into view above the keyboard.
-  void _scrollFocusedFieldIntoView(GlobalKey fieldKey) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final ctx = fieldKey.currentContext;
-      if (ctx == null) return;
-      Scrollable.ensureVisible(
-        ctx,
-        alignment: 0.18,
-        duration: const Duration(milliseconds: 320),
-        curve: Curves.easeOutCubic,
-      );
-    });
   }
 
   bool _emailValid(String v) {
@@ -214,12 +130,22 @@ class _LoginPageState extends ConsumerState<LoginPage>
       if (mounted) context.go('/home');
       return;
     }
-    if (!mounted) return;
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _showNetworkBanner = false;
+      _lastNetworkError = null;
+    });
     try {
       await ref.read(sessionProvider.notifier).restore().timeout(
             kIsWeb ? const Duration(seconds: 8) : const Duration(seconds: 25),
           );
+    } on DioException catch (e) {
+      if (mounted && isDioNoConnectionError(e)) {
+        setState(() {
+          _lastNetworkError = e;
+          _showNetworkBanner = true;
+        });
+      }
     } catch (_) {}
     if (!mounted) return;
     setState(() => _loading = false);
@@ -235,28 +161,33 @@ class _LoginPageState extends ConsumerState<LoginPage>
     messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _showLoginFailedDialog() async {
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Login Failed'),
-        content: const Text('Incorrect email or password'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
+  void _retryAfterNetwork() {
+    setState(() {
+      _showNetworkBanner = false;
+      _lastNetworkError = null;
+      _inlineAuthError = null;
+    });
+    if (_isFormValid) {
+      _signIn();
+    } else {
+      setState(() => _showValidation = true);
+    }
   }
 
   Future<void> _signIn() async {
+    if (_loading) return;
     FocusScope.of(context).unfocus();
-    setState(() => _showValidation = true);
+    setState(() {
+      _showValidation = true;
+      _inlineAuthError = null;
+    });
     if (!_isFormValid) return;
 
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _showNetworkBanner = false;
+      _lastNetworkError = null;
+    });
     try {
       await ref.read(sessionProvider.notifier).login(
             email: _loginEmail.text.trim(),
@@ -265,17 +196,28 @@ class _LoginPageState extends ConsumerState<LoginPage>
       if (mounted) context.go('/home');
     } on DioException catch (e) {
       if (!mounted) return;
+      if (isDioNoConnectionError(e)) {
+        setState(() {
+          _lastNetworkError = e;
+          _showNetworkBanner = true;
+        });
+        return;
+      }
       final sc = e.response?.statusCode;
       if (sc == 401) {
-        await _showLoginFailedDialog();
-        if (!mounted) return;
-      } else {
-        final msg = friendlyAuthError(e, context: AuthErrorContext.login);
-        _authSnack(msg);
+        setState(() {
+          _inlineAuthError = 'Wrong email or password. Try again.';
+        });
+        return;
       }
+      setState(() {
+        _inlineAuthError = friendlyAuthError(e, context: AuthErrorContext.login);
+      });
     } catch (_) {
       if (mounted) {
-        _authSnack('Something went wrong. Please try again.');
+        setState(() {
+          _inlineAuthError = 'Something went wrong. Please try again.';
+        });
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -293,15 +235,34 @@ class _LoginPageState extends ConsumerState<LoginPage>
       }
       return;
     }
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _showNetworkBanner = false;
+      _lastNetworkError = null;
+      _inlineAuthError = null;
+    });
     try {
       final account = await g.signIn();
-      if (account == null) return;
+      if (account == null) {
+        if (mounted) setState(() => _loading = false);
+        return;
+      }
       final auth = await account.authentication;
       final id = auth.idToken;
       if (id == null) throw StateError('No Google ID token');
       await ref.read(sessionProvider.notifier).signInWithGoogle(idToken: id);
       if (mounted) context.go('/home');
+    } on DioException catch (e) {
+      if (mounted) {
+        if (isDioNoConnectionError(e)) {
+          setState(() {
+            _lastNetworkError = e;
+            _showNetworkBanner = true;
+          });
+        } else {
+          _authSnack(friendlyGoogleSignInError(e));
+        }
+      }
     } catch (e) {
       if (mounted) {
         _authSnack(friendlyGoogleSignInError(e));
@@ -311,108 +272,12 @@ class _LoginPageState extends ConsumerState<LoginPage>
     }
   }
 
-  void _forgotPassword() {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Forgot password?'),
-        content: const Text(
-          'Please contact your administrator to reset your password.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  InputDecoration _fieldDeco(
-    String label,
-    String hint,
-    IconData icon, {
-    bool err = false,
-    Widget? suffix,
-    double suffixMaxWidth = 64,
-  }) {
-    const radius = BorderRadius.all(Radius.circular(12));
-    const normal = HexaOutlineInputBorder(
-      borderRadius: radius,
-      borderSide: BorderSide(color: HexaColors.inputBorderGrey, width: 1),
-      focusRing: false,
-    );
-    final errorOutline = HexaOutlineInputBorder(
-      borderRadius: radius,
-      borderSide: BorderSide(color: Colors.red.shade600, width: 1.5),
-      focusRing: false,
-    );
-    const focusOk = HexaOutlineInputBorder(
-      borderRadius: radius,
-      borderSide: BorderSide(color: HexaColors.brandAccent, width: 2.5),
-      focusRing: true,
-      ringColor: HexaColors.inputFocusRing,
-    );
-    final focusErr = HexaOutlineInputBorder(
-      borderRadius: radius,
-      borderSide: BorderSide(color: Colors.red.shade600, width: 2),
-      focusRing: true,
-      ringColor: HexaColors.inputErrorFocusRing,
-    );
-    return InputDecoration(
-      labelText: label,
-      floatingLabelBehavior: FloatingLabelBehavior.auto,
-      hintText: hint,
-      filled: true,
-      fillColor: Colors.white.withValues(alpha: 0.85),
-      isDense: true,
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
-      hintStyle: const TextStyle(
-        fontSize: 15,
-        fontWeight: FontWeight.w400,
-        color: HexaColors.inputHint,
-      ),
-      labelStyle: TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
-        color: HexaColors.textOnLightSurface.withValues(alpha: 0.90),
-      ),
-      floatingLabelStyle: const TextStyle(
-        fontSize: 13,
-        fontWeight: FontWeight.w700,
-        color: HexaColors.brandAccent,
-      ),
-      prefixIcon: Icon(icon, size: 22, color: HexaColors.textBody),
-      prefixIconConstraints:
-          const BoxConstraints(minWidth: 48, minHeight: 48),
-      suffixIcon: suffix,
-      suffixIconConstraints: suffix != null
-          ? BoxConstraints(
-              minWidth: 44,
-              maxWidth: suffixMaxWidth,
-              minHeight: 48,
-              maxHeight: 52,
-            )
-          : null,
-      border: err ? errorOutline : normal,
-      enabledBorder: err ? errorOutline : normal,
-      focusedBorder: err ? focusErr : focusOk,
-      errorBorder: errorOutline,
-      focusedErrorBorder: focusErr,
-    );
-  }
-
   Widget _err(String? m) {
     if (m == null) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.only(left: 4, top: 4, bottom: 6),
+      padding: const EdgeInsets.only(left: 4, bottom: 8),
       child: Text(
         m,
-        maxLines: 4,
-        softWrap: true,
-        overflow: TextOverflow.visible,
         style: TextStyle(
           color: Colors.red.shade700,
           fontSize: 12,
@@ -422,400 +287,54 @@ class _LoginPageState extends ConsumerState<LoginPage>
     );
   }
 
-  /// Text + logo stack for the auth hero (compact = mobile / narrow).
-  Widget _brandPanelContent({required bool compact}) {
-    return Column(
+  Widget _brandHeader() {
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: Container(
-            width: compact ? 48 : 56,
-            height: compact ? 48 : 56,
-            color: Colors.white,
-            alignment: Alignment.center,
-            child: Image.asset(
-              _logoAsset,
-              width: compact ? 40 : 48,
-              height: compact ? 40 : 48,
-              fit: BoxFit.cover,
-              gaplessPlayback: true,
-              filterQuality: FilterQuality.high,
-            ),
-          ),
-        ),
-        SizedBox(height: compact ? 12 : 32),
-        Text(
-          AppConfig.appName,
-          style: TextStyle(
-            fontSize: compact ? 12 : 14,
-            fontWeight: FontWeight.w700,
-            letterSpacing: compact ? 0.5 : 0.6,
-            color: Colors.white.withValues(alpha: 0.85),
-          ),
-        ),
-        SizedBox(height: compact ? 4 : 12),
-        Text(
-          'Welcome back',
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: compact ? 22 : 34,
-            fontWeight: FontWeight.w800,
-            height: compact ? 1.05 : 1.1,
-            letterSpacing: compact ? -0.6 : -0.8,
-            color: Colors.white,
-          ),
-        ),
-        SizedBox(height: compact ? 6 : 14),
-        Text(
-          'Manage your purchases smarter',
-          maxLines: compact ? 2 : 4,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: compact ? 13 : 17,
-            fontWeight: FontWeight.w500,
-            height: compact ? 1.22 : 1.45,
-            color: Colors.white.withValues(alpha: 0.88),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _brandPanel({required bool compact}) {
-    final imgAlign =
-        compact ? Alignment.topCenter : const Alignment(0, -0.12);
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        Positioned.fill(
+        Container(
+          width: 44,
+          height: 44,
+          decoration: const BoxDecoration(shape: BoxShape.circle),
+          clipBehavior: Clip.antiAlias,
           child: Image.asset(
-            _panelBgAsset,
+            AuthBrandAssets.logo,
             fit: BoxFit.cover,
-            alignment: imgAlign,
-            filterQuality: FilterQuality.high,
-            gaplessPlayback: true,
-          ),
-        ),
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  const Color(0xFF0A3D36).withValues(alpha: 0.90),
-                  HexaColors.brandPrimary.withValues(alpha: 0.84),
-                  const Color(0xFF0F5C52).withValues(alpha: 0.82),
-                  HexaColors.brandAccent.withValues(alpha: 0.78),
-                ],
-                stops: const [0.0, 0.35, 0.72, 1.0],
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          right: -40,
-          top: -20,
-          child: Icon(
-            Icons.show_chart_rounded,
-            size: compact ? 80 : 200,
-            color: Colors.white.withValues(alpha: 0.06),
-          ),
-        ),
-        Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: compact ? 16 : 40,
-            vertical: compact ? 14 : 48,
-          ),
-          child: compact
-              ? FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.topLeft,
-                  child: _brandPanelContent(compact: true),
-                )
-              : _brandPanelContent(compact: false),
-        ),
-      ],
-    );
-  }
-
-  List<Widget> _loginFormFields(BuildContext context, {required bool showGoogle}) {
-    final eErr = _emailError();
-    final pErr = _passError();
-    return [
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Text(
-              'Sign In',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: HexaColors.inputText,
-                    letterSpacing: -0.3,
-                    height: 1.15,
-                  ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: TextButton(
-              onPressed: _loading
-                  ? null
-                  : () {
-                      FocusScope.of(context).unfocus();
-                      context.go('/signup');
-                    },
-              style: TextButton.styleFrom(
-                foregroundColor: HexaColors.brandAccent,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                minimumSize: const Size(48, 44),
-                tapTargetSize: MaterialTapTargetSize.padded,
-                alignment: Alignment.centerRight,
-              ),
+            errorBuilder: (_, __, ___) => Container(
+              color: HexaColors.brandPrimary,
+              alignment: Alignment.center,
               child: const Text(
-                'Create account',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-              ),
-            ),
-          ),
-        ],
-      ),
-      const SizedBox(height: _gapTitleToInput),
-      TextField(
-        controller: _loginEmail,
-        focusNode: _emailFocus,
-        keyboardType: TextInputType.emailAddress,
-        textInputAction: TextInputAction.next,
-        scrollPadding: _fieldScrollPadding,
-        autofillHints: const [AutofillHints.email],
-        style: const TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w600,
-          color: HexaColors.inputText,
-        ),
-        onSubmitted: (_) => _passFocus.requestFocus(),
-        decoration: _fieldDeco(
-          'Work email',
-          'you@company.com',
-          Icons.mail_outline_rounded,
-          err: eErr != null,
-        ),
-      ),
-      _err(eErr),
-      const SizedBox(height: _gapInput),
-      KeyedSubtree(
-        key: _passwordFieldKey,
-        child: TextField(
-          controller: _loginPass,
-          focusNode: _passFocus,
-          obscureText: _obscure,
-          textInputAction: TextInputAction.done,
-          scrollPadding: _fieldScrollPadding,
-          autofillHints: const [AutofillHints.password],
-          style: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: HexaColors.inputText,
-          ),
-          onSubmitted: (_) => _signIn(),
-          decoration: _fieldDeco(
-            'Password',
-            'Enter your password',
-            Icons.lock_outline_rounded,
-            err: pErr != null,
-            suffix: IconButton(
-              tooltip: _obscure ? 'Show password' : 'Hide password',
-              style: IconButton.styleFrom(
-                minimumSize: const Size(48, 48),
-                padding: const EdgeInsets.all(8),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                visualDensity: VisualDensity.compact,
-              ),
-              onPressed: () => setState(() => _obscure = !_obscure),
-              icon: Icon(
-                _obscure
-                    ? Icons.visibility_outlined
-                    : Icons.visibility_off_outlined,
-                color: HexaColors.textBody,
-                size: 22,
+                'H',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
           ),
         ),
-      ),
-      _err(pErr),
-      const SizedBox(height: _gapInputMin),
-      Align(
-        alignment: Alignment.centerRight,
-        child: TextButton(
-          onPressed: _loading ? null : _forgotPassword,
-          style: TextButton.styleFrom(
-            foregroundColor: HexaColors.brandAccent,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            minimumSize: const Size(48, 44),
-            tapTargetSize: MaterialTapTargetSize.padded,
-          ),
-          child: const Text(
-            'Forgot password?',
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 14,
-            ),
-          ),
-        ),
-      ),
-      const SizedBox(height: _gapButton),
-      Listener(
-        onPointerDown: (_) {
-          if (!_loading && mounted) {
-            setState(() => _buttonPressed = true);
-          }
-        },
-        onPointerUp: (_) {
-          if (mounted) setState(() => _buttonPressed = false);
-        },
-        onPointerCancel: (_) {
-          if (mounted) setState(() => _buttonPressed = false);
-        },
-        child: AnimatedScale(
-          scale: (_buttonPressed && !_loading) ? 0.97 : 1,
-          duration: const Duration(milliseconds: 110),
-          curve: Curves.easeOutCubic,
-          child: _LoginGradientCta(
-            label: 'Sign In',
-            busy: _loading,
-            onTap: () {
-              if (_loading) return;
-              if (!_isFormValid) {
-                setState(() => _showValidation = true);
-                return;
-              }
-              _signIn();
-            },
-          ),
-        ),
-      ),
-      if (showGoogle) ...[
-        const SizedBox(height: _gapSection),
-        const Row(
-          children: [
-            Expanded(child: Divider(color: HexaColors.brandBorder)),
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 12),
-              child: Text(
-                'or',
+        const SizedBox(width: 12),
+        const Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                AppConfig.appName,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F172A),
+                  height: 1.15,
+                ),
+              ),
+              SizedBox(height: 2),
+              Text(
+                'Purchase Intelligence',
                 style: TextStyle(
                   fontSize: 13,
-                  color: HexaColors.textOnLightSurface,
-                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF757575),
+                  fontWeight: FontWeight.w400,
                 ),
-              ),
-            ),
-            Expanded(child: Divider(color: HexaColors.brandBorder)),
-          ],
-        ),
-        const SizedBox(height: _gapInput),
-        SizedBox(
-          width: double.infinity,
-          height: 52,
-          child: OutlinedButton(
-            onPressed: _loading ? null : _googleSignIn,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: HexaColors.textOnLightSurface,
-              backgroundColor: Colors.white,
-              minimumSize: const Size(double.infinity, 52),
-              side: const BorderSide(color: HexaColors.brandBorder, width: 1.25),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-              elevation: 0,
-              shadowColor: Colors.transparent,
-            ),
-            child: const Text(
-              'Continue with Google',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ),
-        ),
-      ],
-      const SizedBox(height: _gapFooter),
-      Text(
-        '${AppConfig.appName} © 2026',
-        textAlign: TextAlign.center,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontSize: 11,
-          color: HexaColors.textOnLightSurface.withValues(alpha: 0.88),
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    ];
-  }
-
-  /// Mobile-only: branding over full-screen hero (no duplicate image card).
-  Widget _loginMobileBrandingHeader() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: Image.asset(
-            _logoAsset,
-            width: 64,
-            height: 64,
-            fit: BoxFit.cover,
-            filterQuality: FilterQuality.high,
-            gaplessPlayback: true,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          'Welcome back',
-          style: TextStyle(
-            fontSize: 26,
-            fontWeight: FontWeight.w800,
-            height: 1.12,
-            letterSpacing: -0.5,
-            color: Colors.white,
-            shadows: [
-              Shadow(
-                color: Colors.black.withValues(alpha: 0.55),
-                offset: const Offset(0, 2),
-                blurRadius: 14,
-              ),
-              Shadow(
-                color: Colors.black.withValues(alpha: 0.35),
-                offset: const Offset(0, 1),
-                blurRadius: 4,
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Manage your purchases smarter',
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w500,
-            height: 1.4,
-            color: Colors.white.withValues(alpha: 0.95),
-            shadows: [
-              Shadow(
-                color: Colors.black.withValues(alpha: 0.45),
-                offset: const Offset(0, 1),
-                blurRadius: 10,
               ),
             ],
           ),
@@ -824,123 +343,36 @@ class _LoginPageState extends ConsumerState<LoginPage>
     );
   }
 
-  /// Full-screen background + frosted form (mobile + keyboard-open).
-  Widget _buildMobileAuthScaffold(BuildContext context,
-      {required bool showGoogle}) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      resizeToAvoidBottomInset: true,
-      body: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => FocusScope.of(context).unfocus(),
-        child: Stack(
-          fit: StackFit.expand,
+  Widget _segmented() {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(3),
+        child: Row(
           children: [
-            Positioned.fill(
-              child: Image.asset(
-                _panelBgAsset,
-                width: double.infinity,
-                height: double.infinity,
-                fit: BoxFit.cover,
-                alignment: Alignment.center,
-                filterQuality: FilterQuality.high,
-                gaplessPlayback: true,
+            Expanded(
+              child: _SegmentChip(
+                label: 'Sign In',
+                selected: _segmentIndex == 0,
+                onTap: () => setState(() => _segmentIndex = 0),
               ),
             ),
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [
-                      Colors.black.withValues(alpha: 0.65),
-                      Colors.black.withValues(alpha: 0.35),
-                      Colors.transparent,
-                    ],
-                    stops: const [0.0, 0.45, 1.0],
-                  ),
-                ),
-              ),
-            ),
-            SafeArea(
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final keyboardBottom =
-                        MediaQuery.viewInsetsOf(context).bottom + 20;
-                    return SingleChildScrollView(
-                      controller: _authScrollController,
-                      physics: const ClampingScrollPhysics(),
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      clipBehavior: Clip.hardEdge,
-                      padding: EdgeInsets.only(bottom: keyboardBottom),
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          minHeight: constraints.maxHeight,
-                        ),
-                        child: FadeTransition(
-                          opacity: _cardFade,
-                          child: Form(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 8),
-                                  child: _loginMobileBrandingHeader(),
-                                ),
-                                const SizedBox(height: 18),
-                                AuthGlassFormPanel(
-                                  child: AutofillGroup(
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.stretch,
-                                      children: _loginFormFields(
-                                        context,
-                                        showGoogle: showGoogle,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
+            const SizedBox(width: 3),
+            Expanded(
+              child: _SegmentChip(
+                label: 'Create Account',
+                selected: false,
+                onTap: () {
+                  if (!mounted) return;
+                  FocusScope.of(context).unfocus();
+                  context.go('/signup');
+                },
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _loginCard(
-    BuildContext context, {
-    required bool showGoogle,
-    bool compactPadding = false,
-  }) {
-    final inset = compactPadding
-        ? const EdgeInsets.all(20)
-        : const EdgeInsets.symmetric(horizontal: 24, vertical: 20);
-    return FadeTransition(
-      opacity: _cardFade,
-      child: AuthGlassFormPanel(
-        padding: inset,
-        child: AutofillGroup(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: _loginFormFields(context, showGoogle: showGoogle),
-          ),
         ),
       ),
     );
@@ -948,129 +380,252 @@ class _LoginPageState extends ConsumerState<LoginPage>
 
   @override
   Widget build(BuildContext context) {
+    final eErr = _emailError();
+    final pErr = _passError();
     final showGoogle = AppConfig.googleOAuthClientId.isNotEmpty;
-    final inset = MediaQuery.viewInsetsOf(context).bottom;
-    final w = MediaQuery.sizeOf(context).width;
 
-    if (inset > 8) {
-      return _buildMobileAuthScaffold(context, showGoogle: showGoogle);
-    }
-
-    if (w >= _desktopSplitMinWidth) {
-      return Scaffold(
-        backgroundColor: const Color(0xFFF1F5F4),
-        resizeToAvoidBottomInset: true,
-        body: SafeArea(
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => FocusScope.of(context).unfocus(),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  flex: 11,
-                  child: _brandPanel(compact: false),
-                ),
-                Expanded(
-                  flex: 9,
-                  child: Center(
-                    child: SingleChildScrollView(
-                      controller: _authScrollController,
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      clipBehavior: Clip.hardEdge,
-                      padding: EdgeInsets.fromLTRB(
-                        24,
-                        32,
-                        24,
-                        32 + _pageBottomPad + inset,
+    return Scaffold(
+      backgroundColor: const Color(0xFFE8F5F2),
+      resizeToAvoidBottomInset: true,
+      body: GestureDetector(
+        behavior: HitTestBehavior.deferToChild,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: AuthPageShell(
+          children: [
+            const AuthSmallLogo(),
+            AuthFormCard(
+              child: AutofillGroup(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _brandHeader(),
+                    const SizedBox(height: 12),
+                    _segmented(),
+                    const SizedBox(height: 12),
+                    if (_showNetworkBanner)
+                      AuthNetworkErrorBanner(
+                        onRetry: _retryAfterNetwork,
+                        title: authUnreachableBannerTitle(_lastNetworkError),
+                        detail: authServerUnreachableDetail(_lastNetworkError),
                       ),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 420),
-                        child: _loginCard(context, showGoogle: showGoogle),
+                    TextField(
+                      controller: _loginEmail,
+                      focusNode: _emailFocus,
+                      keyboardType: TextInputType.emailAddress,
+                      textInputAction: TextInputAction.next,
+                      autofillHints: const [AutofillHints.email],
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      onSubmitted: (_) => _passFocus.requestFocus(),
+                      decoration: authFilledDecoration(
+                        'Email',
+                        icon: Icons.mail_outline_rounded,
+                        err: eErr != null,
                       ),
                     ),
-                  ),
+                    _err(eErr),
+                    TextField(
+                      controller: _loginPass,
+                      focusNode: _passFocus,
+                      obscureText: _obscure,
+                      textInputAction: TextInputAction.done,
+                      autofillHints: const [AutofillHints.password],
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      onSubmitted: (_) {
+                        if (_isFormValid) _signIn();
+                      },
+                      decoration: authFilledDecoration(
+                        'Password',
+                        icon: Icons.key_rounded,
+                        err: pErr != null,
+                        suffix: IconButton(
+                          tooltip: _obscure ? 'Show password' : 'Hide password',
+                          onPressed: () => setState(() => _obscure = !_obscure),
+                          icon: Icon(
+                            _obscure
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                            color: const Color(0xFF6B7280),
+                            size: 22,
+                          ),
+                        ),
+                      ),
+                    ),
+                    _err(pErr),
+                    if (_inlineAuthError != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        _inlineAuthError!,
+                        style: TextStyle(
+                          color: Colors.red.shade700,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: FilledButton(
+                        onPressed: _loading
+                            ? null
+                            : (_isFormValid
+                                ? _signIn
+                                : () => setState(() => _showValidation = true)),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: HexaColors.brandPrimary,
+                          disabledBackgroundColor: const Color(0xFFE5E7EB),
+                          disabledForegroundColor: const Color(0xFF6B7280),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          textStyle: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        child: _loading
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text('Sign In'),
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: _loading
+                            ? null
+                            : () {
+                                context.push('/forgot-password');
+                              },
+                        child: const Text(
+                          'Forgot password?',
+                          style: TextStyle(
+                            color: HexaColors.brandAccent,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Center(
+                      child: TextButton(
+                        onPressed: _loading
+                            ? null
+                            : () => context.go('/signup'),
+                        child: const Text(
+                          'Create account',
+                          style: TextStyle(
+                            color: HexaColors.brandAccent,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (showGoogle) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Expanded(child: Divider(color: Colors.grey.shade300)),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Text(
+                              'or',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ),
+                          Expanded(child: Divider(color: Colors.grey.shade300)),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: OutlinedButton(
+                          onPressed: _loading ? null : _googleSignIn,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF0F172A),
+                            side: BorderSide(color: Colors.grey.shade300),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          child: const Text(
+                            'Continue with Google',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    Text(
+                      '${AppConfig.appName} © 2026',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
-      );
-    }
-
-    return _buildMobileAuthScaffold(context, showGoogle: showGoogle);
+      ),
+    );
   }
 }
 
-class _LoginGradientCta extends StatelessWidget {
-  const _LoginGradientCta({
+class _SegmentChip extends StatelessWidget {
+  const _SegmentChip({
     required this.label,
-    required this.busy,
+    required this.selected,
     required this.onTap,
   });
 
   final String label;
-  final bool busy;
+  final bool selected;
   final VoidCallback onTap;
-
-  static List<BoxShadow> get _ctaShadow => [
-        BoxShadow(
-          color: HexaColors.brandPrimary.withValues(alpha: 0.32),
-          blurRadius: 18,
-          offset: const Offset(0, 6),
-        ),
-        BoxShadow(
-          color: Colors.black.withValues(alpha: 0.12),
-          blurRadius: 14,
-          offset: const Offset(0, 4),
-        ),
-      ];
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      height: 56,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: busy ? null : onTap,
-          borderRadius: BorderRadius.circular(14),
-          splashColor: Colors.white.withValues(alpha: 0.22),
-          highlightColor: Colors.white.withValues(alpha: 0.1),
-          child: Ink(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              gradient: HexaColors.ctaGradient,
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.28),
-                width: 1,
-              ),
-              boxShadow: _ctaShadow,
-            ),
-            child: Opacity(
-              opacity: busy ? 0.88 : 1,
-              child: Center(
-                child: busy
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : Text(
-                        label,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: 0.2,
-                        ),
-                      ),
-              ),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(9),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? HexaColors.brandPrimary : Colors.transparent,
+            borderRadius: BorderRadius.circular(9),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: selected ? Colors.white : Colors.grey.shade700,
             ),
           ),
         ),

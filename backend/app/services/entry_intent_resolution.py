@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Broker, Supplier
 from app.schemas.entries import EntryCreateRequest, EntryLineInput
+from app.services.entry_intent_resolution_v2 import EntityFieldResolver
 
 
 def ist_today() -> date:
@@ -115,6 +116,9 @@ async def build_entry_create_request(
     Build a single-line EntryCreateRequest from parser data.
     Returns (request, missing_fields) — missing_fields non-empty means cannot preview.
     """
+    # Resolve all field aliases to canonical names
+    data = EntityFieldResolver.resolve_entity_fields(data)
+    
     item = data.get("item")
     if not item or not str(item).strip():
         return None, ["item"]

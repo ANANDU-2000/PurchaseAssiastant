@@ -304,6 +304,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       }
     });
     final autofill = ref.watch(smartAutofillEnabledProvider);
+    final quickSavePurchase = ref.watch(quickSavePurchaseProvider);
     final notif = ref.watch(localNotificationsOptInProvider);
     final themeMode = ref.watch(themeModeProvider);
     final isOwner = session?.primaryBusiness.role == 'owner';
@@ -507,6 +508,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   value: autofill,
                   onChanged: (v) => ref
                       .read(smartAutofillEnabledProvider.notifier)
+                      .setValue(v),
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  secondary:
+                      Icon(Icons.flash_on_rounded, color: cs.primary),
+                  title: const Text('Quick save purchase'),
+                  subtitle: const Text(
+                      'After save, close immediately with a toast. Turn off to show share PDF / WhatsApp sheet.'),
+                  value: quickSavePurchase,
+                  onChanged: (v) => ref
+                      .read(quickSavePurchaseProvider.notifier)
                       .setValue(v),
                 ),
                 const Divider(height: 1),

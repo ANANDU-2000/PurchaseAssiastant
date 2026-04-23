@@ -5,6 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// data listen and refetch / invalidate their own providers.
 final businessDataWriteRevisionProvider = StateProvider<int>((ref) => 0);
 
-void bumpBusinessDataWriteRevision(WidgetRef ref) {
+void bumpBusinessDataWriteRevision(dynamic ref) {
   ref.read(businessDataWriteRevisionProvider.notifier).state++;
 }

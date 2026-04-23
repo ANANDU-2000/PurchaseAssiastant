@@ -345,6 +345,15 @@ async def lifespan(app: FastAPI):
                     )
                 else:
                     alters.append("ALTER TABLE trade_purchases ADD COLUMN payment_days INTEGER")
+            if "invoice_number" not in cols:
+                if dialect == "postgresql":
+                    alters.append(
+                        "ALTER TABLE trade_purchases ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(64) NULL"
+                    )
+                else:
+                    alters.append(
+                        "ALTER TABLE trade_purchases ADD COLUMN invoice_number VARCHAR(64) NULL"
+                    )
             for sql in alters:
                 try:
                     sync_conn.exec_driver_sql(sql)

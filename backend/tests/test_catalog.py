@@ -50,7 +50,7 @@ def test_category_and_item_crud():
 
     r = client.post(
         f"/v1/businesses/{bid}/catalog-items",
-        json={"category_id": cid, "name": "Toor Dal", "default_unit": "kg"},
+        json={"category_id": cid, "name": "Toor Dal", "default_unit": "kg", "hsn_code": "04061090"},
         headers=h,
     )
     assert r.status_code == 201, r.text
@@ -66,6 +66,7 @@ def test_category_and_item_crud():
             "name": "Rice bulk",
             "default_unit": "bag",
             "default_kg_per_bag": 50,
+            "hsn_code": "10063020",
         },
         headers=h,
     )

@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/hexa_api.dart';
 import '../models/session.dart';
+import '../providers/business_aggregates_invalidation.dart'
+    show invalidateWorkspaceSeedData;
 import '../providers/prefs_provider.dart';
 import 'google_sign_in_helper.dart';
 import 'secure_token_store.dart';
@@ -85,6 +87,49 @@ class SessionNotifier extends Notifier<Session?> {
     await cache.saveBusinesses(session.businesses);
   }
 
+  /// Post-login bootstrap: does not block [restore] / [login] UI — runs after a microtask.
+  /// Soft-fail: [HexaApi.bootstrapWorkspace] returns null on 404/501 (older server).
+  void _scheduleWorkspaceBootstrap() {
+    unawaited(_deferredWorkspaceBootstrap());
+  }
+
+  Future<void> _deferredWorkspaceBootstrap() async {
+    await Future<void>.delayed(Duration.zero);
+    final session = state;
+    if (session == null) return;
+    final accessToken = session.accessToken;
+    final api = ref.read(hexaApiProvider);
+    try {
+      final boot = await api.bootstrapWorkspace();
+      if (boot == null) return;
+      if (boot['created_business'] == true) {
+        final list = await api.meBusinesses();
+        if (state == null) return;
+        if (state!.accessToken != accessToken) return;
+        state = Session(
+          accessToken: state!.accessToken,
+          refreshToken: state!.refreshToken,
+          businesses: list,
+        );
+        await _persistSession(state!);
+        authRefresh.value++;
+      }
+      if (boot['seeded'] == true) {
+        invalidateWorkspaceSeedData(ref);
+      }
+    } on DioException catch (e) {
+      assert(() {
+        debugPrint('deferred workspace bootstrap: ${e.message}');
+        return true;
+      }());
+    } catch (e) {
+      assert(() {
+        debugPrint('deferred workspace bootstrap: $e');
+        return true;
+      }());
+    }
+  }
+
   Future<void> restore() => _withAuthSerial(_restoreImpl);
 
   Future<void> _restoreImpl() async {
@@ -122,6 +167,7 @@ class SessionNotifier extends Notifier<Session?> {
       state = session;
       await _persistSession(session);
       authRefresh.value++;
+      _scheduleWorkspaceBootstrap();
     }
 
     try {
@@ -241,14 +287,15 @@ class SessionNotifier extends Notifier<Session?> {
     final tokens = await api.login(email: email, password: password);
     await store.write(access: tokens.access, refresh: tokens.refresh);
     api.setAuthToken(tokens.access);
-    final businesses = await api.meBusinesses();
-    final session = Session(
+    var businesses = await api.meBusinesses();
+    var session = Session(
         accessToken: tokens.access,
         refreshToken: tokens.refresh,
         businesses: businesses);
     state = session;
     await _persistSession(session);
     authRefresh.value++;
+    _scheduleWorkspaceBootstrap();
   }
 
   Future<void> register(
@@ -281,14 +328,15 @@ class SessionNotifier extends Notifier<Session?> {
         name: name);
     await store.write(access: tokens.access, refresh: tokens.refresh);
     api.setAuthToken(tokens.access);
-    final businesses = await api.meBusinesses();
-    final session = Session(
+    var businesses = await api.meBusinesses();
+    var session = Session(
         accessToken: tokens.access,
         refreshToken: tokens.refresh,
         businesses: businesses);
     state = session;
     await _persistSession(session);
     authRefresh.value++;
+    _scheduleWorkspaceBootstrap();
   }
 
   Future<void> signInWithGoogle({required String idToken}) =>
@@ -301,14 +349,15 @@ class SessionNotifier extends Notifier<Session?> {
     final tokens = await api.loginWithGoogle(idToken: idToken);
     await store.write(access: tokens.access, refresh: tokens.refresh);
     api.setAuthToken(tokens.access);
-    final businesses = await api.meBusinesses();
-    final session = Session(
+    var businesses = await api.meBusinesses();
+    var session = Session(
         accessToken: tokens.access,
         refreshToken: tokens.refresh,
         businesses: businesses);
     state = session;
     await _persistSession(session);
     authRefresh.value++;
+    _scheduleWorkspaceBootstrap();
   }
 
   /// Reload workspaces from API (e.g. after branding update).

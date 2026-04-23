@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.config import Settings
+from app.services.whatsapp_state_v2 import WhatsAppEntityDraft
 
 logger = logging.getLogger(__name__)
 

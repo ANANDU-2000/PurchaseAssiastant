@@ -9,7 +9,8 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta name="description" content="Harisree Purchases">
 
-  <!-- Do not add <meta name="viewport"> — Flutter Web injects its own; a duplicate triggers dom.dart warnings. -->
+  <!-- Viewport for iOS PWA keyboard handling -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Harisree">
@@ -32,7 +33,8 @@
     body {
       margin: 0;
       padding: 0;
-      height: 100%;
+      position: fixed;
+      height: 100vh;
       width: 100%;
       max-width: 100vw;
       overflow-x: hidden;
@@ -40,6 +42,12 @@
       background: #F5F7FA;
       overscroll-behavior: none;
       -webkit-overflow-scrolling: touch;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    #app {
+      width: 100%;
+      height: 100%;
     }
     flt-glass-pane {
       touch-action: pan-y !important;

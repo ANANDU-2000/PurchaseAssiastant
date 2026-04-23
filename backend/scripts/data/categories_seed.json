@@ -1,0 +1,357 @@
+[
+  {
+    "name": "Rice",
+    "subcategories": [
+      {
+        "name": "BIRIYANI RICE",
+        "hsn": "10063090",
+        "default_unit": "kg"
+      },
+      {
+        "name": "CHERUMANI RICE",
+        "hsn": "10063090",
+        "default_unit": "bag"
+      },
+      {
+        "name": "JAYA RICE",
+        "hsn": "10063090",
+        "default_unit": "kg"
+      },
+      {
+        "name": "MATTA RICE",
+        "hsn": "10063090",
+        "default_unit": "kg"
+      },
+      {
+        "name": "PONNI RICE",
+        "hsn": "10063090",
+        "default_unit": "bag"
+      },
+      {
+        "name": "RAW RICE",
+        "hsn": "10063090",
+        "default_unit": "kg"
+      }
+    ]
+  },
+  {
+    "name": "Edible Oil",
+    "subcategories": [
+      {
+        "name": "EDIBLE OIL",
+        "hsn": "15091000",
+        "default_unit": "piece"
+      },
+      {
+        "name": "DALDA",
+        "hsn": "15161010",
+        "default_unit": "piece"
+      },
+      {
+        "name": "OIL",
+        "hsn": "15091000",
+        "default_unit": "piece"
+      }
+    ]
+  },
+  {
+    "name": "Pulses & Grains",
+    "subcategories": [
+      {
+        "name": "CHERUPAYAR",
+        "hsn": "07131000",
+        "default_unit": "bag"
+      },
+      {
+        "name": "KADALA",
+        "hsn": "07131000",
+        "default_unit": "bag"
+      },
+      {
+        "name": "THUVARA",
+        "hsn": "07135000",
+        "default_unit": "bag"
+      },
+      {
+        "name": "UZHUNNU",
+        "hsn": "07131000",
+        "default_unit": "kg"
+      },
+      {
+        "name": "PAYAR",
+        "hsn": "07131000",
+        "default_unit": "bag"
+      },
+      {
+        "name": "MASOOR DALL",
+        "hsn": "07134000",
+        "default_unit": "bag"
+      },
+      {
+        "name": "GREENPEAS",
+        "hsn": "07131000",
+        "default_unit": "bag"
+      },
+      {
+        "name": "WHITE KADALA",
+        "hsn": "07131000",
+        "default_unit": "kg"
+      },
+      {
+        "name": "RAJMA PAYAR",
+        "hsn": "07133300",
+        "default_unit": "kg"
+      },
+      {
+        "name": "MUTHIRA",
+        "hsn": "07131000",
+        "default_unit": "bag"
+      },
+      {
+        "name": "FRIED GRAM",
+        "hsn": "07131000",
+        "default_unit": "bag"
+      },
+      {
+        "name": "WHITE PEAS",
+        "hsn": "07131000",
+        "default_unit": "bag"
+      },
+      {
+        "name": "VADAPARIPP",
+        "hsn": "07131000",
+        "default_unit": "kg"
+      }
+    ]
+  },
+  {
+    "name": "Spices",
+    "subcategories": [
+      {
+        "name": "CHILLI",
+        "hsn": "09042110",
+        "default_unit": "bag"
+      },
+      {
+        "name": "MALLI",
+        "hsn": "09092100",
+        "default_unit": "bag"
+      },
+      {
+        "name": "JEERAKAM",
+        "hsn": "09093100",
+        "default_unit": "bag"
+      },
+      {
+        "name": "KAAYAM",
+        "hsn": "09099900",
+        "default_unit": "piece"
+      },
+      {
+        "name": "KADUK",
+        "hsn": "09041110",
+        "default_unit": "bag"
+      },
+      {
+        "name": "MANJAL",
+        "hsn": "09096300",
+        "default_unit": "bag"
+      },
+      {
+        "name": "SPICES",
+        "hsn": "09109914",
+        "default_unit": "kg"
+      },
+      {
+        "name": "ELLU",
+        "hsn": "12074090",
+        "default_unit": "bag"
+      },
+      {
+        "name": "ULUVA",
+        "hsn": "09092190",
+        "default_unit": "bag"
+      },
+      {
+        "name": "DRY GINGER",
+        "hsn": "09101190",
+        "default_unit": "kg"
+      },
+      {
+        "name": "PERINJEERAKAM",
+        "hsn": "09093100",
+        "default_unit": "kg"
+      }
+    ]
+  },
+  {
+    "name": "Flour & Atta",
+    "subcategories": [
+      {
+        "name": "MAIDA ATTA SOOJI",
+        "hsn": "11029000",
+        "default_unit": "bag"
+      },
+      {
+        "name": "WHEAT FLOUR",
+        "hsn": "11010000",
+        "default_unit": "piece"
+      },
+      {
+        "name": "WHEAT",
+        "hsn": "10019900",
+        "default_unit": "kg"
+      },
+      {
+        "name": "KADALAMAVU",
+        "hsn": "11061000",
+        "default_unit": "bag"
+      },
+      {
+        "name": "RAGI",
+        "hsn": "10083000",
+        "default_unit": "kg"
+      },
+      {
+        "name": "CORNFLOUR",
+        "hsn": "11081200",
+        "default_unit": "kg"
+      },
+      {
+        "name": "ELITE ATTA PKT",
+        "hsn": "11010000",
+        "default_unit": "piece"
+      }
+    ]
+  },
+  {
+    "name": "Dry Fruits & Nuts",
+    "subcategories": [
+      {
+        "name": "CASHEW NUT",
+        "hsn": "08011100",
+        "default_unit": "kg"
+      },
+      {
+        "name": "KISMIS",
+        "hsn": "08062000",
+        "default_unit": "kg"
+      },
+      {
+        "name": "KAPPALANDI",
+        "hsn": "12024200",
+        "default_unit": "kg"
+      },
+      {
+        "name": "DRY FRUITS",
+        "hsn": "08134000",
+        "default_unit": "kg"
+      }
+    ]
+  },
+  {
+    "name": "Essentials",
+    "subcategories": [
+      {
+        "name": "AVIL",
+        "hsn": "19041020",
+        "default_unit": "kg"
+      },
+      {
+        "name": "SUGAR",
+        "hsn": "17011400",
+        "default_unit": "piece"
+      },
+      {
+        "name": "SALT",
+        "hsn": "25010090",
+        "default_unit": "piece"
+      },
+      {
+        "name": "BELLAM",
+        "hsn": "17019910",
+        "default_unit": "kg"
+      },
+      {
+        "name": "KALKANDAM",
+        "hsn": "17019910",
+        "default_unit": "kg"
+      }
+    ]
+  },
+  {
+    "name": "Packaged Foods",
+    "subcategories": [
+      {
+        "name": "FAST FOOD ITEMS",
+        "hsn": "19019000",
+        "default_unit": "piece"
+      },
+      {
+        "name": "FRYMES",
+        "hsn": "20059900",
+        "default_unit": "kg"
+      },
+      {
+        "name": "MEALMAKER",
+        "hsn": "21069099",
+        "default_unit": "bag"
+      }
+    ]
+  },
+  {
+    "name": "Miscellaneous",
+    "subcategories": [
+      {
+        "name": "VEGETABLES",
+        "hsn": "21069099",
+        "default_unit": "kg"
+      },
+      {
+        "name": "CATTLE FEED",
+        "hsn": "21069099",
+        "default_unit": "bag"
+      },
+      {
+        "name": "THINA",
+        "hsn": "21069099",
+        "default_unit": "bag"
+      },
+      {
+        "name": "BATRI",
+        "hsn": "21069099",
+        "default_unit": "kg"
+      },
+      {
+        "name": "DILSHAD",
+        "hsn": "21069099",
+        "default_unit": "kg"
+      },
+      {
+        "name": "MALAR",
+        "hsn": "21069099",
+        "default_unit": "kg"
+      },
+      {
+        "name": "PULI",
+        "hsn": "21069099",
+        "default_unit": "kg"
+      },
+      {
+        "name": "RABBIT",
+        "hsn": "21069099",
+        "default_unit": "piece"
+      },
+      {
+        "name": "RUCHI",
+        "hsn": "21069099",
+        "default_unit": "piece"
+      },
+      {
+        "name": "SAVARI",
+        "hsn": "21069099",
+        "default_unit": "kg"
+      }
+    ]
+  }
+]

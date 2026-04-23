@@ -13,6 +13,9 @@ class LocalNotificationsService {
       LocalNotificationsService._();
 
   static const _dailyId = 91001;
+  static int _purchaseDueId(String purchaseId) =>
+      purchaseId.hashCode & 0x3fffffff;
+
   final FlutterLocalNotificationsPlugin _p = FlutterLocalNotificationsPlugin();
   bool _inited = false;
 
@@ -81,5 +84,61 @@ class LocalNotificationsService {
       scheduled = scheduled.add(const Duration(days: 1));
     }
     return scheduled;
+  }
+
+  /// One shot at 09:00 on the **due** date (from API). No-op on web.
+  /// Safe to call after every save — replaces any previous schedule for this purchase id.
+  Future<void> scheduleTradePurchaseDueAtNineAmIfNeeded({
+    required String purchaseId,
+    String? dueDateIso,
+    String? humanId,
+  }) async {
+    if (kIsWeb || !_inited) return;
+    if (dueDateIso == null || dueDateIso.isEmpty) return;
+    final p = _parseYmd(dueDateIso);
+    if (p == null) return;
+    final id = _purchaseDueId(purchaseId);
+    await _p.cancel(id: id);
+    final loc = tz.local;
+    var when = tz.TZDateTime(loc, p.$1, p.$2, p.$3, 9, 0);
+    final now = tz.TZDateTime.now(loc);
+    if (!when.isAfter(now)) return;
+    final label = (humanId != null && humanId.isNotEmpty) ? humanId : purchaseId;
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'my_purchases_due',
+        'Payment due',
+        channelDescription: 'Reminders for purchase payment due dates.',
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+      ),
+      iOS: DarwinNotificationDetails(),
+      windows: WindowsNotificationDetails(),
+    );
+    await _p.zonedSchedule(
+      id: id,
+      scheduledDate: when,
+      notificationDetails: details,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      title: 'Payment may be due',
+      body: 'Review payment for $label.',
+    );
+  }
+
+  (int, int, int)? _parseYmd(String s) {
+    if (s.length >= 10) {
+      final t = s.substring(0, 10).split('-');
+      if (t.length == 3) {
+        final y = int.tryParse(t[0]);
+        final m = int.tryParse(t[1]);
+        final d = int.tryParse(t[2]);
+        if (y != null && m != null && d != null) {
+          return (y, m, d);
+        }
+      }
+    }
+    final p = DateTime.tryParse(s);
+    if (p == null) return null;
+    return (p.year, p.month, p.day);
   }
 }

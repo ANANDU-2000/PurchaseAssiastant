@@ -1,9 +1,10 @@
+import re
 import uuid
 from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +27,10 @@ class SupplierPrefsIn(BaseModel):
     item_ids: list[uuid.UUID] = Field(default_factory=list)
 
 
+_PHONE_RE = re.compile(r"^\+?\d{10,15}$")
+_GST_IN_RE = re.compile(r"^[0-9A-Z]{15}$")
+
+
 class SupplierCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     phone: str | None = None
@@ -33,7 +38,7 @@ class SupplierCreate(BaseModel):
     location: str | None = None
     broker_id: uuid.UUID | None = None
     broker_ids: list[uuid.UUID] | None = None
-    gst_number: str | None = Field(default=None, max_length=20)
+    gst_number: str | None = Field(default=None, max_length=15)
     address: str | None = None
     notes: str | None = None
     default_payment_days: int | None = Field(default=None, ge=0, le=3650)
@@ -43,6 +48,57 @@ class SupplierCreate(BaseModel):
     freight_type: str | None = Field(default=None, max_length=16)
     ai_memory_enabled: bool = False
     preferences: SupplierPrefsIn | None = None
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _strip_name(cls, v: object) -> object:
+        if isinstance(v, str):
+            return v.strip()
+        return v
+
+    @field_validator("name")
+    @classmethod
+    def _name_nonempty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("name must not be empty or whitespace")
+        return " ".join(v.split())
+
+    @field_validator("phone", "whatsapp_number", mode="before")
+    @classmethod
+    def _strip_phoneish(cls, v: object) -> object:
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return None
+        if isinstance(v, str):
+            s = re.sub(r"[\s-]", "", v.strip())
+            return s or None
+        return v
+
+    @field_validator("phone", "whatsapp_number")
+    @classmethod
+    def _phone_format(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        if not _PHONE_RE.match(v):
+            raise ValueError("must be 10-15 digits, optional + prefix")
+        return v
+
+    @field_validator("gst_number", mode="before")
+    @classmethod
+    def _strip_gst(cls, v: object) -> object:
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return None
+        if isinstance(v, str):
+            return re.sub(r"\s+", "", v.strip().upper())
+        return v
+
+    @field_validator("gst_number")
+    @classmethod
+    def _gst_format(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        if not _GST_IN_RE.match(v):
+            raise ValueError("gst_number must be 15 character GSTIN (alphanumeric, upper-case)")
+        return v
 
 
 class SupplierOut(BaseModel):
@@ -74,7 +130,7 @@ class SupplierUpdate(BaseModel):
     location: str | None = None
     broker_id: uuid.UUID | None = None
     broker_ids: list[uuid.UUID] | None = None
-    gst_number: str | None = Field(default=None, max_length=20)
+    gst_number: str | None = Field(default=None, max_length=15)
     address: str | None = None
     notes: str | None = None
     default_payment_days: int | None = Field(default=None, ge=0, le=3650)
@@ -84,6 +140,62 @@ class SupplierUpdate(BaseModel):
     freight_type: str | None = Field(default=None, max_length=16)
     ai_memory_enabled: bool | None = None
     preferences: SupplierPrefsIn | None = None
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _strip_name_opt(cls, v: object) -> object:
+        if v is None:
+            return v
+        if isinstance(v, str):
+            t = v.strip()
+            return t if t else None
+        return v
+
+    @field_validator("name")
+    @classmethod
+    def _name_if_set(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if not v.strip():
+            raise ValueError("name must not be empty or whitespace")
+        return " ".join(v.split())
+
+    @field_validator("phone", "whatsapp_number", mode="before")
+    @classmethod
+    def _strip_phoneish_u(cls, v: object) -> object:
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return None
+        if isinstance(v, str):
+            s = re.sub(r"[\s-]", "", v.strip())
+            return s or None
+        return v
+
+    @field_validator("phone", "whatsapp_number")
+    @classmethod
+    def _phone_format_u(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        if not _PHONE_RE.match(v):
+            raise ValueError("must be 10-15 digits, optional + prefix")
+        return v
+
+    @field_validator("gst_number", mode="before")
+    @classmethod
+    def _strip_gst_u(cls, v: object) -> object:
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return None
+        if isinstance(v, str):
+            return re.sub(r"\s+", "", v.strip().upper())
+        return v
+
+    @field_validator("gst_number")
+    @classmethod
+    def _gst_format_u(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if not _GST_IN_RE.match(v):
+            raise ValueError("gst_number must be 15 character GSTIN (alphanumeric, upper-case)")
+        return v
 
 
 async def _supplier_dup(

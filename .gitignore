@@ -38,3 +38,6 @@ flutter_app/**/ephemeral/
 # OS
 Thumbs.db
 .DS_Store
+
+# Accidental local archives (add intentionally if you need them in git)
+purhcaseappss.zip

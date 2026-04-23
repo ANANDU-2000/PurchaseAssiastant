@@ -11,6 +11,7 @@ from app.config import Settings, get_settings
 from app.database import get_db
 from app.deps import get_current_user, require_owner_membership
 from app.models import Business, Membership, User
+from app.services.default_workspace import bootstrap_user_workspace
 
 _MAX_LOGO_BYTES = 2 * 1024 * 1024
 _LOGO_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
@@ -71,6 +72,24 @@ class BusinessBrief(BaseModel):
     phone: str | None = None
 
     model_config = {"from_attributes": False}
+
+
+class BootstrapWorkspaceOut(BaseModel):
+    business_id: uuid.UUID
+    created_business: bool
+    seeded: bool
+    seed_stats: dict[str, int] | None = None
+
+
+@router.post("/bootstrap-workspace", response_model=BootstrapWorkspaceOut)
+async def post_bootstrap_workspace(
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+):
+    """Idempotent: ensure a workspace + default catalog/suppliers for this user (single-tenant mode)."""
+    data = await bootstrap_user_workspace(db, user, settings)
+    return BootstrapWorkspaceOut(**data)
 
 
 @router.get("/businesses", response_model=list[BusinessBrief])

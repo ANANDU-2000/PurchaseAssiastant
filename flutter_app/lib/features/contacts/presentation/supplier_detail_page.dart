@@ -434,40 +434,39 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                         ],
                       ),
                       const SizedBox(height: 16),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            _ChipPill(
-                                label: '7d',
-                                onTap: () => _preset(7),
-                                onGradient: false),
-                            _ChipPill(
-                                label: '30d',
-                                onTap: () => _preset(30),
-                                onGradient: false),
-                            _ChipPill(
-                                label: '90d',
-                                onTap: () => _preset(90),
-                                onGradient: false),
-                            _ChipPill(
-                              label: 'YTD',
-                              onGradient: false,
-                              onTap: () {
-                                final n = DateTime.now();
-                                setState(() {
-                                  _from = DateTime(n.year, 1, 1);
-                                  _to = _dOnly(n);
-                                });
-                                _reload();
-                              },
-                            ),
-                            _ChipPill(
-                                label: 'All',
-                                onTap: () => _preset(0),
-                                onGradient: false),
-                          ],
-                        ),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _ChipPill(
+                              label: '7d',
+                              onTap: () => _preset(7),
+                              onGradient: false),
+                          _ChipPill(
+                              label: '30d',
+                              onTap: () => _preset(30),
+                              onGradient: false),
+                          _ChipPill(
+                              label: '90d',
+                              onTap: () => _preset(90),
+                              onGradient: false),
+                          _ChipPill(
+                            label: 'YTD',
+                            onGradient: false,
+                            onTap: () {
+                              final n = DateTime.now();
+                              setState(() {
+                                _from = DateTime(n.year, 1, 1);
+                                _to = _dOnly(n);
+                              });
+                              _reload();
+                            },
+                          ),
+                          _ChipPill(
+                              label: 'All',
+                              onTap: () => _preset(0),
+                              onGradient: false),
+                        ],
                       ),
                       const SizedBox(height: 10),
                       Text(
@@ -611,61 +610,59 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
     final pam = (m['purchase_amount'] as num?)?.toDouble() ?? 0;
     final margin = (m['profit_margin_pct'] as num?)?.toDouble() ?? 0;
     const w = 152.0;
-    return SizedBox(
-      height: 120,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        children: [
-          SizedBox(
-              width: w,
-              child: _SupplierStatCard(
-                  icon: Icons.receipt_long_rounded,
-                  label: 'Deals',
-                  value: '$deals',
-                  accent: const Color(0xFF1A6B8A))),
-          const SizedBox(width: 12),
-          SizedBox(
-              width: w,
-              child: _SupplierStatCard(
-                  icon: Icons.shopping_cart_outlined,
-                  label: 'Purchase',
-                  value: '₹${pam.toStringAsFixed(0)}',
-                  accent: const Color(0xFF3949AB))),
-          const SizedBox(width: 12),
-          SizedBox(
-              width: w,
-              child: _SupplierStatCard(
-                  icon: Icons.scale_rounded,
-                  label: 'Total qty',
-                  value: tq.toStringAsFixed(1),
-                  accent: const Color(0xFF6A1B9A))),
-          const SizedBox(width: 12),
-          SizedBox(
-              width: w,
-              child: _SupplierStatCard(
-                  icon: Icons.price_change_outlined,
-                  label: 'Avg landing',
-                  value: '₹${al.toStringAsFixed(2)}',
-                  accent: const Color(0xFFFF9800))),
-          const SizedBox(width: 12),
-          SizedBox(
-              width: w,
-              child: _SupplierStatCard(
-                  icon: Icons.trending_up_rounded,
-                  label: 'Total profit',
-                  value: '₹${tp.toStringAsFixed(0)}',
-                  accent: HexaColors.profit)),
-          const SizedBox(width: 12),
-          SizedBox(
-              width: w,
-              child: _SupplierStatCard(
-                  icon: Icons.percent_rounded,
-                  label: 'Avg margin',
-                  value: '${margin.toStringAsFixed(1)}%',
-                  accent: HexaColors.accentAmber)),
-        ],
-      ),
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: [
+        SizedBox(
+            width: w,
+            height: 120,
+            child: _SupplierStatCard(
+                icon: Icons.receipt_long_rounded,
+                label: 'Deals',
+                value: '$deals',
+                accent: const Color(0xFF1A6B8A))),
+        SizedBox(
+            width: w,
+            height: 120,
+            child: _SupplierStatCard(
+                icon: Icons.shopping_cart_outlined,
+                label: 'Purchase',
+                value: '₹${pam.toStringAsFixed(0)}',
+                accent: const Color(0xFF3949AB))),
+        SizedBox(
+            width: w,
+            height: 120,
+            child: _SupplierStatCard(
+                icon: Icons.scale_rounded,
+                label: 'Total qty',
+                value: tq.toStringAsFixed(1),
+                accent: const Color(0xFF6A1B9A))),
+        SizedBox(
+            width: w,
+            height: 120,
+            child: _SupplierStatCard(
+                icon: Icons.price_change_outlined,
+                label: 'Avg landing',
+                value: '₹${al.toStringAsFixed(2)}',
+                accent: const Color(0xFFFF9800))),
+        SizedBox(
+            width: w,
+            height: 120,
+            child: _SupplierStatCard(
+                icon: Icons.trending_up_rounded,
+                label: 'Total profit',
+                value: '₹${tp.toStringAsFixed(0)}',
+                accent: HexaColors.profit)),
+        SizedBox(
+            width: w,
+            height: 120,
+            child: _SupplierStatCard(
+                icon: Icons.percent_rounded,
+                label: 'Avg margin',
+                value: '${margin.toStringAsFixed(1)}%',
+                accent: HexaColors.accentAmber)),
+      ],
     );
   }
 }
@@ -816,29 +813,20 @@ class _EntryTable extends StatelessWidget {
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
     return Card(
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          columnSpacing: 16,
-          columns: const [
-            DataColumn(label: Text('Date')),
-            DataColumn(label: Text('Items')),
-            DataColumn(label: Text('Qty')),
-            DataColumn(label: Text('Avg ₹')),
-            DataColumn(label: Text('Profit')),
-            DataColumn(label: Text('Margin %')),
-          ],
-          rows: [
-            for (final raw in entries)
-              if (raw is Map)
-                _buildRow(context, Map<String, dynamic>.from(raw), tt),
-          ],
-        ),
+      child: ListView.separated(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: entries.whereType<Map>().length,
+        separatorBuilder: (_, __) => const Divider(height: 1),
+        itemBuilder: (context, i) {
+          final raw = entries.whereType<Map>().elementAt(i);
+          return _entryTile(context, Map<String, dynamic>.from(raw), tt);
+        },
       ),
     );
   }
 
-  DataRow _buildRow(
+  Widget _entryTile(
       BuildContext context, Map<String, dynamic> e, TextTheme tt) {
     final d = e['entry_date']?.toString().split('T').first ?? '';
     final lines = e['lines'];
@@ -869,29 +857,17 @@ class _EntryTable extends StatelessWidget {
       }
       avgL = s / lines.length;
     }
-    final id = e['id']?.toString();
     final margin = sales > 0 ? (profit / sales) * 100 : null;
-    return DataRow(
-      onSelectChanged: id == null
-          ? null
-          : (_) {
-              context.push('/entry/$id');
-            },
-      cells: [
-        DataCell(Text(d, style: tt.labelMedium)),
-        DataCell(SizedBox(
-            width: 140,
-            child: Text(names.take(3).join(', '),
-                overflow: TextOverflow.ellipsis))),
-        DataCell(Text(q.toStringAsFixed(1))),
-        DataCell(Text(_inr(avgL))),
-        DataCell(Text(_inr(profit),
-            style: tt.labelMedium?.copyWith(fontWeight: FontWeight.w700))),
-        DataCell(Text(
-          margin == null ? '—' : '${margin.toStringAsFixed(1)}%',
-          style: tt.labelMedium?.copyWith(fontWeight: FontWeight.w700),
-        )),
-      ],
+    return ListTile(
+      onTap: null,
+      title: Text(d, style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+      subtitle: Text(
+        '${names.take(3).join(', ')}${names.length > 3 ? '…' : ''}\n'
+        'Qty ${q.toStringAsFixed(1)} · Avg ${_inr(avgL)} · Profit ${_inr(profit)}'
+        '${margin == null ? '' : ' · ${margin.toStringAsFixed(1)}% margin'}',
+        style: tt.bodySmall,
+      ),
+      isThreeLine: true,
     );
   }
 }

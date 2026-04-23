@@ -59,7 +59,7 @@ def test_supplier_create_full_payload_and_list_get():
     item = client.post(
         f"/v1/businesses/{bid}/catalog-items",
         headers=h,
-        json={"category_id": cid, "name": "Test Item", "type_id": tid},
+        json={"category_id": cid, "name": "Test Item", "type_id": tid, "default_unit": "kg", "hsn_code": "12345678"},
     )
     assert item.status_code == 201, item.text
     iid = item.json()["id"]

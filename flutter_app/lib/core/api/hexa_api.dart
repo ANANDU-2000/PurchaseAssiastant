@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:http_parser/http_parser.dart';
 
 import '../config/app_config.dart';
@@ -45,7 +46,9 @@ class HexaApi {
           if (path.contains('/auth/login') ||
               path.contains('/auth/register') ||
               path.contains('/auth/google') ||
-              path.contains('/auth/refresh')) {
+              path.contains('/auth/refresh') ||
+              path.contains('/auth/forgot-password') ||
+              path.contains('/auth/reset-password')) {
             return handler.next(err);
           }
           final ok = await _onUnauthorizedRefresh?.call() ?? false;
@@ -133,6 +136,30 @@ class HexaApi {
     return _tokenPairFromResponse(res);
   }
 
+  /// Request a password reset (no auth). In development the response may include `dev_reset_token`.
+  Future<Map<String, dynamic>> requestPasswordReset({required String email}) async {
+    final res = await _plain.post<Map<String, dynamic>>(
+      '/v1/auth/forgot-password',
+      data: {'email': email.trim().toLowerCase()},
+    );
+    return res.data ?? <String, dynamic>{};
+  }
+
+  /// Apply new password using the token from the reset link (no auth).
+  Future<Map<String, dynamic>> resetPasswordWithToken({
+    required String token,
+    required String newPassword,
+  }) async {
+    final res = await _plain.post<Map<String, dynamic>>(
+      '/v1/auth/reset-password',
+      data: {
+        'token': token,
+        'new_password': newPassword,
+      },
+    );
+    return res.data ?? <String, dynamic>{};
+  }
+
   /// No Bearer header — uses body only. Kept on [_plain] so it never inherits [setAuthToken].
   Future<({String access, String refresh})> refreshTokens(
       {required String refreshToken}) async {
@@ -150,6 +177,26 @@ class HexaApi {
     return data
         .map((e) => BusinessBrief.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
+  }
+
+  /// Idempotent: ensure default workspace + catalog/supplier seed (single-tenant).
+  /// Returns body JSON: `business_id`, `created_business`, `seeded`, optional `seed_stats`.
+  /// Returns null when the server has no route (older API: 404/501) so session boot can continue.
+  Future<Map<String, dynamic>?> bootstrapWorkspace() async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>('/v1/me/bootstrap-workspace');
+      final d = res.data;
+      if (d is Map) return Map<String, dynamic>.from(d as Map);
+      return null;
+    } on DioException catch (e) {
+      final sc = e.response?.statusCode;
+      if (sc == 404 || sc == 501) {
+        debugPrint(
+            'hexa: bootstrap-workspace not available (HTTP $sc) — continuing without server seed');
+        return null;
+      }
+      rethrow;
+    }
   }
 
   /// Owner: optional in-app title + logo URL (HTTPS recommended).
@@ -301,48 +348,6 @@ class HexaApi {
     final res = await _dio.get<Map<String, dynamic>>(
       '/v1/businesses/$businessId/search',
       queryParameters: {'q': q},
-    );
-    return res.data ?? {};
-  }
-
-  Future<Map<String, dynamic>> getEntry(
-      {required String businessId, required String entryId}) async {
-    final res =
-        await _dio.get<dynamic>('/v1/businesses/$businessId/entries/$entryId');
-    final d = res.data;
-    if (d is Map) return Map<String, dynamic>.from(d);
-    return {};
-  }
-
-  /// Preview (`confirm: false`) returns 200 with `preview: true`. Confirm returns 201.
-  Future<Map<String, dynamic>> createEntry(
-      {required String businessId, required Map<String, dynamic> body}) async {
-    final res = await _dio.post<dynamic>('/v1/businesses/$businessId/entries',
-        data: body);
-    final d = res.data;
-    if (d is Map) return Map<String, dynamic>.from(d);
-    return {};
-  }
-
-  Future<Map<String, dynamic>> checkDuplicate({
-    required String businessId,
-    required String itemName,
-    required double qty,
-    required String entryDateIso,
-    String? supplierId,
-    String? catalogVariantId,
-  }) async {
-    final res = await _dio.post<Map<String, dynamic>>(
-      '/v1/businesses/$businessId/entries/check-duplicate',
-      data: {
-        'item_name': itemName,
-        'qty': qty,
-        'entry_date': entryDateIso,
-        if (supplierId != null && supplierId.isNotEmpty)
-          'supplier_id': supplierId,
-        if (catalogVariantId != null && catalogVariantId.isNotEmpty)
-          'catalog_variant_id': catalogVariantId,
-      },
     );
     return res.data ?? {};
   }
@@ -848,12 +853,12 @@ class HexaApi {
     required String businessId,
     required String categoryId,
     required String name,
+    required String defaultUnit,
+    required String hsnCode,
     String? typeId,
-    String? defaultUnit,
     double? defaultKgPerBag,
     String? defaultPurchaseUnit,
     String? defaultSaleUnit,
-    String? hsnCode,
     double? taxPercent,
     double? defaultLandingCost,
     double? defaultSellingCost,
@@ -863,16 +868,15 @@ class HexaApi {
       data: {
         'category_id': categoryId,
         'name': name,
+        'default_unit': defaultUnit,
+        'hsn_code': hsnCode,
         if (typeId != null && typeId.isNotEmpty) 'type_id': typeId,
-        if (defaultUnit != null && defaultUnit.isNotEmpty)
-          'default_unit': defaultUnit,
         if (defaultKgPerBag != null && defaultKgPerBag > 0)
           'default_kg_per_bag': defaultKgPerBag,
         if (defaultPurchaseUnit != null && defaultPurchaseUnit.isNotEmpty)
           'default_purchase_unit': defaultPurchaseUnit,
         if (defaultSaleUnit != null && defaultSaleUnit.isNotEmpty)
           'default_sale_unit': defaultSaleUnit,
-        if (hsnCode != null && hsnCode.isNotEmpty) 'hsn_code': hsnCode,
         if (taxPercent != null) 'tax_percent': taxPercent,
         if (defaultLandingCost != null) 'default_landing_cost': defaultLandingCost,
         if (defaultSellingCost != null) 'default_selling_cost': defaultSellingCost,
@@ -897,6 +901,17 @@ class HexaApi {
       {required String businessId, required String itemId}) async {
     final res = await _dio.get<Map<String, dynamic>>(
         '/v1/businesses/$businessId/catalog-items/$itemId');
+    return res.data ?? {};
+  }
+
+  /// Trade purchases only: latest price per supplier, last five landed prices, avg.
+  Future<Map<String, dynamic>> catalogItemTradeSupplierPrices({
+    required String businessId,
+    required String itemId,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/catalog-items/$itemId/trade-supplier-prices',
+    );
     return res.data ?? {};
   }
 

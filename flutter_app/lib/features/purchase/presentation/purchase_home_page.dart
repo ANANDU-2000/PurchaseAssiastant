@@ -669,23 +669,22 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                         ),
                       ),
                     ),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
+                    Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 10),
-                      child: Row(
+                      child: Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           for (final e in const [
                             ('all', 'All'),
                             ('draft', 'Draft'),
                             ('due_soon', 'Due soon'),
                           ])
-                            Padding(
-                              padding: const EdgeInsets.only(right: 6),
-                              child: FilterChip(
-                                label: Text(e.$2),
-                                selected: secondary == null && primary == e.$1,
-                                onSelected: (_) => _selectPrimary(e.$1),
-                              ),
+                            FilterChip(
+                              label: Text(e.$2),
+                              selected: secondary == null && primary == e.$1,
+                              onSelected: (_) => _selectPrimary(e.$1),
                             ),
                           IconButton.filledTonal(
                             tooltip: 'More filters',

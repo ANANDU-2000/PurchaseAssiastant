@@ -2,10 +2,13 @@
 
 import uuid
 from datetime import date, timedelta
+from decimal import Decimal
 
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.schemas.trade_purchases import TradePurchaseCreateRequest, TradePurchaseLineIn
+from app.services.trade_purchase_service import compute_totals
 
 client = TestClient(app)
 
@@ -36,12 +39,24 @@ def _line_body():
     }
 
 
+def _supplier_id(h, bid, *, name: str = "TP Test Supplier") -> str:
+    r = client.post(
+        f"/v1/businesses/{bid}/suppliers",
+        headers=h,
+        json={"name": name, "phone": "9876501234", "gst_number": "22AAAAA0000A1Z5"},
+    )
+    assert r.status_code == 201, r.text
+    return r.json()["id"]
+
+
 def test_create_sets_due_date_from_payment_days():
     h, bid = _register_and_business()
+    sid = _supplier_id(h, bid)
     pd = date.today()
     body = {
         "purchase_date": pd.isoformat(),
         "payment_days": 14,
+        "supplier_id": sid,
         "lines": [_line_body()],
     }
     r = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
@@ -54,9 +69,11 @@ def test_create_sets_due_date_from_payment_days():
 
 def test_partial_payment_derived_partially_paid():
     h, bid = _register_and_business()
+    sid = _supplier_id(h, bid)
     body = {
         "purchase_date": date.today().isoformat(),
         "payment_days": 30,
+        "supplier_id": sid,
         "lines": [_line_body()],
     }
     cr = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
@@ -77,10 +94,12 @@ def test_partial_payment_derived_partially_paid():
 
 def test_past_due_date_overdue_when_unpaid():
     h, bid = _register_and_business()
+    sid = _supplier_id(h, bid)
     old = date.today() - timedelta(days=100)
     body = {
         "purchase_date": old.isoformat(),
         "payment_days": 7,
+        "supplier_id": sid,
         "lines": [_line_body()],
     }
     cr = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
@@ -92,9 +111,11 @@ def test_past_due_date_overdue_when_unpaid():
 
 def test_mark_paid_full():
     h, bid = _register_and_business()
+    sid = _supplier_id(h, bid)
     body = {
         "purchase_date": date.today().isoformat(),
         "payment_days": 5,
+        "supplier_id": sid,
         "lines": [_line_body()],
     }
     cr = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
@@ -106,7 +127,11 @@ def test_mark_paid_full():
 
 def test_cancel_purchase():
     h, bid = _register_and_business()
-    body = {"purchase_date": date.today().isoformat(), "lines": [_line_body()]}
+    body = {
+        "purchase_date": date.today().isoformat(),
+        "status": "draft",
+        "lines": [_line_body()],
+    }
     cr = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
     pid = cr.json()["id"]
     xr = client.post(f"/v1/businesses/{bid}/trade-purchases/{pid}/cancel", headers=h)
@@ -132,16 +157,16 @@ def test_purchase_response_includes_supplier_profile_and_line_hsn():
     item = client.post(
         f"/v1/businesses/{bid}/catalog-items",
         headers=h,
-        json={"category_id": cid, "name": "Test rice", "type_id": tid},
+        json={
+            "category_id": cid,
+            "name": "Test rice",
+            "type_id": tid,
+            "default_unit": "kg",
+            "hsn_code": "10063090",
+        },
     )
     assert item.status_code == 201, item.text
     iid = item.json()["id"]
-    up = client.patch(
-        f"/v1/businesses/{bid}/catalog-items/{iid}",
-        headers=h,
-        json={"hsn_code": "10063090"},
-    )
-    assert up.status_code == 200, up.text
 
     sup = client.post(
         f"/v1/businesses/{bid}/suppliers",
@@ -183,9 +208,11 @@ def test_purchase_response_includes_supplier_profile_and_line_hsn():
 
 def test_line_payment_days_hsn_description_round_trip():
     h, bid = _register_and_business()
+    sid = _supplier_id(h, bid)
     body = {
         "purchase_date": date.today().isoformat(),
         "payment_days": 10,
+        "supplier_id": sid,
         "lines": [
             {
                 **_line_body(),
@@ -206,9 +233,11 @@ def test_line_payment_days_hsn_description_round_trip():
 
 def test_list_due_soon_filter():
     h, bid = _register_and_business()
+    sid = _supplier_id(h, bid)
     body = {
         "purchase_date": date.today().isoformat(),
         "payment_days": 2,
+        "supplier_id": sid,
         "lines": [_line_body()],
     }
     cr = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
@@ -229,9 +258,11 @@ def test_list_due_soon_filter():
 
 def test_list_q_filters_by_item_name():
     h, bid = _register_and_business()
+    sid = _supplier_id(h, bid)
     unique = f"ZetaGrain{uuid.uuid4().hex[:8]}"
     body = {
         "purchase_date": date.today().isoformat(),
+        "supplier_id": sid,
         "lines": [
             {
                 "item_name": unique,
@@ -253,3 +284,175 @@ def test_list_q_filters_by_item_name():
     assert r.status_code == 200, r.text
     ids = {x["id"] for x in r.json()}
     assert pid in ids
+
+
+def test_compute_totals_plain_line():
+    req = TradePurchaseCreateRequest(
+        purchase_date=date.today(),
+        lines=[
+            TradePurchaseLineIn(
+                item_name="Rice",
+                qty=10,
+                unit="kg",
+                landing_cost=100,
+                tax_percent=0,
+            )
+        ],
+    )
+    qty, amt = compute_totals(req)
+    assert qty == Decimal("10")
+    assert amt == Decimal("1000")
+
+
+def test_compute_totals_line_tax_multiplier():
+    req = TradePurchaseCreateRequest(
+        purchase_date=date.today(),
+        lines=[
+            TradePurchaseLineIn(
+                item_name="Rice",
+                qty=10,
+                unit="kg",
+                landing_cost=100,
+                tax_percent=5,
+            )
+        ],
+    )
+    qty, amt = compute_totals(req)
+    assert qty == Decimal("10")
+    assert amt == Decimal("1050")
+
+
+def test_compute_totals_line_discount():
+    req = TradePurchaseCreateRequest(
+        purchase_date=date.today(),
+        lines=[
+            TradePurchaseLineIn(
+                item_name="Rice",
+                qty=10,
+                unit="kg",
+                landing_cost=100,
+                tax_percent=0,
+                discount=10,
+            )
+        ],
+    )
+    qty, amt = compute_totals(req)
+    assert qty == Decimal("10")
+    assert amt == Decimal("900")
+
+
+def test_compute_totals_header_discount_and_commission():
+    req = TradePurchaseCreateRequest(
+        purchase_date=date.today(),
+        discount=10,
+        commission_percent=5,
+        lines=[
+            TradePurchaseLineIn(
+                item_name="Rice",
+                qty=10,
+                unit="kg",
+                landing_cost=100,
+                tax_percent=0,
+            )
+        ],
+    )
+    qty, amt = compute_totals(req)
+    assert qty == Decimal("10")
+    after_header = Decimal("900")
+    assert amt == after_header + after_header * Decimal("5") / Decimal("100")
+
+
+def test_compute_totals_one_bag_2250_commission_2_percent_dart_parity():
+    """Same inputs as flutter_app/test/calc_engine_test.dart (bag + 2% commission)."""
+    req = TradePurchaseCreateRequest(
+        purchase_date=date.today(),
+        commission_percent=2,
+        lines=[
+            TradePurchaseLineIn(
+                item_name="Wheat bag",
+                qty=1,
+                unit="BAG",
+                landing_cost=2250,
+                tax_percent=0,
+            )
+        ],
+    )
+    qty, amt = compute_totals(req)
+    assert qty == Decimal("1")
+    after_header = Decimal("2250")
+    assert amt == after_header + after_header * Decimal("2") / Decimal("100")
+
+
+def test_compute_totals_freight_separate_vs_included():
+    line = TradePurchaseLineIn(
+        item_name="Rice",
+        qty=1,
+        unit="kg",
+        landing_cost=100,
+        tax_percent=0,
+    )
+    sep = TradePurchaseCreateRequest(
+        purchase_date=date.today(),
+        freight_amount=50,
+        freight_type="separate",
+        lines=[line],
+    )
+    inc = TradePurchaseCreateRequest(
+        purchase_date=date.today(),
+        freight_amount=50,
+        freight_type="included",
+        lines=[line],
+    )
+    assert compute_totals(sep)[1] == Decimal("150")
+    assert compute_totals(inc)[1] == Decimal("100")
+
+
+def test_create_round_trip_invoice_number():
+    h, bid = _register_and_business()
+    sid = _supplier_id(h, bid, name="Inv Supplier")
+    body = {
+        "purchase_date": date.today().isoformat(),
+        "invoice_number": "INV-2026-0422",
+        "supplier_id": sid,
+        "lines": [_line_body()],
+    }
+    cr = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
+    assert cr.status_code == 201, cr.text
+    assert cr.json().get("invoice_number") == "INV-2026-0422"
+    pid = cr.json()["id"]
+    gr = client.get(f"/v1/businesses/{bid}/trade-purchases/{pid}", headers=h)
+    assert gr.status_code == 200, gr.text
+    assert gr.json().get("invoice_number") == "INV-2026-0422"
+
+
+def test_business_scoped_suppliers_catalog_items_trade_purchases_list_shapes():
+    """Automates manual OpenAPI checks: business-scoped GET list routes + supplier mapping."""
+    h, bid = _register_and_business()
+    r_sup_list = client.get(f"/v1/businesses/{bid}/suppliers", headers=h)
+    assert r_sup_list.status_code == 200, r_sup_list.text
+    assert isinstance(r_sup_list.json(), list)
+
+    sup = client.post(
+        f"/v1/businesses/{bid}/suppliers",
+        headers=h,
+        json={
+            "name": "API shape supplier",
+            "phone": "9876501234",
+            "gst_number": "32AAAAA0000A1Z5",
+            "default_payment_days": 7,
+            "default_billty_rate": 1.5,
+            "default_delivered_rate": 2.0,
+        },
+    )
+    assert sup.status_code == 201, sup.text
+    row = sup.json()
+    for k in ("id", "name", "gst_number", "default_payment_days", "default_billty_rate", "default_delivered_rate"):
+        assert k in row
+
+    r_cat = client.get(f"/v1/businesses/{bid}/catalog-items", headers=h)
+    assert r_cat.status_code == 200, r_cat.text
+    assert isinstance(r_cat.json(), list)
+
+    r_tp = client.get(f"/v1/businesses/{bid}/trade-purchases", headers=h)
+    assert r_tp.status_code == 200, r_tp.text
+    assert isinstance(r_tp.json(), list)

@@ -8,6 +8,21 @@ import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/hexa_colors.dart';
 
+class _HexaScrollBehavior extends ScrollBehavior {
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+    PointerDeviceKind.touch,
+    PointerDeviceKind.mouse,
+    PointerDeviceKind.trackpad,
+    PointerDeviceKind.stylus,
+  };
+
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) {
+    return const ClampingScrollPhysics();
+  }
+}
+
 class HexaApp extends ConsumerWidget {
   const HexaApp({super.key});
 
@@ -31,15 +46,7 @@ class HexaApp extends ConsumerWidget {
           child: body,
         );
       },
-      scrollBehavior: const MaterialScrollBehavior().copyWith(
-        physics: const BouncingScrollPhysics(),
-        dragDevices: {
-          PointerDeviceKind.touch,
-          PointerDeviceKind.mouse,
-          PointerDeviceKind.trackpad,
-          PointerDeviceKind.stylus,
-        },
-      ),
+      scrollBehavior: _HexaScrollBehavior(),
     );
   }
 }

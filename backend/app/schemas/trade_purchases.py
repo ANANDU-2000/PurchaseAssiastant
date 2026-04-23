@@ -14,7 +14,7 @@ class TradePurchaseLineIn(BaseModel):
     item_name: str = Field(..., max_length=512)
     qty: float = Field(..., gt=0)
     unit: str = Field(..., max_length=32)
-    landing_cost: float = Field(..., ge=0)
+    landing_cost: float = Field(..., gt=0)
     selling_cost: float | None = Field(None, ge=0)
     discount: float | None = Field(None, ge=0)
     tax_percent: float | None = Field(None, ge=0)
@@ -25,6 +25,7 @@ class TradePurchaseLineIn(BaseModel):
 
 class TradePurchaseCreateRequest(BaseModel):
     purchase_date: date
+    invoice_number: str | None = Field(None, max_length=64)
     supplier_id: uuid.UUID | None = None
     broker_id: uuid.UUID | None = None
     status: str = Field(default="confirmed", pattern="^(draft|saved|confirmed)$")
@@ -60,6 +61,7 @@ class TradePurchaseLineOut(BaseModel):
 class TradePurchaseOut(BaseModel):
     id: uuid.UUID
     human_id: str
+    invoice_number: str | None = None
     purchase_date: date
     supplier_id: uuid.UUID | None
     broker_id: uuid.UUID | None

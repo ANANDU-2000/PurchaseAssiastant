@@ -4,8 +4,8 @@ from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
-from sqlalchemy import and_, func, select
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import and_, desc, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
@@ -13,7 +13,16 @@ from sqlalchemy.orm import load_only
 from app.database import get_db
 from app.db_schema_compat import catalog_items_has_type_id_column
 from app.deps import require_membership, require_owner_membership
-from app.models import CatalogItem, CatalogVariant, CategoryType, EntryLineItem, ItemCategory, Membership
+from app.models import (
+    CatalogItem,
+    CatalogVariant,
+    CategoryType,
+    EntryLineItem,
+    ItemCategory,
+    Membership,
+    TradePurchase,
+    TradePurchaseLine,
+)
 from app.models.contacts import Supplier
 from app.models.supplier_item_default import SupplierItemDefault
 from app.models.entry import Entry
@@ -67,14 +76,35 @@ class CatalogItemCreate(BaseModel):
     category_id: uuid.UUID
     type_id: uuid.UUID | None = None
     name: str = Field(min_length=1, max_length=512)
-    default_unit: str | None = Field(default=None, pattern=_UNIT_PATTERN)
+    default_unit: str = Field(pattern=_UNIT_PATTERN)
     default_kg_per_bag: float | None = Field(default=None, gt=0)
     default_purchase_unit: str | None = Field(default=None, pattern=_UNIT_PATTERN)
     default_sale_unit: str | None = Field(default=None, pattern=_UNIT_PATTERN)
-    hsn_code: str | None = Field(default=None, max_length=32)
+    hsn_code: str = Field(min_length=1, max_length=32)
     tax_percent: float | None = Field(default=None, ge=0, le=100)
     default_landing_cost: float | None = Field(default=None, ge=0)
     default_selling_cost: float | None = Field(default=None, ge=0)
+
+    @field_validator("name", "hsn_code", mode="before")
+    @classmethod
+    def _strip_required_str(cls, v: object) -> object:
+        if isinstance(v, str):
+            return v.strip()
+        return v
+
+    @field_validator("name")
+    @classmethod
+    def _name_nonempty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("name must not be empty or whitespace")
+        return " ".join(v.split())
+
+    @field_validator("hsn_code")
+    @classmethod
+    def _hsn_nonempty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("hsn_code must not be empty or whitespace")
+        return v.strip()
 
 
 class CatalogItemUpdate(BaseModel):
@@ -85,10 +115,29 @@ class CatalogItemUpdate(BaseModel):
     default_kg_per_bag: float | None = Field(default=None, gt=0)
     default_purchase_unit: str | None = Field(default=None, pattern=_UNIT_PATTERN)
     default_sale_unit: str | None = Field(default=None, pattern=_UNIT_PATTERN)
-    hsn_code: str | None = Field(default=None, max_length=32)
+    hsn_code: str | None = Field(default=None, min_length=1, max_length=32)
     tax_percent: float | None = Field(default=None, ge=0, le=100)
     default_landing_cost: float | None = Field(default=None, ge=0)
     default_selling_cost: float | None = Field(default=None, ge=0)
+
+    @field_validator("name", "hsn_code", mode="before")
+    @classmethod
+    def _strip_update_str(cls, v: object) -> object:
+        if v is None:
+            return v
+        if isinstance(v, str):
+            t = v.strip()
+            return t if t else None
+        return v
+
+    @field_validator("name")
+    @classmethod
+    def _name_if_set(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if not v.strip():
+            raise ValueError("name must not be empty or whitespace")
+        return " ".join(v.split())
 
 
 class CatalogItemOut(BaseModel):
@@ -172,6 +221,24 @@ class CatalogItemLineRow(BaseModel):
     landing_cost: float
     selling_price: float | None
     profit: float | None
+
+
+class TradeSupplierPriceRow(BaseModel):
+    supplier_id: uuid.UUID
+    supplier_name: str
+    landing_cost: float
+    unit: str
+    last_purchase_date: date
+    is_best: bool = False
+
+
+class CatalogItemTradeSupplierPricesOut(BaseModel):
+    """Latest trade purchase line per supplier + last five landed prices (any supplier)."""
+
+    catalog_item_id: uuid.UUID
+    suppliers: list[TradeSupplierPriceRow] = Field(default_factory=list)
+    last_five_landing_prices: list[float] = Field(default_factory=list)
+    avg_landing_from_trade: float | None = None
 
 
 def _entry_date_filter(business_id: uuid.UUID, from_date: date, to_date: date):
@@ -814,6 +881,98 @@ async def supplier_purchase_defaults(
         if item.default_landing_cost is not None
         else None,
         item_default_purchase_unit=item.default_purchase_unit or item.default_unit,
+    )
+
+
+@router.get(
+    "/catalog-items/{item_id}/trade-supplier-prices",
+    response_model=CatalogItemTradeSupplierPricesOut,
+)
+async def catalog_item_trade_supplier_prices(
+    business_id: uuid.UUID,
+    item_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Latest landed price per supplier from trade purchases; last five prices; trade-only average."""
+    del _m
+    ir = await db.execute(
+        select(CatalogItem.id).where(CatalogItem.id == item_id, CatalogItem.business_id == business_id)
+    )
+    if ir.first() is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")
+
+    line_rows = (
+        select(
+            TradePurchase.supplier_id,
+            Supplier.name,
+            TradePurchaseLine.landing_cost,
+            TradePurchaseLine.unit,
+            TradePurchase.purchase_date,
+            TradePurchaseLine.id,
+        )
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchaseLine.trade_purchase_id == TradePurchase.id)
+        .join(Supplier, Supplier.id == TradePurchase.supplier_id)
+        .where(
+            TradePurchase.business_id == business_id,
+            TradePurchaseLine.catalog_item_id == item_id,
+            TradePurchase.supplier_id.isnot(None),
+            TradePurchase.status == "confirmed",
+        )
+        .order_by(desc(TradePurchase.purchase_date), desc(TradePurchaseLine.id))
+    )
+    lr = await db.execute(line_rows)
+    all_rows = lr.all()
+
+    seen_suppliers: set[uuid.UUID] = set()
+    supplier_rows: list[tuple] = []
+    landing_for_avg: list[float] = []
+    last_five_prices: list[float] = []
+
+    for row in all_rows:
+        sid, sname, lc, unit, pdate, lid = row
+        lc_f = float(lc) if lc is not None else None
+        if lc_f is None:
+            continue
+        landing_for_avg.append(lc_f)
+        if len(last_five_prices) < 5:
+            last_five_prices.append(lc_f)
+        if sid in seen_suppliers:
+            continue
+        seen_suppliers.add(sid)
+        supplier_rows.append(
+            (sid, sname, lc_f, unit, pdate, lid),
+        )
+
+    best_landing: float | None = None
+    if supplier_rows:
+        best_landing = min(r[2] for r in supplier_rows)
+
+    suppliers_out: list[TradeSupplierPriceRow] = []
+    for sid, sname, lc_f, unit, pdate, _lid in sorted(supplier_rows, key=lambda r: (r[2], r[0].hex)):
+        suppliers_out.append(
+            TradeSupplierPriceRow(
+                supplier_id=sid,
+                supplier_name=sname,
+                landing_cost=lc_f,
+                unit=unit,
+                last_purchase_date=pdate,
+                is_best=best_landing is not None and abs(lc_f - best_landing) < 1e-9,
+            )
+        )
+    # Sort display: best first, then by price
+    suppliers_out.sort(key=lambda s: (not s.is_best, s.landing_cost, s.supplier_name))
+
+    avg_landing: float | None = None
+    if landing_for_avg:
+        avg_landing = sum(landing_for_avg) / len(landing_for_avg)
+
+    return CatalogItemTradeSupplierPricesOut(
+        catalog_item_id=item_id,
+        suppliers=suppliers_out,
+        last_five_landing_prices=last_five_prices,
+        avg_landing_from_trade=avg_landing,
     )
 
 

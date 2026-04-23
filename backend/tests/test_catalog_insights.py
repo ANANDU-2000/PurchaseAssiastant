@@ -1,6 +1,7 @@
 """Catalog insights + line history (by catalog_item_id)."""
 
 import uuid
+from datetime import date, timedelta
 
 from fastapi.testclient import TestClient
 
@@ -30,7 +31,7 @@ def _setup_cat_and_item():
     cid = r.json()["id"]
     r = client.post(
         f"/v1/businesses/{bid}/catalog-items",
-        json={"category_id": cid, "name": "Basmati", "default_unit": "kg"},
+        json={"category_id": cid, "name": "Basmati", "default_unit": "kg", "hsn_code": "10063090"},
         headers=h,
     )
     assert r.status_code == 201, r.text
@@ -115,7 +116,7 @@ def test_duplicate_item_returns_existing_id():
     cat_id = r.json()[0]["category_id"]
     r2 = client.post(
         f"/v1/businesses/{bid}/catalog-items",
-        json={"category_id": cat_id, "name": "Basmati", "default_unit": "kg"},
+        json={"category_id": cat_id, "name": "Basmati", "default_unit": "kg", "hsn_code": "10063090"},
         headers=h,
     )
     assert r2.status_code == 409, r2.text
@@ -127,3 +128,109 @@ def test_duplicate_item_returns_existing_id():
         assert det["existing_item_id"] == iid
     else:
         assert body["existing_item_id"] == iid
+
+
+def test_catalog_item_trade_supplier_prices_from_trade_purchases():
+    u = uuid.uuid4().hex[:10]
+    email = f"ts{u}@test.hexa.local"
+    r = client.post(
+        "/v1/auth/register",
+        json={"username": f"u{u}", "email": email, "password": "testpass12"},
+    )
+    assert r.status_code == 200, r.text
+    access = r.json()["access_token"]
+    h = {"Authorization": f"Bearer {access}"}
+    br = client.get("/v1/me/businesses", headers=h)
+    bid = br.json()[0]["id"]
+    cat = client.post(
+        f"/v1/businesses/{bid}/item-categories",
+        headers=h,
+        json={"name": "GrainsX"},
+    )
+    assert cat.status_code == 201, cat.text
+    cid = cat.json()["id"]
+    types = client.get(
+        f"/v1/businesses/{bid}/item-categories/{cid}/category-types",
+        headers=h,
+    )
+    assert types.status_code == 200, types.text
+    tid = types.json()[0]["id"]
+    item = client.post(
+        f"/v1/businesses/{bid}/catalog-items",
+        headers=h,
+        json={
+            "category_id": cid,
+            "name": "PriceTest Rice",
+            "type_id": tid,
+            "default_unit": "kg",
+            "hsn_code": "10063090",
+        },
+    )
+    assert item.status_code == 201, item.text
+    iid = item.json()["id"]
+    s1 = client.post(
+        f"/v1/businesses/{bid}/suppliers",
+        headers=h,
+        json={"name": "Sup A", "phone": "9000000001", "gst_number": "32AAAAA0000A1Z1"},
+    )
+    assert s1.status_code == 201, s1.text
+    sid1 = s1.json()["id"]
+    s2 = client.post(
+        f"/v1/businesses/{bid}/suppliers",
+        headers=h,
+        json={"name": "Sup B", "phone": "9000000002", "gst_number": "32BBBBB0000B1Z5"},
+    )
+    assert s2.status_code == 201, s2.text
+    sid2 = s2.json()["id"]
+    d1 = date.today() - timedelta(days=2)
+    d2 = date.today() - timedelta(days=1)
+    b1 = {
+        "purchase_date": d1.isoformat(),
+        "supplier_id": sid1,
+        "lines": [
+            {
+                "catalog_item_id": iid,
+                "item_name": "PriceTest Rice",
+                "qty": 1,
+                "unit": "kg",
+                "landing_cost": 100.0,
+                "tax_percent": 0,
+            }
+        ],
+    }
+    b2 = {
+        "purchase_date": d2.isoformat(),
+        "supplier_id": sid2,
+        "lines": [
+            {
+                "catalog_item_id": iid,
+                "item_name": "PriceTest Rice",
+                "qty": 1,
+                "unit": "kg",
+                "landing_cost": 80.0,
+                "tax_percent": 0,
+            }
+        ],
+    }
+    c1 = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=b1)
+    assert c1.status_code == 201, c1.text
+    c2 = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=b2)
+    assert c2.status_code == 201, c2.text
+
+    tr = client.get(
+        f"/v1/businesses/{bid}/catalog-items/{iid}/trade-supplier-prices",
+        headers=h,
+    )
+    assert tr.status_code == 200, tr.text
+    data = tr.json()
+    assert data["catalog_item_id"] == iid
+    assert len(data["suppliers"]) == 2
+    best = [s for s in data["suppliers"] if s["is_best"]]
+    assert len(best) == 1
+    assert best[0]["landing_cost"] == 80.0
+    assert best[0]["supplier_id"] == sid2
+    assert len(data["last_five_landing_prices"]) == 2
+    # Most recent first: d2=80, d1=100
+    assert data["last_five_landing_prices"][0] == 80.0
+    assert data["last_five_landing_prices"][1] == 100.0
+    assert abs(data["avg_landing_from_trade"] - 90.0) < 0.01

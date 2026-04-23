@@ -1,6 +1,5 @@
 ﻿// Deprecated: shell Reports tab now uses FullReportsPage at `/reports`. File kept for reference.
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
@@ -934,32 +933,29 @@ class _ItemsTabState extends ConsumerState<_ItemsTab> {
                 ),
               ),
             ),
-            SizedBox(
-              height: 40,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
                   for (var i = 0; i < _modeLabels.length; i++)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: FilterChip(
-                        label: Text(_modeLabels[i]),
-                        selected: _sortColumnIndex == i,
-                        onSelected: (_) => setState(() {
-                          if (_sortColumnIndex == i) {
-                            _asc = !_asc;
-                          } else {
-                            _sortColumnIndex = i;
-                            _asc = i == 0;
-                          }
-                        }),
-                        selectedColor:
-                            HexaColors.primaryLight.withValues(alpha: 0.95),
-                        checkmarkColor: HexaColors.primaryDeep,
-                        labelStyle: tt.labelSmall
-                            ?.copyWith(fontWeight: FontWeight.w700),
-                      ),
+                    FilterChip(
+                      label: Text(_modeLabels[i]),
+                      selected: _sortColumnIndex == i,
+                      onSelected: (_) => setState(() {
+                        if (_sortColumnIndex == i) {
+                          _asc = !_asc;
+                        } else {
+                          _sortColumnIndex = i;
+                          _asc = i == 0;
+                        }
+                      }),
+                      selectedColor:
+                          HexaColors.primaryLight.withValues(alpha: 0.95),
+                      checkmarkColor: HexaColors.primaryDeep,
+                      labelStyle: tt.labelSmall
+                          ?.copyWith(fontWeight: FontWeight.w700),
                     ),
                 ],
               ),
@@ -1077,15 +1073,11 @@ class _ItemsTabState extends ConsumerState<_ItemsTab> {
                             padding: const EdgeInsets.fromLTRB(0, 0, 0, 88),
                             child: Scrollbar(
                               thumbVisibility: true,
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: ConstrainedBox(
-                                  constraints: BoxConstraints(
-                                    minWidth: math.max(
-                                      780,
-                                      constraints.maxWidth,
-                                    ),
-                                  ),
+                              child: SizedBox(
+                                width: constraints.maxWidth,
+                                child: FittedBox(
+                                  fit: BoxFit.fitWidth,
+                                  alignment: Alignment.topLeft,
                                   child: Theme(
                                     data: Theme.of(context).copyWith(
                                       dividerColor: const Color(0xFFE2E8F0),
@@ -1377,32 +1369,29 @@ class _CategoriesTabState extends ConsumerState<_CategoriesTab> {
                 ),
               ),
             ),
-            SizedBox(
-              height: 40,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
                   for (var i = 0; i < _modeLabels.length; i++)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: FilterChip(
-                        label: Text(_modeLabels[i]),
-                        selected: _sortColumnIndex == i,
-                        onSelected: (_) => setState(() {
-                          if (_sortColumnIndex == i) {
-                            _asc = !_asc;
-                          } else {
-                            _sortColumnIndex = i;
-                            _asc = false;
-                          }
-                        }),
-                        selectedColor:
-                            HexaColors.primaryLight.withValues(alpha: 0.95),
-                        checkmarkColor: HexaColors.primaryDeep,
-                        labelStyle: tt.labelSmall
-                            ?.copyWith(fontWeight: FontWeight.w700),
-                      ),
+                    FilterChip(
+                      label: Text(_modeLabels[i]),
+                      selected: _sortColumnIndex == i,
+                      onSelected: (_) => setState(() {
+                        if (_sortColumnIndex == i) {
+                          _asc = !_asc;
+                        } else {
+                          _sortColumnIndex = i;
+                          _asc = false;
+                        }
+                      }),
+                      selectedColor:
+                          HexaColors.primaryLight.withValues(alpha: 0.95),
+                      checkmarkColor: HexaColors.primaryDeep,
+                      labelStyle: tt.labelSmall
+                          ?.copyWith(fontWeight: FontWeight.w700),
                     ),
                 ],
               ),
@@ -1758,32 +1747,29 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
                 ),
               ),
             ),
-            SizedBox(
-              height: 40,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
                   for (var i = 0; i < _modeLabels.length; i++)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: FilterChip(
-                        label: Text(_modeLabels[i]),
-                        selected: _sortColumnIndex == i,
-                        onSelected: (_) => setState(() {
-                          if (_sortColumnIndex == i) {
-                            _asc = !_asc;
-                          } else {
-                            _sortColumnIndex = i;
-                            _asc = i == 0;
-                          }
-                        }),
-                        selectedColor:
-                            HexaColors.primaryLight.withValues(alpha: 0.95),
-                        checkmarkColor: HexaColors.primaryDeep,
-                        labelStyle: tt.labelSmall
-                            ?.copyWith(fontWeight: FontWeight.w700),
-                      ),
+                    FilterChip(
+                      label: Text(_modeLabels[i]),
+                      selected: _sortColumnIndex == i,
+                      onSelected: (_) => setState(() {
+                        if (_sortColumnIndex == i) {
+                          _asc = !_asc;
+                        } else {
+                          _sortColumnIndex = i;
+                          _asc = i == 0;
+                        }
+                      }),
+                      selectedColor:
+                          HexaColors.primaryLight.withValues(alpha: 0.95),
+                      checkmarkColor: HexaColors.primaryDeep,
+                      labelStyle: tt.labelSmall
+                          ?.copyWith(fontWeight: FontWeight.w700),
                     ),
                 ],
               ),
@@ -1984,9 +1970,12 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
                                           }
                                           return Scrollbar(
                                             thumbVisibility: true,
-                                            child: SingleChildScrollView(
-                                              scrollDirection: Axis.horizontal,
-                                              child: DataTable(
+                                            child: SizedBox(
+                                              width: MediaQuery.sizeOf(ctx).width - 32,
+                                              child: FittedBox(
+                                                fit: BoxFit.fitWidth,
+                                                alignment: Alignment.topLeft,
+                                                child: DataTable(
                                                 headingRowHeight: 32,
                                                 dataRowMinHeight: 36,
                                                 dataRowMaxHeight: 44,
@@ -2089,7 +2078,8 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
                                                 ],
                                               ),
                                             ),
-                                          );
+                                          ),
+                                        );
                                         },
                                       ),
                                   ],
@@ -2194,32 +2184,29 @@ class _BrokersTabState extends ConsumerState<_BrokersTab> {
                 ),
               ),
             ),
-            SizedBox(
-              height: 40,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
                   for (var i = 0; i < _modeLabels.length; i++)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: FilterChip(
-                        label: Text(_modeLabels[i]),
-                        selected: _sortColumnIndex == i,
-                        onSelected: (_) => setState(() {
-                          if (_sortColumnIndex == i) {
-                            _asc = !_asc;
-                          } else {
-                            _sortColumnIndex = i;
-                            _asc = i == 0;
-                          }
-                        }),
-                        selectedColor:
-                            HexaColors.primaryLight.withValues(alpha: 0.95),
-                        checkmarkColor: HexaColors.primaryDeep,
-                        labelStyle: tt.labelSmall
-                            ?.copyWith(fontWeight: FontWeight.w700),
-                      ),
+                    FilterChip(
+                      label: Text(_modeLabels[i]),
+                      selected: _sortColumnIndex == i,
+                      onSelected: (_) => setState(() {
+                        if (_sortColumnIndex == i) {
+                          _asc = !_asc;
+                        } else {
+                          _sortColumnIndex = i;
+                          _asc = i == 0;
+                        }
+                      }),
+                      selectedColor:
+                          HexaColors.primaryLight.withValues(alpha: 0.95),
+                      checkmarkColor: HexaColors.primaryDeep,
+                      labelStyle: tt.labelSmall
+                          ?.copyWith(fontWeight: FontWeight.w700),
                     ),
                 ],
               ),
@@ -2316,15 +2303,11 @@ class _BrokersTabState extends ConsumerState<_BrokersTab> {
                             padding: const EdgeInsets.fromLTRB(0, 0, 0, 88),
                             child: Scrollbar(
                               thumbVisibility: true,
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: ConstrainedBox(
-                                  constraints: BoxConstraints(
-                                    minWidth: math.max(
-                                      640,
-                                      constraints.maxWidth,
-                                    ),
-                                  ),
+                              child: SizedBox(
+                                width: constraints.maxWidth,
+                                child: FittedBox(
+                                  fit: BoxFit.fitWidth,
+                                  alignment: Alignment.topLeft,
                                   child: Theme(
                                     data: Theme.of(context).copyWith(
                                       dividerColor: const Color(0xFFE2E8F0),

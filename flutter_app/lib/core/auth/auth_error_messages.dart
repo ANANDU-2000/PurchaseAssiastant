@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
+import '../api/fastapi_error.dart';
+
 /// When the browser cannot open a TCP connection to the API (backend not running / wrong host).
 String? _connectionUnreachableHint(DioException e) {
   final blob = '${e.message} ${e.error}';
@@ -12,7 +14,7 @@ String? _connectionUnreachableHint(DioException e) {
       lower.contains('connection reset') ||
       lower.contains('connection timed out') ||
       lower.contains('timed out')) {
-    return "We can't connect right now. Check your internet and try again.";
+    return 'No internet connection. Check your network and try again.';
   }
   return null;
 }
@@ -27,9 +29,21 @@ String? _webBrowserNetworkHint(DioException e) {
       blob.contains('load failed') ||
       blob.contains('err_network') ||
       blob.contains('cors')) {
-    return "We can't connect right now. Check your internet and try again.";
+    return 'No internet connection. Check your network and try again.';
   }
   return null;
+}
+
+/// True when the failure is a transport/connection error (no HTTP response) — for inline Retry UI.
+bool isDioNoConnectionError(DioException e) {
+  if (e.type == DioExceptionType.badResponse) return false;
+  if (e.response != null) return false;
+  final t = e.type;
+  return t == DioExceptionType.connectionTimeout ||
+      t == DioExceptionType.sendTimeout ||
+      t == DioExceptionType.receiveTimeout ||
+      t == DioExceptionType.connectionError ||
+      (t == DioExceptionType.unknown && e.response == null);
 }
 
 /// User-safe copy for auth and network failures (no URLs, env names, or raw exceptions).
@@ -45,9 +59,9 @@ String friendlyAuthError(
       if (kIsWeb) {
         final web = _webBrowserNetworkHint(error);
         if (web != null) return web;
-        return "We can't connect right now. Check your internet and try again.";
+        return 'No internet connection. Check your network and try again.';
       }
-      return "Can't connect right now. Check your internet and try again.";
+      return 'No internet connection. Check your network and try again.';
     }
 
     final sc = error.response?.statusCode;
@@ -85,10 +99,12 @@ String friendlyGoogleSignInError(Object error) {
       }
       if (kIsWeb) {
         final web = _webBrowserNetworkHint(error);
-        if (web != null) return '$web You can use email sign-in instead.';
-        return "We can't connect right now. Try email sign-in, or try again later.";
+        if (web != null) {
+          return '$web You can use email sign-in instead.';
+        }
+        return 'No internet connection. Try email sign-in, or try again later.';
       }
-      return "Can't connect right now. Check your internet and try again.";
+      return 'No internet connection. Check your network and try again.';
     }
 
     final sc = error.response?.statusCode;
@@ -119,6 +135,37 @@ bool _isNetworkError(DioException e) {
 
 enum AuthErrorContext { login, register }
 
+/// Banner title: distinguish "no Wi‑Fi" from "API not listening" (common on Flutter web + localhost).
+String authUnreachableBannerTitle(DioException? e) {
+  if (e == null) return "Can't reach server";
+  final b = '${e.message} ${e.error}'.toLowerCase();
+  if (b.contains('connection refused') ||
+      b.contains('err_connection_refused') ||
+      b.contains('failed to connect') ||
+      b.contains('active refused')) {
+    return 'API not reachable';
+  }
+  return 'No internet connection';
+}
+
+String? authServerUnreachableDetail(DioException? e) {
+  if (e == null) return null;
+  final b = '${e.message} ${e.error}'.toLowerCase();
+  if (b.contains('connection refused') ||
+      b.contains('err_connection_refused') ||
+      b.contains('failed to connect') ||
+      b.contains('active refused')) {
+    return 'Nothing is listening on port 8000 (connection refused). '
+        'Start the FastAPI app from the backend folder, e.g. '
+        'uvicorn app.main:app --reload --host 127.0.0.1 --port 8000. '
+        'When you open the web app on localhost, the client calls http://localhost:8000 on purpose (same-site with the page host).';
+  }
+  if (b.contains('timed out') || b.contains('network is unreachable')) {
+    return 'Check your network, firewall, and VPN, then try again.';
+  }
+  return null;
+}
+
 /// Short user-facing copy for failed API calls in SnackBars and dialogs (no stack traces or raw response dumps).
 ///
 /// Set [forAssistant] for the in-app Assistant tab — clearer copy when the LLM endpoint fails.
@@ -137,6 +184,11 @@ String friendlyApiError(Object error, {bool forAssistant = false}) {
       return 'That conflicts with existing data. Try again.';
     }
     if (sc == 400 || sc == 422) {
+      final detail = fastApiDetailString(error.response?.data);
+      if (detail != null && detail.isNotEmpty) {
+        const cap = 420;
+        return detail.length <= cap ? detail : '${detail.substring(0, cap)}…';
+      }
       return 'Please check your input and try again.';
     }
     if (sc == 503) {
@@ -166,7 +218,7 @@ String friendlyApiError(Object error, {bool forAssistant = false}) {
       }
       return forAssistant
           ? "Can't reach the assistant. Check your connection and try again."
-          : "Can't connect right now. Check your internet and try again.";
+          : 'No internet connection. Check your network and try again.';
     }
     return 'Request could not be completed. Try again.';
   }

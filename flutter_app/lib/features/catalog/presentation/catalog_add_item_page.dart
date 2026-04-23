@@ -39,6 +39,7 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
   final _nameFocus = FocusNode();
   final _kg = TextEditingController();
   final _perBox = TextEditingController();
+  final _hsn = TextEditingController();
   String? _unit;
   bool _saving = false;
   bool _touched = false;
@@ -83,6 +84,7 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
         _unit = m['unit']?.toString();
         _kg.text = m['kg']?.toString() ?? '';
         _perBox.text = m['perBox']?.toString() ?? '';
+        _hsn.text = m['hsn']?.toString() ?? '';
       });
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _nameFocus.requestFocus();
@@ -105,6 +107,7 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
         'unit': _unit,
         'kg': _kg.text,
         'perBox': _perBox.text,
+        'hsn': _hsn.text,
       }),
     );
   }
@@ -115,6 +118,7 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
     _nameFocus.dispose();
     _kg.dispose();
     _perBox.dispose();
+    _hsn.dispose();
     super.dispose();
   }
 
@@ -149,6 +153,21 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
         return;
       }
     }
+    final hsn = _hsn.text.trim();
+    if (hsn.isEmpty) {
+      setState(() => _touched = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('HSN / SAC is required')),
+      );
+      return;
+    }
+    if (hsn.length < 4) {
+      setState(() => _touched = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('HSN / SAC must be at least 4 characters')),
+      );
+      return;
+    }
     final session = ref.read(sessionProvider);
     if (session == null) return;
     setState(() => _saving = true);
@@ -158,7 +177,8 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
             categoryId: widget.categoryId,
             typeId: widget.typeId,
             name: n,
-            defaultUnit: _unit,
+            defaultUnit: _unit!,
+            hsnCode: hsn,
             defaultPurchaseUnit: _unit,
             defaultKgPerBag: _unit == 'bag' ? parseOptionalKgPerBag(_kg.text) : null,
           );
@@ -256,6 +276,7 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
 
     final nameErr = _touched && _name.text.trim().isEmpty;
     final unitErr = _touched && (_unit == null || _unit!.isEmpty);
+    final hsnErr = _touched && _hsn.text.trim().isEmpty;
 
     return PopScope(
       canPop: false,
@@ -380,6 +401,21 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(color: HexaColors.loss),
                   ),
                 ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _hsn,
+                keyboardType: TextInputType.text,
+                textCapitalization: TextCapitalization.characters,
+                decoration: InputDecoration(
+                  labelText: 'HSN / SAC *',
+                  hintText: 'e.g. 10063020',
+                  errorText: hsnErr ? 'Required for catalog items' : null,
+                  contentPadding: _fieldPad,
+                  border: _fieldBorder(context),
+                  enabledBorder: _fieldBorder(context),
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
               if (_unit == 'bag') ...[
                 const SizedBox(height: 14),
                 TextField(

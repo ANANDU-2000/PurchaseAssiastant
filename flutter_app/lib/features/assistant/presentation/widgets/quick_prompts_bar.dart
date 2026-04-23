@@ -15,36 +15,31 @@ class QuickPromptsBar extends ConsumerWidget {
     final prompts = ref.watch(assistantQuickPromptsProvider);
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        child: Row(
-          children: [
-            for (final p in prompts)
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: Material(
-                  color: Colors.white.withValues(alpha: 0.92),
-                  borderRadius: BorderRadius.circular(20),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: () => onPrompt(p),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                      child: Text(
-                        p.label,
-                        style: AssistantChatTheme.inter(
-                          12.5,
-                          w: FontWeight.w600,
-                          c: AssistantChatTheme.primary,
-                        ),
-                      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        children: [
+          for (final p in prompts)
+            Material(
+              color: Colors.white.withValues(alpha: 0.92),
+              borderRadius: BorderRadius.circular(20),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: () => onPrompt(p),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  child: Text(
+                    p.label,
+                    style: AssistantChatTheme.inter(
+                      12.5,
+                      w: FontWeight.w600,
+                      c: AssistantChatTheme.primary,
                     ),
                   ),
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }

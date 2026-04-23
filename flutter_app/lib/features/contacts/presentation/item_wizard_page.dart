@@ -98,6 +98,10 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
       _nameError = 'Pick a category';
     } else if (_name.text.trim().isEmpty) {
       _nameError = 'Item name is required';
+    } else if (_unit == null || _unit!.isEmpty) {
+      _nameError = 'Unit type is required';
+    } else if (_hsn.text.trim().isEmpty) {
+      _nameError = 'HSN / SAC is required';
     }
     setState(() {});
     return _nameError == null;
@@ -231,11 +235,11 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
             categoryId: _selectedCategoryId!,
             typeId: _selectedTypeId,
             name: _name.text.trim(),
-            defaultUnit: _unit,
+            defaultUnit: _unit!,
+            hsnCode: _hsn.text.trim(),
             defaultKgPerBag:
                 _unit == 'bag' ? parseOptionalKgPerBag(_kg.text) : null,
             defaultPurchaseUnit: _unit,
-            hsnCode: _hsn.text.trim().isEmpty ? null : _hsn.text.trim(),
             taxPercent: double.tryParse(_tax.text),
             defaultLandingCost: double.tryParse(_landing.text),
             defaultSellingCost: double.tryParse(_selling.text),
@@ -479,6 +483,13 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
             onChanged: (_) => _markDirty(),
           ),
         ],
+        const SizedBox(height: 8),
+        TextField(
+          controller: _hsn,
+          textCapitalization: TextCapitalization.characters,
+          decoration: _d('HSN / SAC *', hint: 'e.g. 10063020'),
+          onChanged: (_) => _markDirty(),
+        ),
       ],
     );
   }
@@ -493,17 +504,11 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
           initiallyExpanded: false,
           tilePadding: EdgeInsets.zero,
           title: const Text(
-            'Advanced: HSN & tax %',
+            'Advanced: tax %',
             style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
           ),
-          subtitle: const Text('Optional — hide until you need compliance fields'),
+          subtitle: const Text('Optional default GST % for this item'),
           children: [
-            TextField(
-              controller: _hsn,
-              decoration: _d('HSN Code'),
-              onChanged: (_) => _markDirty(),
-            ),
-            const SizedBox(height: 8),
             TextField(
               controller: _tax,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),

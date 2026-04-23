@@ -8,7 +8,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import exists, func, select
+from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -112,13 +112,13 @@ async def unified_search(
     business_id: uuid.UUID,
     _m: Annotated[Membership, Depends(require_membership)],
     db: Annotated[AsyncSession, Depends(get_db)],
-    q: str = Query(..., min_length=2, max_length=200),
+    q: str = Query(..., min_length=1, max_length=200),
 ):
     del _m
 
     try:
         needle = q.strip().lower()
-        if len(needle) < 2:
+        if len(needle) < 1:
             return UnifiedSearchOut()
 
         ic = ItemCategory
@@ -131,6 +131,14 @@ async def unified_search(
             CatalogItem.tax_percent,
             CatalogItem.default_landing_cost,
             CatalogItem.last_purchase_price,
+        )
+        item_name_cat_hsn = or_(
+            func.lower(CatalogItem.name).contains(needle),
+            func.lower(ic.name).contains(needle),
+            and_(
+                CatalogItem.hsn_code.isnot(None),
+                func.lower(CatalogItem.hsn_code).contains(needle),
+            ),
         )
         if has_type:
             sq_items = (
@@ -145,7 +153,7 @@ async def unified_search(
                 .outerjoin(ct, ct.id == CatalogItem.type_id)
                 .where(
                     CatalogItem.business_id == business_id,
-                    func.lower(CatalogItem.name).contains(needle),
+                    item_name_cat_hsn,
                 )
                 .order_by(func.lower(CatalogItem.name))
                 .limit(40)
@@ -161,7 +169,7 @@ async def unified_search(
                 .join(ic, ic.id == CatalogItem.category_id)
                 .where(
                     CatalogItem.business_id == business_id,
-                    func.lower(CatalogItem.name).contains(needle),
+                    item_name_cat_hsn,
                 )
                 .order_by(func.lower(CatalogItem.name))
                 .limit(40)
@@ -178,7 +186,8 @@ async def unified_search(
                 ).limit(_PAIR_CAP)
             )
             pairs = [(row[0], row[1]) for row in pairs_r.all() if row[1]]
-            ranked = rank_ids_by_token_sort(needle, pairs, limit=40, score_cutoff=52)
+            fuzzy_cut = 40 if len(needle) < 2 else 52
+            ranked = rank_ids_by_token_sort(needle, pairs, limit=40, score_cutoff=fuzzy_cut)
             if ranked:
                 fuzzy_catalog_used = True
                 ids = [uid for uid, _sc in ranked]
@@ -220,11 +229,18 @@ async def unified_search(
 
         catalog_items = _hydrate_catalog_rows(catalog_rows)
 
+        sup_match = or_(
+            func.lower(Supplier.name).contains(needle),
+            and_(
+                Supplier.gst_number.isnot(None),
+                func.lower(Supplier.gst_number).contains(needle),
+            ),
+        )
         sq_sup = (
             select(Supplier.id, Supplier.name)
             .where(
                 Supplier.business_id == business_id,
-                func.lower(Supplier.name).contains(needle),
+                sup_match,
             )
             .order_by(func.lower(Supplier.name))
             .limit(12)
@@ -237,7 +253,8 @@ async def unified_search(
                 select(Supplier.id, Supplier.name).where(Supplier.business_id == business_id).limit(_PAIR_CAP)
             )
             pairs = [(row[0], row[1]) for row in pairs_r.all() if row[1]]
-            ranked = rank_ids_by_token_sort(needle, pairs, limit=12, score_cutoff=52)
+            sup_fuzzy_cut = 40 if len(needle) < 2 else 52
+            ranked = rank_ids_by_token_sort(needle, pairs, limit=12, score_cutoff=sup_fuzzy_cut)
             if ranked:
                 fuzzy_suppliers_used = True
                 ids = [uid for uid, _sc in ranked]

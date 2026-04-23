@@ -130,10 +130,11 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
             ),
           ),
           const SizedBox(height: 6),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
+          Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: Row(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 _FilterChip(
                     label: 'All',

@@ -14,19 +14,20 @@ import '../../features/catalog/presentation/catalog_item_detail_page.dart';
 import '../../features/catalog/presentation/catalog_page.dart';
 import '../../features/catalog/presentation/catalog_type_items_page.dart';
 import '../../features/assistant/presentation/assistant_chat_page.dart';
+import '../../features/auth/presentation/forgot_password_page.dart';
 import '../../features/auth/presentation/login_page.dart';
+import '../../features/auth/presentation/reset_password_page.dart';
 import '../../features/auth/presentation/signup_page.dart';
 import '../../features/contacts/presentation/broker_detail_page.dart';
 import '../../features/contacts/presentation/category_items_page.dart';
 import '../../features/contacts/presentation/contacts_page.dart';
-import '../../features/contacts/presentation/supplier_create_wizard_page.dart';
+import '../../features/contacts/presentation/supplier_create_simple.dart';
 import '../../features/contacts/presentation/supplier_detail_page.dart';
 import '../../features/contacts/presentation/trade_ledger_page.dart';
-import '../../features/entries/presentation/entry_detail_page.dart';
 import '../../features/home/presentation/home_page.dart';
 import '../../features/purchase/presentation/purchase_detail_page.dart';
 import '../../features/purchase/presentation/purchase_home_page.dart';
-import '../../features/purchase/presentation/purchase_wizard_page.dart';
+import '../../features/purchase/presentation/purchase_entry_wizard_v2.dart';
 import '../../features/purchase/presentation/scan_bill_page.dart';
 import '../../features/notifications/presentation/notifications_page.dart';
 import '../../features/settings/presentation/business_profile_page.dart';
@@ -61,7 +62,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final public = loc == '/splash' ||
           loc == '/get-started' ||
           loc == '/login' ||
-          loc == '/signup';
+          loc == '/signup' ||
+          loc == '/forgot-password' ||
+          loc == '/reset-password';
 
       ProviderContainer container;
       try {
@@ -109,6 +112,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => hexaAuthFadePage(
           key: state.pageKey,
           child: const SignupPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/forgot-password',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const ForgotPasswordPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/reset-password',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: ResetPasswordPage(
+            initialToken: state.uri.queryParameters['token'],
+          ),
         ),
       ),
       GoRoute(
@@ -193,16 +212,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           return iosPushPage(
             key: state.pageKey,
             child: CatalogTypeItemsPage(categoryId: cid, typeId: tid),
-          );
-        },
-      ),
-      GoRoute(
-        path: '/entry/:entryId',
-        pageBuilder: (context, state) {
-          final id = state.pathParameters['entryId']!;
-          return iosPushPage(
-            key: state.pageKey,
-            child: EntryDetailPage(entryId: id),
           );
         },
       ),
@@ -307,8 +316,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) {
           final cid = state.uri.queryParameters['catalogItemId']?.trim();
           return iosPushPage(
-            key: state.pageKey,
-            child: PurchaseWizardPage(
+            key: ValueKey(
+              'purchase_new_${(cid != null && cid.isNotEmpty) ? cid : 'none'}',
+            ),
+            child: PurchaseEntryWizardV2(
               initialCatalogItemId:
                   (cid != null && cid.isNotEmpty) ? cid : null,
             ),
@@ -330,7 +341,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           final id = state.pathParameters['purchaseId']!;
           return iosPushPage(
             key: state.pageKey,
-            child: PurchaseWizardPage(editingId: id),
+            child: PurchaseEntryWizardV2(editingId: id),
           );
         },
       ),
@@ -350,7 +361,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: 'supplier_create',
         pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
-          child: const SupplierCreateWizardPage(),
+          child: const SupplierCreateSimple(),
         ),
       ),
       GoRoute(

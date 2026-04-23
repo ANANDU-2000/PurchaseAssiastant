@@ -15,6 +15,25 @@ final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
 final smartAutofillEnabledProvider =
     NotifierProvider<SmartAutofillNotifier, bool>(SmartAutofillNotifier.new);
 
+final quickSavePurchaseProvider =
+    NotifierProvider<QuickSavePurchaseNotifier, bool>(
+        QuickSavePurchaseNotifier.new);
+
+class QuickSavePurchaseNotifier extends Notifier<bool> {
+  static const _k = 'pref_quick_save_purchase';
+
+  @override
+  bool build() {
+    final p = ref.watch(sharedPreferencesProvider);
+    return p.getBool(_k) ?? false;
+  }
+
+  Future<void> setValue(bool v) async {
+    await ref.read(sharedPreferencesProvider).setBool(_k, v);
+    state = v;
+  }
+}
+
 class SmartAutofillNotifier extends Notifier<bool> {
   static const _k = 'pref_smart_autofill';
 

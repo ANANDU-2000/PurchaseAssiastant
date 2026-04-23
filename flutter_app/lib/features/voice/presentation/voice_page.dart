@@ -507,7 +507,7 @@ class _VoicePageState extends ConsumerState<VoicePage>
                           backgroundColor: HexaColors.primaryMid,
                           foregroundColor: Colors.white),
                       onPressed: () {
-                        context.go('/entries');
+                        context.go('/purchase');
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                               content: Text(
@@ -559,32 +559,29 @@ class _VoicePageState extends ConsumerState<VoicePage>
                       ),
                     ),
                   if (_showVoiceBanner) const SizedBox(height: 10),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        ActionChip(
-                          avatar: const Icon(Icons.add_rounded,
-                              size: 18, color: HexaColors.primaryMid),
-                          label: const Text('Add entry'),
-                          onPressed: () => context.go('/entries'),
-                        ),
-                        const SizedBox(width: 8),
-                        ActionChip(
-                          avatar: const Icon(Icons.insights_outlined,
-                              size: 18, color: HexaColors.primaryMid),
-                          label: const Text('Reports'),
-                          onPressed: () => context.go('/reports'),
-                        ),
-                        const SizedBox(width: 8),
-                        ActionChip(
-                          avatar: const Icon(Icons.home_outlined,
-                              size: 18, color: HexaColors.primaryMid),
-                          label: const Text('Home'),
-                          onPressed: () => context.go('/home'),
-                        ),
-                      ],
-                    ),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ActionChip(
+                        avatar: const Icon(Icons.add_rounded,
+                            size: 18, color: HexaColors.primaryMid),
+                        label: const Text('Add entry'),
+                        onPressed: () => context.go('/purchase'),
+                      ),
+                      ActionChip(
+                        avatar: const Icon(Icons.insights_outlined,
+                            size: 18, color: HexaColors.primaryMid),
+                        label: const Text('Reports'),
+                        onPressed: () => context.go('/reports'),
+                      ),
+                      ActionChip(
+                        avatar: const Icon(Icons.home_outlined,
+                            size: 18, color: HexaColors.primaryMid),
+                        label: const Text('Home'),
+                        onPressed: () => context.go('/home'),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 10),
                   Align(

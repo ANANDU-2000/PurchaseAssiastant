@@ -10,7 +10,6 @@ import 'package:intl/intl.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
-import '../../../core/providers/business_write_revision.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/search/search_highlight.dart';
@@ -33,7 +32,6 @@ class CatalogTypeItemsPage extends ConsumerStatefulWidget {
 }
 
 class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
-  late ({String from, String to}) _range;
   final _searchCtrl = TextEditingController();
   String _searchQuery = '';
   Timer? _searchDebounce;
@@ -45,7 +43,6 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
   @override
   void initState() {
     super.initState();
-    _range = catalogInsightsDefaultRange();
     _searchCtrl.addListener(_onSearchChanged);
   }
 
@@ -65,8 +62,6 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
     super.dispose();
   }
 
-  String _insightKey(String itemId) => '$itemId|${_range.from}|${_range.to}';
-
   String _inr(num? n) {
     if (n == null) return '—';
     return NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
@@ -80,7 +75,6 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
   }
 
   Future<void> _refresh() async {
-    setState(() => _range = catalogInsightsDefaultRange());
     ref.invalidate(categoryTypesListProvider(widget.categoryId));
     ref.invalidate(catalogItemsListProvider);
     await ref.read(catalogItemsListProvider.future);
@@ -452,15 +446,6 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
             limit: 500,
           );
 
-    ref.listen<int>(businessDataWriteRevisionProvider, (prev, next) {
-      if (prev == null || next <= prev) return;
-      for (final it in itemsInType) {
-        final id = it['id']?.toString();
-        if (id == null || id.isEmpty) continue;
-        ref.invalidate(catalogItemInsightsProvider(_insightKey(id)));
-      }
-    });
-
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: !_selectionMode,
@@ -559,11 +544,10 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
                 final pu = (it['default_purchase_unit'] ?? it['default_unit'])?.toString() ?? '—';
                 final last = _num(it['last_purchase_price']);
                 final selected = _selected.contains(id);
-                final ik = _insightKey(id);
-                final iAsync = ref.watch(catalogItemInsightsProvider(ik));
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  child: InkWell(
+                return RepaintBoundary(
+                  child: Card(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    child: InkWell(
                     onTap: () {
                       if (_selectionMode) {
                         setState(() {
@@ -630,25 +614,6 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
                                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                                       ),
                                 ),
-                                iAsync.maybeWhen(
-                                  data: (m) {
-                                    final lines = m['line_count'] ?? 0;
-                                    if (lines == 0) {
-                                      return Padding(
-                                        padding: const EdgeInsets.only(top: 6),
-                                        child: Text(
-                                          'Add your first purchase to unlock insights.',
-                                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                                color: HexaColors.primaryMid,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                        ),
-                                      );
-                                    }
-                                    return const SizedBox.shrink();
-                                  },
-                                  orElse: () => const SizedBox.shrink(),
-                                ),
                               ],
                             ),
                           ),
@@ -656,6 +621,7 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
                         ],
                       ),
                     ),
+                  ),
                   ),
                 );
               }),

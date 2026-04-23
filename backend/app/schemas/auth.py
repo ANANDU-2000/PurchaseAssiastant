@@ -59,3 +59,21 @@ class GoogleAuthRequest(BaseModel):
 
 class RefreshRequest(BaseModel):
     refresh_token: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Request password reset; response is uniform whether or not the email exists."""
+
+    email: str = Field(..., min_length=3, max_length=320)
+
+    @field_validator("email")
+    @classmethod
+    def email_lower(cls, v: str) -> str:
+        return v.strip().lower()
+
+
+class ResetPasswordRequest(BaseModel):
+    """Complete reset using the token from the email link (or dev log)."""
+
+    token: str = Field(..., min_length=10, max_length=2000)
+    new_password: str = Field(..., min_length=8, max_length=128)

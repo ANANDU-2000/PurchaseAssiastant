@@ -6,16 +6,15 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/session_notifier.dart';
 
-/// Server-backed unified search (items, suppliers, entries).
+/// Server-backed unified search (items, suppliers).
 final unifiedSearchProvider =
     FutureProvider.autoDispose.family<Map<String, dynamic>, String>(
   (ref, q) async {
     final session = ref.watch(sessionProvider);
-    if (session == null || q.trim().length < 3) {
+    if (session == null || q.trim().isEmpty) {
       return {
         'catalog_items': <dynamic>[],
         'suppliers': <dynamic>[],
-        'entries': <dynamic>[],
       };
     }
     return ref.read(hexaApiProvider).unifiedSearch(
@@ -45,7 +44,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final sec = GoRouterState.of(context).uri.queryParameters['section'];
-      if (sec == 'all' || sec == 'items' || sec == 'suppliers' || sec == 'entries') {
+      if (sec == 'all' || sec == 'items' || sec == 'suppliers') {
         setState(() => _section = sec!);
       }
       _focus.requestFocus();
@@ -62,7 +61,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
   void _scheduleSearch(String v) {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 450), () {
+    _debounce = Timer(const Duration(milliseconds: 150), () {
       if (!mounted) return;
       final next = v.trim();
       if (next == _debounced) return;
@@ -70,22 +69,12 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     });
   }
 
-  static String _entryTitle(Map<String, dynamic> e) {
-    final lines = e['lines'];
-    if (lines is! List || lines.isEmpty) return 'Purchase entry';
-    final first = lines.first;
-    if (first is! Map) return 'Purchase entry';
-    final name = first['item_name'] as String? ?? 'Item';
-    if (lines.length == 1) return name;
-    return '$name +${lines.length - 1} more';
-  }
-
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
     final q = _debounced.toLowerCase();
-    final searchAsync = q.length >= 3
+    final searchAsync = q.isNotEmpty
         ? ref.watch(unifiedSearchProvider(_debounced))
         : const AsyncValue<Map<String, dynamic>>.data({});
 
@@ -103,7 +92,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
           SearchBar(
             focusNode: _focus,
             controller: _controller,
-            hintText: 'Search items, suppliers, entries…',
+            hintText: 'Name, HSN, category, supplier, GST…',
             leading: const Icon(Icons.search_rounded),
             trailing: [
               if (_controller.text.isNotEmpty)
@@ -122,11 +111,11 @@ class _SearchPageState extends ConsumerState<SearchPage> {
             },
           ),
           const SizedBox(height: 16),
-          if (q.length < 3)
+          if (q.isEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 24),
               child: Text(
-                'Type at least 3 characters to search.',
+                'Type one letter to search items (name, HSN, category) and suppliers.',
                 style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
                 textAlign: TextAlign.center,
               ),
@@ -153,21 +142,11 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                         ?.map((e) => Map<String, dynamic>.from(e as Map))
                         .toList() ??
                     [];
-                final entries = (data['entries'] as List<dynamic>?)
-                        ?.map((e) => Map<String, dynamic>.from(e as Map))
-                        .toList() ??
-                    [];
                 final sectionCounts = <String, int>{
                   'items': items.length,
                   'suppliers': suppliers.length,
-                  'entries': entries.length,
                 };
-                final hasAnyResult =
-                    items.isNotEmpty || suppliers.isNotEmpty || entries.isNotEmpty;
-
-                final suggestDidYouMean = items.isEmpty &&
-                    entries.isNotEmpty &&
-                    q.length >= 3;
+                final hasAnyResult = items.isNotEmpty || suppliers.isNotEmpty;
                 final fuzzyItems =
                     data['fuzzy_catalog_used'] == true;
                 final fuzzySup =
@@ -185,18 +164,6 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                               : fuzzyItems
                                   ? 'No exact item title match — showing close matches (typos OK).'
                                   : 'No exact supplier name match — showing close matches.',
-                          style: tt.bodySmall?.copyWith(
-                            color: cs.onSurfaceVariant,
-                            height: 1.35,
-                          ),
-                        ),
-                      ),
-                    if (suggestDidYouMean)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Text(
-                          'No catalog item title matched — showing entries that mention your text. '
-                          'Add the item under Catalog if you want it as a master row.',
                           style: tt.bodySmall?.copyWith(
                             color: cs.onSurfaceVariant,
                             height: 1.35,
@@ -225,12 +192,6 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                             selected: _section == 'suppliers',
                             onSelected: (_) =>
                                 setState(() => _section = 'suppliers'),
-                          ),
-                          ChoiceChip(
-                            label: Text('Entries (${sectionCounts['entries']})'),
-                            selected: _section == 'entries',
-                            onSelected: (_) =>
-                                setState(() => _section = 'entries'),
                           ),
                         ],
                       ),
@@ -312,41 +273,6 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                         );
                       }),
                     const SizedBox(height: 24),
-                    ],
-                    if (_section == 'all' || _section == 'entries') ...[
-                    Text(
-                      'Entries',
-                      style: tt.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 16,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    if (entries.isEmpty)
-                      Text(
-                        'No matching purchase entries.',
-                        style: tt.bodySmall
-                            ?.copyWith(color: cs.onSurfaceVariant),
-                      )
-                    else
-                      ...entries.take(12).map((e) {
-                        final id = e['id']?.toString() ?? '';
-                        return ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.receipt_long_rounded,
-                              color: cs.primary),
-                          title: Text(_entryTitle(e)),
-                          subtitle: Text(
-                            e['entry_date']?.toString().split('T').first ??
-                                '',
-                          ),
-                          trailing:
-                              const Icon(Icons.chevron_right_rounded),
-                          onTap: id.isEmpty
-                              ? null
-                              : () => context.push('/entry/$id'),
-                        );
-                      }),
                     ],
                   ],
                 );

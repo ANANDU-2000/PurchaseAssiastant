@@ -161,6 +161,9 @@ class Settings(BaseSettings):
     enable_realtime: bool = True
 
     trusted_hosts: str | None = None
+    # Optional: override seed JSON location (default: <repo>/data/files, else backend/scripts/data).
+    # Same as env SEED_DATA_DIR. Used by POST /v1/me/bootstrap-workspace and seed scripts.
+    seed_data_dir: str | None = None
 
     def google_oauth_client_id_list(self) -> list[str]:
         return [x.strip() for x in self.google_oauth_client_ids.split(",") if x.strip()]

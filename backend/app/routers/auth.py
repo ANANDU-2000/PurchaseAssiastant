@@ -1,21 +1,25 @@
 import logging
 import re
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
 from app.database import get_db
 from app.models import Business, Membership, User
+from app.models.password_reset import PasswordResetToken, hash_reset_token, new_reset_token_raw
 from app.schemas.auth import (
+    ForgotPasswordRequest,
     GoogleAuthRequest,
     LoginRequest,
     RefreshRequest,
     RegisterRequest,
+    ResetPasswordRequest,
     TokenPair,
 )
 from app.services.google_oauth import verify_google_id_token_async
@@ -88,6 +92,75 @@ async def register(
         refresh_token=refresh,
         expires_in=settings.jwt_access_ttl_minutes * 60,
     )
+
+
+@router.post("/forgot-password")
+async def forgot_password(
+    body: ForgotPasswordRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+):
+    """Store a one-time token (email delivery TBD). Response text is user-safe; in development a token is returned for testing."""
+    r = await db.execute(select(User).where(User.email == body.email))
+    user = r.scalar_one_or_none()
+    same: dict = {
+        "ok": True,
+        "message": "If an account exists for that email, you will receive reset instructions.",
+    }
+    if not user or not user.password_hash:
+        return same
+    await db.execute(delete(PasswordResetToken).where(PasswordResetToken.user_id == user.id))
+    raw = new_reset_token_raw()
+    th = hash_reset_token(raw)
+    exp = datetime.now(timezone.utc) + timedelta(hours=1)
+    db.add(
+        PasswordResetToken(
+            user_id=user.id,
+            token_hash=th,
+            expires_at=exp,
+        )
+    )
+    await db.commit()
+    logger.info("Password reset token created for user_id=%s", user.id)
+    if (settings.app_env or "").lower() in ("development", "dev", "test"):
+        same["dev_reset_token"] = raw
+    return same
+
+
+@router.post("/reset-password")
+async def reset_password_with_token(
+    body: ResetPasswordRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    th = hash_reset_token(body.token.strip())
+    now = datetime.now(timezone.utc)
+    q = await db.execute(
+        select(PasswordResetToken).where(
+            PasswordResetToken.token_hash == th,
+            PasswordResetToken.used_at.is_(None),
+            PasswordResetToken.expires_at > now,
+        )
+    )
+    pr = q.scalar_one_or_none()
+    if not pr:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset link. Request a new one.",
+        )
+    ur = await db.execute(select(User).where(User.id == pr.user_id))
+    user = ur.scalar_one_or_none()
+    if not user or not user.password_hash:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="This account cannot set a password here.",
+        )
+    user.password_hash = hash_password(body.new_password)
+    pr.used_at = now
+    await db.commit()
+    return {
+        "ok": True,
+        "message": "Password updated. You can sign in now.",
+    }
 
 
 @router.post("/login", response_model=TokenPair)

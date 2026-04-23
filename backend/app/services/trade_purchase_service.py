@@ -310,14 +310,22 @@ async def create_trade_purchase(
 ) -> TradePurchaseOut:
     if not body.lines:
         raise ValueError("At least one line item is required")
+    initial_status = body.status if body.status in ("draft", "saved", "confirmed") else "confirmed"
+    if initial_status == "confirmed":
+        if body.supplier_id is None:
+            raise ValueError("confirmed purchase requires supplier_id")
+        for i, li in enumerate(body.lines):
+            if li.landing_cost <= 0:
+                raise ValueError(f"line {i + 1}: landing cost must be greater than 0")
     human_id = await next_human_id(db, business_id)
     qty_sum, amt_sum = compute_totals(body)
-    initial_status = body.status if body.status in ("draft", "saved", "confirmed") else "confirmed"
     due = _due_date_from(body.purchase_date, body.payment_days)
+    inv = (body.invoice_number.strip() if body.invoice_number else None) or None
     tp = TradePurchase(
         business_id=business_id,
         user_id=user_id,
         human_id=human_id,
+        invoice_number=inv,
         purchase_date=body.purchase_date,
         supplier_id=body.supplier_id,
         broker_id=body.broker_id,
@@ -375,6 +383,13 @@ async def update_trade_purchase(
 ) -> TradePurchaseOut | None:
     if not body.lines:
         raise ValueError("At least one line item is required")
+    new_status = body.status if body.status in ("draft", "saved", "confirmed") else "confirmed"
+    if new_status == "confirmed":
+        if body.supplier_id is None:
+            raise ValueError("confirmed purchase requires supplier_id")
+        for i, li in enumerate(body.lines):
+            if li.landing_cost <= 0:
+                raise ValueError(f"line {i + 1}: landing cost must be greater than 0")
     res = await db.execute(
         select(TradePurchase)
         .where(
@@ -390,6 +405,7 @@ async def update_trade_purchase(
         raise ValueError("Cannot edit a cancelled purchase")
     qty_sum, amt_sum = compute_totals(body)
     tp.purchase_date = body.purchase_date
+    tp.invoice_number = (body.invoice_number.strip() if body.invoice_number else None) or None
     tp.supplier_id = body.supplier_id
     tp.broker_id = body.broker_id
     tp.payment_days = body.payment_days
@@ -635,6 +651,7 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
     return TradePurchaseOut(
         id=tp.id,
         human_id=tp.human_id,
+        invoice_number=getattr(tp, "invoice_number", None),
         purchase_date=tp.purchase_date,
         supplier_id=tp.supplier_id,
         broker_id=tp.broker_id,

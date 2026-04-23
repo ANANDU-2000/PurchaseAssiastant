@@ -4,11 +4,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
-
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
-import '../../../core/providers/business_write_revision.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/search/search_highlight.dart';
@@ -48,37 +45,6 @@ class _CatalogPageState extends ConsumerState<CatalogPage> {
     _searchCtrl.removeListener(_onSearchChanged);
     _searchCtrl.dispose();
     super.dispose();
-  }
-
-  String _inr(num? n) {
-    if (n == null) return '—';
-    return NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
-        .format(n);
-  }
-
-  num? _num(dynamic v) {
-    if (v == null) return null;
-    if (v is num) return v;
-    return num.tryParse(v.toString());
-  }
-
-  Widget _insightRetry(VoidCallback onRetry) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: TextButton(
-          onPressed: onRetry,
-          child: Text(
-            'Insights unavailable · Retry',
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: HexaColors.primaryMid,
-                  fontWeight: FontWeight.w600,
-                ),
-          ),
-        ),
-      ),
-    );
   }
 
   Future<void> _editCategory(BuildContext context, String id, String current) async {
@@ -153,18 +119,6 @@ class _CatalogPageState extends ConsumerState<CatalogPage> {
   Widget build(BuildContext context) {
     final async = ref.watch(itemCategoriesListProvider);
     final itemsAsync = ref.watch(catalogItemsListProvider);
-    final range = catalogInsightsDefaultRange();
-
-    ref.listen<int>(businessDataWriteRevisionProvider, (prev, next) {
-      if (prev == null || next <= prev) return;
-      async.whenData((list) {
-        for (final c in list) {
-          final id = c['id']?.toString();
-          if (id == null || id.isEmpty) continue;
-          ref.invalidate(categoryInsightsProvider('$id|${range.from}|${range.to}'));
-        }
-      });
-    });
 
     return Scaffold(
       appBar: AppBar(
@@ -275,12 +229,6 @@ class _CatalogPageState extends ConsumerState<CatalogPage> {
                     ref.invalidate(catalogItemsListProvider);
                     await ref.read(itemCategoriesListProvider.future);
                     await ref.read(catalogItemsListProvider.future);
-                    final r = catalogInsightsDefaultRange();
-                    for (final c in list) {
-                      final id = c['id']?.toString();
-                      if (id == null || id.isEmpty) continue;
-                      ref.invalidate(categoryInsightsProvider('$id|${r.from}|${r.to}'));
-                    }
                   },
                   child: display.isEmpty
                       ? ListView(
@@ -323,13 +271,11 @@ class _CatalogPageState extends ConsumerState<CatalogPage> {
                             final name = c['name']?.toString() ?? '';
                             final itemCount =
                                 items.where((it) => it['category_id']?.toString() == id).length;
-                            final typesAsync = ref.watch(categoryTypesListProvider(id));
-                            final subCount = typesAsync.maybeWhen(
-                              data: (t) => t.length,
-                              orElse: () => 0,
+                            final subN = ref.watch(
+                              categoryTypesListProvider(id)
+                                  .select((a) => a.valueOrNull?.length ?? -1),
                             );
-                            final insKey = '$id|${range.from}|${range.to}';
-                            final ins = ref.watch(categoryInsightsProvider(insKey));
+                            final subCount = subN < 0 ? 0 : subN;
                             return Card(
                               margin: const EdgeInsets.only(bottom: 10),
                               elevation: 0,
@@ -389,28 +335,6 @@ class _CatalogPageState extends ConsumerState<CatalogPage> {
                                               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                                                   ),
-                                            ),
-                                            ins.when(
-                                              loading: () => const Padding(
-                                                padding: EdgeInsets.only(top: 8),
-                                                child: LinearProgressIndicator(),
-                                              ),
-                                              error: (_, __) => _insightRetry(
-                                                () => ref.invalidate(categoryInsightsProvider(insKey)),
-                                              ),
-                                              data: (m) {
-                                                final tp = m['total_profit'];
-                                                final lines = m['linked_line_count'] ?? 0;
-                                                return Padding(
-                                                  padding: const EdgeInsets.only(top: 6),
-                                                  child: Text(
-                                                    'Last 90d: ${_inr(_num(tp))} profit · $lines lines',
-                                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                                        ),
-                                                  ),
-                                                );
-                                              },
                                             ),
                                           ],
                                         ),

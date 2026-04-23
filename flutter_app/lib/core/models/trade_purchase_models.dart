@@ -130,6 +130,7 @@ class TradePurchase {
   TradePurchase({
     required this.id,
     required this.humanId,
+    this.invoiceNumber,
     required this.purchaseDate,
     this.supplierId,
     this.brokerId,
@@ -163,6 +164,7 @@ class TradePurchase {
 
   final String id;
   final String humanId;
+  final String? invoiceNumber;
   final DateTime purchaseDate;
   final String? supplierId;
   final String? brokerId;
@@ -223,6 +225,7 @@ class TradePurchase {
     return TradePurchase(
       id: j['id']?.toString() ?? '',
       humanId: j['human_id']?.toString() ?? '',
+      invoiceNumber: j['invoice_number']?.toString(),
       purchaseDate: pd,
       supplierId: j['supplier_id']?.toString(),
       brokerId: j['broker_id']?.toString(),

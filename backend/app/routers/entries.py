@@ -1,3 +1,10 @@
+"""Legacy `entries` REST API (original purchase journal).
+
+Kept for server-side features that still read/write the `entries` / `entry_line_items`
+tables (e.g. WhatsApp transaction flow, entry_create_pipeline). The Flutter app uses
+`trade_purchases` only; it no longer calls these routes.
+"""
+
 import uuid
 from datetime import date
 from typing import Annotated

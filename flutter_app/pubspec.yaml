@@ -57,6 +57,8 @@ flutter:
     - assets/auth/signup_bg.png
     - assets/images/app_logo.png
     - assets/images/getstarted.png
+    - assets/brand/logo.png
+    - assets/brand/getstarted_bg.png
     - assets/signup/harisree.png
     - assets/signup/signup.png
     - assets/login/login.png

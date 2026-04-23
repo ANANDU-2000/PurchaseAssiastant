@@ -11,6 +11,7 @@ from app.models.feature_flag import FeatureFlag
 from app.models.platform_integration import PlatformIntegration
 from app.models.membership import Membership
 from app.models.user import User
+from app.models.password_reset import PasswordResetToken
 from app.models.business_subscription import BusinessSubscription
 from app.models.billing_payment import BillingPayment
 from app.models.webhook_event_log import WebhookEventLog
@@ -21,6 +22,7 @@ from app.models.platform_monthly_expense import PlatformMonthlyExpense
 __all__ = [
     "Base",
     "User",
+    "PasswordResetToken",
     "Business",
     "BusinessSubscription",
     "BillingPayment",

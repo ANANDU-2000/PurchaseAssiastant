@@ -11,6 +11,9 @@ class AppConfig {
   static const String appName = 'Harisree Purchases';
 
   /// Vercel web builds: set `API_BASE_URL` in project env (see `scripts/vercel-flutter-build.sh`).
+  /// If `POST /v1/me/bootstrap-workspace` returns **404**, the client is not hitting the
+  /// current backend process (wrong port, stale uvicorn) — fix the URL and restart the API;
+  /// the app treats 404/501 on that route as non-fatal and continues.
   /// Default uses 127.0.0.1 (not `localhost`) so Windows resolves IPv4 consistently with uvicorn
   /// bound to 127.0.0.1 and avoids ERR_CONNECTION_REFUSED when `localhost` maps to ::1 only.
   static const String apiBaseUrl = String.fromEnvironment(

@@ -36,6 +36,7 @@ class TradePurchase(Base):
     business_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("businesses.id"), index=True)
     user_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"), index=True)
     human_id: Mapped[str] = mapped_column(String(32), index=True)
+    invoice_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
     purchase_date: Mapped[date] = mapped_column(Date, index=True)
     supplier_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("suppliers.id"), nullable=True, index=True

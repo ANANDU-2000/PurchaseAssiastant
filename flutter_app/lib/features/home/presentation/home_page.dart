@@ -7,7 +7,6 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/auth/session_notifier.dart';
-import '../../../core/models/session.dart';
 import '../../../core/providers/analytics_breakdown_providers.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/dashboard_period_provider.dart';
@@ -20,7 +19,6 @@ import '../../../core/providers/trade_purchases_provider.dart'
         purchaseUnitTotalsProvider,
         tradePurchasesListProvider;
 import '../../purchase/presentation/widgets/purchase_saved_sheet.dart';
-import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/shell_quick_ref_actions.dart';
@@ -36,22 +34,6 @@ String _formatPct(double? pct) {
   if (pct.abs() > 999) return pct > 0 ? '+new' : '–new';
   final sign = pct >= 0 ? '+' : '';
   return '$sign${pct.toStringAsFixed(1)}%';
-}
-
-String _homeGreetPhrase() {
-  final h = DateTime.now().hour;
-  if (h < 12) return 'Good morning';
-  if (h < 17) return 'Good afternoon';
-  return 'Good evening';
-}
-
-String _homeBusinessFirstToken(Session? session) {
-  final raw = session?.primaryBusiness.name.trim() ?? '';
-  if (raw.isEmpty) return 'there';
-  for (final part in raw.split(RegExp(r'\s+'))) {
-    if (part.isNotEmpty) return part;
-  }
-  return 'there';
 }
 
 String _itemQtyLabel(Map<String, dynamic> r) {
@@ -148,14 +130,14 @@ class _HomePageState extends ConsumerState<HomePage>
     final hi       = insights.valueOrNull;
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: HexaColors.brandBackground,
       appBar: _buildAppBar(context),
       body: SafeArea(
         bottom: false,
         child: RefreshIndicator(
           onRefresh: _refresh,
           color: HexaColors.brandPrimary,
-          edgeOffset: 72,
+          edgeOffset: 80,
           child: CustomScrollView(
             physics: const BouncingScrollPhysics(
                 parent: AlwaysScrollableScrollPhysics()),
@@ -163,12 +145,7 @@ class _HomePageState extends ConsumerState<HomePage>
               // Filter chips
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    HexaDsLayout.pageGutter,
-                    HexaDsLayout.tightGap,
-                    HexaDsLayout.pageGutter,
-                    0,
-                  ),
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                   child: _FilterChips(
                     selected: period,
                     onSelect: (p) {
@@ -183,10 +160,7 @@ class _HomePageState extends ConsumerState<HomePage>
               // Dashboard body
               SliverPadding(
                 padding: EdgeInsets.fromLTRB(
-                    HexaDsLayout.pageGutter,
-                    HexaDsLayout.blockGap,
-                    HexaDsLayout.pageGutter,
-                    80 + MediaQuery.viewPaddingOf(context).bottom),
+                    16, 14, 16, 96 + MediaQuery.of(context).padding.bottom),
                 sliver: SliverToBoxAdapter(
                   child: dash.when(
                     loading: () => const _LoadingShimmer(),
@@ -198,8 +172,8 @@ class _HomePageState extends ConsumerState<HomePage>
                       ),
                     ),
                     data: (d) {
-                      final mom = hi?.profitChangePctPriorMtd;
-                      final trend = ref.watch(homeSevenDayProfitProvider);
+                      final mom     = hi?.profitChangePctPriorMtd;
+                      final trend   = ref.watch(homeSevenDayProfitProvider);
                       final topItems =
                           ref.watch(_homeTopItemsProvider(period));
                       final topSups =
@@ -209,111 +183,96 @@ class _HomePageState extends ConsumerState<HomePage>
                       final recentAsync =
                           ref.watch(tradePurchasesListProvider);
 
-                      // KeyedSubtree (no AnimatedSwitcher): switcher + sliver loose
-                      // height caused "BoxConstraints forces an infinite height".
-                      return KeyedSubtree(
-                        key: ValueKey<DashboardPeriod>(period),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                              // ── Hero summary card ──
-                              _HeroSummaryCard(
-                                profitText: _inr(d.totalProfit),
-                                changePct: mom,
-                                purchaseCount: d.purchaseCount,
-                                revenue: d.totalPurchase,
-                                period: dashboardPeriodLabel(period),
-                              ),
-                              const SizedBox(height: HexaDsLayout.tightGap),
-                              _UnitTotalsStrip(
-                                  totals:
-                                      ref.watch(purchaseUnitTotalsProvider)),
-                              const SizedBox(height: HexaDsLayout.tightGap),
-                              _PurchaseAlertsRow(
-                                counts: ref.watch(purchaseAlertsProvider),
-                                onOverdue: () =>
-                                    context.go('/purchase?filter=overdue'),
-                                onDueSoon: () =>
-                                    context.go('/purchase?filter=due_soon'),
-                                onPaid: () =>
-                                    context.go('/purchase?filter=paid'),
-                              ),
-                              const SizedBox(height: HexaDsLayout.blockGap),
-
-                              // ── Sparkline ──
-                              if (trend.hasValue &&
-                                  (trend.value?.length ?? 0) > 1)
-                                _SparklineCard(trend: trend),
-
-                              if (trend.hasValue &&
-                                  (trend.value?.length ?? 0) > 1)
-                                const SizedBox(height: HexaDsLayout.sectionGap)
-                              else
-                                const SizedBox(height: HexaDsLayout.blockGap),
-
-                              // ── Top Items ──
-                              _SectionList(
-                                title: 'Top Items',
-                                icon: Icons.inventory_2_outlined,
-                                rows: topItems.maybeWhen(
-                                    data: (v) => v, orElse: () => const []),
-                                nameOf: (r) =>
-                                    r['item_name']?.toString() ?? '—',
-                                valueOf: (r) => _inr(
-                                    ((r['total_profit'] as num?) ?? 0)
-                                        .round()),
-                                metaOf: (r) {
-                                  final m = (r['margin_pct'] as num?) ?? 0;
-                                  return '${_itemQtyLabel(r)} · ${m.toStringAsFixed(1)}%';
-                                },
-                                accentColor: HexaColors.brandPrimary,
-                                onViewAll: () => context.go('/reports'),
-                              ),
-                              const SizedBox(height: HexaDsLayout.sectionGap),
-
-                              // ── Top Suppliers ──
-                              _SectionList(
-                                title: 'Top Suppliers',
-                                icon: Icons.storefront_outlined,
-                                rows: topSups.maybeWhen(
-                                    data: (v) => v, orElse: () => const []),
-                                nameOf: (r) =>
-                                    r['supplier_name']?.toString() ?? '—',
-                                valueOf: (r) => _inr(
-                                    ((r['avg_landing'] as num?) ?? 0).round()),
-                                metaOf: (r) {
-                                  final m = (r['margin_pct'] as num?) ?? 0;
-                                  return m >= 8 ? 'High margin' : 'Best price';
-                                },
-                                accentColor: HexaColors.brandAccent,
-                                onViewAll: () => context.go('/reports'),
-                              ),
-                              const SizedBox(height: HexaDsLayout.sectionGap),
-
-                              // ── Categories ──
-                              _SectionList(
-                                title: 'Categories',
-                                icon: Icons.category_outlined,
-                                rows: topCats.maybeWhen(
-                                    data: (v) => v, orElse: () => const []),
-                                nameOf: (r) =>
-                                    r['category']?.toString() ?? '—',
-                                valueOf: (r) =>
-                                    '${((r['total_qty'] as num?) ?? 0).toStringAsFixed(0)} kg',
-                                metaOf: (_) => 'volume',
-                                accentColor: HexaColors.brandGold,
-                                onViewAll: () => context.go('/reports'),
-                              ),
-                              const SizedBox(height: HexaDsLayout.sectionGap),
-
-                              // ── Recent Purchases ──
-                              _RecentPurchasesSection(
-                                async: recentAsync,
-                                onViewAll: () => context.go('/purchase'),
-                                onAdd: () => context.push('/purchase/new'),
-                              ),
-                            ],
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // ── Hero summary card ──
+                          _HeroSummaryCard(
+                            profitText: _inr(d.totalProfit),
+                            changePct:  mom,
+                            purchaseCount: d.purchaseCount,
+                            revenue: d.totalPurchase,
+                            period: dashboardPeriodLabel(period),
                           ),
+                          const SizedBox(height: 12),
+                          _PurchaseAlertsRow(
+                            counts: ref.watch(purchaseAlertsProvider),
+                            onOverdue: () =>
+                                context.go('/purchase?filter=overdue'),
+                            onDueSoon: () =>
+                                context.go('/purchase?filter=due_soon'),
+                            onPaid: () => context.go('/purchase?filter=paid'),
+                          ),
+                          const SizedBox(height: 10),
+                          _UnitTotalsStrip(
+                              totals: ref.watch(purchaseUnitTotalsProvider)),
+                          const SizedBox(height: 14),
+
+                          // ── Sparkline ──
+                          if (trend.hasValue && (trend.value?.length ?? 0) > 1)
+                            _SparklineCard(trend: trend),
+
+                          const SizedBox(height: 16),
+
+                          // ── Top Items ──
+                          _SectionList(
+                            title: 'Top Items',
+                            icon: Icons.inventory_2_outlined,
+                            rows: topItems.maybeWhen(
+                                data: (v) => v, orElse: () => const []),
+                            nameOf: (r) => r['item_name']?.toString() ?? '—',
+                            valueOf: (r) => _inr(
+                                ((r['total_profit'] as num?) ?? 0).round()),
+                            metaOf: (r) {
+                              final m = (r['margin_pct'] as num?) ?? 0;
+                              return '${_itemQtyLabel(r)} · ${m.toStringAsFixed(1)}%';
+                            },
+                            accentColor: HexaColors.brandPrimary,
+                            onViewAll: () => context.go('/reports'),
+                          ),
+                          const SizedBox(height: 14),
+
+                          // ── Top Suppliers ──
+                          _SectionList(
+                            title: 'Top Suppliers',
+                            icon: Icons.storefront_outlined,
+                            rows: topSups.maybeWhen(
+                                data: (v) => v, orElse: () => const []),
+                            nameOf: (r) =>
+                                r['supplier_name']?.toString() ?? '—',
+                            valueOf: (r) => _inr(
+                                ((r['avg_landing'] as num?) ?? 0).round()),
+                            metaOf: (r) {
+                              final m = (r['margin_pct'] as num?) ?? 0;
+                              return m >= 8 ? 'High margin' : 'Best price';
+                            },
+                            accentColor: HexaColors.brandAccent,
+                            onViewAll: () => context.go('/reports'),
+                          ),
+                          const SizedBox(height: 14),
+
+                          // ── Categories ──
+                          _SectionList(
+                            title: 'Categories',
+                            icon: Icons.category_outlined,
+                            rows: topCats.maybeWhen(
+                                data: (v) => v, orElse: () => const []),
+                            nameOf: (r) => r['category']?.toString() ?? '—',
+                            valueOf: (r) =>
+                                '${((r['total_qty'] as num?) ?? 0).toStringAsFixed(0)} kg',
+                            metaOf: (_) => 'volume',
+                            accentColor: HexaColors.brandGold,
+                            onViewAll: () => context.go('/reports'),
+                          ),
+                          const SizedBox(height: 14),
+
+                          // ── Recent Purchases ──
+                          _RecentPurchasesSection(
+                            async: recentAsync,
+                            onViewAll: () => context.go('/purchase'),
+                            onAdd: () => context.push('/purchase/new'),
+                          ),
+                        ],
                       );
                     },
                   ),
@@ -327,17 +286,11 @@ class _HomePageState extends ConsumerState<HomePage>
   }
 
   PreferredSizeWidget _buildAppBar(BuildContext context) {
-    final session = ref.watch(sessionProvider);
-    final greet = _homeGreetPhrase();
-    final who = _homeBusinessFirstToken(session);
-    final tt = Theme.of(context).textTheme;
     return AppBar(
       automaticallyImplyLeading: false,
-      toolbarHeight: 56,
-      backgroundColor: Colors.transparent,
+      backgroundColor: HexaColors.brandBackground,
       surfaceTintColor: Colors.transparent,
       scrolledUnderElevation: 0,
-      titleSpacing: HexaDsLayout.inlineGap,
       title: Row(
         children: [
           ClipRRect(
@@ -349,40 +302,6 @@ class _HomePageState extends ConsumerState<HomePage>
               fit: BoxFit.cover,
               gaplessPlayback: true,
               filterQuality: FilterQuality.high,
-            ),
-          ),
-          const SizedBox(width: HexaDsLayout.inlineGap),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '$greet,',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: tt.labelMedium?.copyWith(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: HexaColors.neutral,
-                    height: 1.15,
-                    letterSpacing: 0.08,
-                  ),
-                ),
-                Text(
-                  who,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: tt.titleLarge?.copyWith(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: HexaColors.brandPrimary,
-                    height: 1.2,
-                    letterSpacing: -0.35,
-                  ),
-                ),
-              ],
             ),
           ),
         ],
@@ -403,55 +322,50 @@ class _FilterChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: DashboardPeriod.values.map((p) {
-          final active = p == selected;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: GestureDetector(
-              onTap: () => onSelect(p),
-              child: AnimatedContainer(
-                duration: HexaDsMotion.fast,
-                curve: HexaDsMotion.enter,
-                height: 34,
-                padding: const EdgeInsets.symmetric(horizontal: 18),
-                decoration: BoxDecoration(
-                  gradient: active ? HexaColors.ctaGradient : null,
-                  color: active ? null : Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: active
-                        ? Colors.transparent
-                        : HexaColors.brandBorder,
-                    width: 1,
-                  ),
-                  boxShadow: active
-                      ? [
-                          BoxShadow(
-                            color: HexaColors.brandPrimary
-                                .withValues(alpha: 0.22),
-                            blurRadius: 8,
-                            offset: const Offset(0, 3),
-                          )
-                        ]
-                      : null,
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  dashboardPeriodLabel(p),
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: active ? Colors.white : HexaColors.neutral,
-                  ),
-                ),
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: DashboardPeriod.values.map((p) {
+        final active = p == selected;
+        return GestureDetector(
+          onTap: () => onSelect(p),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            height: 34,
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            decoration: BoxDecoration(
+              gradient: active ? HexaColors.ctaGradient : null,
+              color: active ? null : Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: active
+                    ? Colors.transparent
+                    : HexaColors.brandBorder,
+                width: 1,
+              ),
+              boxShadow: active
+                  ? [
+                      BoxShadow(
+                        color: HexaColors.brandPrimary
+                            .withValues(alpha: 0.22),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      )
+                    ]
+                  : null,
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              dashboardPeriodLabel(p),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: active ? Colors.white : HexaColors.neutral,
               ),
             ),
-          );
-        }).toList(),
-      ),
+          ),
+        );
+      }).toList(),
     );
   }
 }
@@ -485,7 +399,7 @@ class _HeroSummaryCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: HexaColors.heroShadow(),
       ),
-      padding: const EdgeInsets.all(HexaDsLayout.pageGutter),
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -541,28 +455,17 @@ class _HeroSummaryCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              profitText,
-              maxLines: 1,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 32,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -1.0,
-                height: 1.0,
-              ),
+          Text(
+            profitText,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 32,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -1.0,
+              height: 1.0,
             ),
           ),
-          const SizedBox(height: 14),
-          Divider(
-            height: 1,
-            thickness: 1,
-            color: Colors.white.withValues(alpha: 0.18),
-          ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 18),
 
           // Stats row
           Row(
@@ -736,54 +639,32 @@ class _SectionList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Rounded rect + non-uniform Border on one BoxDecoration throws:
-    // "A borderRadius can only be given on borders with uniform colors."
-    // Use a top accent strip + separate body border under [ClipRRect].
-    const radius = 16.0;
-    final edge = HexaColors.brandBorder.withValues(alpha: 0.9);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: HexaColors.brandBorder),
+      ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ColoredBox(
-            color: accentColor.withValues(alpha: 0.65),
-            child: const SizedBox(height: 2.5),
-          ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border(
-                left: BorderSide(color: edge),
-                right: BorderSide(color: edge),
-                bottom: BorderSide(color: edge),
-              ),
-            ),
-            child: Column(
-              children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(
-              HexaDsSpace.s2,
-              HexaDsLayout.tightGap,
-              HexaDsSpace.s2,
-              HexaDsSpace.xs + 4,
-            ),
+            padding: const EdgeInsets.fromLTRB(14, 12, 10, 8),
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(HexaDsSpace.xs + 2),
+                  padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
                     color: accentColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(icon, size: 16, color: accentColor),
                 ),
-                const SizedBox(width: HexaDsLayout.inlineGap),
-                Text(
-                  title,
-                  style: HexaDsType.sectionTitle(),
-                ),
+                const SizedBox(width: 10),
+                Text(title,
+                    style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: HexaColors.brandPrimary)),
                 const Spacer(),
                 TextButton(
                   onPressed: onViewAll,
@@ -804,17 +685,12 @@ class _SectionList extends StatelessWidget {
           ),
           if (rows.isEmpty)
             Padding(
-              padding: const EdgeInsets.fromLTRB(
-                HexaDsSpace.s2,
-                0,
-                HexaDsSpace.s2,
-                HexaDsSpace.s2,
-              ),
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
               child: Row(
                 children: [
                   Icon(Icons.info_outline,
                       size: 14, color: Colors.grey.shade400),
-                  const SizedBox(width: HexaDsSpace.xs + 2),
+                  const SizedBox(width: 6),
                   Text('No data for this period',
                       style: TextStyle(
                           fontSize: 12, color: Colors.grey.shade500)),
@@ -831,12 +707,11 @@ class _SectionList extends StatelessWidget {
                         height: 1,
                         color: HexaColors.brandBorder
                             .withValues(alpha: 0.6),
-                        indent: HexaDsSpace.s2,
-                        endIndent: HexaDsSpace.s2),
+                        indent: 14,
+                        endIndent: 14),
                   Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: HexaDsSpace.s2,
-                        vertical: HexaDsSpace.xs + 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     child: Row(
                       children: [
                         Container(
@@ -886,9 +761,6 @@ class _SectionList extends StatelessWidget {
                 ],
               );
             }),
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -1141,48 +1013,17 @@ class _AlertMini extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: HexaColors.brandBorder),
           ),
-          child: Row(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Padding(
-                padding: const EdgeInsets.only(top: 5),
-                child: Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: color,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.35,
-                        color: color,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      value,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w900,
-                        color: HexaColors.brandPrimary,
-                        height: 1.05,
-                        letterSpacing: -0.2,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: color)),
+              Text(value,
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.w900)),
             ],
           ),
         ),
@@ -1199,72 +1040,20 @@ class _UnitTotalsStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: HexaColors.brandBorder),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          _UnitChip(label: 'Bags', value: totals.bags),
-          const _VerticalUnitDivider(),
-          _UnitChip(label: 'Boxes', value: totals.boxes),
-          const _VerticalUnitDivider(),
-          _UnitChip(label: 'Tins', value: totals.tins),
-        ],
+      child: Text(
+        '${totals.bags} bags  •  ${totals.boxes} boxes  •  ${totals.tins} tins',
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: HexaColors.brandPrimary),
       ),
-    );
-  }
-}
-
-class _UnitChip extends StatelessWidget {
-  const _UnitChip({required this.label, required this.value});
-  final String label;
-  final int value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.4,
-              color: HexaColors.neutral.withValues(alpha: 0.85),
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            '$value',
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-              color: HexaColors.brandPrimary,
-              height: 1.0,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _VerticalUnitDivider extends StatelessWidget {
-  const _VerticalUnitDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 1,
-      height: 36,
-      margin: const EdgeInsets.symmetric(horizontal: 4),
-      color: HexaColors.brandBorder.withValues(alpha: 0.85),
     );
   }
 }
@@ -1276,8 +1065,7 @@ class _StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (color, label) = switch (status.toLowerCase()) {
-      'confirmed' => (HexaColors.brandAccent, 'Confirmed'),
-      'pending' => (HexaColors.warning, 'Pending'),
+      'confirmed' => (HexaColors.profit, 'Pending'),
       'paid' => (HexaColors.brandAccent, 'Paid'),
       'partially_paid' => (const Color(0xFFF59E0B), 'Partial'),
       'overdue' => (HexaColors.loss, 'Overdue'),
@@ -1377,8 +1165,8 @@ class _LoadingShimmerState extends State<_LoadingShimmer>
   void initState() {
     super.initState();
     _c = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 900))
-      ..repeat(reverse: true);
+        vsync: this, duration: const Duration(milliseconds: 1400))
+      ..repeat();
   }
 
   @override
@@ -1392,7 +1180,7 @@ class _LoadingShimmerState extends State<_LoadingShimmer>
     return AnimatedBuilder(
       animation: _c,
       builder: (context, _) {
-        final t = Curves.easeInOut.transform(_c.value);
+        final t = _c.value;
         final shimmer = Color.lerp(
           const Color(0xFFF1F5F9),
           HexaColors.brandPrimary.withValues(alpha: 0.07),

@@ -115,6 +115,17 @@ final catalogItemDetailProvider = FutureProvider.autoDispose
       );
 });
 
+/// Latest trade price per supplier + last 5 landing prices (trade purchases only).
+final catalogItemTradeSupplierPricesProvider = FutureProvider.autoDispose
+    .family<Map<String, dynamic>, String>((ref, itemId) async {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return {};
+  return ref.read(hexaApiProvider).catalogItemTradeSupplierPrices(
+        businessId: session.primaryBusiness.id,
+        itemId: itemId,
+      );
+});
+
 /// Key: `itemName|currentLanding` (landing may be empty). Name-based price intelligence.
 final catalogItemPriceIntelProvider =
     FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, key) async {
