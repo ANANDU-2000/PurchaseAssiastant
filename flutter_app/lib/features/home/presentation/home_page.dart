@@ -473,9 +473,10 @@ class _HomeKpiCard extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 units,
-                style: tt.bodySmall?.copyWith(
-                  color: const Color(0xFF334155),
-                  fontWeight: FontWeight.w600,
+                style: tt.titleSmall?.copyWith(
+                  color: const Color(0xFF0F172A),
+                  fontWeight: FontWeight.w800,
+                  height: 1.25,
                 ),
               ),
             ],
@@ -584,6 +585,7 @@ class _DonutSection extends StatelessWidget {
   Widget _donutForCategories(
       BuildContext context, BoxConstraints constraints) {
     final slice = data.categories.where((e) => e.totalAmount > 0).toList();
+    final qSlice = slice.fold<double>(0, (a, s) => a + s.totalQty);
     return _buildDonut(
       context,
       constraints,
@@ -610,12 +612,14 @@ class _DonutSection extends StatelessWidget {
         ),
       ),
       _legendCategory(context, slice),
+      sliceLineQty: qSlice,
     );
   }
 
   Widget _donutForSubcategories(
       BuildContext context, BoxConstraints constraints) {
     final slice = data.subcategories.where((e) => e.totalAmount > 0).toList();
+    final qSlice = slice.fold<double>(0, (a, s) => a + s.totalQty);
     return _buildDonut(
       context,
       constraints,
@@ -643,12 +647,14 @@ class _DonutSection extends StatelessWidget {
         ),
       ),
       _legendSubcategory(context, slice),
+      sliceLineQty: qSlice,
     );
   }
 
   Widget _donutForItems(
       BuildContext context, BoxConstraints constraints) {
     final slice = data.itemSlices.where((e) => e.totalAmount > 0).toList();
+    final qSlice = slice.fold<double>(0, (a, s) => a + s.totalQty);
     return _buildDonut(
       context,
       constraints,
@@ -677,6 +683,7 @@ class _DonutSection extends StatelessWidget {
         ),
       ),
       _legendItem(context, slice),
+      sliceLineQty: qSlice,
     );
   }
 
@@ -688,8 +695,9 @@ class _DonutSection extends StatelessWidget {
     double total,
     void Function(int) onSectionTap,
     List<PieChartSectionData> sections,
-    Widget legend,
-  ) {
+    Widget legend, {
+    required double sliceLineQty,
+  }) {
     if (isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 12),
@@ -706,9 +714,10 @@ class _DonutSection extends StatelessWidget {
       );
     }
     final maxW = constraints.maxWidth;
-    final side = (maxW * 0.38).clamp(120.0, 168.0);
+    final side = (maxW * 0.42).clamp(132.0, 176.0);
     final ring = (side * 0.28).clamp(34.0, 52.0);
     final centerR = (ring * 0.88).clamp(30.0, 46.0);
+    final units = _kpiUnitsLine(data);
 
     final chartSections = sections
         .map(
@@ -724,54 +733,94 @@ class _DonutSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            RepaintBoundary(
-              child: SizedBox(
-                width: side,
-                height: side,
-                child: PieChart(
-                  PieChartData(
-                    sectionsSpace: 0,
-                    centerSpaceRadius: centerR,
-                    sections: chartSections,
-                    pieTouchData: PieTouchData(
-                      enabled: true,
-                      touchCallback: (event, response) {
-                        final idx =
-                            response?.touchedSection?.touchedSectionIndex;
-                        if (idx == null) return;
-                        onSectionTap(idx);
-                      },
+        Center(
+          child: RepaintBoundary(
+            child: SizedBox(
+              width: side,
+              height: side,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  PieChart(
+                    PieChartData(
+                      sectionsSpace: 0,
+                      centerSpaceRadius: centerR,
+                      sections: chartSections,
+                      pieTouchData: PieTouchData(
+                        enabled: true,
+                        touchCallback: (event, response) {
+                          final idx =
+                              response?.touchedSection?.touchedSectionIndex;
+                          if (idx == null) return;
+                          onSectionTap(idx);
+                        },
+                      ),
                     ),
                   ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'In view',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: const Color(0xFF64748B),
-                          fontWeight: FontWeight.w600,
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'In view',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                color: const Color(0xFF64748B),
+                                fontWeight: FontWeight.w600,
+                              ),
                         ),
-                  ),
-                  Text(
-                    _inr(total),
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          color: HexaColors.brandPrimary,
+                        const SizedBox(height: 2),
+                        Text(
+                          _inr(total),
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w900,
+                                color: HexaColors.brandPrimary,
+                                fontSize: 16,
+                                height: 1.1,
+                              ),
                         ),
+                        if (units.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            units,
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                  color: const Color(0xFF0F172A),
+                                  fontWeight: FontWeight.w800,
+                                  height: 1.2,
+                                ),
+                          ),
+                        ],
+                        if (sliceLineQty > 0) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            'Chart Σ qty ${_fmtQty(sliceLineQty)}',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                  color: const Color(0xFF475569),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                        ],
+                        Text(
+                          'Period total qty ${_fmtQty(data.totalQtyAllLines)}',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                color: const Color(0xFF64748B),
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
-          ],
+          ),
         ),
         const SizedBox(height: 8),
         legend,
@@ -844,8 +893,8 @@ class _DonutSection extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF334155),
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F172A),
                   ),
                 ),
               ),
@@ -1105,7 +1154,7 @@ class _CategoryExpansionTile extends StatelessWidget {
         title: Text(
           stat.categoryName,
           style: const TextStyle(
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w800,
             fontSize: 14,
             color: Color(0xFF0F172A),
           ),
@@ -1118,7 +1167,7 @@ class _CategoryExpansionTile extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 12,
                   color: Color(0xFF64748B),
-                  fontWeight: FontWeight.w500,
+                  fontWeight: FontWeight.w700,
                 ),
               )
             : null,
@@ -1137,9 +1186,9 @@ class _CategoryExpansionTile extends StatelessWidget {
             Text(
               '${_fmtQty(stat.totalQty)} qty',
               style: const TextStyle(
-                fontSize: 11,
-                color: Color(0xFF64748B),
-                fontWeight: FontWeight.w600,
+                fontSize: 12,
+                color: Color(0xFF334155),
+                fontWeight: FontWeight.w800,
               ),
             ),
           ],
@@ -1157,8 +1206,8 @@ class _CategoryExpansionTile extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF334155),
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
                       ),
                     ),
                   ),

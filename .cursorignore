@@ -1,0 +1,11 @@
+﻿# Heavy / generated — keep Cursor index small (reduces lag a lot)
+node_modules/
+build/
+dist/
+.flutter/
+.dart_tool/
+.next/
+coverage/
+*.log
+*.sqlite
+*.db

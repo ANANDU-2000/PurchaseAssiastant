@@ -16,7 +16,7 @@ import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/form_feedback.dart';
 import '../../../shared/widgets/bag_default_unit_hint.dart';
-import '../../../shared/widgets/search_picker_sheet.dart';
+import '../../../shared/widgets/inline_search_field.dart';
 
 const _kUnits = <String>['bag', 'box', 'kg', 'tin', 'piece'];
 
@@ -42,6 +42,10 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
   final _perBox = TextEditingController();
   final _perTin = TextEditingController();
   final _hsn = TextEditingController();
+  final _itemCode = TextEditingController();
+  final _tax = TextEditingController();
+  final _supplierSearch = TextEditingController();
+  final _brokerSearch = TextEditingController();
 
   String? _categoryId;
   String? _typeId;
@@ -57,13 +61,6 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
 
   static const _fieldPad = EdgeInsets.symmetric(horizontal: 14, vertical: 12);
 
-  static ButtonStyle _pickerActionStyle(ThemeData theme) {
-    return FilledButton.styleFrom(
-      visualDensity: VisualDensity.compact,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      minimumSize: const Size(0, 40),
-    );
-  }
   static InputBorder _fieldBorder(BuildContext context) => OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
@@ -109,6 +106,8 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
         _perBox.text = m['perBox']?.toString() ?? '';
         _perTin.text = m['perTin']?.toString() ?? '';
         _hsn.text = m['hsn']?.toString() ?? '';
+        _itemCode.text = m['itemCode']?.toString() ?? '';
+        _tax.text = m['tax']?.toString() ?? '';
         if (m['categoryId'] != null) _categoryId = m['categoryId']?.toString();
         if (m['typeId'] != null) _typeId = m['typeId']?.toString();
         if (m['supplierIds'] is List) {
@@ -145,6 +144,8 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
         'perBox': _perBox.text,
         'perTin': _perTin.text,
         'hsn': _hsn.text,
+        'itemCode': _itemCode.text,
+        'tax': _tax.text,
         'categoryId': _categoryId,
         'typeId': _typeId,
         'supplierIds': _supplierIds,
@@ -161,6 +162,10 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
     _perBox.dispose();
     _perTin.dispose();
     _hsn.dispose();
+    _itemCode.dispose();
+    _tax.dispose();
+    _supplierSearch.dispose();
+    _brokerSearch.dispose();
     super.dispose();
   }
 
@@ -216,7 +221,21 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
         return;
       }
     }
+    final taxRaw = _tax.text.trim();
+    double? taxPct;
+    if (taxRaw.isNotEmpty) {
+      taxPct = double.tryParse(taxRaw);
+      if (taxPct == null || taxPct < 0 || taxPct > 100) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Tax % must be between 0 and 100')),
+          );
+        }
+        return;
+      }
+    }
     final hsn = _hsn.text.trim();
+    final ic = _itemCode.text.trim();
     final session = ref.read(sessionProvider);
     if (session == null) return;
     setState(() => _saving = true);
@@ -233,6 +252,8 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
             defaultSupplierIds: List<String>.from(_supplierIds),
             defaultBrokerIds: List<String>.from(_brokerIds),
             hsnCode: hsn.isEmpty ? null : hsn,
+            itemCode: ic.isEmpty ? null : ic,
+            taxPercent: taxPct,
             defaultPurchaseUnit: _unit,
             defaultKgPerBag: _unit == 'bag' ? parseOptionalKgPerBag(_kg.text) : null,
             defaultItemsPerBox: _unit == 'box' ? double.tryParse(_perBox.text.trim()) : null,
@@ -285,21 +306,105 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
     }
   }
 
-  String _reviewLine() {
+  List<Widget> _reviewLines(
+    BuildContext context, {
+    required List<Map<String, dynamic>> supplierRows,
+    required List<Map<String, dynamic>> brokerRows,
+  }) {
+    final tt = Theme.of(context).textTheme;
     final name = _name.text.trim().isEmpty ? '—' : _name.text.trim();
     final u = _unit == null ? '—' : _unit!.toUpperCase();
+    String unitDetail;
     if (_unit == 'bag') {
       final kg = _kg.text.trim().isEmpty ? '—' : _kg.text.trim();
-      return '$name · $u · $kg kg/bag';
-    }
-    if (_unit == 'box') {
+      unitDetail = '$u · $kg kg/bag';
+    } else if (_unit == 'box') {
       final pb = _perBox.text.trim().isEmpty ? '—' : _perBox.text.trim();
-      return '$name · $u · $pb items/box';
+      unitDetail = '$u · $pb items/box';
+    } else if (_unit == 'tin' && _perTin.text.trim().isNotEmpty) {
+      unitDetail = '$u · ${_perTin.text.trim()} / tin';
+    } else {
+      unitDetail = u;
     }
-    if (_unit == 'tin' && _perTin.text.trim().isNotEmpty) {
-      return '$name · $u · ${_perTin.text.trim()} / tin';
-    }
-    return '$name · $u';
+    final supNames = _supplierIds
+        .map((id) {
+          for (final s in supplierRows) {
+            if (s['id']?.toString() == id) {
+              return s['name']?.toString() ?? id;
+            }
+          }
+          return id;
+        })
+        .toList();
+    final broNames = _brokerIds
+        .map((id) {
+          for (final b in brokerRows) {
+            if (b['id']?.toString() == id) {
+              return b['name']?.toString() ?? id;
+            }
+          }
+          return id;
+        })
+        .toList();
+    final code = _itemCode.text.trim();
+    final hsn = _hsn.text.trim();
+    final tax = _tax.text.trim();
+    return [
+      Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: name,
+              style: tt.titleSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF0F172A),
+              ),
+            ),
+            TextSpan(
+              text: ' · $unitDetail',
+              style: tt.bodySmall?.copyWith(
+                color: const Color(0xFF475569),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        maxLines: 3,
+        overflow: TextOverflow.ellipsis,
+      ),
+      if (code.isNotEmpty || hsn.isNotEmpty || tax.isNotEmpty) ...[
+        const SizedBox(height: 4),
+        Text(
+          [
+            if (code.isNotEmpty) 'Code: $code',
+            if (hsn.isNotEmpty) 'HSN: $hsn',
+            if (tax.isNotEmpty) 'Tax: $tax%',
+          ].join('  ·  '),
+          style: tt.bodySmall?.copyWith(
+            color: const Color(0xFF334155),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+      if (supNames.isNotEmpty) ...[
+        const SizedBox(height: 4),
+        Text(
+          'Suppliers: ${supNames.join(', ')}',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: tt.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+        ),
+      ],
+      if (broNames.isNotEmpty) ...[
+        const SizedBox(height: 2),
+        Text(
+          'Brokers: ${broNames.join(', ')}',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: tt.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+        ),
+      ],
+    ];
   }
 
   Future<void> _onCategoryChanged(String? cid) async {
@@ -348,6 +453,34 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
           ),
       ],
     );
+  }
+
+  List<InlineSearchItem> _supplierPickItems(List<Map<String, dynamic>> list) {
+    return [
+      for (final s in list)
+        if (!_supplierIds.contains(s['id']?.toString()))
+          InlineSearchItem(
+            id: s['id']?.toString() ?? '',
+            label: s['name']?.toString() ?? 'Supplier',
+            subtitle: (s['phone']?.toString() ?? '').trim().isEmpty
+                ? null
+                : s['phone']?.toString(),
+          ),
+    ];
+  }
+
+  List<InlineSearchItem> _brokerPickItems(List<Map<String, dynamic>> list) {
+    return [
+      for (final b in list)
+        if (!_brokerIds.contains(b['id']?.toString()))
+          InlineSearchItem(
+            id: b['id']?.toString() ?? '',
+            label: b['name']?.toString() ?? 'Broker',
+            subtitle: (b['phone']?.toString() ?? '').trim().isEmpty
+                ? null
+                : b['phone']?.toString(),
+          ),
+    ];
   }
 
   Widget _brokerChips(List<Map<String, dynamic>> allRows) {
@@ -421,6 +554,14 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
     final nameErr = _touched && _name.text.trim().isEmpty;
     final unitErr = _touched && (_unit == null || _unit!.isEmpty);
     final supErr = _touched && _supplierIds.isEmpty;
+    final supRows = ref.watch(suppliersListProvider).maybeWhen(
+          data: (raw) => raw.map((e) => Map<String, dynamic>.from(e as Map)).toList(),
+          orElse: () => <Map<String, dynamic>>[],
+        );
+    final broRows = ref.watch(brokersListProvider).maybeWhen(
+          data: (raw) => raw.map((e) => Map<String, dynamic>.from(e as Map)).toList(),
+          orElse: () => <Map<String, dynamic>>[],
+        );
 
     return PopScope(
       canPop: false,
@@ -487,7 +628,24 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                   data: (types) {
                     final tl = types.map((e) => Map<String, dynamic>.from(e as Map)).toList();
                     if (tl.isEmpty) {
-                      return const Text('No subcategory types');
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'No subcategory (type) for this category yet. Add a type in Catalog for this category, then you can add products here.',
+                            ),
+                            const SizedBox(height: 8),
+                            TextButton(
+                              onPressed: _categoryId == null
+                                  ? null
+                                  : () => context.push('/catalog/category/$_categoryId'),
+                              child: const Text('Open this category in Catalog'),
+                            ),
+                          ],
+                        ),
+                      );
                     }
                     return DropdownButtonFormField<String>(
                       value: _typeId != null && tl.any((t) => t['id']?.toString() == _typeId)
@@ -529,6 +687,7 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                 textInputAction: TextInputAction.next,
                 decoration: InputDecoration(
                   labelText: 'Item name',
+                  labelStyle: const TextStyle(fontWeight: FontWeight.w800),
                   errorText: nameErr ? 'Required' : null,
                   contentPadding: _fieldPad,
                   border: _fieldBorder(context),
@@ -590,7 +749,7 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                       }),
                     ),
                 ],
-              ),
+                ),
               if (unitErr)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
@@ -599,20 +758,6 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(color: HexaColors.loss),
                   ),
                 ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _hsn,
-                keyboardType: TextInputType.text,
-                textCapitalization: TextCapitalization.characters,
-                decoration: InputDecoration(
-                  labelText: 'HSN / SAC (optional)',
-                  hintText: 'e.g. 10063020',
-                  contentPadding: _fieldPad,
-                  border: _fieldBorder(context),
-                  enabledBorder: _fieldBorder(context),
-                ),
-                onChanged: (_) => setState(() {}),
-              ),
               if (_unit == 'bag') ...[
                 const SizedBox(height: 10),
                 TextField(
@@ -669,6 +814,58 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                 ),
               ],
               const SizedBox(height: 12),
+              Text('Product code, HSN & tax', style: HexaDsType.formSectionLabel),
+              const SizedBox(height: 6),
+              Text(
+                'Match your price list: code, hsn, tax_rate (optional).',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _itemCode,
+                keyboardType: TextInputType.text,
+                decoration: InputDecoration(
+                  labelText: 'Product / item code (optional)',
+                  hintText: 'e.g. 2104',
+                  contentPadding: _fieldPad,
+                  border: _fieldBorder(context),
+                  enabledBorder: _fieldBorder(context),
+                  labelStyle: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _hsn,
+                keyboardType: TextInputType.text,
+                textCapitalization: TextCapitalization.characters,
+                decoration: InputDecoration(
+                  labelText: 'HSN / SAC (optional)',
+                  hintText: 'e.g. 11010000',
+                  contentPadding: _fieldPad,
+                  border: _fieldBorder(context),
+                  enabledBorder: _fieldBorder(context),
+                  labelStyle: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _tax,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: 'Default tax % (optional, GST)',
+                  hintText: 'e.g. 5 or 0',
+                  contentPadding: _fieldPad,
+                  border: _fieldBorder(context),
+                  enabledBorder: _fieldBorder(context),
+                  labelStyle: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 12),
               Text('Default suppliers *', style: HexaDsType.formSectionLabel),
               const SizedBox(height: 4),
               if (supErr)
@@ -688,48 +885,42 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                       if (list.isEmpty) {
                         return const Text('Create a supplier under Contacts first.');
                       }
+                      final pick = _supplierPickItems(list);
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           _supplierChips(list),
                           const SizedBox(height: 6),
-                          FilledButton.tonalIcon(
-                            style: _pickerActionStyle(Theme.of(context)),
-                            onPressed: () async {
-                              final pickerRows = <SearchPickerRow<String>>[];
-                              for (final s in list) {
-                                if (_supplierIds.contains(s['id']?.toString())) continue;
-                                final ph = (s['phone']?.toString() ?? '').trim();
-                                pickerRows.add(
-                                  SearchPickerRow<String>(
-                                    value: s['id']?.toString() ?? '',
-                                    title: s['name']?.toString() ?? 'Supplier',
-                                    subtitle: ph.isEmpty ? null : ph,
+                          if (pick.isNotEmpty) ...[
+                            Text(
+                              'Search and pick supplier (name or phone)',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                                   ),
-                                );
-                              }
-                              if (pickerRows.isEmpty) {
-                                if (!mounted) return;
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text('Every supplier is already added.')),
-                                );
-                                return;
-                              }
-                              final id = await showSearchPickerSheet<String>(
-                                context: context,
-                                title: 'Add default supplier',
-                                rows: pickerRows,
-                                initialChildFraction: 0.5,
-                              );
-                              if (!mounted || id == null || id.isEmpty) return;
-                              setState(() {
-                                if (!_supplierIds.contains(id)) _supplierIds.add(id);
-                              });
-                            },
-                            icon: const Icon(Icons.person_add_alt_1_outlined),
-                            label: const Text('Add supplier'),
-                          ),
+                            ),
+                            const SizedBox(height: 4),
+                            InlineSearchField(
+                              key: ValueKey('sup_srch_${_supplierIds.length}'),
+                              items: pick,
+                              controller: _supplierSearch,
+                              placeholder: 'Type to search…',
+                              minQueryLength: 1,
+                              onSelected: (it) {
+                                setState(() {
+                                  if (it.id.isNotEmpty && !_supplierIds.contains(it.id)) {
+                                    _supplierIds.add(it.id);
+                                  }
+                                  _supplierSearch.clear();
+                                });
+                              },
+                            ),
+                          ] else
+                            Text(
+                              _supplierIds.isEmpty
+                                  ? '—'
+                                  : 'All available suppliers are already added',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
                         ],
                       );
                     },
@@ -746,48 +937,42 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                       if (list.isEmpty) {
                         return const Text('No brokers yet — you can skip.');
                       }
+                      final pick = _brokerPickItems(list);
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           _brokerChips(list),
                           const SizedBox(height: 6),
-                          FilledButton.tonalIcon(
-                            style: _pickerActionStyle(Theme.of(context)),
-                            onPressed: () async {
-                              final pickerRows = <SearchPickerRow<String>>[];
-                              for (final b in list) {
-                                if (_brokerIds.contains(b['id']?.toString())) continue;
-                                final ph = (b['phone']?.toString() ?? '').trim();
-                                pickerRows.add(
-                                  SearchPickerRow<String>(
-                                    value: b['id']?.toString() ?? '',
-                                    title: b['name']?.toString() ?? 'Broker',
-                                    subtitle: ph.isEmpty ? null : ph,
+                          if (pick.isNotEmpty) ...[
+                            Text(
+                              'Search and pick broker (optional)',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                                   ),
-                                );
-                              }
-                              if (pickerRows.isEmpty) {
-                                if (!mounted) return;
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text('Every broker is already added.')),
-                                );
-                                return;
-                              }
-                              final id = await showSearchPickerSheet<String>(
-                                context: context,
-                                title: 'Add default broker',
-                                rows: pickerRows,
-                                initialChildFraction: 0.5,
-                              );
-                              if (!mounted || id == null || id.isEmpty) return;
-                              setState(() {
-                                if (!_brokerIds.contains(id)) _brokerIds.add(id);
-                              });
-                            },
-                            icon: const Icon(Icons.handshake_outlined),
-                            label: const Text('Add broker'),
-                          ),
+                            ),
+                            const SizedBox(height: 4),
+                            InlineSearchField(
+                              key: ValueKey('bro_srch_${_brokerIds.length}'),
+                              items: pick,
+                              controller: _brokerSearch,
+                              placeholder: 'Type to search…',
+                              minQueryLength: 1,
+                              onSelected: (it) {
+                                setState(() {
+                                  if (it.id.isNotEmpty && !_brokerIds.contains(it.id)) {
+                                    _brokerIds.add(it.id);
+                                  }
+                                  _brokerSearch.clear();
+                                });
+                              },
+                            ),
+                          ] else
+                            Text(
+                              _brokerIds.isEmpty
+                                  ? '—'
+                                  : 'All available brokers are already added',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
                         ],
                       );
                     },
@@ -811,17 +996,16 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text('Review', style: HexaDsType.formSectionLabel),
-                  const SizedBox(height: 4),
-                  Text(
-                    _reviewLine(),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: HexaDsType.purchaseQtyUnit.copyWith(height: 1.3),
+                  const SizedBox(height: 6),
+                  ..._reviewLines(
+                    context,
+                    supplierRows: supRows,
+                    brokerRows: broRows,
                   ),
                   const SizedBox(height: 2),
                   Text(
                     'Unit prices are set on each purchase.',
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,

@@ -641,6 +641,11 @@ Future<pw.Document> buildPurchaseDoc(TradePurchase p, BusinessProfile biz) async
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 pw.Text('Invoice No: ${p.humanId}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
+                if (p.invoiceNumber != null && p.invoiceNumber!.trim().isNotEmpty)
+                  pw.Text(
+                    'Supplier / bill ref: ${p.invoiceNumber!.trim()}',
+                    style: const pw.TextStyle(fontSize: 8.5, color: _muted),
+                  ),
                 pw.SizedBox(height: 4),
                 pw.Container(
                   padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 3),
