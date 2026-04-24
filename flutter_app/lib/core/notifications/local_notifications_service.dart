@@ -102,7 +102,13 @@ class LocalNotificationsService {
     final loc = tz.local;
     var when = tz.TZDateTime(loc, p.$1, p.$2, p.$3, 9, 0);
     final now = tz.TZDateTime.now(loc);
-    if (!when.isAfter(now)) return;
+    // If 09:00 on the due date has already passed, still schedule a one-shot
+    // reminder shortly (same-day saves after 9am were previously dropped).
+    if (!when.isAfter(now)) {
+      final dueEnd = tz.TZDateTime(loc, p.$1, p.$2, p.$3, 23, 59, 59);
+      if (now.isAfter(dueEnd)) return;
+      when = now.add(const Duration(seconds: 10));
+    }
     final label = (humanId != null && humanId.isNotEmpty) ? humanId : purchaseId;
     const details = NotificationDetails(
       android: AndroidNotificationDetails(

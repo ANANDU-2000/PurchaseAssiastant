@@ -1,47 +1,36 @@
-# HARISREE — Cursor rules
+# HARISREE PURCHASE APP — CURSOR RULES v3
+# New Harisree Agency, Thrissur, Kerala
+# Stack: Flutter (Riverpod) + FastAPI + PostgreSQL
 
-CRITICAL: Prefer simplicity over new abstraction. Do not add complexity unless the owner asked for it.
-CRITICAL: Do not break business logic in `entry_create_sheet.dart` — refactor UI around existing validation and save flows.
-CRITICAL: Monetary values: use `NumberFormat.currency(locale: 'en_IN', symbol: '₹')` (or existing project helpers).
-CRITICAL: Never show raw exceptions to users — use `friendlyApiError` / `FriendlyLoadError` with retry.
-CRITICAL: In-app `/ai` opens the Assistant chat (preview → YES → save). WhatsApp remains optional server-side; intent APIs stay on the server.
+## Single source of truth
+- Purchase draft: `purchaseDraftProvider` in `lib/features/purchase/state/purchase_draft_provider.dart`
+- No `setState` for core purchase data (only UI-only: step index, local errors, controllers)
 
-When adding features:
-1. Ask whether it can be done in a few lines without new dependencies.
-2. Ask whether it adds API calls on every page load — batch, cache, or defer.
-3. `fl_chart` on web: wrap charts in `LayoutBuilder` + `RepaintBoundary`; keep `LineTouchData(enabled: false)` unless touch is required.
+## PROTECTED (avoid breaking without intent)
+- `purchaseDraftProvider`, `purchaseTotalsProvider`, `purchaseStrictBreakdownProvider`
+- `tradePurchasesListProvider`, `suppliersListProvider`, `brokersListProvider`
+- Backend route path prefixes: `/v1/businesses/{business_id}/...` (add new routes, do not rename existing without migration)
 
-WhatsApp (compliance):
-- No unsolicited bulk sends; respect provider rate limits and user-initiated conversation rules.
+## ALWAYS DO
+- HapticFeedback.selectionClick() on main nav; HapticFeedback.mediumImpact() on save
+- `ref.invalidate(...)` after create/update/delete that affects lists
+- Shimmer or placeholder blocks for loading (not `SizedBox.shrink()` for main content)
+- Confirm before delete / discard with unsaved changes
+- Min 1 char for search fields; 300ms debounce on search inputs
+- `NumberFormat.currency(locale: 'en_IN', symbol: '₹')` for money in UI
+- PDF header background: #0D9488; company fallback: NEW HARISREE AGENCY
 
-Offline:
-- Use `OfflineStore` (Hive) for dashboard cache and future entry queue; keep TTLs reasonable.
+## NEVER DO
+- HSN as mandatory on catalog create (HSN is optional for traders)
+- Snackbars for form validation (use inline text)
+- Emojis in PDF body
+- New duplicate purchase/item flows; extend the canonical path only
 
-Performance (target ~60fps → keep work per frame small; critical on web/PWA):
-- **Scroll**: No heavy widgets (charts, large images, blur) inside every list row; lazy-build with `.builder`; avoid nested `ScrollView`s.
-- **Structure**: Prefer many small `StatelessWidget`s over one giant widget file section; use `const` wherever the tree allows.
-- **Rebuilds (Riverpod)**: Prefer `Consumer` / `ConsumerWidget` scoped to what changes; use `select` on providers or split providers so a small edit doesn’t rebuild the whole screen. Avoid `setState` for cross-widget state — use Riverpod notifiers/providers.
-- **Perceived speed**: Show shell/layout immediately; load with existing patterns (`AsyncValue`, cached dashboard, `FriendlyLoadError` + retry). Skeleton/shimmer only when adding new screens — don’t block layout on network.
-- **Spacing**: Stick to 8 / 12 / 16px steps for padding and gaps unless matching existing screen.
-- **Motion**: Subtle only (theme already uses iOS-style route transitions); avoid stacking animations. Optional: light `InkWell` / `FilledButton` feedback — no flashy loops.
-- **Touch**: Use `InkWell` / `Material` for ripples; don’t wrap the whole scroll body in competing gesture detectors.
-- **Memory**: `dispose()` controllers, listeners, and timers in `StatefulWidget`s that create them.
-- **Network**: Don’t block first paint on API; handle offline via `connectivity` + copy; never show raw exceptions (use `friendlyApiError`).
-- **Avoid**: Nested scrolls, many stacked shadows/blurs, parsing huge JSON synchronously in build methods, blocking `async` in `build`.
-- Long lists → `ListView.builder` / `GridView.builder`; avoid huge `Column` of children.
-- Keep shadows light (`HexaColors.cardShadow`) — heavy `BoxShadow` stacks hurt GPU on low-end phones.
-- `fl_chart`: `RepaintBoundary` + `LineTouchData(enabled: false)` unless interaction is required.
-- Prefer `ref.keepAlive()` with a bounded lifetime for expensive providers when tab-switching would refetch unnecessarily.
+## COMPANY (PDF fallback)
+- name: NEW HARISREE AGENCY
+- address: 6/366A, Thrithallur, Thrissur 680619
+- phone: 8078103800 / 7025333999
 
-iOS feel (when touching UI):
-- Prefer `BouncingScrollPhysics`, light haptics on shell nav and primary actions, avoid gradient-heavy CTAs on auth.
-- Product UI is **light-only** (`ThemeMode.light` in `app.dart`). Full-screen routes use iOS-like slide transitions (`page_transitions.dart`).
-- Shell/home scaffolds use theme surfaces — prefer `HexaColors.surfaceCard` over `Colors.white` for cards.
-
-Entry form (`entry_create_sheet.dart`):
-- Simple mode: one “what you paid / unit” field; hide the large landed “auto” readout (advanced mode shows purchase + landed auto when commission splits apply).
-- Purchase place / market lives under **Advanced options**, not the main scroll.
-- Do not resurrect removed fields (e.g. stock notes) without an explicit product ask.
-
-Server-side channels:
-- Primary assistant path: Flutter → `POST /v1/businesses/{id}/ai/chat` (preview → YES/NO). Optional legacy WhatsApp modules may remain in the repo for forks; this product build does not expose WhatsApp HTTP routes.
+## After substantive edits
+- `flutter analyze` (client)
+- `pytest` or smoke test (server) when backend touched

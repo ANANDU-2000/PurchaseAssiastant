@@ -80,12 +80,12 @@ class CatalogItemCreate(BaseModel):
     default_kg_per_bag: float | None = Field(default=None, gt=0)
     default_purchase_unit: str | None = Field(default=None, pattern=_UNIT_PATTERN)
     default_sale_unit: str | None = Field(default=None, pattern=_UNIT_PATTERN)
-    hsn_code: str = Field(min_length=1, max_length=32)
+    hsn_code: str | None = Field(default=None, max_length=32)
     tax_percent: float | None = Field(default=None, ge=0, le=100)
     default_landing_cost: float | None = Field(default=None, ge=0)
     default_selling_cost: float | None = Field(default=None, ge=0)
 
-    @field_validator("name", "hsn_code", mode="before")
+    @field_validator("name", mode="before")
     @classmethod
     def _strip_required_str(cls, v: object) -> object:
         if isinstance(v, str):
@@ -99,12 +99,15 @@ class CatalogItemCreate(BaseModel):
             raise ValueError("name must not be empty or whitespace")
         return " ".join(v.split())
 
-    @field_validator("hsn_code")
+    @field_validator("hsn_code", mode="before")
     @classmethod
-    def _hsn_nonempty(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("hsn_code must not be empty or whitespace")
-        return v.strip()
+    def _hsn_optional(cls, v: object) -> object:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            t = v.strip()
+            return t if t else None
+        return v
 
 
 class CatalogItemUpdate(BaseModel):
@@ -918,7 +921,7 @@ async def catalog_item_trade_supplier_prices(
             TradePurchase.business_id == business_id,
             TradePurchaseLine.catalog_item_id == item_id,
             TradePurchase.supplier_id.isnot(None),
-            TradePurchase.status == "confirmed",
+            TradePurchase.status.in_(("saved", "confirmed")),
         )
         .order_by(desc(TradePurchase.purchase_date), desc(TradePurchaseLine.id))
     )

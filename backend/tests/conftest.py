@@ -16,6 +16,13 @@ _test_db_path = _tmp_db_dir / "test.db"
 # Force test mode so Settings prefers env over .env (see app/config.py settings_customise_sources).
 os.environ["APP_ENV"] = "test"
 os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_test_db_path.as_posix()}"
+# `database.py` prefers DATABASE_POOLER_URL over DATABASE_URL when set — force single test DB.
+os.environ["DATABASE_POOLER_URL"] = ""
+# Disable dev shortcut so async engine uses DATABASE_URL (same file as bootstrap sync seed).
+os.environ["HEXA_USE_SQLITE"] = "0"
+# Isolate tests from developer .env LLM keys (avoids flaky / suspended API calls).
+for _k in ("GOOGLE_AI_API_KEY", "GROQ_API_KEY", "OPENAI_API_KEY"):
+    os.environ[_k] = ""
 
 
 def _create_all_tables() -> None:

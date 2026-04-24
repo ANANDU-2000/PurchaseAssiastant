@@ -12,6 +12,8 @@ import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
 import '../../../core/services/purchase_pdf.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/widgets/friendly_load_error.dart';
+import '../../../core/widgets/list_skeleton.dart';
 
 String _inr(num n) =>
     NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(n);
@@ -43,12 +45,12 @@ class PurchaseDetailPage extends ConsumerWidget {
         foregroundColor: HexaColors.brandPrimary,
       ),
       body: async.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, __) => Center(
-          child: TextButton(
-            onPressed: () => ref.invalidate(_purchaseDetailProvider(purchaseId)),
-            child: const Text('Retry'),
-          ),
+        skipLoadingOnReload: true,
+        skipLoadingOnRefresh: true,
+        loading: () => const DetailSkeleton(),
+        error: (_, __) => FriendlyLoadError(
+          message: "Couldn't load purchase",
+          onRetry: () => ref.invalidate(_purchaseDetailProvider(purchaseId)),
         ),
         data: (p) => _DetailBody(
           p: p,
@@ -373,7 +375,7 @@ class _DetailBodyState extends ConsumerState<_DetailBody> {
             purchaseId: p.id,
             paidAmount: v,
           );
-      ref.invalidate(tradePurchasesListProvider);
+      invalidateTradePurchaseCaches(ref);
       ref.invalidate(_purchaseDetailProvider(p.id));
       invalidateBusinessAggregates(ref);
       widget.onRefresh();

@@ -24,6 +24,19 @@ _DEFAULT_WORKSPACE_NAME = "Harisree workspace"
 
 def sync_database_url_for_seed(settings: Settings) -> str:
     """Sync driver URL for running catalog_suppliers_seed in a worker thread."""
+    # Always match the running async engine (pytest env + HEXA_USE_SQLITE + pooler can diverge from raw env).
+    try:
+        from app.database import engine as _async_engine
+
+        au = str(_async_engine.url)
+        if au.startswith("sqlite+aiosqlite:"):
+            tail = au.split("sqlite+aiosqlite:///", 1)[-1]
+            return "sqlite:///" + tail
+        if au.startswith("sqlite+asyncio"):
+            tail = au.split("sqlite+asyncio:///", 1)[-1]
+            return "sqlite:///" + tail
+    except Exception:
+        pass
     raw = (os.environ.get("DATABASE_URL") or os.environ.get("SQLALCHEMY_DATABASE_URI") or "").strip()
     if not raw:
         raw = settings.database_url

@@ -33,12 +33,34 @@ final dashboardProvider =
   final api = ref.read(hexaApiProvider);
   final range = dashboardDateRange(period);
   final fmt = DateFormat('yyyy-MM-dd');
+  final monthFmt = DateFormat('yyyy-MM');
   try {
-    final m = await api.analyticsSummary(
-      businessId: session.primaryBusiness.id,
-      from: fmt.format(range.$1),
-      to: fmt.format(range.$2),
-    );
+    final Map<String, dynamic> m;
+    if (period == DashboardPeriod.month) {
+      final raw = await api.getDashboard(
+        businessId: session.primaryBusiness.id,
+        month: monthFmt.format(DateTime.now()),
+      );
+      var qSum = 0.0;
+      final items = raw['items'];
+      if (items is List) {
+        for (final e in items) {
+          if (e is Map) {
+            qSum += (e['total_qty'] as num?)?.toDouble() ?? 0;
+          }
+        }
+      }
+      m = {
+        ...raw,
+        'total_qty_base': qSum,
+      };
+    } else {
+      m = await api.analyticsSummary(
+        businessId: session.primaryBusiness.id,
+        from: fmt.format(range.$1),
+        to: fmt.format(range.$2),
+      );
+    }
     final map = Map<String, dynamic>.from(m);
     await OfflineStore.cacheDashboardMap(map);
     return DashboardData(

@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
+import '../../../core/widgets/list_skeleton.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/catalog_providers.dart';
@@ -16,11 +17,9 @@ import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/contacts_hub_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
-import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/search/search_highlight.dart';
 import '../../../shared/widgets/app_settings_action.dart';
 import 'broker_wizard_page.dart';
-import 'item_wizard_page.dart';
 import 'supplier_create_wizard_page.dart';
 
 Color _avatarColor(String seed) {
@@ -50,46 +49,7 @@ String _initials(String name) {
   return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
-class _StatPill extends StatelessWidget {
-  const _StatPill({required this.icon, required this.text});
-
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerHighest.withValues(alpha: 0.65),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: cs.onSurfaceVariant),
-            const SizedBox(width: 4),
-            Expanded(
-              child: Text(
-                text,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context)
-                    .textTheme
-                    .labelSmall
-                    ?.copyWith(fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Supplier row — optional [metrics] from contacts hub (null in global search).
+/// Supplier row — name, phone, WhatsApp and a ⋮ menu. No analytics clutter.
 class _SupplierCard extends StatelessWidget {
   const _SupplierCard({
     required this.data,
@@ -118,9 +78,6 @@ class _SupplierCard extends StatelessWidget {
     final tt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
     final id = data['id']?.toString();
-    final m = metrics;
-    final deals = (m?['deals'] as num?)?.toInt();
-    final avg = (m?['avg_landing'] as num?)?.toDouble();
     final nm = data['name']?.toString() ?? '—';
     final phone = data['phone']?.toString();
     final wa = data['whatsapp_number']?.toString();
@@ -276,24 +233,6 @@ class _SupplierCard extends StatelessWidget {
                   ),
                 ],
               ),
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 10),
-                child: Divider(height: 1),
-              ),
-              Row(
-                children: [
-                  _StatPill(
-                      icon: Icons.local_shipping_outlined,
-                      text: 'Deals: ${deals ?? 0}'),
-                  const SizedBox(width: 8),
-                  _StatPill(
-                    icon: Icons.currency_rupee_rounded,
-                    text: avg != null
-                        ? '90d avg: ₹${avg.toStringAsFixed(0)}'
-                        : '90d avg: —',
-                  ),
-                ],
-              ),
             ],
           ),
         ),
@@ -326,10 +265,6 @@ class _BrokerCard extends StatelessWidget {
     final tt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
     final id = data['id']?.toString();
-    final m = metrics;
-    final deals = (m?['deals'] as num?)?.toInt();
-    final comm = (m?['total_commission'] as num?)?.toDouble();
-    final profit = (m?['total_profit'] as num?)?.toDouble();
     final ct = data['commission_type']?.toString().toLowerCase() ?? '';
     final cv = data['commission_value'];
     final isPct = ct == 'percent';
@@ -411,31 +346,6 @@ class _BrokerCard extends StatelessWidget {
                         const PopupMenuItem(
                             value: 'delete', child: Text('Delete')),
                     ],
-                  ),
-                ],
-              ),
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 10),
-                child: Divider(height: 1),
-              ),
-              Row(
-                children: [
-                  _StatPill(
-                      icon: Icons.receipt_long_outlined,
-                      text: 'Deals: ${deals ?? 0}'),
-                  const SizedBox(width: 8),
-                  _StatPill(
-                    icon: Icons.payments_outlined,
-                    text: comm != null
-                        ? 'Commission: ₹${comm.toStringAsFixed(0)}'
-                        : 'Commission: —',
-                  ),
-                  const SizedBox(width: 8),
-                  _StatPill(
-                    icon: Icons.trending_up_rounded,
-                    text: profit != null
-                        ? 'Impact: ₹${profit.toStringAsFixed(0)}'
-                        : 'Impact: —',
                   ),
                 ],
               ),
@@ -572,6 +482,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
         fullscreenDialog: true,
       ),
     );
+    if (!mounted) return;
     ref.invalidate(brokersListProvider);
     ref.invalidate(contactsBrokersEnrichedProvider);
   }
@@ -670,12 +581,9 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
   }
 
   Future<void> _addItemSheet() async {
-    await Navigator.of(context, rootNavigator: true).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const ItemWizardPage(),
-        fullscreenDialog: true,
-      ),
-    );
+    if (!mounted) return;
+    await context.push<String?>('/catalog');
+    if (!mounted) return;
     ref.invalidate(catalogItemsListProvider);
     ref.invalidate(itemCategoriesListProvider);
     ref.invalidate(contactsSuppliersEnrichedProvider);
@@ -692,6 +600,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
         fullscreenDialog: true,
       ),
     );
+    if (!mounted) return;
     ref.invalidate(suppliersListProvider);
     ref.invalidate(contactsSuppliersEnrichedProvider);
   }
@@ -728,7 +637,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
           businessId: session.primaryBusiness.id, supplierId: id);
       ref.invalidate(suppliersListProvider);
       ref.invalidate(contactsSuppliersEnrichedProvider);
-      ref.invalidate(tradePurchasesListProvider);
+      invalidateTradePurchaseCaches(ref);
       invalidateBusinessAggregates(ref);
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -752,6 +661,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
         fullscreenDialog: true,
       ),
     );
+    if (!mounted) return;
     ref.invalidate(brokersListProvider);
     ref.invalidate(contactsBrokersEnrichedProvider);
   }
@@ -789,7 +699,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
           .deleteBroker(businessId: session.primaryBusiness.id, brokerId: id);
       ref.invalidate(brokersListProvider);
       ref.invalidate(contactsBrokersEnrichedProvider);
-      ref.invalidate(tradePurchasesListProvider);
+      invalidateTradePurchaseCaches(ref);
       invalidateBusinessAggregates(ref);
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -1148,46 +1058,15 @@ class _SuppliersTab extends ConsumerStatefulWidget {
 }
 
 class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
-  final _filterCtrl = TextEditingController();
-  String _filterDisplay = '';
-  Timer? _filterDebounce;
-
-  @override
-  void initState() {
-    super.initState();
-    _filterCtrl.addListener(_onFilterTick);
-  }
-
-  void _onFilterTick() {
-    _filterDebounce?.cancel();
-    _filterDebounce = Timer(const Duration(milliseconds: 150), () {
-      if (!mounted) return;
-      setState(() => _filterDisplay = _filterCtrl.text);
-    });
-  }
-
-  @override
-  void dispose() {
-    _filterDebounce?.cancel();
-    _filterCtrl.removeListener(_onFilterTick);
-    _filterCtrl.dispose();
-    super.dispose();
-  }
-
-  String _supplierHaystack(Map<String, dynamic> s) {
-    final nm = s['name']?.toString() ?? '';
-    final ph = s['phone']?.toString() ?? '';
-    final loc = s['location']?.toString() ?? '';
-    return '$nm $ph $loc';
-  }
-
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(contactsSuppliersEnrichedProvider);
     final session = ref.watch(sessionProvider);
     final isOwner = session?.primaryBusiness.role == 'owner';
     return async.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
+      skipLoadingOnReload: true,
+      skipLoadingOnRefresh: true,
+      loading: () => const ListSkeleton(),
       error: (_, __) => FriendlyLoadError(
         onRetry: () => ref.invalidate(contactsSuppliersEnrichedProvider),
       ),
@@ -1208,111 +1087,37 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
             ),
           );
         }
-        final q = _filterDisplay.trim();
-        final filtered = q.isEmpty
-            ? list
-            : catalogFuzzyRank(
-                q,
-                list,
-                _supplierHaystack,
-                minScore: 38,
-                limit: 500,
+        return RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(contactsSuppliersEnrichedProvider);
+            await ref.read(contactsSuppliersEnrichedProvider.future);
+          },
+          child: ListView.separated(
+            keyboardDismissBehavior:
+                ScrollViewKeyboardDismissBehavior.onDrag,
+            physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics()),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+            itemCount: list.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            itemBuilder: (context, i) {
+              final s = list[i];
+              final id = s['id']?.toString();
+              final m = s['_metrics'] as Map<String, dynamic>?;
+              return _SupplierCard(
+                data: Map<String, dynamic>.from(s),
+                metrics: m,
+                isOwner: isOwner,
+                onOpen: id == null
+                    ? () {}
+                    : () => context.push('/supplier/$id'),
+                onDial: widget.onDial,
+                onWhatsApp: widget.onWhatsApp,
+                onEdit: () => widget.onEdit(s),
+                onDelete: () => widget.onDelete(s),
               );
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: TextField(
-                controller: _filterCtrl,
-                decoration: InputDecoration(
-                  hintText: 'Filter suppliers (fuzzy)…',
-                  prefixIcon: const Icon(Icons.filter_alt_outlined),
-                  suffixIcon: ValueListenableBuilder<TextEditingValue>(
-                    valueListenable: _filterCtrl,
-                    builder: (_, val, __) {
-                      if (val.text.isEmpty) return const SizedBox.shrink();
-                      return IconButton(
-                        icon: const Icon(Icons.clear_rounded),
-                        onPressed: () {
-                          _filterDebounce?.cancel();
-                          _filterCtrl.clear();
-                          setState(() => _filterDisplay = '');
-                        },
-                      );
-                    },
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  filled: true,
-                ),
-              ),
-            ),
-            Expanded(
-              child: filtered.isEmpty
-                  ? RefreshIndicator(
-                      onRefresh: () async {
-                        ref.invalidate(contactsSuppliersEnrichedProvider);
-                        await ref.read(contactsSuppliersEnrichedProvider.future);
-                      },
-                      child: ListView(
-                        keyboardDismissBehavior:
-                            ScrollViewKeyboardDismissBehavior.onDrag,
-                        physics: const AlwaysScrollableScrollPhysics(
-                            parent: BouncingScrollPhysics()),
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-                        children: [
-                          SizedBox(
-                            height: 200,
-                            child: Center(
-                              child: Text(
-                                'No suppliers match “$q”.',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodyMedium
-                                    ?.copyWith(color: HexaColors.textSecondary),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : RefreshIndicator(
-                      onRefresh: () async {
-                        ref.invalidate(contactsSuppliersEnrichedProvider);
-                        await ref.read(contactsSuppliersEnrichedProvider.future);
-                      },
-                      child: ListView.separated(
-                        keyboardDismissBehavior:
-                            ScrollViewKeyboardDismissBehavior.onDrag,
-                        physics: const AlwaysScrollableScrollPhysics(
-                            parent: BouncingScrollPhysics()),
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-                        itemCount: filtered.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
-                        itemBuilder: (context, i) {
-                          final s = filtered[i];
-                          final id = s['id']?.toString();
-                          final m = s['_metrics'] as Map<String, dynamic>?;
-                          return _SupplierCard(
-                            data: Map<String, dynamic>.from(s),
-                            metrics: m,
-                            isOwner: isOwner,
-                            highlightQuery: q,
-                            onOpen: id == null
-                                ? () {}
-                                : () => context.push('/supplier/$id'),
-                            onDial: widget.onDial,
-                            onWhatsApp: widget.onWhatsApp,
-                            onEdit: () => widget.onEdit(s),
-                            onDelete: () => widget.onDelete(s),
-                          );
-                        },
-                      ),
-                    ),
-            ),
-          ],
+            },
+          ),
         );
       },
     );
@@ -1330,46 +1135,15 @@ class _BrokersTab extends ConsumerStatefulWidget {
 }
 
 class _BrokersTabState extends ConsumerState<_BrokersTab> {
-  final _filterCtrl = TextEditingController();
-  String _filterDisplay = '';
-  Timer? _filterDebounce;
-
-  @override
-  void initState() {
-    super.initState();
-    _filterCtrl.addListener(_onFilterTick);
-  }
-
-  void _onFilterTick() {
-    _filterDebounce?.cancel();
-    _filterDebounce = Timer(const Duration(milliseconds: 150), () {
-      if (!mounted) return;
-      setState(() => _filterDisplay = _filterCtrl.text);
-    });
-  }
-
-  @override
-  void dispose() {
-    _filterDebounce?.cancel();
-    _filterCtrl.removeListener(_onFilterTick);
-    _filterCtrl.dispose();
-    super.dispose();
-  }
-
-  String _brokerHaystack(Map<String, dynamic> b) {
-    final nm = b['name']?.toString() ?? '';
-    final ph = b['phone']?.toString() ?? '';
-    final loc = b['location']?.toString() ?? '';
-    return '$nm $ph $loc';
-  }
-
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(contactsBrokersEnrichedProvider);
     final session = ref.watch(sessionProvider);
     final isOwner = session?.primaryBusiness.role == 'owner';
     return async.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
+      skipLoadingOnReload: true,
+      skipLoadingOnRefresh: true,
+      loading: () => const ListSkeleton(),
       error: (_, __) => FriendlyLoadError(
         onRetry: () => ref.invalidate(contactsBrokersEnrichedProvider),
       ),
@@ -1393,109 +1167,35 @@ class _BrokersTabState extends ConsumerState<_BrokersTab> {
             ),
           );
         }
-        final q = _filterDisplay.trim();
-        final filtered = q.isEmpty
-            ? list
-            : catalogFuzzyRank(
-                q,
-                list,
-                _brokerHaystack,
-                minScore: 38,
-                limit: 500,
+        return RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(contactsBrokersEnrichedProvider);
+            await ref.read(contactsBrokersEnrichedProvider.future);
+          },
+          child: ListView.separated(
+            keyboardDismissBehavior:
+                ScrollViewKeyboardDismissBehavior.onDrag,
+            physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics()),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+            itemCount: list.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            itemBuilder: (context, i) {
+              final b = list[i];
+              final id = b['id']?.toString();
+              final m = b['_metrics'] as Map<String, dynamic>?;
+              return _BrokerCard(
+                data: Map<String, dynamic>.from(b),
+                metrics: m,
+                isOwner: isOwner,
+                onOpen: id == null
+                    ? () {}
+                    : () => context.push('/broker/$id'),
+                onEdit: () => widget.onEdit(b),
+                onDelete: () => widget.onDelete(b),
               );
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: TextField(
-                controller: _filterCtrl,
-                decoration: InputDecoration(
-                  hintText: 'Filter brokers (fuzzy)…',
-                  prefixIcon: const Icon(Icons.filter_alt_outlined),
-                  suffixIcon: ValueListenableBuilder<TextEditingValue>(
-                    valueListenable: _filterCtrl,
-                    builder: (_, val, __) {
-                      if (val.text.isEmpty) return const SizedBox.shrink();
-                      return IconButton(
-                        icon: const Icon(Icons.clear_rounded),
-                        onPressed: () {
-                          _filterDebounce?.cancel();
-                          _filterCtrl.clear();
-                          setState(() => _filterDisplay = '');
-                        },
-                      );
-                    },
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  filled: true,
-                ),
-              ),
-            ),
-            Expanded(
-              child: filtered.isEmpty
-                  ? RefreshIndicator(
-                      onRefresh: () async {
-                        ref.invalidate(contactsBrokersEnrichedProvider);
-                        await ref.read(contactsBrokersEnrichedProvider.future);
-                      },
-                      child: ListView(
-                        keyboardDismissBehavior:
-                            ScrollViewKeyboardDismissBehavior.onDrag,
-                        physics: const AlwaysScrollableScrollPhysics(
-                            parent: BouncingScrollPhysics()),
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-                        children: [
-                          SizedBox(
-                            height: 200,
-                            child: Center(
-                              child: Text(
-                                'No brokers match “$q”.',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodyMedium
-                                    ?.copyWith(color: HexaColors.textSecondary),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : RefreshIndicator(
-                      onRefresh: () async {
-                        ref.invalidate(contactsBrokersEnrichedProvider);
-                        await ref.read(contactsBrokersEnrichedProvider.future);
-                      },
-                      child: ListView.separated(
-                        keyboardDismissBehavior:
-                            ScrollViewKeyboardDismissBehavior.onDrag,
-                        physics: const AlwaysScrollableScrollPhysics(
-                            parent: BouncingScrollPhysics()),
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-                        itemCount: filtered.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
-                        itemBuilder: (context, i) {
-                          final b = filtered[i];
-                          final id = b['id']?.toString();
-                          final m = b['_metrics'] as Map<String, dynamic>?;
-                          return _BrokerCard(
-                            data: Map<String, dynamic>.from(b),
-                            metrics: m,
-                            isOwner: isOwner,
-                            highlightQuery: q,
-                            onOpen: id == null
-                                ? () {}
-                                : () => context.push('/broker/$id'),
-                            onEdit: () => widget.onEdit(b),
-                            onDelete: () => widget.onDelete(b),
-                          );
-                        },
-                      ),
-                    ),
-            ),
-          ],
+            },
+          ),
         );
       },
     );

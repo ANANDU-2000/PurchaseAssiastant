@@ -59,10 +59,14 @@ def _line_fp(
     landing: float,
     discount: float | None,
     tax_percent: float | None,
+    kg_per_unit: float | None = None,
+    per_kg: float | None = None,
 ) -> str:
     d = float(discount or 0)
     t = float(tax_percent or 0)
-    return f"{name.strip().lower()}|{qty:.4f}|{float(landing):.4f}|{d:.4f}|{t:.4f}"
+    kpu = float(kg_per_unit) if kg_per_unit is not None else 0.0
+    pk = float(per_kg) if per_kg is not None else 0.0
+    return f"{name.strip().lower()}|{qty:.4f}|{float(landing):.4f}|{d:.4f}|{t:.4f}|{kpu:.4f}|{pk:.4f}"
 
 
 def _fingerprint_lines_from_lines(lines: list[TradePurchaseLine]) -> str:
@@ -73,6 +77,8 @@ def _fingerprint_lines_from_lines(lines: list[TradePurchaseLine]) -> str:
             float(li.landing_cost),
             float(li.discount) if li.discount is not None else None,
             float(li.tax_percent) if li.tax_percent is not None else None,
+            float(li.kg_per_unit) if getattr(li, "kg_per_unit", None) is not None else None,
+            float(li.landing_cost_per_kg) if getattr(li, "landing_cost_per_kg", None) is not None else None,
         )
         for li in lines
     )
@@ -87,14 +93,22 @@ def _fingerprint_lines_from_in(lines: list[TradePurchaseLineIn]) -> str:
             float(li.landing_cost),
             float(li.discount) if li.discount is not None else None,
             float(li.tax_percent) if li.tax_percent is not None else None,
+            float(li.kg_per_unit) if li.kg_per_unit is not None else None,
+            float(li.landing_cost_per_kg) if li.landing_cost_per_kg is not None else None,
         )
         for li in lines
     )
     return "|".join(parts)
 
 
+def _line_gross_base(li: TradePurchaseLineIn) -> Decimal:
+    if li.kg_per_unit is not None and li.landing_cost_per_kg is not None:
+        return _dec(li.qty) * _dec(li.kg_per_unit) * _dec(li.landing_cost_per_kg)
+    return _dec(li.qty) * _dec(li.landing_cost)
+
+
 def _line_money(li: TradePurchaseLineIn) -> Decimal:
-    base = _dec(li.qty) * _dec(li.landing_cost)
+    base = _line_gross_base(li)
     ld = _dec(li.discount) if li.discount is not None else Decimal("0")
     after_disc = base * (Decimal("1") - min(ld, Decimal("100")) / Decimal("100"))
     tax = _dec(li.tax_percent) if li.tax_percent is not None else Decimal("0")
@@ -356,6 +370,8 @@ async def create_trade_purchase(
                 qty=li.qty,
                 unit=li.unit,
                 landing_cost=li.landing_cost,
+                kg_per_unit=li.kg_per_unit,
+                landing_cost_per_kg=li.landing_cost_per_kg,
                 selling_cost=li.selling_cost,
                 discount=li.discount,
                 tax_percent=li.tax_percent,
@@ -605,6 +621,10 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
                 qty=float(li.qty),
                 unit=li.unit,
                 landing_cost=float(li.landing_cost),
+                kg_per_unit=float(li.kg_per_unit) if getattr(li, "kg_per_unit", None) is not None else None,
+                landing_cost_per_kg=float(li.landing_cost_per_kg)
+                if getattr(li, "landing_cost_per_kg", None) is not None
+                else None,
                 selling_cost=float(li.selling_cost) if li.selling_cost is not None else None,
                 discount=float(li.discount) if li.discount is not None else None,
                 tax_percent=float(li.tax_percent) if li.tax_percent is not None else None,

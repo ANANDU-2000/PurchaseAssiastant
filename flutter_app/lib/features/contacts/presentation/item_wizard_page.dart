@@ -100,8 +100,6 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
       _nameError = 'Item name is required';
     } else if (_unit == null || _unit!.isEmpty) {
       _nameError = 'Unit type is required';
-    } else if (_hsn.text.trim().isEmpty) {
-      _nameError = 'HSN / SAC is required';
     }
     setState(() {});
     return _nameError == null;
@@ -236,7 +234,7 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
             typeId: _selectedTypeId,
             name: _name.text.trim(),
             defaultUnit: _unit!,
-            hsnCode: _hsn.text.trim(),
+            hsnCode: _hsn.text.trim().isEmpty ? null : _hsn.text.trim(),
             defaultKgPerBag:
                 _unit == 'bag' ? parseOptionalKgPerBag(_kg.text) : null,
             defaultPurchaseUnit: _unit,
@@ -251,7 +249,7 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
       }
       ref.invalidate(catalogItemsListProvider);
       ref.invalidate(itemCategoriesListProvider);
-      ref.invalidate(tradePurchasesListProvider);
+      invalidateTradePurchaseCaches(ref);
       // suppliersListProvider / brokersListProvider are keepAlive — after
       // _syncSupplierItemMap/_syncBrokerItemMap patched their preferences_json
       // they must be explicitly refreshed so pickers show the new mapping.
@@ -487,7 +485,7 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
         TextField(
           controller: _hsn,
           textCapitalization: TextCapitalization.characters,
-          decoration: _d('HSN / SAC *', hint: 'e.g. 10063020'),
+          decoration: _d('HSN / SAC (optional)', hint: 'e.g. 10063020'),
           onChanged: (_) => _markDirty(),
         ),
       ],

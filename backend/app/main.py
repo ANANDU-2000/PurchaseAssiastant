@@ -21,6 +21,7 @@ from app.routers import (
     billing,
     catalog,
     contacts,
+    dashboard,
     entries,
     health,
     me,
@@ -378,6 +379,20 @@ async def lifespan(app: FastAPI):
                     alters.append("ALTER TABLE trade_purchase_lines ADD COLUMN IF NOT EXISTS description VARCHAR(512) NULL")
                 else:
                     alters.append("ALTER TABLE trade_purchase_lines ADD COLUMN description VARCHAR(512) NULL")
+            if "kg_per_unit" not in cols:
+                if dialect == "postgresql":
+                    alters.append(
+                        "ALTER TABLE trade_purchase_lines ADD COLUMN IF NOT EXISTS kg_per_unit NUMERIC(18,4) NULL"
+                    )
+                else:
+                    alters.append("ALTER TABLE trade_purchase_lines ADD COLUMN kg_per_unit NUMERIC(18,4) NULL")
+            if "landing_cost_per_kg" not in cols:
+                if dialect == "postgresql":
+                    alters.append(
+                        "ALTER TABLE trade_purchase_lines ADD COLUMN IF NOT EXISTS landing_cost_per_kg NUMERIC(18,4) NULL"
+                    )
+                else:
+                    alters.append("ALTER TABLE trade_purchase_lines ADD COLUMN landing_cost_per_kg NUMERIC(18,4) NULL")
             for sql in alters:
                 try:
                     sync_conn.exec_driver_sql(sql)
@@ -386,7 +401,32 @@ async def lifespan(app: FastAPI):
 
         await conn.run_sync(_ensure_trade_purchase_line_columns)
 
+    scheduler = None
+    try:
+        from zoneinfo import ZoneInfo
+
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+        scheduler = AsyncIOScheduler(timezone=ZoneInfo("Asia/Kolkata"))
+
+        def _due_soon_tick() -> None:
+            """Hook: scan due-soon trade purchases; extend with DB + push/WhatsApp if needed."""
+            logger.info("due_soon_reminder: tick (use app.services.monthly_payment_reminder)")
+
+        scheduler.add_job(
+            _due_soon_tick, "cron", hour=8, minute=0, id="due_soon_scan", replace_existing=True
+        )
+        scheduler.start()
+        logger.info("APScheduler: due_soon job registered (08:00 Asia/Kolkata)")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("APScheduler not started: %s", e)
+
     yield
+    if scheduler is not None:
+        try:
+            scheduler.shutdown(wait=False)
+        except Exception:  # noqa: BLE001
+            pass
     await engine.dispose()
 
 
@@ -463,6 +503,7 @@ app.include_router(reports_trade.router)
 app.include_router(search.router)
 app.include_router(ai_chat.router)
 app.include_router(analytics.router)
+app.include_router(dashboard.router)
 app.include_router(price_intelligence.router)
 app.include_router(catalog.router)
 app.include_router(contacts.router)

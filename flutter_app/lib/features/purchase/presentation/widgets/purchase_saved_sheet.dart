@@ -65,7 +65,7 @@ Future<String?> showPurchaseSavedSheet(
           children: [
             Row(
               children: [
-                Icon(Icons.check_circle_rounded, color: HexaColors.brandAccent, size: 32),
+                const Icon(Icons.check_circle_rounded, color: HexaColors.brandAccent, size: 32),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -78,7 +78,7 @@ Future<String?> showPurchaseSavedSheet(
             const SizedBox(height: 6),
             Text(
               p.humanId,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
                 color: HexaColors.brandPrimary,
@@ -86,7 +86,7 @@ Future<String?> showPurchaseSavedSheet(
             ),
             Text(
               '${_inr(p.totalAmount)} · ${p.lines.length} line(s)',
-              style: TextStyle(color: HexaColors.neutral, fontSize: 13),
+              style: const TextStyle(color: HexaColors.neutral, fontSize: 13),
             ),
             const Divider(height: 24),
             ListTile(
@@ -139,8 +139,8 @@ Future<String?> showPurchaseSavedSheet(
               },
             ),
             if (kIsWeb)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
                 child: Text(
                   'Share / WhatsApp may use browser download on web.',
                   style: TextStyle(fontSize: 11, color: HexaColors.neutral),

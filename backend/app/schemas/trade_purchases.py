@@ -6,15 +6,27 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class TradePurchaseLineIn(BaseModel):
-    catalog_item_id: uuid.UUID | None = None
-    item_name: str = Field(..., max_length=512)
+    """Catalog-linked purchase line.
+
+    Phase 6 contract: every line must reference a `catalog_item_id`. This
+    matches the strict client-side rule in `purchaseLineIsValidForSave` so
+    server-only callers cannot slip free-typed items past the Flutter
+    validation and break category/item analytics.
+    """
+
+    catalog_item_id: uuid.UUID
+    item_name: str = Field(..., min_length=1, max_length=512)
     qty: float = Field(..., gt=0)
-    unit: str = Field(..., max_length=32)
+    unit: str = Field(..., min_length=1, max_length=32)
     landing_cost: float = Field(..., gt=0)
+    """For bag/sack + per-kg pricing: weight per line unit (e.g. 50 for a 50 kg bag)."""
+    kg_per_unit: float | None = Field(None, gt=0)
+    """Rupee cost per kilogram; line gross = qty * kg_per_unit * landing_cost_per_kg when both set."""
+    landing_cost_per_kg: float | None = Field(None, gt=0)
     selling_cost: float | None = Field(None, ge=0)
     discount: float | None = Field(None, ge=0)
     tax_percent: float | None = Field(None, ge=0)
@@ -22,11 +34,18 @@ class TradePurchaseLineIn(BaseModel):
     hsn_code: str | None = Field(None, max_length=32)
     description: str | None = Field(None, max_length=512)
 
+    @model_validator(mode="after")
+    def _kg_fields_together(self) -> "TradePurchaseLineIn":
+        a, b = self.kg_per_unit, self.landing_cost_per_kg
+        if (a is None) != (b is None):
+            raise ValueError("kg_per_unit and landing_cost_per_kg must both be set or both omitted")
+        return self
+
 
 class TradePurchaseCreateRequest(BaseModel):
     purchase_date: date
     invoice_number: str | None = Field(None, max_length=64)
-    supplier_id: uuid.UUID | None = None
+    supplier_id: uuid.UUID
     broker_id: uuid.UUID | None = None
     status: str = Field(default="confirmed", pattern="^(draft|saved|confirmed)$")
     payment_days: int | None = Field(None, ge=0, le=3650)
@@ -46,6 +65,8 @@ class TradePurchaseLineOut(BaseModel):
     qty: float
     unit: str
     landing_cost: float
+    kg_per_unit: float | None = None
+    landing_cost_per_kg: float | None = None
     selling_cost: float | None
     discount: float | None
     tax_percent: float | None

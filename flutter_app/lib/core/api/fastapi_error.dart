@@ -1,6 +1,87 @@
 // Parsing FastAPI / Starlette error bodies: { "detail": "..." } or
 // { "detail": [ { "loc": [...], "msg": "..." }, ... ] }.
 
+/// Human-readable purchase-save copy for a 422 `detail` list.
+///
+/// Maps the Phase 6 backend contract (required `catalog_item_id`, `qty > 0`,
+/// `landing_cost > 0`, paired `kg_per_unit`/`landing_cost_per_kg`) to strings
+/// a shop owner can act on, prefixed with the 1-based line number when the
+/// error is on a line. Returns null when the payload doesn't look like a
+/// Pydantic validation list.
+String? fastApiPurchaseFriendlyError(Object? data) {
+  if (data is! Map) return null;
+  final detail = data['detail'];
+  if (detail is! List) return null;
+  final msgs = <String>[];
+  for (final e in detail) {
+    if (e is! Map) continue;
+    final rawMsg = e['msg']?.toString() ?? '';
+    final loc = e['loc'];
+    final segs = <String>[];
+    if (loc is List) {
+      for (final x in loc) {
+        if (x == 'body') continue;
+        segs.add(x.toString());
+      }
+    }
+    String? linePrefix;
+    String? field;
+    final li = segs.indexOf('lines');
+    if (li >= 0 && li + 1 < segs.length) {
+      final n = int.tryParse(segs[li + 1]);
+      if (n != null) linePrefix = 'Line ${n + 1}';
+      if (li + 2 < segs.length) field = segs[li + 2];
+    } else if (segs.isNotEmpty) {
+      field = segs.last;
+    }
+    final friendly = _friendlyFieldMessage(field, rawMsg);
+    if (friendly == null) continue;
+    msgs.add(linePrefix == null ? friendly : '$linePrefix: $friendly');
+  }
+  if (msgs.isEmpty) return null;
+  const maxLines = 6;
+  if (msgs.length <= maxLines) return msgs.join('\n');
+  return '${msgs.take(maxLines).join('\n')}\n…';
+}
+
+String? _friendlyFieldMessage(String? field, String rawMsg) {
+  final m = rawMsg.toLowerCase();
+  switch (field) {
+    case 'catalog_item_id':
+      return 'pick the item from the list (free-typed items cannot be saved)';
+    case 'qty':
+      return 'quantity must be greater than 0';
+    case 'landing_cost':
+      return 'landing cost must be greater than 0';
+    case 'selling_cost':
+      return 'selling price cannot be negative';
+    case 'discount':
+      return 'discount cannot be negative';
+    case 'tax_percent':
+      return 'tax % cannot be negative';
+    case 'kg_per_unit':
+      return 'kg per unit must be greater than 0';
+    case 'landing_cost_per_kg':
+      return 'price per kg must be greater than 0';
+    case 'unit':
+      return 'unit is required';
+    case 'item_name':
+      return 'item name is required';
+    case 'supplier_id':
+      return 'please select a supplier';
+    case 'purchase_date':
+      return 'please set a valid purchase date';
+    case 'payment_days':
+      return 'payment days must be between 0 and 3650';
+  }
+  // Fallback for the paired kg_per_unit / landing_cost_per_kg root validator.
+  if (m.contains('kg_per_unit') && m.contains('landing_cost_per_kg')) {
+    return 'fill both kg per unit and price per kg, or leave both blank';
+  }
+  final trimmed = rawMsg.trim();
+  return trimmed.isEmpty ? null : trimmed;
+}
+
 /// Human-readable text from a JSON error body, or null if none.
 String? fastApiDetailString(Object? data) {
   if (data is! Map) return null;

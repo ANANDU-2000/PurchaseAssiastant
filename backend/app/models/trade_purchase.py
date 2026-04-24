@@ -79,6 +79,10 @@ class TradePurchaseLine(Base):
     qty: Mapped[float] = mapped_column(Numeric(18, 4))
     unit: Mapped[str] = mapped_column(String(32))
     landing_cost: Mapped[float] = mapped_column(Numeric(18, 4))
+    # Weight lines (e.g. bag + per-kg): snapshot at purchase time. Totals use
+    # qty * kg_per_unit * landing_cost_per_kg; landing_cost = kg_per_unit * landing_cost_per_kg per line unit.
+    kg_per_unit: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
+    landing_cost_per_kg: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
     selling_cost: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
     discount: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
     tax_percent: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)

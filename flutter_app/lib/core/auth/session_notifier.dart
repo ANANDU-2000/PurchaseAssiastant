@@ -17,25 +17,53 @@ import 'session_cache.dart';
 final authRefresh = ValueNotifier<int>(0);
 
 final hexaApiProvider = Provider<HexaApi>((ref) {
+  // Riverpod 2.6 lacks `ref.mounted` — track disposal manually so async
+  // callbacks don't read a dead ProviderContainer after widget/container
+  // teardown (classic "ref after dispose" crash).
+  var disposed = false;
+  ref.onDispose(() => disposed = true);
+
   late final HexaApi api;
   api = HexaApi(
+    // Pulls the access token from secure storage when an outgoing request is
+    // missing an Authorization header. Covers the cold-start window between
+    // app boot and [SessionNotifier.restore] finishing.
+    resolveAccessToken: () async {
+      if (disposed) return null;
+      try {
+        final store = ref.read(tokenStoreProvider);
+        final t = await store.read();
+        return t.access;
+      } catch (_) {
+        return null;
+      }
+    },
     onUnauthorizedRefresh: () async {
+      if (disposed) return false;
       final store = ref.read(tokenStoreProvider);
       final t = await store.read();
       if (t.refresh == null) return false;
       try {
         final pair = await api.refreshTokens(refreshToken: t.refresh!);
+        if (disposed) return false;
         await store.write(access: pair.access, refresh: pair.refresh);
         api.setAuthToken(pair.access);
-        await ref
-            .read(sessionProvider.notifier)
-            .applyRefreshedTokens(pair.access, pair.refresh);
+        if (disposed) return true;
+        try {
+          await ref
+              .read(sessionProvider.notifier)
+              .applyRefreshedTokens(pair.access, pair.refresh);
+        } catch (_) {
+          // SessionNotifier torn down — token is still persisted + attached.
+        }
         return true;
       } on DioException catch (e) {
         final sc = e.response?.statusCode;
         final invalidRefresh = sc == 401 || sc == 403;
-        if (invalidRefresh) {
-          await ref.read(sessionProvider.notifier).logout();
+        if (invalidRefresh && !disposed) {
+          try {
+            await ref.read(sessionProvider.notifier).logout();
+          } catch (_) {/* container disposed */}
         }
         return false;
       } catch (_) {
@@ -54,8 +82,16 @@ final sessionProvider =
     NotifierProvider<SessionNotifier, Session?>(SessionNotifier.new);
 
 class SessionNotifier extends Notifier<Session?> {
+  /// Tracked manually because Riverpod 2.6 does not expose `ref.mounted` on
+  /// `NotifierProviderRef`. Flipped by [Ref.onDispose] in [build].
+  bool _disposed = false;
+
   @override
-  Session? build() => null;
+  Session? build() {
+    _disposed = false;
+    ref.onDispose(() => _disposed = true);
+    return null;
+  }
 
   /// Serializes [restore], [login], [register], and [signInWithGoogle] so a concurrent
   /// [restore] (splash / login / cold start) cannot fire `logout()` from a dead refresh
@@ -95,15 +131,18 @@ class SessionNotifier extends Notifier<Session?> {
 
   Future<void> _deferredWorkspaceBootstrap() async {
     await Future<void>.delayed(Duration.zero);
+    if (_disposed) return;
     final session = state;
     if (session == null) return;
     final accessToken = session.accessToken;
     final api = ref.read(hexaApiProvider);
     try {
       final boot = await api.bootstrapWorkspace();
+      if (_disposed) return;
       if (boot == null) return;
       if (boot['created_business'] == true) {
         final list = await api.meBusinesses();
+        if (_disposed) return;
         if (state == null) return;
         if (state!.accessToken != accessToken) return;
         state = Session(
@@ -112,9 +151,11 @@ class SessionNotifier extends Notifier<Session?> {
           businesses: list,
         );
         await _persistSession(state!);
+        if (_disposed) return;
         authRefresh.value++;
       }
       if (boot['seeded'] == true) {
+        if (_disposed) return;
         invalidateWorkspaceSeedData(ref);
       }
     } on DioException catch (e) {

@@ -148,7 +148,7 @@ class _ScanBillPageState extends ConsumerState<ScanBillPage> {
           ),
           if (_note != null) ...[
             const SizedBox(height: 8),
-            Text(_note!, style: TextStyle(fontSize: 12, color: HexaColors.neutral)),
+            Text(_note!, style: const TextStyle(fontSize: 12, color: HexaColors.neutral)),
           ],
           const SizedBox(height: 16),
           if (_items.isNotEmpty) ...[

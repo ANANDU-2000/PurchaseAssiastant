@@ -30,6 +30,26 @@ void main() {
     expect(m, 900.0);
   });
 
+  test('lineMoney kg_per_unit + landing_cost_per_kg matches per-bag rate', () {
+    const perBag = 2100.0;
+    const qty = 100.0;
+    const kpu = 50.0;
+    const perKg = 42.0;
+    final kg = lineMoney(const TradeCalcLine(
+      qty: qty,
+      landingCost: perBag,
+      kgPerUnit: kpu,
+      landingCostPerKg: perKg,
+      taxPercent: 0,
+    ));
+    final bag = lineMoney(const TradeCalcLine(
+      qty: qty,
+      landingCost: perBag,
+      taxPercent: 0,
+    ));
+    expect(kg, bag);
+  });
+
   test('computeTradeTotals header discount and commission', () {
     final t = computeTradeTotals(const TradeCalcRequest(
       headerDiscountPercent: 10,

@@ -173,7 +173,7 @@ class AppSecondaryButton extends StatelessWidget {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               icon!,
-                              SizedBox(width: HexaDsSpace.s1),
+                              const SizedBox(width: HexaDsSpace.s1),
                               Text(
                                 label,
                                 style: HexaDsType.label(15).copyWith(color: hx.textPrimary),

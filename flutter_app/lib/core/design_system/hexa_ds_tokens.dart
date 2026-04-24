@@ -62,8 +62,8 @@ abstract final class HexaDsMotion {
   static const Duration slow = Duration(milliseconds: 420);
   static const Duration authPage = Duration(milliseconds: 400);
   static const Duration authPageReverse = Duration(milliseconds: 320);
-  static const Duration pushPage = Duration(milliseconds: 320);
-  static const Duration pushPageReverse = Duration(milliseconds: 280);
+  static const Duration pushPage = Duration(milliseconds: 180);
+  static const Duration pushPageReverse = Duration(milliseconds: 150);
 
   static const Curve enter = Curves.easeOutCubic;
   static const Curve exit = Curves.easeInCubic;

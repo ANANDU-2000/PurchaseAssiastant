@@ -4,12 +4,21 @@ class TradeCalcLine {
   const TradeCalcLine({
     required this.qty,
     required this.landingCost,
+    this.kgPerUnit,
+    this.landingCostPerKg,
     this.discountPercent,
     this.taxPercent,
   });
 
   final double qty;
+  /// When [kgPerUnit] and [landingCostPerKg] are set, this is the derived
+  /// cost per *line* unit (e.g. per bag) = [kgPerUnit] * [landingCostPerKg].
   final double landingCost;
+  /// e.g. 50 for a 50 kg bag. When set with [landingCostPerKg], [lineGrossBase]
+  /// uses `qty * kgPerUnit * landingCostPerKg`.
+  final double? kgPerUnit;
+  /// Rupees per kilogram; used with [kgPerUnit] for weight-based lines.
+  final double? landingCostPerKg;
   /// Line discount 0–100 (%), same semantics as backend.
   final double? discountPercent;
   final double? taxPercent;
@@ -44,9 +53,19 @@ class TradeCalcTotals {
 
 double _dec(double? x) => x ?? 0.0;
 
+/// Pre-discount base amount for one line (matches backend `_line_gross_base`).
+double lineGrossBase(TradeCalcLine li) {
+  final kpu = li.kgPerUnit;
+  final pk = li.landingCostPerKg;
+  if (kpu != null && pk != null && kpu > 0 && pk > 0) {
+    return _dec(li.qty) * kpu * pk;
+  }
+  return _dec(li.qty) * _dec(li.landingCost);
+}
+
 /// Per-line amount after line discount and tax multiplier (matches backend).
 double lineMoney(TradeCalcLine li) {
-  final base = _dec(li.qty) * _dec(li.landingCost);
+  final base = lineGrossBase(li);
   final ld = li.discountPercent != null ? _dec(li.discountPercent) : 0.0;
   final afterDisc = base * (1.0 - (ld > 100 ? 100 : ld) / 100.0);
   final tax = li.taxPercent != null ? _dec(li.taxPercent) : 0.0;

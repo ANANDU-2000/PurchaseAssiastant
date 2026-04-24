@@ -73,7 +73,7 @@ class HexaGlassTheme extends ThemeExtension<HexaGlassTheme> {
         ),
       ],
       inputFocusShadow: [
-        BoxShadow(
+        const BoxShadow(
           color: HexaColors.inputFocusRing,
           blurRadius: 0,
           spreadRadius: 3,

@@ -10,6 +10,7 @@ import '../../../core/providers/catalog_providers.dart';
 import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/search/search_highlight.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/widgets/list_skeleton.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 
 /// Category list (layer 1). Subcategories and items live on deeper routes.
@@ -203,7 +204,9 @@ class _CatalogPageState extends ConsumerState<CatalogPage> {
           const SizedBox(height: 8),
           Expanded(
             child: async.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
+              skipLoadingOnReload: true,
+              skipLoadingOnRefresh: true,
+              loading: () => const ListSkeleton(),
               error: (_, __) => FriendlyLoadError(
                 onRetry: () {
                   ref.invalidate(itemCategoriesListProvider);

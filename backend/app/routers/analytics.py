@@ -763,7 +763,7 @@ class TradeInsightsOut(BaseModel):
     cost_jumps: list[dict] = []
 
 
-@router.get("/insights", response_model=TradeInsightsOut)
+@router.get("/insights/trade", response_model=TradeInsightsOut)
 async def analytics_trade_insights(
     business_id: uuid.UUID,
     _m: Annotated[Membership, Depends(require_membership)],

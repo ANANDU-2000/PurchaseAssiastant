@@ -15,9 +15,8 @@ final _money = NumberFormat('#,##,##0.00', 'en_IN');
 String _inrPdf(num n) => 'Rs. ${_money.format(n)}';
 final _dateFmt = DateFormat('dd MMM yyyy');
 
-const _headerGreen = PdfColor.fromInt(0xFF0E4F46);
 const _muted = PdfColor.fromInt(0xFF475569);
-const _border = PdfColor.fromInt(0xFFE2E8F0);
+const _border = PdfColor.fromInt(0xFFD1D5DB);
 
 Future<pw.ImageProvider?> _tryLogo(String? url) async {
   final u = url?.trim();
@@ -118,11 +117,14 @@ pw.Widget _cell(
 }
 
 pw.Widget _headerBlock(BusinessProfile biz, pw.ImageProvider? logo) {
+  final title = biz.displayTitle.trim().isNotEmpty
+      ? biz.displayTitle
+      : 'NEW HARISREE AGENCY';
   return pw.Container(
-    padding: const pw.EdgeInsets.all(12),
+    padding: const pw.EdgeInsets.symmetric(vertical: 10, horizontal: 0),
     decoration: const pw.BoxDecoration(
-      color: _headerGreen,
-      borderRadius: pw.BorderRadius.all(pw.Radius.circular(4)),
+      border: pw.Border(
+          bottom: pw.BorderSide(color: _border, width: 1.5)),
     ),
     child: pw.Row(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -130,36 +132,42 @@ pw.Widget _headerBlock(BusinessProfile biz, pw.ImageProvider? logo) {
         if (logo != null)
           pw.Padding(
             padding: const pw.EdgeInsets.only(right: 10),
-            child: pw.Image(logo, width: 44, height: 44, fit: pw.BoxFit.cover),
+            child:
+                pw.Image(logo, width: 44, height: 44, fit: pw.BoxFit.cover),
           ),
         pw.Expanded(
           child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               pw.Text(
-                biz.displayTitle.toUpperCase(),
+                title.toUpperCase(),
                 style: pw.TextStyle(
-                  color: PdfColors.white,
-                  fontSize: 16,
+                  color: PdfColors.black,
+                  fontSize: 15,
                   fontWeight: pw.FontWeight.bold,
                 ),
               ),
               if (biz.address != null && biz.address!.isNotEmpty)
                 pw.Text(
                   biz.address!,
-                  style: const pw.TextStyle(color: PdfColors.white, fontSize: 9, height: 1.35),
+                  style: const pw.TextStyle(
+                      color: _muted, fontSize: 8.5, height: 1.35),
                 ),
-              pw.SizedBox(height: 4),
+              pw.SizedBox(height: 3),
               pw.Row(
                 children: [
                   if (biz.phone != null && biz.phone!.isNotEmpty)
                     pw.Text('Phone: ${biz.phone}',
-                        style: const pw.TextStyle(color: PdfColors.white, fontSize: 8.5)),
-                  if (biz.phone != null && biz.phone!.isNotEmpty && biz.gstNumber != null)
-                    pw.SizedBox(width: 16),
+                        style: const pw.TextStyle(
+                            color: _muted, fontSize: 8.5)),
+                  if (biz.phone != null &&
+                      biz.phone!.isNotEmpty &&
+                      biz.gstNumber != null)
+                    pw.SizedBox(width: 14),
                   if (biz.gstNumber != null && biz.gstNumber!.isNotEmpty)
                     pw.Text('GSTIN: ${biz.gstNumber}',
-                        style: const pw.TextStyle(color: PdfColors.white, fontSize: 8.5)),
+                        style: const pw.TextStyle(
+                            color: _muted, fontSize: 8.5)),
                 ],
               ),
             ],
@@ -195,6 +203,11 @@ pw.Widget _partyRow(TradePurchase p) {
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 pw.Text(s(p.supplierName), style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
+                if (p.supplierGst != null && p.supplierGst!.trim().isNotEmpty)
+                  pw.Text(
+                    'Supplier GST: ${p.supplierGst}',
+                    style: const pw.TextStyle(fontSize: 8, color: _muted),
+                  ),
                 if (p.supplierAddress != null && p.supplierAddress!.trim().isNotEmpty)
                   pw.Text(p.supplierAddress!, style: const pw.TextStyle(fontSize: 8, color: _muted, height: 1.2)),
                 pw.Text('Phone: ${s(p.supplierPhone)}', style: const pw.TextStyle(fontSize: 8)),
@@ -250,18 +263,25 @@ pw.Widget _lineTableHeader() {
 }
 
 pw.Widget _particularsCell(TradePurchaseLine l) {
-  final u = l.unit.toLowerCase();
-  final kpb = l.defaultKgPerBag;
-  final showKg = u.contains('bag') && kpb != null && kpb > 0;
+  final kpu = l.kgPerUnit;
+  final lcpk = l.landingCostPerKg;
+  final isWeightLine = kpu != null && kpu > 0 && lcpk != null && lcpk > 0;
   return pw.Padding(
     padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
     child: pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         pw.Text(l.itemName, style: const pw.TextStyle(fontSize: 8.5)),
-        if (showKg)
+        if (isWeightLine)
           pw.Text(
-            '${l.qty} bag(s) × $kpb kg/bag',
+            '${l.qty} ${l.unit} × $kpu kg × ${_inrPdf(lcpk)}/kg',
+            style: const pw.TextStyle(fontSize: 7, color: _muted),
+          )
+        else if (l.defaultKgPerBag != null &&
+            l.defaultKgPerBag! > 0 &&
+            l.unit.toLowerCase().contains('bag'))
+          pw.Text(
+            '${l.qty} bag(s) × ${l.defaultKgPerBag} kg/bag',
             style: const pw.TextStyle(fontSize: 7, color: _muted),
           ),
       ],
@@ -269,13 +289,22 @@ pw.Widget _particularsCell(TradePurchaseLine l) {
   );
 }
 
+double _lineAmt(TradePurchaseLine l) {
+  final kpu = l.kgPerUnit;
+  final lcpk = l.landingCostPerKg;
+  if (kpu != null && lcpk != null && kpu > 0 && lcpk > 0) {
+    return l.qty * kpu * lcpk;
+  }
+  return l.qty * l.landingCost;
+}
+
 pw.Widget _lineRow(int index, TradePurchaseLine l) {
-  final amt = l.qty * l.landingCost;
+  final amt = _lineAmt(l);
   return pw.Table(
-    border: pw.TableBorder(
-      left: const pw.BorderSide(color: _border, width: 0.6),
-      right: const pw.BorderSide(color: _border, width: 0.6),
-      bottom: const pw.BorderSide(color: _border, width: 0.6),
+    border: const pw.TableBorder(
+      left: pw.BorderSide(color: _border, width: 0.6),
+      right: pw.BorderSide(color: _border, width: 0.6),
+      bottom: pw.BorderSide(color: _border, width: 0.6),
     ),
     columnWidths: {
       0: const pw.FixedColumnWidth(22),
@@ -308,7 +337,7 @@ pw.Widget _lineRow(int index, TradePurchaseLine l) {
 double _lineSum(TradePurchase p) {
   var s = 0.0;
   for (final l in p.lines) {
-    s += l.qty * l.landingCost;
+    s += _lineAmt(l);
   }
   return s;
 }
@@ -341,11 +370,12 @@ Future<pw.Document> buildPurchaseReceiptDoc(
       margin: const pw.EdgeInsets.all(28),
       build: (ctx) => [
         pw.Text(
-          biz.displayTitle,
+          biz.displayTitle.trim().isNotEmpty
+              ? biz.displayTitle
+              : 'NEW HARISREE AGENCY',
           style: pw.TextStyle(
             fontSize: 16,
             fontWeight: pw.FontWeight.bold,
-            color: _headerGreen,
           ),
         ),
         if (biz.address != null && biz.address!.trim().isNotEmpty)
@@ -409,6 +439,11 @@ Future<pw.Document> buildPurchaseReceiptDoc(
         pw.Text(
           'Paid ${_inrPdf(p.paidAmount)}  ·  Balance ${_inrPdf(p.remaining)}',
           style: const pw.TextStyle(fontSize: 9, color: _muted),
+        ),
+        pw.SizedBox(height: 14),
+        pw.Text(
+          'Generated by Harisree Exp&Pur',
+          style: const pw.TextStyle(fontSize: 7.5, color: _muted),
         ),
       ],
     ),
@@ -510,16 +545,25 @@ pw.Widget _footerSignatory(BusinessProfile biz) {
         style: const pw.TextStyle(fontSize: 8, color: _muted),
       ),
       pw.SizedBox(height: 28),
-      pw.Align(
-        alignment: pw.Alignment.centerRight,
-        child: pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.end,
-          children: [
-            pw.Text('For ${biz.displayTitle}', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
-            pw.SizedBox(height: 22),
-            pw.Text('Authorised Signatory', style: const pw.TextStyle(fontSize: 8.5, color: _muted)),
-          ],
-        ),
+      pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text(
+            'Generated by Harisree Exp&Pur',
+            style: const pw.TextStyle(fontSize: 7.5, color: _muted),
+          ),
+          pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.end,
+            children: [
+              pw.Text('For ${biz.displayTitle}',
+                  style: pw.TextStyle(
+                      fontSize: 9, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 20),
+              pw.Text('Authorised Signatory',
+                  style: const pw.TextStyle(fontSize: 8.5, color: _muted)),
+            ],
+          ),
+        ],
       ),
     ],
   );
@@ -528,20 +572,20 @@ pw.Widget _footerSignatory(BusinessProfile biz) {
 PdfColor _statusPdfColor(PurchaseStatus st) {
   switch (st) {
     case PurchaseStatus.paid:
-      return PdfColor.fromInt(0xFF159A8A);
+      return const PdfColor.fromInt(0xFF159A8A);
     case PurchaseStatus.overdue:
-      return PdfColor.fromInt(0xFFE53935);
+      return const PdfColor.fromInt(0xFFE53935);
     case PurchaseStatus.partiallyPaid:
-      return PdfColor.fromInt(0xFFF59E0B);
+      return const PdfColor.fromInt(0xFFF59E0B);
     case PurchaseStatus.cancelled:
-      return PdfColor.fromInt(0xFFE53935);
+      return const PdfColor.fromInt(0xFFE53935);
     case PurchaseStatus.draft:
     case PurchaseStatus.saved:
-      return PdfColor.fromInt(0xFF64748B);
+      return const PdfColor.fromInt(0xFF64748B);
     case PurchaseStatus.unknown:
-      return PdfColor.fromInt(0xFF64748B);
+      return const PdfColor.fromInt(0xFF64748B);
     default:
-      return PdfColor.fromInt(0xFF16A34A);
+      return const PdfColor.fromInt(0xFF16A34A);
   }
 }
 

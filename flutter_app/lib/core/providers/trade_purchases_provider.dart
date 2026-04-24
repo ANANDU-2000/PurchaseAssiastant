@@ -3,6 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../auth/session_notifier.dart';
 import '../models/trade_purchase_models.dart';
 
+/// Bust list + catalog-intel snapshots together.
+void invalidateTradePurchaseCaches(dynamic ref) {
+  ref.invalidate(tradePurchasesListProvider);
+  ref.invalidate(tradePurchasesCatalogIntelProvider);
+}
+
 /// Primary history tab for API: `all` | `draft` | `due_soon` | `overdue` | `paid`.
 final purchaseHistoryPrimaryFilterProvider =
     StateProvider<String>((ref) => 'all');
@@ -32,12 +38,16 @@ final tradePurchasesListProvider =
       );
 });
 
+/// Parsed rows track [tradePurchasesListProvider] without `await …future`, so
+/// async completion cannot call `markNeedsBuild` on a disposed home/shell
+/// element after a fast navigation or 401-driven route swap (Riverpod #…).
 final tradePurchasesParsedProvider =
-    FutureProvider.autoDispose<List<TradePurchase>>((ref) async {
-  final maps = await ref.watch(tradePurchasesListProvider.future);
-  return maps
-      .map((e) => TradePurchase.fromJson(Map<String, dynamic>.from(e)))
-      .toList();
+    Provider.autoDispose<AsyncValue<List<TradePurchase>>>((ref) {
+  return ref.watch(tradePurchasesListProvider).whenData(
+        (maps) => maps
+            .map((e) => TradePurchase.fromJson(Map<String, dynamic>.from(e)))
+            .toList(),
+      );
 });
 
 /// Counts for dashboard / history banner.
@@ -99,4 +109,26 @@ final purchaseUnitTotalsProvider =
     },
     orElse: () => (bags: 0, boxes: 0, tins: 0),
   );
+});
+
+/// Trade list for catalog item intel — always `status=all`, not tied to History
+/// tab filters (draft / due_soon chips).
+final tradePurchasesCatalogIntelProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return [];
+  return ref.read(hexaApiProvider).listTradePurchases(
+        businessId: session.primaryBusiness.id,
+        limit: 200,
+        status: 'all',
+      );
+});
+
+final tradePurchasesCatalogIntelParsedProvider =
+    Provider.autoDispose<AsyncValue<List<TradePurchase>>>((ref) {
+  return ref.watch(tradePurchasesCatalogIntelProvider).whenData(
+        (maps) => maps
+            .map((e) => TradePurchase.fromJson(Map<String, dynamic>.from(e)))
+            .toList(),
+      );
 });

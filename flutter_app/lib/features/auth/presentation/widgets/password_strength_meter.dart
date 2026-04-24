@@ -68,14 +68,14 @@ class PasswordStrengthMeter extends StatelessWidget {
                   ),
                 ),
               ),
-              SizedBox(width: HexaDsSpace.s1 + 2),
+              const SizedBox(width: HexaDsSpace.s1 + 2),
               Text(
                 ev.label,
                 style: HexaDsType.label(12, color: ev.color).copyWith(fontWeight: FontWeight.w800),
               ),
             ],
           ),
-          SizedBox(height: HexaDsSpace.s1 - 2),
+          const SizedBox(height: HexaDsSpace.s1 - 2),
           Text(
             'Use 8+ characters with mixed case, numbers, and symbols for best security.',
             style: HexaDsType.body(11, color: hx.textMuted),

@@ -31,7 +31,7 @@ extension PurchaseStatusX on PurchaseStatus {
   String get label => switch (this) {
         PurchaseStatus.draft => 'Draft',
         PurchaseStatus.saved => 'Saved',
-        PurchaseStatus.confirmed => 'Confirmed',
+        PurchaseStatus.confirmed => 'Pending',
         PurchaseStatus.partiallyPaid => 'Partial',
         PurchaseStatus.paid => 'Paid',
         PurchaseStatus.overdue => 'Overdue',
@@ -47,7 +47,7 @@ extension PurchaseStatusX on PurchaseStatus {
         PurchaseStatus.partiallyPaid => const Color(0xFFF59E0B),
         PurchaseStatus.draft => HexaColors.neutral,
         PurchaseStatus.saved => HexaColors.neutral,
-        PurchaseStatus.confirmed => HexaColors.brandAccent,
+        PurchaseStatus.confirmed => HexaColors.profit,
         PurchaseStatus.cancelled => HexaColors.loss,
         PurchaseStatus.unknown => HexaColors.neutral,
       };
@@ -86,6 +86,8 @@ class TradePurchaseLine {
     this.defaultUnit,
     this.defaultKgPerBag,
     this.defaultPurchaseUnit,
+    this.kgPerUnit,
+    this.landingCostPerKg,
   });
 
   final String id;
@@ -93,6 +95,9 @@ class TradePurchaseLine {
   final double qty;
   final String unit;
   final double landingCost;
+  /// When set, line was priced as qty × kg_per_unit × landing_cost_per_kg.
+  final double? kgPerUnit;
+  final double? landingCostPerKg;
   final double? sellingCost;
   final double? discount;
   final double? taxPercent;
@@ -122,6 +127,8 @@ class TradePurchaseLine {
       defaultUnit: j['default_unit']?.toString(),
       defaultKgPerBag: (j['default_kg_per_bag'] as num?)?.toDouble(),
       defaultPurchaseUnit: j['default_purchase_unit']?.toString(),
+      kgPerUnit: (j['kg_per_unit'] as num?)?.toDouble(),
+      landingCostPerKg: (j['landing_cost_per_kg'] as num?)?.toDouble(),
     );
   }
 }

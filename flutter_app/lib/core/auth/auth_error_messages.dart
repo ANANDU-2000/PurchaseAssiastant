@@ -184,7 +184,10 @@ String friendlyApiError(Object error, {bool forAssistant = false}) {
       return 'That conflicts with existing data. Try again.';
     }
     if (sc == 400 || sc == 422) {
-      final detail = fastApiDetailString(error.response?.data);
+      // Prefer the domain-aware mapper (e.g. `Line 2: quantity must be > 0`);
+      // fall back to the raw FastAPI detail, then a generic copy.
+      final friendly = fastApiPurchaseFriendlyError(error.response?.data);
+      final detail = friendly ?? fastApiDetailString(error.response?.data);
       if (detail != null && detail.isNotEmpty) {
         const cap = 420;
         return detail.length <= cap ? detail : '${detail.substring(0, cap)}…';

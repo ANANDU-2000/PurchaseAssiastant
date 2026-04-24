@@ -15,9 +15,22 @@ bool _retryableAssistantRequest(DioException e) {
       t == DioExceptionType.sendTimeout;
 }
 
+bool _isAuthEndpoint(String path) {
+  return path.contains('/auth/login') ||
+      path.contains('/auth/register') ||
+      path.contains('/auth/google') ||
+      path.contains('/auth/refresh') ||
+      path.contains('/auth/forgot-password') ||
+      path.contains('/auth/reset-password');
+}
+
 class HexaApi {
-  HexaApi({String? baseUrl, Future<bool> Function()? onUnauthorizedRefresh})
-      : _onUnauthorizedRefresh = onUnauthorizedRefresh,
+  HexaApi({
+    String? baseUrl,
+    Future<bool> Function()? onUnauthorizedRefresh,
+    Future<String?> Function()? resolveAccessToken,
+  })  : _onUnauthorizedRefresh = onUnauthorizedRefresh,
+        _resolveAccessToken = resolveAccessToken,
         _dio = Dio(
           BaseOptions(
             baseUrl: baseUrl ?? AppConfig.resolvedApiBaseUrl,
@@ -34,6 +47,35 @@ class HexaApi {
         ) {
     _dio.interceptors.add(
       InterceptorsWrapper(
+        // Belt-and-suspenders: if a request goes out without an Authorization
+        // header (e.g. cold start fires before SessionNotifier.restore has
+        // called setAuthToken), resolve the token from the secure store and
+        // attach it. Skips auth endpoints. Prevents the "empty dashboard,
+        // random 401s on first paint" class of bugs.
+        onRequest: (options, handler) async {
+          final path = options.uri.path;
+          if (_isAuthEndpoint(path)) {
+            return handler.next(options);
+          }
+          final existing = options.headers['Authorization']?.toString() ??
+              _dio.options.headers['Authorization']?.toString();
+          if (existing == null || existing.isEmpty) {
+            final resolver = _resolveAccessToken;
+            if (resolver != null) {
+              try {
+                final token = await resolver();
+                if (token != null && token.isNotEmpty) {
+                  final h = 'Bearer $token';
+                  _dio.options.headers['Authorization'] = h;
+                  options.headers['Authorization'] = h;
+                }
+              } catch (_) {
+                // Resolver failed; let the request go and 401 interceptor handle it.
+              }
+            }
+          }
+          return handler.next(options);
+        },
         onError: (DioException err, ErrorInterceptorHandler handler) async {
           if (err.response?.statusCode != 401) {
             return handler.next(err);
@@ -42,13 +84,7 @@ class HexaApi {
           if (req.extra['authRetried'] == true) {
             return handler.next(err);
           }
-          final path = req.uri.path;
-          if (path.contains('/auth/login') ||
-              path.contains('/auth/register') ||
-              path.contains('/auth/google') ||
-              path.contains('/auth/refresh') ||
-              path.contains('/auth/forgot-password') ||
-              path.contains('/auth/reset-password')) {
+          if (_isAuthEndpoint(req.uri.path)) {
             return handler.next(err);
           }
           final ok = await _onUnauthorizedRefresh?.call() ?? false;
@@ -74,6 +110,7 @@ class HexaApi {
   final Dio _dio;
   final Dio _plain;
   final Future<bool> Function()? _onUnauthorizedRefresh;
+  final Future<String?> Function()? _resolveAccessToken;
 
   Dio get raw => _dio;
 
@@ -273,13 +310,26 @@ class HexaApi {
     return res.data ?? {};
   }
 
+  /// Calendar-month composite dashboard (`month` = `YYYY-MM`). Full month window on server.
+  Future<Map<String, dynamic>> getDashboard({
+    required String businessId,
+    required String month,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/dashboard',
+      queryParameters: {'month': month},
+    );
+    return res.data ?? {};
+  }
+
+  /// Trade-purchase window insights (best/worst item by spend, supplier cost spread).
   Future<Map<String, dynamic>> analyticsInsights({
     required String businessId,
     required String from,
     required String to,
   }) async {
     final res = await _dio.get<Map<String, dynamic>>(
-      '/v1/businesses/$businessId/analytics/insights',
+      '/v1/businesses/$businessId/analytics/insights/trade',
       queryParameters: {'from': from, 'to': to},
     );
     return res.data ?? {};
@@ -854,7 +904,7 @@ class HexaApi {
     required String categoryId,
     required String name,
     required String defaultUnit,
-    required String hsnCode,
+    String? hsnCode,
     String? typeId,
     double? defaultKgPerBag,
     String? defaultPurchaseUnit,
@@ -869,7 +919,7 @@ class HexaApi {
         'category_id': categoryId,
         'name': name,
         'default_unit': defaultUnit,
-        'hsn_code': hsnCode,
+        if (hsnCode != null && hsnCode.trim().isNotEmpty) 'hsn_code': hsnCode.trim(),
         if (typeId != null && typeId.isNotEmpty) 'type_id': typeId,
         if (defaultKgPerBag != null && defaultKgPerBag > 0)
           'default_kg_per_bag': defaultKgPerBag,
@@ -1131,10 +1181,12 @@ class HexaApi {
     return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 
-  Future<Map<String, dynamic>> homeInsights(
-      {required String businessId,
-      required String from,
-      required String to}) async {
+  /// Legacy entry-based home KPIs (top item profit, MTD vs prior month, alerts).
+  Future<Map<String, dynamic>> homeInsights({
+    required String businessId,
+    required String from,
+    required String to,
+  }) async {
     final res = await _dio.get<Map<String, dynamic>>(
       '/v1/businesses/$businessId/analytics/insights',
       queryParameters: {'from': from, 'to': to},

@@ -116,21 +116,30 @@ async def build_entry_create_request(
     Build a single-line EntryCreateRequest from parser data.
     Returns (request, missing_fields) — missing_fields non-empty means cannot preview.
     """
-    # Resolve all field aliases to canonical names
-    data = EntityFieldResolver.resolve_entity_fields(data)
-    
-    item = data.get("item")
+    # Keep raw keys (buy_price vs landing_cost) before alias merge — resolver maps
+    # several rate aliases onto `landing_cost` only, which would hide invalid buy_price.
+    raw = {str(k): v for k, v in data.items()}
+    data = EntityFieldResolver.resolve_entity_fields(dict(data))
+
+    item = (
+        data.get("item_name")
+        or data.get("item")
+        or raw.get("item")
+        or raw.get("item_name")
+    )
     if not item or not str(item).strip():
         return None, ["item"]
 
-    qty = _parse_float(data.get("qty"))
-    unit = (str(data.get("unit") or "kg")).lower().strip()
+    qty = _parse_float(data.get("qty")) if data.get("qty") is not None else _parse_float(raw.get("qty"))
+    unit = (str(data.get("unit") or raw.get("unit") or "kg")).lower().strip()
     if unit not in ("kg", "box", "piece", "bag"):
         unit = "kg"
 
-    buy = _parse_float(data.get("buy_price"))
-    land = _parse_float(data.get("landing_cost"))
-    sell = _parse_float(data.get("selling_price"))
+    buy = _parse_float(raw.get("buy_price"))
+    land = _parse_float(raw.get("landing_cost"))
+    sell = _parse_float(data.get("selling_price")) if data.get("selling_price") is not None else _parse_float(
+        raw.get("selling_price")
+    )
 
     missing: list[str] = []
     if qty is None or qty <= 0:
@@ -143,10 +152,16 @@ async def build_entry_create_request(
     if missing:
         return None, missing
 
-    ed = _parse_date(data.get("entry_date")) or ist_today()
+    ed = (
+        _parse_date(data.get("entry_date"))
+        or _parse_date(raw.get("entry_date"))
+        or ist_today()
+    )
 
-    sup_id = await find_supplier_id_by_name(db, business_id, data.get("supplier_name") if data.get("supplier_name") else None)
-    br_id = await find_broker_id_by_name(db, business_id, data.get("broker_name") if data.get("broker_name") else None)
+    sup_nm = data.get("supplier_name") or raw.get("supplier_name")
+    br_nm = data.get("broker_name") or raw.get("broker_name")
+    sup_id = await find_supplier_id_by_name(db, business_id, sup_nm if sup_nm else None)
+    br_id = await find_broker_id_by_name(db, business_id, br_nm if br_nm else None)
 
     line = EntryLineInput(
         item_name=str(item).strip(),

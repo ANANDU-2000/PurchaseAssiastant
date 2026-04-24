@@ -22,8 +22,11 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        """Prefer `backend/.env` over machine-level env for local dev; under pytest (`APP_ENV=test`) env overrides .env."""
+        """Prefer `backend/.env` for local dev; process env always wins over `.env` (last source)."""
         if os.environ.get("APP_ENV", "").lower() == "test":
+            # Under pytest, `conftest.py` sets env vars (DATABASE_URL, HEXA_USE_SQLITE, …)
+            # that MUST beat the developer's `backend/.env` — otherwise tests run against
+            # the real dev DB and fail with mysterious schema mismatches.
             return (
                 init_settings,
                 env_settings,

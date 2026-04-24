@@ -15,7 +15,8 @@ class GetStartedPage extends StatefulWidget {
 class _GetStartedPageState extends State<GetStartedPage>
     with SingleTickerProviderStateMixin {
   static const _logoAsset = 'assets/images/app_logo.png';
-  static const _bgAsset = 'assets/auth/login_bg.png';
+  /// Declared in [pubspec.yaml] (there is no `assets/auth/` bundle).
+  static const _bgAsset = 'assets/brand/getstarted_bg.png';
   static const _entryDuration = Duration(milliseconds: 820);
 
   late final AnimationController _entryController;

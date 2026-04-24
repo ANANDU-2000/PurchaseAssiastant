@@ -80,6 +80,47 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
     await ref.read(catalogItemsListProvider.future);
   }
 
+  Future<void> _deleteItemById(String id, String name) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text('Delete “$name”?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    setState(() => _pendingDeleteItemIds.add(id));
+    try {
+      await ref.read(hexaApiProvider).deleteCatalogItem(
+            businessId: session.primaryBusiness.id,
+            itemId: id,
+          );
+      ref.invalidate(catalogItemsListProvider);
+      try {
+        await ref.read(catalogItemsListProvider.future);
+      } catch (_) {}
+      invalidateBusinessAggregates(ref);
+      if (mounted) {
+        setState(() => _pendingDeleteItemIds.remove(id));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Deleted')),
+        );
+      }
+    } on DioException catch (e) {
+      if (mounted) {
+        setState(() => _pendingDeleteItemIds.remove(id));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(friendlyApiError(e))),
+        );
+      }
+    }
+  }
+
   Future<void> _bulkDelete() async {
     if (_selected.isEmpty) return;
     final ok = await showDialog<bool>(
@@ -356,40 +397,7 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
               title: Text('Delete', style: TextStyle(color: Colors.red.shade800)),
               onTap: () async {
                 Navigator.pop(ctx);
-                final ok = await showDialog<bool>(
-                  context: context,
-                  builder: (d) => AlertDialog(
-                    title: Text('Delete “$name”?'),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
-                      FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Delete')),
-                    ],
-                  ),
-                );
-                if (ok != true) return;
-                final session = ref.read(sessionProvider);
-                if (session == null) return;
-                setState(() => _pendingDeleteItemIds.add(id));
-                try {
-                  await ref.read(hexaApiProvider).deleteCatalogItem(
-                        businessId: session.primaryBusiness.id,
-                        itemId: id,
-                      );
-                  ref.invalidate(catalogItemsListProvider);
-                  try {
-                    await ref.read(catalogItemsListProvider.future);
-                  } catch (_) {}
-                  invalidateBusinessAggregates(ref);
-                  if (mounted) {
-                    setState(() => _pendingDeleteItemIds.remove(id));
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
-                  }
-                } on DioException catch (e) {
-                  if (mounted) {
-                    setState(() => _pendingDeleteItemIds.remove(id));
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
-                  }
-                }
+                await _deleteItemById(id, name);
               },
             ),
             ListTile(
@@ -617,7 +625,32 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
                               ],
                             ),
                           ),
-                          if (!_selectionMode) const Icon(Icons.chevron_right_rounded),
+                          if (!_selectionMode) ...[
+                            PopupMenuButton<String>(
+                              tooltip: 'Item actions',
+                              onSelected: (v) {
+                                if (v == 'edit') {
+                                  context.push('/catalog/item/$id');
+                                } else if (v == 'delete') {
+                                  unawaited(_deleteItemById(id, name));
+                                }
+                              },
+                              itemBuilder: (ctx) => [
+                                const PopupMenuItem(
+                                  value: 'edit',
+                                  child: Text('Edit'),
+                                ),
+                                PopupMenuItem(
+                                  value: 'delete',
+                                  child: Text(
+                                    'Delete',
+                                    style: TextStyle(color: Colors.red.shade800),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const Icon(Icons.chevron_right_rounded),
+                          ],
                         ],
                       ),
                     ),

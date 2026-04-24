@@ -347,7 +347,10 @@ def test_extract_intent_failover_gemini_then_groq(monkeypatch: pytest.MonkeyPatc
     async def fake_keys(_s, _d):
         return {"gemini": "gk", "groq": "qk", "openai": "ok"}
 
+    # `llm_intent` does `from app.services.llm_failover import resolve_provider_keys`,
+    # so the bound name lives on `llm_intent`. Patch both for safety.
     monkeypatch.setattr("app.services.llm_failover.resolve_provider_keys", fake_keys)
+    monkeypatch.setattr("app.services.llm_intent.resolve_provider_keys", fake_keys)
     monkeypatch.setattr("app.services.llm_intent._gemini_json", gem_fail)
     monkeypatch.setattr("app.services.llm_intent._groq_json", groq_ok)
     monkeypatch.setattr("app.services.llm_intent._openai_json", oa_fail)

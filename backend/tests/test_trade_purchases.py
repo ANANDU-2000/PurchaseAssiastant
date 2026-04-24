@@ -29,14 +29,17 @@ def _register_and_business():
     return h, bid
 
 
-def _line_body():
-    return {
+def _line_body(catalog_item_id: str | None = None):
+    body = {
         "item_name": "Rice",
         "qty": 10,
         "unit": "BAG",
         "landing_cost": 100,
         "tax_percent": 0,
     }
+    if catalog_item_id is not None:
+        body["catalog_item_id"] = catalog_item_id
+    return body
 
 
 def _supplier_id(h, bid, *, name: str = "TP Test Supplier") -> str:
@@ -49,15 +52,46 @@ def _supplier_id(h, bid, *, name: str = "TP Test Supplier") -> str:
     return r.json()["id"]
 
 
+def _catalog_item_id(h, bid, *, name: str = "Test rice") -> str:
+    """Create a minimal catalog item. Phase 6 requires every purchase line to
+    link to one, so tests need to create it up-front."""
+    cat = client.post(
+        f"/v1/businesses/{bid}/item-categories",
+        headers=h,
+        json={"name": f"Cat {uuid.uuid4().hex[:6]}"},
+    )
+    assert cat.status_code == 201, cat.text
+    cid = cat.json()["id"]
+    types = client.get(
+        f"/v1/businesses/{bid}/item-categories/{cid}/category-types",
+        headers=h,
+    )
+    assert types.status_code == 200, types.text
+    tid = types.json()[0]["id"]
+    item = client.post(
+        f"/v1/businesses/{bid}/catalog-items",
+        headers=h,
+        json={
+            "category_id": cid,
+            "type_id": tid,
+            "name": name,
+            "default_unit": "kg",
+        },
+    )
+    assert item.status_code == 201, item.text
+    return item.json()["id"]
+
+
 def test_create_sets_due_date_from_payment_days():
     h, bid = _register_and_business()
     sid = _supplier_id(h, bid)
+    iid = _catalog_item_id(h, bid)
     pd = date.today()
     body = {
         "purchase_date": pd.isoformat(),
         "payment_days": 14,
         "supplier_id": sid,
-        "lines": [_line_body()],
+        "lines": [_line_body(iid)],
     }
     r = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
     assert r.status_code == 201, r.text
@@ -70,11 +104,12 @@ def test_create_sets_due_date_from_payment_days():
 def test_partial_payment_derived_partially_paid():
     h, bid = _register_and_business()
     sid = _supplier_id(h, bid)
+    iid = _catalog_item_id(h, bid)
     body = {
         "purchase_date": date.today().isoformat(),
         "payment_days": 30,
         "supplier_id": sid,
-        "lines": [_line_body()],
+        "lines": [_line_body(iid)],
     }
     cr = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
     assert cr.status_code == 201, cr.text
@@ -95,12 +130,13 @@ def test_partial_payment_derived_partially_paid():
 def test_past_due_date_overdue_when_unpaid():
     h, bid = _register_and_business()
     sid = _supplier_id(h, bid)
+    iid = _catalog_item_id(h, bid)
     old = date.today() - timedelta(days=100)
     body = {
         "purchase_date": old.isoformat(),
         "payment_days": 7,
         "supplier_id": sid,
-        "lines": [_line_body()],
+        "lines": [_line_body(iid)],
     }
     cr = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
     assert cr.status_code == 201, cr.text
@@ -112,11 +148,12 @@ def test_past_due_date_overdue_when_unpaid():
 def test_mark_paid_full():
     h, bid = _register_and_business()
     sid = _supplier_id(h, bid)
+    iid = _catalog_item_id(h, bid)
     body = {
         "purchase_date": date.today().isoformat(),
         "payment_days": 5,
         "supplier_id": sid,
-        "lines": [_line_body()],
+        "lines": [_line_body(iid)],
     }
     cr = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
     pid = cr.json()["id"]
@@ -127,10 +164,13 @@ def test_mark_paid_full():
 
 def test_cancel_purchase():
     h, bid = _register_and_business()
+    sid = _supplier_id(h, bid)
+    iid = _catalog_item_id(h, bid)
     body = {
         "purchase_date": date.today().isoformat(),
         "status": "draft",
-        "lines": [_line_body()],
+        "supplier_id": sid,
+        "lines": [_line_body(iid)],
     }
     cr = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
     pid = cr.json()["id"]
@@ -209,13 +249,14 @@ def test_purchase_response_includes_supplier_profile_and_line_hsn():
 def test_line_payment_days_hsn_description_round_trip():
     h, bid = _register_and_business()
     sid = _supplier_id(h, bid)
+    iid = _catalog_item_id(h, bid)
     body = {
         "purchase_date": date.today().isoformat(),
         "payment_days": 10,
         "supplier_id": sid,
         "lines": [
             {
-                **_line_body(),
+                **_line_body(iid),
                 "payment_days": 5,
                 "hsn_code": "12345678",
                 "description": "Lot A",
@@ -234,11 +275,12 @@ def test_line_payment_days_hsn_description_round_trip():
 def test_list_due_soon_filter():
     h, bid = _register_and_business()
     sid = _supplier_id(h, bid)
+    iid = _catalog_item_id(h, bid)
     body = {
         "purchase_date": date.today().isoformat(),
         "payment_days": 2,
         "supplier_id": sid,
-        "lines": [_line_body()],
+        "lines": [_line_body(iid)],
     }
     cr = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
     assert cr.status_code == 201, cr.text
@@ -259,12 +301,14 @@ def test_list_due_soon_filter():
 def test_list_q_filters_by_item_name():
     h, bid = _register_and_business()
     sid = _supplier_id(h, bid)
+    iid = _catalog_item_id(h, bid)
     unique = f"ZetaGrain{uuid.uuid4().hex[:8]}"
     body = {
         "purchase_date": date.today().isoformat(),
         "supplier_id": sid,
         "lines": [
             {
+                "catalog_item_id": iid,
                 "item_name": unique,
                 "qty": 1,
                 "unit": "kg",
@@ -289,8 +333,10 @@ def test_list_q_filters_by_item_name():
 def test_compute_totals_plain_line():
     req = TradePurchaseCreateRequest(
         purchase_date=date.today(),
+        supplier_id=uuid.uuid4(),
         lines=[
             TradePurchaseLineIn(
+                catalog_item_id=uuid.uuid4(),
                 item_name="Rice",
                 qty=10,
                 unit="kg",
@@ -307,8 +353,10 @@ def test_compute_totals_plain_line():
 def test_compute_totals_line_tax_multiplier():
     req = TradePurchaseCreateRequest(
         purchase_date=date.today(),
+        supplier_id=uuid.uuid4(),
         lines=[
             TradePurchaseLineIn(
+                catalog_item_id=uuid.uuid4(),
                 item_name="Rice",
                 qty=10,
                 unit="kg",
@@ -325,8 +373,10 @@ def test_compute_totals_line_tax_multiplier():
 def test_compute_totals_line_discount():
     req = TradePurchaseCreateRequest(
         purchase_date=date.today(),
+        supplier_id=uuid.uuid4(),
         lines=[
             TradePurchaseLineIn(
+                catalog_item_id=uuid.uuid4(),
                 item_name="Rice",
                 qty=10,
                 unit="kg",
@@ -344,10 +394,12 @@ def test_compute_totals_line_discount():
 def test_compute_totals_header_discount_and_commission():
     req = TradePurchaseCreateRequest(
         purchase_date=date.today(),
+        supplier_id=uuid.uuid4(),
         discount=10,
         commission_percent=5,
         lines=[
             TradePurchaseLineIn(
+                catalog_item_id=uuid.uuid4(),
                 item_name="Rice",
                 qty=10,
                 unit="kg",
@@ -366,9 +418,11 @@ def test_compute_totals_one_bag_2250_commission_2_percent_dart_parity():
     """Same inputs as flutter_app/test/calc_engine_test.dart (bag + 2% commission)."""
     req = TradePurchaseCreateRequest(
         purchase_date=date.today(),
+        supplier_id=uuid.uuid4(),
         commission_percent=2,
         lines=[
             TradePurchaseLineIn(
+                catalog_item_id=uuid.uuid4(),
                 item_name="Wheat bag",
                 qty=1,
                 unit="BAG",
@@ -385,20 +439,24 @@ def test_compute_totals_one_bag_2250_commission_2_percent_dart_parity():
 
 def test_compute_totals_freight_separate_vs_included():
     line = TradePurchaseLineIn(
+        catalog_item_id=uuid.uuid4(),
         item_name="Rice",
         qty=1,
         unit="kg",
         landing_cost=100,
         tax_percent=0,
     )
+    sid = uuid.uuid4()
     sep = TradePurchaseCreateRequest(
         purchase_date=date.today(),
+        supplier_id=sid,
         freight_amount=50,
         freight_type="separate",
         lines=[line],
     )
     inc = TradePurchaseCreateRequest(
         purchase_date=date.today(),
+        supplier_id=sid,
         freight_amount=50,
         freight_type="included",
         lines=[line],
@@ -407,14 +465,40 @@ def test_compute_totals_freight_separate_vs_included():
     assert compute_totals(inc)[1] == Decimal("100")
 
 
+def test_line_money_kg_fields_matches_per_bag_landing():
+    """100 bag × 50 kg × ₹42/kg == 100 × ₹2100/bag."""
+    from app.services.trade_purchase_service import _line_money
+
+    kg_line = TradePurchaseLineIn(
+        catalog_item_id=uuid.uuid4(),
+        item_name="Rice",
+        qty=100,
+        unit="bag",
+        landing_cost=2100.0,
+        kg_per_unit=50.0,
+        landing_cost_per_kg=42.0,
+        tax_percent=0,
+    )
+    bag_line = TradePurchaseLineIn(
+        catalog_item_id=uuid.uuid4(),
+        item_name="Rice",
+        qty=100,
+        unit="bag",
+        landing_cost=2100.0,
+        tax_percent=0,
+    )
+    assert _line_money(kg_line) == _line_money(bag_line)
+
+
 def test_create_round_trip_invoice_number():
     h, bid = _register_and_business()
     sid = _supplier_id(h, bid, name="Inv Supplier")
+    iid = _catalog_item_id(h, bid)
     body = {
         "purchase_date": date.today().isoformat(),
         "invoice_number": "INV-2026-0422",
         "supplier_id": sid,
-        "lines": [_line_body()],
+        "lines": [_line_body(iid)],
     }
     cr = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
     assert cr.status_code == 201, cr.text
@@ -456,3 +540,52 @@ def test_business_scoped_suppliers_catalog_items_trade_purchases_list_shapes():
     r_tp = client.get(f"/v1/businesses/{bid}/trade-purchases", headers=h)
     assert r_tp.status_code == 200, r_tp.text
     assert isinstance(r_tp.json(), list)
+
+
+def test_create_rejects_line_missing_catalog_item_id():
+    """Phase 6 parity: the server must reject free-typed lines (no catalog link)
+    so an older/offline client cannot bypass the strict Flutter validator."""
+    h, bid = _register_and_business()
+    sid = _supplier_id(h, bid, name="Strict parity supplier")
+    body = {
+        "purchase_date": date.today().isoformat(),
+        "supplier_id": sid,
+        "lines": [
+            {
+                "item_name": "Unlinked rice",
+                "qty": 1,
+                "unit": "kg",
+                "landing_cost": 100,
+            }
+        ],
+    }
+    r = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
+    assert r.status_code == 422, r.text
+    body_json = r.json()
+    detail = body_json.get("detail")
+    assert isinstance(detail, list) and detail, body_json
+    msg = " ".join(str(d.get("loc", [])) + " " + str(d.get("msg", "")) for d in detail)
+    assert "catalog_item_id" in msg, msg
+
+
+def test_create_rejects_line_with_only_one_kg_field():
+    h, bid = _register_and_business()
+    sid = _supplier_id(h, bid, name="Kg parity supplier")
+    iid = _catalog_item_id(h, bid)
+    body = {
+        "purchase_date": date.today().isoformat(),
+        "supplier_id": sid,
+        "lines": [
+            {
+                "catalog_item_id": iid,
+                "item_name": "Half-kg rice",
+                "qty": 1,
+                "unit": "bag",
+                "landing_cost": 100,
+                "kg_per_unit": 50,
+                # landing_cost_per_kg intentionally omitted
+            }
+        ],
+    }
+    r = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
+    assert r.status_code == 422, r.text

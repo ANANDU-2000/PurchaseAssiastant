@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/widgets/friendly_load_error.dart';
 
 /// Server-backed unified search (items, suppliers).
 final unifiedSearchProvider =
@@ -61,7 +62,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
   void _scheduleSearch(String v) {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 150), () {
+    _debounce = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
       final next = v.trim();
       if (next == _debounced) return;
@@ -93,6 +94,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
             focusNode: _focus,
             controller: _controller,
             hintText: 'Name, HSN, category, supplier, GST…',
+            textInputAction: TextInputAction.search,
+            textStyle: const WidgetStatePropertyAll(TextStyle()),
             leading: const Icon(Icons.search_rounded),
             trailing: [
               if (_controller.text.isNotEmpty)
@@ -126,12 +129,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                 padding: EdgeInsets.symmetric(vertical: 24),
                 child: Center(child: CircularProgressIndicator()),
               ),
-              error: (_, __) => Padding(
-                padding: const EdgeInsets.only(top: 16),
-                child: Text(
-                  'Search failed. Try again.',
-                  style: tt.bodySmall?.copyWith(color: cs.error),
-                ),
+              error: (_, __) => FriendlyLoadError(
+                message: 'Search failed',
+                onRetry: () => ref.invalidate(unifiedSearchProvider(q)),
               ),
               data: (data) {
                 final items = (data['catalog_items'] as List<dynamic>?)
@@ -236,7 +236,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                               const Icon(Icons.chevron_right_rounded),
                           onTap: id.isEmpty
                               ? null
-                              : () => context.push('/catalog/item/$id'),
+                              : () => context.push(
+                                    '/item-analytics/${Uri.encodeComponent(name)}',
+                                  ),
                         );
                       }),
                     const SizedBox(height: 24),

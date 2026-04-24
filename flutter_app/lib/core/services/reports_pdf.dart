@@ -5,12 +5,93 @@ import 'package:printing/printing.dart';
 
 import '../models/business_profile.dart';
 
-final _money = NumberFormat('#,##,##0.00', 'en_IN');
+final _money = NumberFormat('#,##,##0', 'en_IN');
 final _df = DateFormat('dd MMM yyyy');
+final _genDf = DateFormat('dd MMM yyyy, h:mm a');
 
 String _rs(num n) => 'Rs. ${_money.format(n)}';
 
-/// One-page summary for the Reports screen (ASCII money for font safety).
+const _border = PdfColor.fromInt(0xFFD1D5DB);
+const _muted = PdfColor.fromInt(0xFF475569);
+const _headerBg = PdfColor.fromInt(0xFFF1F5F9);
+
+pw.Widget _hdr(String t) => pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 3, horizontal: 0),
+      child: pw.Text(t,
+          style: pw.TextStyle(
+              fontSize: 11,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.black)),
+    );
+
+pw.Widget _kv(String k, String v, {bool bold = false}) => pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 1.5),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text(k, style: const pw.TextStyle(fontSize: 9, color: _muted)),
+          pw.Text(v,
+              style: pw.TextStyle(
+                  fontSize: 9,
+                  fontWeight:
+                      bold ? pw.FontWeight.bold : pw.FontWeight.normal)),
+        ],
+      ),
+    );
+
+pw.Widget _divider() => pw.Container(
+      height: 0.5,
+      margin: const pw.EdgeInsets.symmetric(vertical: 4),
+      decoration: const pw.BoxDecoration(color: _border),
+    );
+
+pw.Widget _tableSection({
+  required List<String> headers,
+  required List<List<String>> rows,
+  List<pw.FlexColumnWidth>? widths,
+}) {
+  final cols = headers.length;
+  final cw = widths ??
+      List.generate(cols, (i) => pw.FlexColumnWidth(i == 0 ? 3 : 1));
+  pw.Widget cell(String t,
+          {bool bold = false, bool right = false, PdfColor? color}) =>
+      pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+        child: pw.Text(
+          t,
+          textAlign: right ? pw.TextAlign.right : pw.TextAlign.left,
+          style: pw.TextStyle(
+              fontSize: 8.5,
+              fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+              color: color ?? PdfColors.black),
+        ),
+      );
+  return pw.Table(
+    border: pw.TableBorder.all(color: _border, width: 0.5),
+    columnWidths: {for (var i = 0; i < cols; i++) i: cw[i]},
+    children: [
+      pw.TableRow(
+        decoration: const pw.BoxDecoration(color: _headerBg),
+        children: [
+          for (var i = 0; i < headers.length; i++)
+            cell(headers[i], bold: true, right: i == headers.length - 1),
+        ],
+      ),
+      for (final row in rows)
+        pw.TableRow(children: [
+          for (var i = 0; i < row.length; i++)
+            cell(row[i],
+                right: i == row.length - 1,
+                bold: i == row.length - 1,
+                color: i == row.length - 1
+                    ? const PdfColor.fromInt(0xFF0E4F46)
+                    : null),
+        ]),
+    ],
+  );
+}
+
+/// Summary for the Reports screen — white/black, no colours, clean tables.
 Future<void> shareReportsSummaryPdf({
   required BusinessProfile business,
   required DateTime from,
@@ -23,74 +104,218 @@ Future<void> shareReportsSummaryPdf({
   required String Function(Map<String, dynamic> r) rowLabel,
   required num Function(Map<String, dynamic> r) rowMetricPurchase,
   required num Function(Map<String, dynamic> r) rowMetricProfit,
-  /// Optional ASCII note (e.g. prior-window profit/spend % from Reports screen).
   String? priorPeriodNote,
+  // Optional unit totals (kg / bag / box / tin).
+  double? totalKg,
+  double? totalBags,
+  double? totalBoxes,
+  double? totalTins,
+  // Optional per-category rows: [{category_name, total_purchase}]
+  List<Map<String, dynamic>>? categoryRows,
+  // Optional per-supplier rows: [{supplier_name, purchase_count, total_purchase}]
+  List<Map<String, dynamic>>? supplierRows,
 }) async {
-  final priorPdf = priorPeriodNote?.trim();
+  final bizTitle = business.displayTitle.trim().isNotEmpty
+      ? business.displayTitle
+      : 'NEW HARISREE AGENCY';
+
   final doc = pw.Document();
   doc.addPage(
-    pw.Page(
+    pw.MultiPage(
       pageFormat: PdfPageFormat.a4,
       margin: const pw.EdgeInsets.all(28),
-      build: (ctx) => pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Text(
-            business.displayTitle,
+      build: (ctx) => [
+        // ── HEADER ────────────────────────────────────────────────────────
+        pw.Text(bizTitle.toUpperCase(),
             style: pw.TextStyle(
-              fontSize: 16,
-              fontWeight: pw.FontWeight.bold,
-              color: PdfColor.fromInt(0xFF0E4F46),
-            ),
+                fontSize: 15, fontWeight: pw.FontWeight.bold)),
+        pw.Text('Purchase Report · $modeLabel',
+            style: pw.TextStyle(
+                fontSize: 10, fontWeight: pw.FontWeight.bold)),
+        pw.Text(
+          '${_df.format(from)} – ${_df.format(to)}',
+          style: const pw.TextStyle(fontSize: 9, color: _muted),
+        ),
+        _divider(),
+
+        // ── SUMMARY BLOCK ─────────────────────────────────────────────────
+        _hdr('Summary'),
+        _kv('Total purchases', _rs(totalPurchase), bold: true),
+        _kv('Number of deals', '$purchaseCount'),
+        if (totalKg != null && totalKg > 0)
+          _kv('Total kg', '${totalKg.toStringAsFixed(0)} kg'),
+        if (totalBags != null && totalBags > 0)
+          _kv('Total bags', '${totalBags.toStringAsFixed(0)} bag'),
+        if (totalBoxes != null && totalBoxes > 0)
+          _kv('Total boxes', '${totalBoxes.toStringAsFixed(0)} box'),
+        if (totalTins != null && totalTins > 0)
+          _kv('Total tins', '${totalTins.toStringAsFixed(0)} tin'),
+        _divider(),
+
+        // ── MAIN TABLE ────────────────────────────────────────────────────
+        _hdr('By $modeLabel'),
+        pw.SizedBox(height: 4),
+        if (tableRows.isEmpty)
+          pw.Text('No data for this period.',
+              style: const pw.TextStyle(fontSize: 9, color: _muted))
+        else
+          _tableSection(
+            headers: ['Item', 'Total ₹'],
+            rows: tableRows
+                .take(50)
+                .map((r) => [
+                      rowLabel(r),
+                      _rs(rowMetricPurchase(r)),
+                    ])
+                .toList(),
           ),
-          pw.SizedBox(height: 6),
-          pw.Text(
-            'Reports · $modeLabel',
-            style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold),
-          ),
-          pw.Text(
-            '${_df.format(from)} – ${_df.format(to)}',
-            style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
-          ),
-          pw.SizedBox(height: 14),
-          pw.Text('Purchases: $purchaseCount', style: const pw.TextStyle(fontSize: 10)),
-          pw.Text('Total spend: ${_rs(totalPurchase)}', style: const pw.TextStyle(fontSize: 10)),
-          pw.Text('Total profit: ${_rs(totalProfit)}', style: const pw.TextStyle(fontSize: 10)),
-          if (priorPdf != null && priorPdf.isNotEmpty) ...[
-            pw.SizedBox(height: 10),
-            pw.Text(
-              'Vs prior period (same-length window)',
-              style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
-            ),
-            pw.Text(
-              priorPdf,
-              style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey800),
-            ),
-          ],
-          pw.SizedBox(height: 12),
-          pw.Text(
-            'Top rows (this view)',
-            style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
-          ),
+        _divider(),
+
+        // ── CATEGORY SUMMARY ──────────────────────────────────────────────
+        if (categoryRows != null && categoryRows.isNotEmpty) ...[
+          _hdr('Category summary'),
           pw.SizedBox(height: 4),
-          for (final r in tableRows.take(40)) ...[
-            pw.Text(
-              rowLabel(r),
-              style: pw.TextStyle(fontSize: 9.5, fontWeight: pw.FontWeight.bold),
-            ),
-            pw.Text(
-              '  Spend ${_rs(rowMetricPurchase(r).toDouble())} · Profit ${_rs(rowMetricProfit(r).toDouble())}',
-              style: const pw.TextStyle(fontSize: 8.8, color: PdfColors.grey700),
-            ),
-            pw.SizedBox(height: 4),
-          ],
+          _tableSection(
+            headers: ['Category', 'Total ₹'],
+            rows: categoryRows
+                .take(30)
+                .map((r) => [
+                      r['category_name']?.toString() ?? '—',
+                      _rs(
+                          (r['total_purchase'] as num?)?.toDouble() ?? 0),
+                    ])
+                .toList(),
+          ),
+          _divider(),
         ],
-      ),
+
+        // ── SUPPLIER SUMMARY ──────────────────────────────────────────────
+        if (supplierRows != null && supplierRows.isNotEmpty) ...[
+          _hdr('Supplier summary'),
+          pw.SizedBox(height: 4),
+          _tableSection(
+            headers: ['Supplier', 'Deals', 'Total ₹'],
+            widths: [
+              const pw.FlexColumnWidth(3),
+              const pw.FlexColumnWidth(1),
+              const pw.FlexColumnWidth(2),
+            ],
+            rows: supplierRows
+                .take(30)
+                .map((r) => [
+                      r['supplier_name']?.toString() ?? '—',
+                      '${(r['purchase_count'] as num?)?.toInt() ?? 0}',
+                      _rs(
+                          (r['total_purchase'] as num?)?.toDouble() ?? 0),
+                    ])
+                .toList(),
+          ),
+          _divider(),
+        ],
+
+        // ── FOOTER ────────────────────────────────────────────────────────
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text(
+              'Generated by Harisree Exp&Pur',
+              style: const pw.TextStyle(fontSize: 7.5, color: _muted),
+            ),
+            pw.Text(
+              'Generated on: ${_genDf.format(DateTime.now())}',
+              style: const pw.TextStyle(fontSize: 7.5, color: _muted),
+            ),
+          ],
+        ),
+      ],
     ),
   );
-  final safe = modeLabel.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_');
+  final safe =
+      modeLabel.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_');
   await Printing.sharePdf(
     bytes: await doc.save(),
-    filename: 'reports_${safe}_${_df.format(from)}.pdf',
+    filename: 'report_${safe}_${_df.format(from)}.pdf',
+  );
+}
+
+/// Item purchase statement from trade rows (black/white tables).
+Future<void> shareItemPurchaseTradeHistoryPdf({
+  required BusinessProfile business,
+  required String itemName,
+  required List<List<String>> rows,
+}) async {
+  if (rows.isEmpty) return;
+  final doc = pw.Document();
+  doc.addPage(
+    pw.MultiPage(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.all(40),
+      build: (context) => [
+        pw.Text(
+          business.name.isNotEmpty ? business.name : 'NEW HARISREE AGENCY',
+          style:
+              pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColors.black),
+        ),
+        pw.SizedBox(height: 6),
+        pw.Text('Item statement — $itemName',
+            style: const pw.TextStyle(fontSize: 10, color: PdfColors.black)),
+        pw.SizedBox(height: 10),
+        pw.Table(
+          border: pw.TableBorder.all(color: _border, width: 0.5),
+          columnWidths: {
+            0: const pw.FlexColumnWidth(2),
+            1: const pw.FlexColumnWidth(2.2),
+            2: const pw.FlexColumnWidth(1.6),
+            3: const pw.FlexColumnWidth(1.6),
+            4: const pw.FlexColumnWidth(1.6),
+          },
+          children: [
+            pw.TableRow(
+              decoration: const pw.BoxDecoration(color: _headerBg),
+              children: [
+                for (final h in ['Date', 'Supplier', 'Qty', 'Rate', 'Line total'])
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.all(4),
+                    child: pw.Text(h,
+                        style: pw.TextStyle(
+                            fontSize: 8.5,
+                            fontWeight: pw.FontWeight.bold,
+                            color: PdfColors.black)),
+                  ),
+              ],
+            ),
+            for (final r in rows)
+              pw.TableRow(
+                children: [
+                  for (var i = 0; i < r.length; i++)
+                    pw.Padding(
+                      padding: const pw.EdgeInsets.all(4),
+                      child: pw.Text(
+                        r[i],
+                        textAlign: i == r.length - 1 ? pw.TextAlign.right : pw.TextAlign.left,
+                        style: const pw.TextStyle(fontSize: 8.5, color: PdfColors.black),
+                      ),
+                    ),
+                ],
+              ),
+          ],
+        ),
+        pw.SizedBox(height: 12),
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text('Generated by Harisree Exp&Pur',
+                style: const pw.TextStyle(fontSize: 7.5, color: _muted)),
+            pw.Text('Generated on: ${_genDf.format(DateTime.now())}',
+                style: const pw.TextStyle(fontSize: 7.5, color: _muted)),
+          ],
+        ),
+      ],
+    ),
+  );
+  final safe = itemName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_');
+  await Printing.sharePdf(
+    bytes: await doc.save(),
+    filename: 'item_statement_$safe.pdf',
   );
 }

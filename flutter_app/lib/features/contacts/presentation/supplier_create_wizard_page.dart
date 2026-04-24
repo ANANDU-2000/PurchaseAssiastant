@@ -115,6 +115,7 @@ class _SupplierCreateWizardPageState
 
   String? _nameError;
   String? _phoneError;
+  String? _gstError;
 
   int? _payChip;
   bool _payCustom = false;
@@ -570,15 +571,28 @@ class _SupplierCreateWizardPageState
       setState(() => _step = 0);
       return;
     }
+    final gstT = _gst.text.trim();
+    if (gstT.isNotEmpty) {
+      final re = RegExp(
+        r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$',
+        caseSensitive: false,
+      );
+      if (!re.hasMatch(gstT.toUpperCase())) {
+        if (!mounted) return;
+        setState(() {
+          _gstError = 'Invalid GST format (e.g. 32ABCDE1234F1Z5).';
+          _step = 2;
+        });
+        return;
+      }
+    }
     final dupExact = _blockingDuplicateName(_name.text);
     if (dupExact != null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Supplier "$dupExact" already exists. Use a different name.'),
-        ),
-      );
-      setState(() => _step = 0);
+      setState(() {
+        _nameError = 'Supplier "$dupExact" already exists.';
+        _step = 0;
+      });
       return;
     }
     if (!await _confirmFuzzyIfNeeded()) return;
@@ -636,15 +650,15 @@ class _SupplierCreateWizardPageState
         id = created['id']?.toString();
       }
       await _clearDraft(bid);
+      if (!mounted) return;
       ref.invalidate(suppliersListProvider);
       ref.invalidate(contactsSuppliersEnrichedProvider);
-      ref.invalidate(tradePurchasesListProvider);
+      invalidateTradePurchaseCaches(ref);
       invalidateBusinessAggregates(ref);
       setState(() {
         _dirty = false;
         _savedOnce = true;
       });
-      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -658,7 +672,14 @@ class _SupplierCreateWizardPageState
           ),
         ),
       );
-      context.pop({'supplier_id': id});
+      if (widget.supplierId == null || widget.supplierId!.isEmpty) {
+        context.pop({'supplier_id': id});
+        if (id != null && id.isNotEmpty && context.mounted) {
+          context.push('/supplier/$id');
+        }
+      } else {
+        context.pop({'supplier_id': id});
+      }
     } on DioException catch (e) {
       if (!mounted) return;
       final code = e.response?.statusCode;
@@ -833,7 +854,10 @@ class _SupplierCreateWizardPageState
           textCapitalization: TextCapitalization.words,
           decoration: _dec('Supplier name *', error: _nameError),
           textInputAction: TextInputAction.next,
-          onChanged: (_) => _markDirty(),
+          onChanged: (_) {
+            _markDirty();
+            if (_nameError != null) setState(() => _nameError = null);
+          },
           onSubmitted: (_) => _phoneFocus.requestFocus(),
         ),
         const SizedBox(height: 12),
@@ -844,7 +868,10 @@ class _SupplierCreateWizardPageState
           keyboardType: TextInputType.phone,
           decoration: _dec('Phone *', error: _phoneError),
           textInputAction: TextInputAction.next,
-          onChanged: (_) => _markDirty(),
+          onChanged: (_) {
+            _markDirty();
+            if (_phoneError != null) setState(() => _phoneError = null);
+          },
           onSubmitted: (_) => _waFocus.requestFocus(),
         ),
         const SizedBox(height: 12),
@@ -886,9 +913,12 @@ class _SupplierCreateWizardPageState
           focusNode: _gstFocus,
           scrollPadding: _kTextFieldScrollPadding,
           textCapitalization: TextCapitalization.characters,
-          decoration: _dec('GST number', hint: 'Important for invoices'),
+          decoration: _dec('GST number', hint: 'Important for invoices', error: _gstError),
           textInputAction: TextInputAction.next,
-          onChanged: (_) => _markDirty(),
+          onChanged: (_) {
+            _markDirty();
+            if (_gstError != null) setState(() => _gstError = null);
+          },
           onSubmitted: (_) => _addrFocus.requestFocus(),
         ),
         const SizedBox(height: 12),

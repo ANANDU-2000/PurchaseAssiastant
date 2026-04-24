@@ -38,7 +38,7 @@ class AppCard extends StatelessWidget {
               boxShadow: hx.cardShadow,
             ),
             child: Padding(
-              padding: padding ?? EdgeInsets.all(HexaDsSpace.s3),
+              padding: padding ?? const EdgeInsets.all(HexaDsSpace.s3),
               child: child,
             ),
           ),

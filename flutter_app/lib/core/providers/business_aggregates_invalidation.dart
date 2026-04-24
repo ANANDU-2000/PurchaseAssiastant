@@ -48,7 +48,7 @@ void invalidateBusinessAggregates(dynamic ref) {
   ref.invalidate(brokersListProvider);
   ref.invalidate(itemCategoriesListProvider);
   ref.invalidate(catalogItemsListProvider);
-  ref.invalidate(tradePurchasesListProvider);
+  invalidateTradePurchaseCaches(ref);
   // Open ledger / item-insight screens use local or family providers — nudge
   // them to refetch after any aggregate-invalidating write.
   bumpBusinessDataWriteRevision(ref);
@@ -61,6 +61,6 @@ void invalidateWorkspaceSeedData(dynamic ref) {
   ref.invalidate(brokersListProvider);
   ref.invalidate(itemCategoriesListProvider);
   ref.invalidate(catalogItemsListProvider);
-  ref.invalidate(tradePurchasesListProvider);
+  invalidateTradePurchaseCaches(ref);
   bumpBusinessDataWriteRevision(ref);
 }

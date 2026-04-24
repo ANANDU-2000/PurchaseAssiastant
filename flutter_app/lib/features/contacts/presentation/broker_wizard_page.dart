@@ -332,7 +332,7 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
       ref.invalidate(contactsBrokersEnrichedProvider);
       ref.invalidate(suppliersListProvider);
       ref.invalidate(contactsSuppliersEnrichedProvider);
-      ref.invalidate(tradePurchasesListProvider);
+      invalidateTradePurchaseCaches(ref);
       invalidateBusinessAggregates(ref);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

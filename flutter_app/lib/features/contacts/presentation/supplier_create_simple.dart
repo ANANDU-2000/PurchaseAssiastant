@@ -93,7 +93,7 @@ class _SupplierCreateSimpleState extends ConsumerState<SupplierCreateSimple> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: HexaColors.brandPrimary, width: 2),
+                    borderSide: const BorderSide(color: HexaColors.brandPrimary, width: 2),
                   ),
                   filled: true,
                   fillColor: Colors.grey[50],
@@ -126,7 +126,7 @@ class _SupplierCreateSimpleState extends ConsumerState<SupplierCreateSimple> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: HexaColors.brandPrimary, width: 2),
+                    borderSide: const BorderSide(color: HexaColors.brandPrimary, width: 2),
                   ),
                   filled: true,
                   fillColor: Colors.grey[50],
@@ -160,7 +160,7 @@ class _SupplierCreateSimpleState extends ConsumerState<SupplierCreateSimple> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: HexaColors.brandPrimary, width: 2),
+                    borderSide: const BorderSide(color: HexaColors.brandPrimary, width: 2),
                   ),
                   filled: true,
                   fillColor: Colors.grey[50],
@@ -229,7 +229,7 @@ class _SupplierCreateSimpleState extends ConsumerState<SupplierCreateSimple> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: HexaColors.brandPrimary, width: 2),
+                      borderSide: const BorderSide(color: HexaColors.brandPrimary, width: 2),
                     ),
                     filled: true,
                     fillColor: Colors.grey[50],
@@ -254,7 +254,7 @@ class _SupplierCreateSimpleState extends ConsumerState<SupplierCreateSimple> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: HexaColors.brandPrimary, width: 2),
+                      borderSide: const BorderSide(color: HexaColors.brandPrimary, width: 2),
                     ),
                     filled: true,
                     fillColor: Colors.grey[50],
@@ -278,7 +278,7 @@ class _SupplierCreateSimpleState extends ConsumerState<SupplierCreateSimple> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: HexaColors.brandPrimary, width: 2),
+                      borderSide: const BorderSide(color: HexaColors.brandPrimary, width: 2),
                     ),
                     filled: true,
                     fillColor: Colors.grey[50],
@@ -303,7 +303,7 @@ class _SupplierCreateSimpleState extends ConsumerState<SupplierCreateSimple> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: HexaColors.brandPrimary, width: 2),
+                      borderSide: const BorderSide(color: HexaColors.brandPrimary, width: 2),
                     ),
                     filled: true,
                     fillColor: Colors.grey[50],
@@ -326,7 +326,7 @@ class _SupplierCreateSimpleState extends ConsumerState<SupplierCreateSimple> {
                   ),
                 ),
                 child: _isSaving
-                    ? SizedBox(
+                    ? const SizedBox(
                         height: 20,
                         width: 20,
                         child: CircularProgressIndicator(

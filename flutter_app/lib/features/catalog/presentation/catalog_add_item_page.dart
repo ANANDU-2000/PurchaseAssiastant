@@ -44,6 +44,7 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
   bool _saving = false;
   bool _touched = false;
   bool _showAdvanced = false;
+  String? _kgErr;
 
   static const _fieldPad = EdgeInsets.symmetric(horizontal: 14, vertical: 16);
   static InputBorder _fieldBorder(BuildContext context) => OutlineInputBorder(
@@ -139,35 +140,16 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
     }
     if (_unit == null || _unit!.isEmpty) {
       setState(() => _touched = true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Choose a unit type')),
-      );
       return;
     }
     if (_unit == 'bag') {
       final kg = parseOptionalKgPerBag(_kg.text);
       if (kg == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Enter kg per bag for bag unit')),
-        );
+        setState(() => _kgErr = 'Enter kg per bag (must be > 0)');
         return;
       }
     }
     final hsn = _hsn.text.trim();
-    if (hsn.isEmpty) {
-      setState(() => _touched = true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('HSN / SAC is required')),
-      );
-      return;
-    }
-    if (hsn.length < 4) {
-      setState(() => _touched = true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('HSN / SAC must be at least 4 characters')),
-      );
-      return;
-    }
     final session = ref.read(sessionProvider);
     if (session == null) return;
     setState(() => _saving = true);
@@ -178,7 +160,7 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
             typeId: widget.typeId,
             name: n,
             defaultUnit: _unit!,
-            hsnCode: hsn,
+            hsnCode: hsn.isEmpty ? null : hsn,
             defaultPurchaseUnit: _unit,
             defaultKgPerBag: _unit == 'bag' ? parseOptionalKgPerBag(_kg.text) : null,
           );
@@ -276,7 +258,6 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
 
     final nameErr = _touched && _name.text.trim().isEmpty;
     final unitErr = _touched && (_unit == null || _unit!.isEmpty);
-    final hsnErr = _touched && _hsn.text.trim().isEmpty;
 
     return PopScope(
       canPop: false,
@@ -407,9 +388,8 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                 keyboardType: TextInputType.text,
                 textCapitalization: TextCapitalization.characters,
                 decoration: InputDecoration(
-                  labelText: 'HSN / SAC *',
+                  labelText: 'HSN / SAC (optional)',
                   hintText: 'e.g. 10063020',
-                  errorText: hsnErr ? 'Required for catalog items' : null,
                   contentPadding: _fieldPad,
                   border: _fieldBorder(context),
                   enabledBorder: _fieldBorder(context),
@@ -423,10 +403,14 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   decoration: InputDecoration(
                     labelText: 'Kg per bag',
+                    errorText: _kgErr,
                     contentPadding: _fieldPad,
                     border: _fieldBorder(context),
                     enabledBorder: _fieldBorder(context),
                   ),
+                  onChanged: (_) {
+                    if (_kgErr != null) setState(() => _kgErr = null);
+                  },
                 ),
                 const SizedBox(height: 8),
                 const BagDefaultUnitHint(),
