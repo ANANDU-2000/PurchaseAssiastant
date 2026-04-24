@@ -20,6 +20,7 @@ import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/prefs_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
+import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/notifications/local_notifications_service.dart';
 import '../../purchase/domain/purchase_draft.dart';
@@ -58,6 +59,8 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
   List<Map<String, dynamic>>? _lastGoodSuppliers;
   bool _triedEmptyCatalogBootstrap = false;
   bool _catalogLinePrefillOpened = false;
+  /// When catalog line defaults reduce suppliers to a single option, we auto-pick once per signature.
+  String? _lastAutoSupplierFromCatalogSig;
   Timer? _draftDebounce;
 
   final _supplierSectionKey = GlobalKey();
@@ -334,6 +337,43 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
   String _supplierRowId(Map<String, dynamic> m) {
     final v = m['id'] ?? m['supplier_id'];
     return v?.toString().trim() ?? '';
+  }
+
+  /// Restricts supplier pick to intersection of [default_supplier_ids] on every line
+  /// that has a catalog item with non-empty defaults. If any such line has no defaults,
+  /// fall back to the full list. Empty intersection falls back to full list.
+  List<Map<String, dynamic>> _filterSuppliersByCatalogLineDefaults(
+    List<Map<String, dynamic>> allSuppliers,
+    List<Map<String, dynamic>> catalog,
+  ) {
+    final draft = ref.read(purchaseDraftProvider);
+    Set<String>? allowed;
+    for (final line in draft.lines) {
+      final cid = line.catalogItemId;
+      if (cid == null || cid.isEmpty) continue;
+      Map<String, dynamic>? item;
+      for (final c in catalog) {
+        if (c['id']?.toString() == cid) {
+          item = c;
+          break;
+        }
+      }
+      if (item == null) continue;
+      final raw = item['default_supplier_ids'] as List?;
+      if (raw == null || raw.isEmpty) {
+        allowed = null;
+        break;
+      }
+      final sset = raw.map((e) => e.toString()).toSet();
+      allowed = allowed == null ? sset : allowed.intersection(sset);
+    }
+    if (allowed == null) return allSuppliers;
+    if (allowed.isEmpty) return allSuppliers;
+    final allow = allowed;
+    final filtered = allSuppliers
+        .where((m) => allow.contains(_supplierRowId(m)))
+        .toList();
+    return filtered.isEmpty ? allSuppliers : filtered;
   }
 
   void _applySupplierSelection(
@@ -769,6 +809,14 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     ref.listen(suppliersListProvider, (prev, next) {
       next.whenData((d) => _lastGoodSuppliers = d);
     });
+    ref.listen(
+      purchaseDraftProvider.select((d) => d.supplierId),
+      (prev, next) {
+        if (next == null || next.isEmpty) {
+          _lastAutoSupplierFromCatalogSig = null;
+        }
+      },
+    );
     final isEdit = _isEditMode();
     return PopScope(
       canPop: isEdit || !_formDirty,
@@ -1079,21 +1127,71 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
   Widget _buildSupplierSearch(List<Map<String, dynamic>> catalog) {
     final av = ref.watch(suppliersListProvider);
     return av.when(
-      data: (list) => _supplierColumn(list),
+      data: (list) {
+        final full = list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        final filtered = _filterSuppliersByCatalogLineDefaults(full, catalog);
+        final sig =
+            '${ref.read(purchaseDraftProvider).lines.map((l) => l.catalogItemId ?? "").join(",")}|${filtered.length}|${full.length}';
+        if (filtered.length == 1 &&
+            full.isNotEmpty &&
+            (ref.read(purchaseDraftProvider).supplierId == null ||
+                ref.read(purchaseDraftProvider).supplierId!.isEmpty)) {
+          if (_lastAutoSupplierFromCatalogSig != sig) {
+            _lastAutoSupplierFromCatalogSig = sig;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              final d = ref.read(purchaseDraftProvider);
+              if (d.supplierId != null && d.supplierId!.isNotEmpty) return;
+              if (filtered.length != 1) return;
+              final row = filtered.first;
+              if (_supplierRowId(row).isEmpty) return;
+              _applySupplierSelection(
+                full,
+                InlineSearchItem(
+                  id: _supplierRowId(row),
+                  label: _supplierMapLabel(row),
+                  subtitle: row['gst_number']?.toString(),
+                ),
+              );
+            });
+          }
+        }
+        return _supplierColumn(filtered, full, narrowed: filtered.length < full.length);
+      },
       error: (_, __) {
-        if (_lastGoodSuppliers != null) return _supplierColumn(_lastGoodSuppliers!);
+        if (_lastGoodSuppliers != null) {
+          final full = _lastGoodSuppliers!
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
+          return _supplierColumn(
+            _filterSuppliersByCatalogLineDefaults(full, catalog),
+            full,
+            narrowed: false,
+          );
+        }
         return const Text('Could not load suppliers');
       },
       loading: () {
         if (_lastGoodSuppliers != null) {
-          return _supplierColumn(_lastGoodSuppliers!);
+          final full = _lastGoodSuppliers!
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
+          return _supplierColumn(
+            _filterSuppliersByCatalogLineDefaults(full, catalog),
+            full,
+            narrowed: false,
+          );
         }
         return const LinearProgressIndicator();
       },
     );
   }
 
-  Widget _supplierColumn(List<Map<String, dynamic>> list) {
+  Widget _supplierColumn(
+    List<Map<String, dynamic>> list,
+    List<Map<String, dynamic>> lookupList, {
+    bool narrowed = false,
+  }) {
     if (list.isEmpty) {
       return const Text(
         'No suppliers in this workspace yet — add one under Suppliers or run bootstrap.',
@@ -1106,19 +1204,37 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
           InlineSearchItem(
             id: _supplierRowId(m),
             label: _supplierMapLabel(m),
-            subtitle: m['gst_number']?.toString(),
+            subtitle: m['phone']?.toString() ?? m['gst_number']?.toString(),
           ),
     ];
-    return InlineSearchField(
-      key: const ValueKey('purchase_supplier_search'),
-      controller: _supplierCtrl,
-      placeholder: 'Type at least 1 letter, then pick from the list…',
-      prefixIcon: const Icon(Icons.business),
-      items: items,
-      onSelected: (it) {
-        if (it.id.isEmpty) return;
-        _applySupplierSelection(list, it);
-      },
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (narrowed)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              'Only suppliers saved as defaults for the catalog line(s) you added.',
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+                height: 1.3,
+              ),
+            ),
+          ),
+        InlineSearchField(
+          key: const ValueKey('purchase_supplier_search'),
+          controller: _supplierCtrl,
+          placeholder: 'Type at least 1 letter, then pick from the list…',
+          prefixIcon: const Icon(Icons.business),
+          items: items,
+          onSelected: (it) {
+            if (it.id.isEmpty) return;
+            _applySupplierSelection(lookupList, it);
+          },
+        ),
+      ],
     );
   }
 
@@ -1465,8 +1581,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
         ],
 
         // ── ITEMS ─────────────────────────────────────────────────────────
-        const Text('Items',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
+        Text('Items', style: HexaDsType.formSectionLabel),
         const SizedBox(height: 8),
         if (draft.lines.isEmpty)
           const Text('No items added.',
@@ -1512,16 +1627,15 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
                           const SizedBox(height: 2),
                           Text(
                             rateStr,
-                            style: const TextStyle(
-                                fontSize: 12, color: Color(0xFF64748B)),
+                            style: HexaDsType.purchaseQtyUnit
+                                .copyWith(fontSize: 13, color: const Color(0xFF0F172A)),
                           ),
                         ],
                       ),
                     ),
                     Text(
                       '₹${lineTotal.toStringAsFixed(0)}',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w800, fontSize: 14),
+                      style: HexaDsType.purchaseLineMoney,
                     ),
                   ],
                 ),
@@ -1532,8 +1646,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
         const SizedBox(height: 14),
 
         // ── TOTALS ────────────────────────────────────────────────────────
-        const Text('Totals',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
+        Text('Totals', style: HexaDsType.formSectionLabel),
         const SizedBox(height: 6),
         if (qtot.totalKg > 0)
           _summaryRow(
@@ -1609,26 +1722,22 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
         children: [
           Text(
             label,
-            style: TextStyle(
-              fontSize: emphasize ? 14 : 13,
-              fontWeight:
-                  emphasize ? FontWeight.w700 : FontWeight.w500,
-              color: emphasize
-                  ? const Color(0xFF0F172A)
-                  : const Color(0xFF64748B),
-            ),
+            style: emphasize
+                ? HexaDsType.formSectionLabel
+                : HexaDsType.purchaseQtyUnit
+                    .copyWith(fontSize: 13, color: const Color(0xFF0F172A)),
           ),
           Text(
             value,
             textAlign: TextAlign.end,
-            style: TextStyle(
-              fontWeight:
-                  emphasize ? FontWeight.w900 : FontWeight.w700,
-              fontSize: emphasize ? 17 : 13,
-              color: emphasize
-                  ? const Color(0xFF15803D)
-                  : valueColor,
-            ),
+            style: emphasize
+                ? HexaDsType.purchaseLineMoney.copyWith(fontSize: 20)
+                : HexaDsType.purchaseQtyUnit
+                    .copyWith(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: valueColor ?? const Color(0xFF0F172A),
+                    ),
           ),
         ],
       ),

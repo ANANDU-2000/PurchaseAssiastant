@@ -456,7 +456,7 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
 
     return Scaffold(
       appBar: AppBar(
-        automaticallyImplyLeading: !_selectionMode,
+        automaticallyImplyLeading: false,
         leading: _selectionMode
             ? IconButton(
                 icon: const Icon(Icons.close_rounded),
@@ -465,7 +465,16 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
                   _selected.clear();
                 }),
               )
-            : null,
+            : IconButton(
+                icon: const Icon(Icons.arrow_back_rounded),
+                onPressed: () {
+                  if (context.canPop()) {
+                    context.pop();
+                  } else {
+                    context.go('/catalog/category/${widget.categoryId}');
+                  }
+                },
+              ),
         title: Text(
           _selectionMode ? '${_selected.length} selected' : typeName,
           maxLines: 1,

@@ -1,9 +1,13 @@
 import logging
+import time
+import traceback
 from contextlib import asynccontextmanager
 
 from pathlib import Path
 
 from fastapi import FastAPI
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -188,6 +192,22 @@ async def lifespan(app: FastAPI):
 
         await conn.run_sync(_ensure_catalog_items_type_id)
 
+        def _ensure_catalog_items_item_code(sync_conn):
+            insp = inspect(sync_conn)
+            if not insp.has_table("catalog_items"):
+                return
+            cols = {c["name"] for c in insp.get_columns("catalog_items")}
+            if "item_code" in cols:
+                return
+            try:
+                sync_conn.exec_driver_sql(
+                    "ALTER TABLE catalog_items ADD COLUMN item_code VARCHAR(64) NULL"
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
+        await conn.run_sync(_ensure_catalog_items_item_code)
+
         def _ensure_supplier_wholesale_columns(sync_conn):
             insp = inspect(sync_conn)
             if not insp.has_table("suppliers"):
@@ -288,6 +308,10 @@ async def lifespan(app: FastAPI):
                 alters.append("ALTER TABLE catalog_items ADD COLUMN default_sale_unit VARCHAR(32)")
             if "last_purchase_price" not in cols:
                 alters.append("ALTER TABLE catalog_items ADD COLUMN last_purchase_price NUMERIC(18, 4)")
+            if "default_items_per_box" not in cols:
+                alters.append("ALTER TABLE catalog_items ADD COLUMN default_items_per_box NUMERIC(18, 4)")
+            if "default_weight_per_tin" not in cols:
+                alters.append("ALTER TABLE catalog_items ADD COLUMN default_weight_per_tin NUMERIC(18, 4)")
             for sql in alters:
                 try:
                     sync_conn.exec_driver_sql(sql)
@@ -431,6 +455,45 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Harisree Purchases API", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def harisree_request_monitor_middleware(request: Request, call_next):
+    start = time.perf_counter()
+    try:
+        response = await call_next(request)
+        ms = int((time.perf_counter() - start) * 1000)
+        if response.status_code >= 500:
+            logger.error(
+                "HTTP %s | %s %s | %sms",
+                response.status_code,
+                request.method,
+                request.url.path,
+                ms,
+            )
+        elif response.status_code >= 400:
+            logger.warning(
+                "HTTP %s | %s %s | %sms",
+                response.status_code,
+                request.method,
+                request.url.path,
+                ms,
+            )
+        elif ms > 3000:
+            logger.warning("SLOW %sms | %s %s", ms, request.method, request.url.path)
+        return response
+    except Exception:  # noqa: BLE001
+        logger.error(
+            "CRASH | %s %s\n%s",
+            request.method,
+            request.url.path,
+            traceback.format_exc(),
+        )
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error"},
+        )
+
 
 _backend_root = Path(__file__).resolve().parent.parent
 _static_root = _backend_root / "static"

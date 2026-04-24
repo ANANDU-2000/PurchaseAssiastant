@@ -87,6 +87,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     },
     routes: [
       GoRoute(
+        path: '/',
+        redirect: (context, state) => '/splash',
+      ),
+      GoRoute(
         path: '/splash',
         pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
@@ -102,14 +106,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/login',
-        pageBuilder: (context, state) => hexaAuthFadePage(
+        pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
           child: const LoginPage(),
         ),
       ),
       GoRoute(
         path: '/signup',
-        pageBuilder: (context, state) => hexaAuthFadePage(
+        pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
           child: const SignupPage(),
         ),

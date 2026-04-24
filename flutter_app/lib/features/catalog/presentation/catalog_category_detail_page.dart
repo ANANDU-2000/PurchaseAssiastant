@@ -99,6 +99,16 @@ class _CatalogCategoryDetailPageState
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/catalog');
+            }
+          },
+        ),
         title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
       ),
       floatingActionButton: FloatingActionButton.extended(

@@ -14,7 +14,6 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/models/session.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
-import '../../../core/providers/prefs_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/theme/theme_context_ext.dart';
 import '../../../shared/widgets/search_picker_sheet.dart';
@@ -303,10 +302,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         }
       }
     });
-    final autofill = ref.watch(smartAutofillEnabledProvider);
-    final quickSavePurchase = ref.watch(quickSavePurchaseProvider);
-    final notif = ref.watch(localNotificationsOptInProvider);
-    final themeMode = ref.watch(themeModeProvider);
     final isOwner = session?.primaryBusiness.role == 'owner';
     final showBillingSection =
         isOwner && (ModalRoute.of(context)?.settings.name == '/settings/billing');
@@ -476,115 +471,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   ),
                 ],
               ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          Text('Preferences',
-              style: tt.titleSmall?.copyWith(
-                  color: cs.onSurfaceVariant,
-                  fontWeight: FontWeight.w800)),
-          const SizedBox(height: 8),
-          Card(
-            color: context.adaptiveCard,
-            child: Column(
-              children: [
-                SwitchListTile(
-                  secondary: Icon(Icons.dark_mode_outlined, color: cs.primary),
-                  title: const Text('Dark mode'),
-                  subtitle: const Text(
-                      'Match system is not used — pick light or dark here.'),
-                  value: themeMode == ThemeMode.dark,
-                  onChanged: (v) => ref
-                      .read(themeModeProvider.notifier)
-                      .setMode(v ? ThemeMode.dark : ThemeMode.light),
-                ),
-                const Divider(height: 1),
-                SwitchListTile(
-                  secondary:
-                      Icon(Icons.auto_awesome_rounded, color: cs.primary),
-                  title: const Text('Smart autofill'),
-                  subtitle: const Text(
-                      'Stored on this device only. Future: suggest fields from history.'),
-                  value: autofill,
-                  onChanged: (v) => ref
-                      .read(smartAutofillEnabledProvider.notifier)
-                      .setValue(v),
-                ),
-                const Divider(height: 1),
-                SwitchListTile(
-                  secondary:
-                      Icon(Icons.flash_on_rounded, color: cs.primary),
-                  title: const Text('Quick save purchase'),
-                  subtitle: const Text(
-                      'After save, close immediately with a toast. Turn off to show share PDF / WhatsApp sheet.'),
-                  value: quickSavePurchase,
-                  onChanged: (v) => ref
-                      .read(quickSavePurchaseProvider.notifier)
-                      .setValue(v),
-                ),
-                const Divider(height: 1),
-                SwitchListTile(
-                  secondary: Icon(Icons.notifications_active_outlined,
-                      color: cs.primary),
-                  title: const Text('Local notifications'),
-                  subtitle: Text(
-                    notif
-                        ? 'Daily summary around 9:00 (Asia/Kolkata) when the OS allows alarms.'
-                        : 'Enable for a gentle daily reminder to review purchases.',
-                  ),
-                  value: notif,
-                  onChanged: (v) => ref
-                      .read(localNotificationsOptInProvider.notifier)
-                      .setValue(v),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          Text('Voice & AI',
-              style: tt.titleSmall?.copyWith(
-                  color: cs.onSurfaceVariant,
-                  fontWeight: FontWeight.w800)),
-          const SizedBox(height: 8),
-          Card(
-            color: context.adaptiveCard,
-            child: Column(
-              children: [
-                ListTile(
-                  leading: Icon(Icons.mic_none_rounded, color: cs.primary),
-                  title: const Text('Push-to-talk only'),
-                  subtitle: const Text(
-                    'We do not use an always-on microphone. Tap the mic for a short session — better battery, lower cost, clearer intent. A wake phrase would need a future OS-level integration.',
-                  ),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading:
-                      Icon(Icons.verified_user_outlined, color: cs.primary),
-                  title: const Text('Confirm before save'),
-                  subtitle: const Text(
-                    'Purchase lines are never auto-saved from AI. Use Preview → Save in Entries.',
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          Text('Integrations',
-              style: tt.titleSmall?.copyWith(
-                  color: cs.onSurfaceVariant,
-                  fontWeight: FontWeight.w800)),
-          const SizedBox(height: 8),
-          Card(
-            color: context.adaptiveCard,
-            child: ListTile(
-              leading: Icon(Icons.chat_outlined, color: cs.primary),
-              title: const Text('In-app assistant'),
-              subtitle: const Text(
-                'Open assistant from Settings. API keys stay on the server — this app never stores LLM secrets.',
-              ),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () => context.go('/assistant'),
             ),
           ),
           const SizedBox(height: 20),

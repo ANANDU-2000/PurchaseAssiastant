@@ -32,6 +32,13 @@ def test_unified_search_single_char_and_hsn():
         headers=h,
     )
     tid = types.json()[0]["id"]
+    sup = client.post(
+        f"/v1/businesses/{bid}/suppliers",
+        headers=h,
+        json={"name": "GST Trader", "gst_number": "27AAAAA0000A1Z5"},
+    )
+    assert sup.status_code == 201, sup.text
+    sid = sup.json()["id"]
     item = client.post(
         f"/v1/businesses/{bid}/catalog-items",
         headers=h,
@@ -41,17 +48,11 @@ def test_unified_search_single_char_and_hsn():
             "type_id": tid,
             "default_unit": "kg",
             "hsn_code": "91091299",
+            "default_supplier_ids": [sid],
         },
     )
     assert item.status_code == 201, item.text
     iid = item.json()["id"]
-
-    sup = client.post(
-        f"/v1/businesses/{bid}/suppliers",
-        headers=h,
-        json={"name": "GST Trader", "gst_number": "27AAAAA0000A1Z5"},
-    )
-    assert sup.status_code == 201, sup.text
 
     # Single character (name match on Turmeric / category)
     r1 = client.get(

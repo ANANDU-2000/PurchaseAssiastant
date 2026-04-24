@@ -1,36 +1,107 @@
-# HARISREE PURCHASE APP — CURSOR RULES v3
-# New Harisree Agency, Thrissur, Kerala
-# Stack: Flutter (Riverpod) + FastAPI + PostgreSQL
+# HARISREE PURCHASE APP — CURSOR RULES (AUTHORITATIVE)
+# New Harisree Agency, Thrissur 680619
+# Stack: Flutter (Riverpod) + FastAPI + SQLite or Postgres
 
-## Single source of truth
+---
+
+## STRICT WORKFLOW (READ BEFORE ANY CODE)
+
+- **One phase at a time** — finish and validate before starting the next.
+- **Data before UI** — wire correct providers/APIs first; then layout and typography.
+- **Do not guess** — if requirements or field names are unclear, inspect the repo or ask; keep existing behaviour when unsure.
+- **Do not add extra features** — only what the active phase checklist asks for.
+- **Do not break save flows** — `TradePurchase` create/update payloads and backend validation stay compatible.
+
+After substantive edits: **`flutter analyze`** (client); **`pytest`** when backend touched.
+
+---
+
+## CRITICAL ARCHITECTURE (DATA)
+
+- **Purchases live in:** `trade_purchases` + `trade_purchase_lines` (not legacy `entries` / `entry_line_items` for the main app flow).
+- **Reports / analytics tables** used by the Flutter Reports tab must use **trade-backed data** — `GET /v1/businesses/{id}/reports/trade-items`, `trade-suppliers`, `trade-categories`, and `trade-summary` — not Entry-only analytics for spend KPIs.
+- **Line money:** weight lines use `qty × kg_per_unit × landing_cost_per_kg`; else `qty × landing_cost`.
+- **Supplier / broker on a line:** header fields on `trade_purchases` (`supplier_id`, `broker_id`); lines carry `catalog_item_id`. Do not assume `supplier_id` on each line without a schema migration.
+
+---
+
+## PHASED BUILD ORDER (DO NOT SKIP)
+
+Complete and validate each phase before the next.
+
+### PHASE 1 — App flow & navigation
+- [ ] Cold open → **Home dashboard** (`/home`) after auth; no random Reports/History first screen.
+- [ ] **Bottom shell:** Home | Reports | History | Assistant — `StatefulShellRoute` preserves branch state; no full reload on tab switch.
+- [ ] **Back:** stack pages use `leading` / `BackButton` / `context.pop()` where appropriate; never pop past shell root without intent.
+- [ ] **No full-screen blocking loaders** on shell routes — skeletons inside sections only.
+- [ ] **Login / splash:** single redirect to Home; no redirect loops.
+
+### PHASE 2 — Data connection
+- [ ] Saved lines always have **`catalog_item_id`** when tied to catalog (already enforced server-side where applicable).
+- [ ] **Item history** from trade list + `catalog_item_lines` merge (trade + legacy) stays consistent.
+- [ ] **Category → type (subcategory) → item** navigation uses real IDs in URLs (`/catalog/...`); search opens **`/catalog/item/:id`** not name-only analytics when ID exists.
+- [ ] **Reports empty state:** if trade data exists in range, tables and KPI must reflect it (trade endpoints + KPI from `trade-summary`).
+
+### PHASE 3 — Dashboard rebuild
+- [ ] Top: period chips (Today | Week | Month | Year) + optional date range.
+- [ ] **Main metrics card:** purchases ₹, kg / bags / boxes (compact, readable numbers).
+- [ ] **Donut / ring:** tabs **Category | Subcategory | Items**; distribution matches selected tab; **no overlap**, responsive diameter, `LayoutBuilder` + `RepaintBoundary` around chart.
+- [ ] **List below ring:** name, total ₹, total qty; remove duplicate / “revenue” clutter where not needed.
+
+### PHASE 4 — Item system
+- [ ] Item detail: name, category/type, **supplier + tap-to-call**, optional broker call, **recent trade rows**, supplier comparison, stats, PDF CTA.
+- [ ] Remove empty “analytics” placeholders; small empty copy only when no trade lines.
+
+### PHASE 5 — Reports (table-first)
+- [ ] Period filter + view chips **Item | Supplier | Category**; tables match dashboard spend for same range.
+- [ ] Avoid nested long-scroll mess; one primary scroll where possible.
+
+### PHASE 6 — Alerts & PDF
+- [ ] Due-date reminders (local) + optional mark paid; no duplicate notifications.
+- [ ] Item / supplier PDFs: clean tables; **no emoji** in PDF; company fallback **NEW HARISREE AGENCY**.
+
+### PHASE 7 — Production readiness (CI/CD + quality)
+- [ ] CI: `flutter analyze` + `flutter test` + `pytest` on PR.
+- [ ] Backend: `/health` + `/health/db-check`; request logging / 5xx visibility (middleware).
+- [ ] Env/secrets documented; no secrets in repo.
+- [ ] Smoke: create purchase → appears in history + item view + reports for same date range.
+
+---
+
+## SINGLE SOURCE OF TRUTH (FLUTTER)
+
 - Purchase draft: `purchaseDraftProvider` in `lib/features/purchase/state/purchase_draft_provider.dart`
-- No `setState` for core purchase data (only UI-only: step index, local errors, controllers)
+- No `setState` for core purchase totals (UI-only state is OK)
 
-## PROTECTED (avoid breaking without intent)
+## PROTECTED (DO NOT BREAK UNINTENTIONALLY)
+
 - `purchaseDraftProvider`, `purchaseTotalsProvider`, `purchaseStrictBreakdownProvider`
-- `tradePurchasesListProvider`, `suppliersListProvider`, `brokersListProvider`
-- Backend route path prefixes: `/v1/businesses/{business_id}/...` (add new routes, do not rename existing without migration)
+- `tradePurchasesListProvider`, `tradePurchasesParsedProvider`, `suppliersListProvider`, `brokersListProvider`
+- Client `_filterPurchasesBySearch` / supplier selection helpers used by purchase history
+- Backend path prefix: `/v1/businesses/{business_id}/...` — **add** routes; do not rename without migration
 
-## ALWAYS DO
-- HapticFeedback.selectionClick() on main nav; HapticFeedback.mediumImpact() on save
-- `ref.invalidate(...)` after create/update/delete that affects lists
-- Shimmer or placeholder blocks for loading (not `SizedBox.shrink()` for main content)
-- Confirm before delete / discard with unsaved changes
-- Min 1 char for search fields; 300ms debounce on search inputs
-- `NumberFormat.currency(locale: 'en_IN', symbol: '₹')` for money in UI
-- PDF header background: #0D9488; company fallback: NEW HARISREE AGENCY
+## ALWAYS
 
-## NEVER DO
-- HSN as mandatory on catalog create (HSN is optional for traders)
-- Snackbars for form validation (use inline text)
-- Emojis in PDF body
-- New duplicate purchase/item flows; extend the canonical path only
+- HapticFeedback: selection on main nav; medium on save where appropriate
+- `ref.invalidate(...)` after mutations that affect lists, KPIs, or reports
+- Loading: **skeletons / `LinearProgressIndicator` in sections**, not blocking full-screen spinners on shell tabs
+- Confirm before delete or discard with unsaved changes
+- Search: **≥1 character** to search; debounce ~300ms on heavy queries
+- Money in UI: `NumberFormat.currency(locale: 'en_IN', symbol: '₹', ...)` or agreed `#,##,###` pattern consistently
 
-## COMPANY (PDF fallback)
-- name: NEW HARISREE AGENCY
-- address: 6/366A, Thrithallur, Thrissur 680619
-- phone: 8078103800 / 7025333999
+## NEVER
 
-## After substantive edits
-- `flutter analyze` (client)
-- `pytest` or smoke test (server) when backend touched
+- HSN mandatory on catalog create (optional for traders)
+- Snackbars for field validation (use inline `errorText`)
+- Emoji in PDF body
+- Duplicate purchase / item entry flows — extend the canonical wizard only
+- **Entry-only** queries for **trade** spend reports (KPI + report tables)
+- Auto-save purchases — always preview → confirm save
+
+## COMPANY (PDF / DISPLAY FALLBACK)
+
+- Name: NEW HARISREE AGENCY  
+- Address: 6/366A, Thrithallur, Thrissur 680619  
+- Phone: 8078103800 / 7025333999  
+
+Use `BusinessProfile.legalName` / `displayTitle` in code — not a non-existent `.name` field.

@@ -56,10 +56,24 @@ def test_supplier_create_full_payload_and_list_get():
     )
     assert typ.status_code == 201, typ.text
     tid = typ.json()["id"]
+    def_sup = client.post(
+        f"/v1/businesses/{bid}/suppliers",
+        headers=h,
+        json={"name": "Item default sup", "phone": "9000000099", "gst_number": "22AAAAA0000A1Z5"},
+    )
+    assert def_sup.status_code == 201, def_sup.text
+    def_sid = def_sup.json()["id"]
     item = client.post(
         f"/v1/businesses/{bid}/catalog-items",
         headers=h,
-        json={"category_id": cid, "name": "Test Item", "type_id": tid, "default_unit": "kg", "hsn_code": "12345678"},
+        json={
+            "category_id": cid,
+            "name": "Test Item",
+            "type_id": tid,
+            "default_unit": "kg",
+            "hsn_code": "12345678",
+            "default_supplier_ids": [def_sid],
+        },
     )
     assert item.status_code == 201, item.text
     iid = item.json()["id"]

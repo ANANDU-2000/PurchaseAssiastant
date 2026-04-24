@@ -35,6 +35,8 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
   String? _unit;
   final _name = TextEditingController();
   final _kg = TextEditingController();
+  final _perBox = TextEditingController();
+  final _perTin = TextEditingController();
   final _hsn = TextEditingController();
   final _tax = TextEditingController();
   final _landing = TextEditingController();
@@ -54,6 +56,8 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
   void dispose() {
     _name.dispose();
     _kg.dispose();
+    _perBox.dispose();
+    _perTin.dispose();
     _hsn.dispose();
     _tax.dispose();
     _landing.dispose();
@@ -100,6 +104,15 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
       _nameError = 'Item name is required';
     } else if (_unit == null || _unit!.isEmpty) {
       _nameError = 'Unit type is required';
+    } else if (_unit == 'bag') {
+      if (parseOptionalKgPerBag(_kg.text) == null) {
+        _nameError = 'Enter kg per bag';
+      }
+    } else if (_unit == 'box') {
+      final v = double.tryParse(_perBox.text.trim());
+      if (v == null || v <= 0) {
+        _nameError = 'Enter items per box';
+      }
     }
     setState(() {});
     return _nameError == null;
@@ -227,6 +240,22 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
     if (session == null) return;
     final bid = session.primaryBusiness.id;
     if (await _blockingDuplicateCatalogItem(bid)) return;
+    if (_supplierIds.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pick at least one default supplier in the next step.')),
+      );
+      setState(() => _step = 1);
+      return;
+    }
+    final tinW = _unit == 'tin' ? double.tryParse(_perTin.text.trim()) : null;
+    if (_unit == 'tin' && _perTin.text.trim().isNotEmpty && (tinW == null || tinW <= 0)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Weight per tin must be a positive number')),
+      );
+      return;
+    }
     try {
       final created = await ref.read(hexaApiProvider).createCatalogItem(
             businessId: bid,
@@ -234,9 +263,12 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
             typeId: _selectedTypeId,
             name: _name.text.trim(),
             defaultUnit: _unit!,
+            defaultSupplierIds: _supplierIds.toList(),
+            defaultBrokerIds: _brokerIds.toList(),
             hsnCode: _hsn.text.trim().isEmpty ? null : _hsn.text.trim(),
-            defaultKgPerBag:
-                _unit == 'bag' ? parseOptionalKgPerBag(_kg.text) : null,
+            defaultKgPerBag: _unit == 'bag' ? parseOptionalKgPerBag(_kg.text) : null,
+            defaultItemsPerBox: _unit == 'box' ? double.tryParse(_perBox.text.trim()) : null,
+            defaultWeightPerTin: (tinW != null && tinW > 0) ? tinW : null,
             defaultPurchaseUnit: _unit,
             taxPercent: double.tryParse(_tax.text),
             defaultLandingCost: double.tryParse(_landing.text),
@@ -478,6 +510,24 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
             controller: _kg,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: _d('Default kg per bag'),
+            onChanged: (_) => _markDirty(),
+          ),
+        ],
+        if (_unit == 'box') ...[
+          const SizedBox(height: 8),
+          TextField(
+            controller: _perBox,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: _d('Items per box'),
+            onChanged: (_) => _markDirty(),
+          ),
+        ],
+        if (_unit == 'tin') ...[
+          const SizedBox(height: 8),
+          TextField(
+            controller: _perTin,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: _d('Weight per tin (optional)'),
             onChanged: (_) => _markDirty(),
           ),
         ],

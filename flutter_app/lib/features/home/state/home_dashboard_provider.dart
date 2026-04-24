@@ -109,56 +109,80 @@ class CategoryStat {
   final List<CategoryItemStat> items;
 }
 
+/// One row in the “Subcategory” (CategoryType) view — `label` is e.g. "Rice — Biriyani".
+class SubcategoryStat {
+  const SubcategoryStat({
+    required this.id,
+    required this.label,
+    required this.totalAmount,
+    required this.totalQty,
+  });
+
+  final String id;
+  final String label;
+  final double totalAmount;
+  final double totalQty;
+}
+
+/// One slice/row in the “Items” donut and breakdown list.
+class ItemSliceStat {
+  const ItemSliceStat({
+    required this.name,
+    this.catalogItemId,
+    required this.totalAmount,
+    required this.totalQty,
+    required this.unit,
+  });
+
+  final String name;
+  final String? catalogItemId;
+  final double totalAmount;
+  final double totalQty;
+  final String unit;
+}
+
 class HomeDashboardData {
   const HomeDashboardData({
     required this.period,
     required this.totalPurchase,
+    required this.totalQtyAllLines,
     required this.totalKg,
     required this.totalBags,
     required this.totalBoxes,
     required this.totalTins,
     required this.purchaseCount,
     required this.categories,
-    required this.topItemName,
-    required this.topItemAmount,
-    required this.topItemUnit,
-    required this.topSupplierName,
-    required this.topSupplierAmount,
-    required this.mostUsedUnit,
+    required this.subcategories,
+    required this.itemSlices,
   });
 
   final HomePeriod period;
   final double totalPurchase;
+  /// Sum of line `qty` in range (for display next to purchase count).
+  final double totalQtyAllLines;
   final double totalKg;
   final double totalBags;
   final double totalBoxes;
   final double totalTins;
   final int purchaseCount;
   final List<CategoryStat> categories;
-  final String? topItemName;
-  final double topItemAmount;
-  final String topItemUnit;
-  final String? topSupplierName;
-  final double topSupplierAmount;
-  final String? mostUsedUnit;
+  final List<SubcategoryStat> subcategories;
+  final List<ItemSliceStat> itemSlices;
 
   bool get isEmpty => purchaseCount == 0;
 
   static const empty = HomeDashboardData(
     period: HomePeriod.month,
     totalPurchase: 0,
+    totalQtyAllLines: 0,
     totalKg: 0,
     totalBags: 0,
     totalBoxes: 0,
     totalTins: 0,
     purchaseCount: 0,
     categories: [],
-    topItemName: null,
-    topItemAmount: 0,
-    topItemUnit: '',
-    topSupplierName: null,
-    topSupplierAmount: 0,
-    mostUsedUnit: null,
+    subcategories: [],
+    itemSlices: [],
   );
 }
 
@@ -219,7 +243,15 @@ HomeDashboardData aggregateHomeDashboard({
   );
 }
 
-double _lineLandingAmount(TradePurchaseLine ln) => ln.qty * ln.landingCost;
+/// Matches backend `_trade_line_amount_expr`: weight lines use qty × kg_per_unit × landing_cost_per_kg.
+double _lineTradeAmount(TradePurchaseLine ln) {
+  final kpu = ln.kgPerUnit;
+  final lcpk = ln.landingCostPerKg;
+  if (kpu != null && lcpk != null && kpu > 0 && lcpk > 0) {
+    return ln.qty * kpu * lcpk;
+  }
+  return ln.qty * ln.landingCost;
+}
 
 double _lineKg(TradePurchaseLine ln) {
   if (ln.kgPerUnit != null &&
@@ -256,6 +288,7 @@ HomeDashboardData _aggregate({
   };
 
   var totalPurchase = 0.0;
+  var totalQtyAllLines = 0.0;
   var totalKg = 0.0;
   var totalBags = 0.0;
   var totalBoxes = 0.0;
@@ -263,9 +296,8 @@ HomeDashboardData _aggregate({
   var purchaseCount = 0;
 
   final catAgg = <String, _CatAgg>{};
+  final typeAgg = <String, _TypeAgg>{};
   final globalItem = <String, _ItemAgg>{};
-  final supplierSpend = <String, _SupAgg>{};
-  final unitCounts = <String, int>{};
 
   for (final p in purchases) {
     if (p.purchaseDate.isBefore(rangeStart) ||
@@ -276,14 +308,9 @@ HomeDashboardData _aggregate({
     purchaseCount++;
     totalPurchase += p.totalAmount;
 
-    final supKey = (p.supplierName != null && p.supplierName!.trim().isNotEmpty)
-        ? p.supplierName!.trim()
-        : (p.supplierId ?? 'Unknown supplier');
-    supplierSpend.putIfAbsent(supKey, () => _SupAgg(name: supKey)).amount +=
-        p.totalAmount;
-
     for (final ln in p.lines) {
-      final amt = _lineLandingAmount(ln);
+      final amt = _lineTradeAmount(ln);
+      totalQtyAllLines += ln.qty;
       totalKg += _lineKg(ln);
 
       final u = ln.unit.toUpperCase();
@@ -291,20 +318,31 @@ HomeDashboardData _aggregate({
       if (u.contains('BOX')) totalBoxes += ln.qty;
       if (u.contains('TIN')) totalTins += ln.qty;
 
-      final un = ln.unit.trim().isEmpty ? '—' : ln.unit.trim().toUpperCase();
-      unitCounts[un] = (unitCounts[un] ?? 0) + 1;
-
       String catId = '_uncat';
       String catName = 'Uncategorised';
       final ci = ln.catalogItemId;
-      if (ci != null && ci.isNotEmpty) {
-        final item = itemById[ci];
-        final cid = item?['category_id']?.toString();
+      final Map<String, dynamic>? item =
+          (ci != null && ci.isNotEmpty) ? itemById[ci] : null;
+      if (item != null) {
+        final cid = item['category_id']?.toString();
         if (cid != null && cid.isNotEmpty) {
           catId = cid;
           catName = catNameById[cid] ?? 'Uncategorised';
         }
       }
+      final tid = item?['type_id']?.toString() ?? 'none';
+      final typeKey = '$catId|$tid';
+      final tname = (item?['type_name']?.toString() ?? '').trim();
+      final typeLabel = item == null
+          ? 'Uncategorised'
+          : (tname.isEmpty ? '$catName — No type' : '$catName — $tname');
+      typeAgg
+          .putIfAbsent(
+            typeKey,
+            () => _TypeAgg(id: typeKey, label: typeLabel),
+          )
+          .add(amt, ln.qty);
+
       final agg = catAgg.putIfAbsent(
         catId,
         () => _CatAgg(id: catId, name: catName),
@@ -323,42 +361,16 @@ HomeDashboardData _aggregate({
       );
       slot.qty += ln.qty;
       slot.amount += amt;
+      if (ci != null && ci.isNotEmpty) slot.catalogItemId ??= ci;
 
+      final gk = (ci != null && ci.isNotEmpty) ? 'id:$ci' : 'n:$itemKey';
       final g = globalItem.putIfAbsent(
-        itemKey,
+        gk,
         () => _ItemAgg(name: itemKey, unit: ln.unit),
       );
       g.qty += ln.qty;
       g.amount += amt;
-    }
-  }
-
-  String? topItemName;
-  var topItemAmount = 0.0;
-  var topItemUnit = '';
-  for (final it in globalItem.values) {
-    if (it.amount > topItemAmount) {
-      topItemAmount = it.amount;
-      topItemName = it.name;
-      topItemUnit = it.unit;
-    }
-  }
-
-  String? topSupplierName;
-  var topSupplierAmount = 0.0;
-  for (final s in supplierSpend.values) {
-    if (s.amount > topSupplierAmount) {
-      topSupplierAmount = s.amount;
-      topSupplierName = s.name;
-    }
-  }
-
-  String? mostUsedUnit;
-  var bestU = 0;
-  for (final e in unitCounts.entries) {
-    if (e.value > bestU) {
-      bestU = e.value;
-      mostUsedUnit = e.key;
+      if (ci != null && ci.isNotEmpty) g.catalogItemId ??= ci;
     }
   }
 
@@ -386,21 +398,42 @@ HomeDashboardData _aggregate({
   }
   cats.sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
 
+  final subRows = <SubcategoryStat>[];
+  for (final t in typeAgg.values) {
+    if (t.totalAmount <= 0) continue;
+    subRows.add(SubcategoryStat(
+      id: t.id,
+      label: t.label,
+      totalAmount: t.totalAmount,
+      totalQty: t.totalQty,
+    ));
+  }
+  subRows.sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
+
+  final itemRows = <ItemSliceStat>[];
+  for (final it in globalItem.values) {
+    if (it.qty <= 0 && it.amount <= 0) continue;
+    itemRows.add(ItemSliceStat(
+      name: it.name,
+      totalAmount: it.amount,
+      totalQty: it.qty,
+      unit: it.unit,
+    ));
+  }
+  itemRows.sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
+
   return HomeDashboardData(
     period: period,
     totalPurchase: totalPurchase,
+    totalQtyAllLines: totalQtyAllLines,
     totalKg: totalKg,
     totalBags: totalBags,
     totalBoxes: totalBoxes,
     totalTins: totalTins,
     purchaseCount: purchaseCount,
     categories: cats,
-    topItemName: topItemName,
-    topItemAmount: topItemAmount,
-    topItemUnit: topItemUnit,
-    topSupplierName: topSupplierName,
-    topSupplierAmount: topSupplierAmount,
-    mostUsedUnit: mostUsedUnit,
+    subcategories: subRows,
+    itemSlices: itemRows,
   );
 }
 
@@ -418,12 +451,20 @@ class _ItemAgg {
   _ItemAgg({required this.name, required this.unit});
   final String name;
   final String unit;
+  String? catalogItemId;
   double qty = 0;
   double amount = 0;
 }
 
-class _SupAgg {
-  _SupAgg({required this.name});
-  final String name;
-  double amount = 0;
+class _TypeAgg {
+  _TypeAgg({required this.id, required this.label});
+  final String id;
+  final String label;
+  double totalAmount = 0;
+  double totalQty = 0;
+
+  void add(double amt, double q) {
+    totalAmount += amt;
+    totalQty += q;
+  }
 }

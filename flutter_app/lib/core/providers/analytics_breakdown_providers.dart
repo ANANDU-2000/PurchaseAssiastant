@@ -91,7 +91,7 @@ final analyticsItemsTableProvider =
   final range = ref.watch(analyticsDateRangeProvider);
   if (session == null) return [];
   final fmt = DateFormat('yyyy-MM-dd');
-  return ref.read(hexaApiProvider).analyticsItems(
+  return ref.read(hexaApiProvider).tradeReportItems(
         businessId: session.primaryBusiness.id,
         from: fmt.format(range.from),
         to: fmt.format(range.to),
@@ -104,7 +104,21 @@ final analyticsCategoriesTableProvider =
   final range = ref.watch(analyticsDateRangeProvider);
   if (session == null) return [];
   final fmt = DateFormat('yyyy-MM-dd');
-  return ref.read(hexaApiProvider).analyticsCategories(
+  return ref.read(hexaApiProvider).tradeReportCategories(
+        businessId: session.primaryBusiness.id,
+        from: fmt.format(range.from),
+        to: fmt.format(range.to),
+      );
+});
+
+/// Trade-backed subcategory (CategoryType) rows — use for Home donut + subcategory view.
+final analyticsTypesTableProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  final session = ref.watch(sessionProvider);
+  final range = ref.watch(analyticsDateRangeProvider);
+  if (session == null) return [];
+  final fmt = DateFormat('yyyy-MM-dd');
+  return ref.read(hexaApiProvider).tradeReportTypes(
         businessId: session.primaryBusiness.id,
         from: fmt.format(range.from),
         to: fmt.format(range.to),
@@ -117,7 +131,7 @@ final analyticsSuppliersTableProvider =
   final range = ref.watch(analyticsDateRangeProvider);
   if (session == null) return [];
   final fmt = DateFormat('yyyy-MM-dd');
-  return ref.read(hexaApiProvider).analyticsSuppliers(
+  return ref.read(hexaApiProvider).tradeReportSuppliers(
         businessId: session.primaryBusiness.id,
         from: fmt.format(range.from),
         to: fmt.format(range.to),

@@ -17,6 +17,8 @@ final _dateFmt = DateFormat('dd MMM yyyy');
 
 const _muted = PdfColor.fromInt(0xFF475569);
 const _border = PdfColor.fromInt(0xFFD1D5DB);
+/// Match [reports_pdf] table headers for a consistent A4 look.
+const _tableHeaderBg = PdfColor.fromInt(0xFFF1F5F9);
 
 Future<pw.ImageProvider?> _tryLogo(String? url) async {
   final u = url?.trim();
@@ -188,7 +190,7 @@ pw.Widget _partyRow(TradePurchase p) {
     },
     children: [
       pw.TableRow(
-        decoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFFF1F5F9)),
+        decoration: const pw.BoxDecoration(color: _tableHeaderBg),
         children: [
           _cell('Supplier', weight: pw.FontWeight.bold),
           _cell('Broker', weight: pw.FontWeight.bold),
@@ -237,23 +239,27 @@ pw.Widget _lineTableHeader() {
   return pw.Table(
     border: pw.TableBorder.all(color: _border, width: 0.6),
     columnWidths: {
-      0: const pw.FixedColumnWidth(22),
-      1: const pw.FlexColumnWidth(3.2),
-      2: const pw.FixedColumnWidth(40),
-      3: const pw.FixedColumnWidth(34),
-      4: const pw.FixedColumnWidth(30),
-      5: const pw.FixedColumnWidth(52),
-      6: const pw.FixedColumnWidth(58),
+      0: const pw.FixedColumnWidth(20),
+      1: const pw.FlexColumnWidth(3.0),
+      2: const pw.FixedColumnWidth(38),
+      3: const pw.FixedColumnWidth(30),
+      4: const pw.FixedColumnWidth(32),
+      5: const pw.FixedColumnWidth(30),
+      6: const pw.FixedColumnWidth(30),
+      7: const pw.FixedColumnWidth(50),
+      8: const pw.FixedColumnWidth(54),
     },
     children: [
       pw.TableRow(
-        decoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFFE2E8F0)),
+        decoration: const pw.BoxDecoration(color: _tableHeaderBg),
         children: [
           _cell('Sl', weight: pw.FontWeight.bold, align: pw.TextAlign.center),
           _cell('Particulars', weight: pw.FontWeight.bold),
           _cell('HSN', weight: pw.FontWeight.bold, align: pw.TextAlign.center),
+          _cell('Tax%', weight: pw.FontWeight.bold, align: pw.TextAlign.right),
           _cell('Qty', weight: pw.FontWeight.bold, align: pw.TextAlign.right),
           _cell('Unit', weight: pw.FontWeight.bold, align: pw.TextAlign.center),
+          _cell('Sell', weight: pw.FontWeight.bold, align: pw.TextAlign.right),
           _cell('Rate', weight: pw.FontWeight.bold, align: pw.TextAlign.right),
           _cell('Amount', weight: pw.FontWeight.bold, align: pw.TextAlign.right),
         ],
@@ -271,7 +277,14 @@ pw.Widget _particularsCell(TradePurchaseLine l) {
     child: pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        pw.Text(l.itemName, style: const pw.TextStyle(fontSize: 8.5)),
+        pw.Text(
+            l.itemName,
+            style: pw.TextStyle(
+                fontSize: 8.5,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.black,
+            ),
+          ),
         if (isWeightLine)
           pw.Text(
             '${l.qty} ${l.unit} × $kpu kg × ${_inrPdf(lcpk)}/kg',
@@ -300,6 +313,12 @@ double _lineAmt(TradePurchaseLine l) {
 
 pw.Widget _lineRow(int index, TradePurchaseLine l) {
   final amt = _lineAmt(l);
+  final double? tax = l.taxPercent;
+  final taxS = tax == null
+      ? '—'
+      : (tax == tax.roundToDouble() ? '${tax.round()}' : tax.toString());
+  final sell = l.sellingCost;
+  final sellS = (sell == null) ? '—' : _inrPdf(sell);
   return pw.Table(
     border: const pw.TableBorder(
       left: pw.BorderSide(color: _border, width: 0.6),
@@ -307,13 +326,15 @@ pw.Widget _lineRow(int index, TradePurchaseLine l) {
       bottom: pw.BorderSide(color: _border, width: 0.6),
     ),
     columnWidths: {
-      0: const pw.FixedColumnWidth(22),
-      1: const pw.FlexColumnWidth(3.2),
-      2: const pw.FixedColumnWidth(40),
-      3: const pw.FixedColumnWidth(34),
-      4: const pw.FixedColumnWidth(30),
-      5: const pw.FixedColumnWidth(52),
-      6: const pw.FixedColumnWidth(58),
+      0: const pw.FixedColumnWidth(20),
+      1: const pw.FlexColumnWidth(3.0),
+      2: const pw.FixedColumnWidth(38),
+      3: const pw.FixedColumnWidth(30),
+      4: const pw.FixedColumnWidth(32),
+      5: const pw.FixedColumnWidth(30),
+      6: const pw.FixedColumnWidth(30),
+      7: const pw.FixedColumnWidth(50),
+      8: const pw.FixedColumnWidth(54),
     },
     children: [
       pw.TableRow(
@@ -324,8 +345,10 @@ pw.Widget _lineRow(int index, TradePurchaseLine l) {
           _cell('$index', align: pw.TextAlign.center, fontSize: 8.5),
           _particularsCell(l),
           _cell(l.hsnCode?.trim().isNotEmpty == true ? l.hsnCode! : '—', align: pw.TextAlign.center, fontSize: 8),
+          _cell(taxS, align: pw.TextAlign.right, fontSize: 7.5),
           _cell(_money.format(l.qty), align: pw.TextAlign.right, fontSize: 8.5),
           _cell(l.unit, align: pw.TextAlign.center, fontSize: 8),
+          _cell(sellS, align: pw.TextAlign.right, fontSize: 7.5),
           _cell(_inrPdf(l.landingCost), align: pw.TextAlign.right, fontSize: 8.5),
           _cell(_inrPdf(amt), align: pw.TextAlign.right, fontSize: 8.5),
         ],
@@ -656,18 +679,18 @@ Future<pw.Document> buildPurchaseDoc(TradePurchase p, BusinessProfile biz) async
 }
 
 Future<void> sharePurchasePdf(TradePurchase p, BusinessProfile biz) async {
-  final doc = await buildPurchaseReceiptDoc(p, biz);
+  final doc = await buildPurchaseDoc(p, biz);
   await Printing.sharePdf(bytes: await doc.save(), filename: '${p.humanId}.pdf');
 }
 
 Future<void> printPurchasePdf(TradePurchase p, BusinessProfile biz) async {
-  final doc = await buildPurchaseReceiptDoc(p, biz);
+  final doc = await buildPurchaseDoc(p, biz);
   await Printing.layoutPdf(onLayout: (_) async => doc.save());
 }
 
 /// Opens OS print / save dialog (on web, typically download).
 Future<void> downloadPurchasePdf(TradePurchase p, BusinessProfile biz) async {
-  final doc = await buildPurchaseReceiptDoc(p, biz);
+  final doc = await buildPurchaseDoc(p, biz);
   await Printing.layoutPdf(onLayout: (_) async => doc.save());
 }
 

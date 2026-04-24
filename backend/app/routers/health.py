@@ -1,8 +1,14 @@
+import logging
+
 from fastapi import APIRouter, Depends
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
+from app.database import get_db
 
 router = APIRouter(tags=["health"])
+logger = logging.getLogger("harisree.health")
 
 
 @router.get("/")
@@ -52,3 +58,15 @@ async def health(settings: Settings = Depends(get_settings)):
         "assistant_ready": True,
         "redis_url_set": bool((settings.redis_url or "").strip()),
     }
+
+
+@router.get("/health/db-check")
+async def health_db_check(db: AsyncSession = Depends(get_db)):
+    """Verify core ORM tables respond (SQLite / Postgres)."""
+    try:
+        await db.execute(text("SELECT COUNT(*) FROM trade_purchases"))
+        await db.execute(text("SELECT COUNT(*) FROM item_categories"))
+        return {"status": "ok", "tables": "trade_purchases, item_categories verified"}
+    except Exception as e:  # noqa: BLE001
+        logger.exception("db-check failed")
+        return {"status": "error", "detail": str(e)}

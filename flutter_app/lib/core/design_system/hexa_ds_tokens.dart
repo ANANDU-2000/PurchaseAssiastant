@@ -182,4 +182,56 @@ abstract final class HexaDsType {
         color: color,
         letterSpacing: 0.2,
       );
+
+  // Purchase + catalog: readable money / quantity / section labels.
+  static TextStyle purchaseLineMoney = GoogleFonts.plusJakartaSans(
+    fontSize: 16,
+    fontWeight: FontWeight.w800,
+    color: HexaColors.brandPrimary,
+  );
+
+  static TextStyle purchaseQtyUnit = GoogleFonts.plusJakartaSans(
+    fontSize: 15,
+    fontWeight: FontWeight.w700,
+    color: HexaDsColors.textBody,
+  );
+
+  /// Critical labels: full-opacity body (avoid washed-out onSurfaceVariant).
+  static TextStyle formSectionLabel = GoogleFonts.plusJakartaSans(
+    fontSize: 14,
+    fontWeight: FontWeight.w800,
+    color: HexaDsColors.textPrimary,
+  );
+
+  /// Catalog item detail: large title at top of page.
+  static TextStyle catalogItemHeroName = GoogleFonts.plusJakartaSans(
+    fontSize: 22,
+    fontWeight: FontWeight.w800,
+    color: HexaDsColors.textPrimary,
+    height: 1.2,
+  );
+
+  /// Stat chip primary number on catalog / dashboards.
+  static TextStyle statChipValue = GoogleFonts.plusJakartaSans(
+    fontSize: 18,
+    fontWeight: FontWeight.w800,
+    color: HexaDsColors.textPrimary,
+    height: 1.2,
+  );
+
+  /// Body amount on reports tables (right column).
+  static final TextStyle reportTableMoney = GoogleFonts.plusJakartaSans(
+    fontSize: 14,
+    fontWeight: FontWeight.w800,
+    color: HexaColors.brandPrimary,
+    height: 1.2,
+  );
+
+  /// Emphasized name / first column in reports (non-amount cells).
+  static final TextStyle reportTableRowPrimary = GoogleFonts.plusJakartaSans(
+    fontSize: 13,
+    fontWeight: FontWeight.w600,
+    color: HexaDsColors.textBody,
+    height: 1.2,
+  );
 }

@@ -85,6 +85,27 @@ List<ItemTradeHistoryRow> itemTradeHistoryRows(
   return out;
 }
 
+/// Default window for item detail history; matches [catalogInsightsDefaultRange] (≈90d).
+const int kDefaultItemHistoryRangeDays = 90;
+
+/// Keeps [rows] (newest first) that fall in `[today − days, end of today]` in local time.
+List<ItemTradeHistoryRow> itemTradeHistoryRowsInRange(
+  List<ItemTradeHistoryRow> rows,
+  int days,
+) {
+  if (rows.isEmpty || days <= 0) return rows;
+  final now = DateTime.now();
+  final end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+  final start =
+      DateTime(now.year, now.month, now.day).subtract(Duration(days: days));
+  return rows
+      .where((r) {
+        final d = r.purchaseDate.toLocal();
+        return !d.isBefore(start) && !d.isAfter(end);
+      })
+      .toList();
+}
+
 /// Per-supplier aggregates from [rows] (same catalog item).
 class ItemSupplierIntel {
   const ItemSupplierIntel({

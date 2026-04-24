@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/config/app_config.dart';
@@ -89,9 +90,11 @@ class _SupplierStatCard extends StatelessWidget {
                   const SizedBox(height: 6),
                   Text(
                     value,
-                    style: tt.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: cs.onSurface),
+                    style: value.contains('₹')
+                        ? HexaDsType.purchaseLineMoney
+                            .copyWith(fontSize: 17, color: cs.onSurface)
+                        : HexaDsType.statChipValue
+                            .copyWith(color: cs.onSurface, fontSize: 17),
                   ),
                 ],
               ),

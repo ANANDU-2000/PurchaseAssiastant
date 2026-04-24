@@ -4,8 +4,8 @@ from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import and_, desc, func, select
+from pydantic import BaseModel, Field, field_validator, model_validator
+from sqlalchemy import and_, delete, desc, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
@@ -23,6 +23,7 @@ from app.models import (
     TradePurchase,
     TradePurchaseLine,
 )
+from app.models.catalog import CatalogItemDefaultBroker, CatalogItemDefaultSupplier
 from app.models.contacts import Broker, Supplier
 from app.models.supplier_item_default import SupplierItemDefault
 from app.models.entry import Entry
@@ -72,18 +73,33 @@ class CategoryTypeOut(BaseModel):
 _UNIT_PATTERN = "^(kg|box|piece|bag|tin)$"
 
 
+def _dedupe_preserve_order(ids: list[uuid.UUID]) -> list[uuid.UUID]:
+    seen: set[uuid.UUID] = set()
+    out: list[uuid.UUID] = []
+    for x in ids:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+
+
 class CatalogItemCreate(BaseModel):
     category_id: uuid.UUID
     type_id: uuid.UUID | None = None
     name: str = Field(min_length=1, max_length=512)
     default_unit: str = Field(pattern=_UNIT_PATTERN)
     default_kg_per_bag: float | None = Field(default=None, gt=0)
+    default_items_per_box: float | None = Field(default=None, gt=0)
+    default_weight_per_tin: float | None = Field(default=None, gt=0)
     default_purchase_unit: str | None = Field(default=None, pattern=_UNIT_PATTERN)
     default_sale_unit: str | None = Field(default=None, pattern=_UNIT_PATTERN)
     hsn_code: str | None = Field(default=None, max_length=32)
+    item_code: str | None = Field(default=None, max_length=64)
     tax_percent: float | None = Field(default=None, ge=0, le=100)
     default_landing_cost: float | None = Field(default=None, ge=0)
     default_selling_cost: float | None = Field(default=None, ge=0)
+    default_supplier_ids: list[uuid.UUID] = Field(min_length=1)
+    default_broker_ids: list[uuid.UUID] | None = None
 
     @field_validator("name", mode="before")
     @classmethod
@@ -99,7 +115,7 @@ class CatalogItemCreate(BaseModel):
             raise ValueError("name must not be empty or whitespace")
         return " ".join(v.split())
 
-    @field_validator("hsn_code", mode="before")
+    @field_validator("hsn_code", "item_code", mode="before")
     @classmethod
     def _hsn_optional(cls, v: object) -> object:
         if v is None:
@@ -109,6 +125,17 @@ class CatalogItemCreate(BaseModel):
             return t if t else None
         return v
 
+    @model_validator(mode="after")
+    def _unit_conditional(self) -> "CatalogItemCreate":
+        u = self.default_unit
+        if u == "bag":
+            if self.default_kg_per_bag is None:
+                raise ValueError("default_kg_per_bag is required when default_unit is bag")
+        elif u == "box":
+            if self.default_items_per_box is None:
+                raise ValueError("default_items_per_box is required when default_unit is box")
+        return self
+
 
 class CatalogItemUpdate(BaseModel):
     category_id: uuid.UUID | None = None
@@ -116,14 +143,19 @@ class CatalogItemUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=512)
     default_unit: str | None = Field(default=None, pattern=_UNIT_PATTERN)
     default_kg_per_bag: float | None = Field(default=None, gt=0)
+    default_items_per_box: float | None = Field(default=None, gt=0)
+    default_weight_per_tin: float | None = Field(default=None, gt=0)
     default_purchase_unit: str | None = Field(default=None, pattern=_UNIT_PATTERN)
     default_sale_unit: str | None = Field(default=None, pattern=_UNIT_PATTERN)
-    hsn_code: str | None = Field(default=None, min_length=1, max_length=32)
+    hsn_code: str | None = Field(default=None, max_length=32)
+    item_code: str | None = Field(default=None, max_length=64)
     tax_percent: float | None = Field(default=None, ge=0, le=100)
     default_landing_cost: float | None = Field(default=None, ge=0)
     default_selling_cost: float | None = Field(default=None, ge=0)
+    default_supplier_ids: list[uuid.UUID] | None = None
+    default_broker_ids: list[uuid.UUID] | None = None
 
-    @field_validator("name", "hsn_code", mode="before")
+    @field_validator("name", "hsn_code", "item_code", mode="before")
     @classmethod
     def _strip_update_str(cls, v: object) -> object:
         if v is None:
@@ -151,13 +183,18 @@ class CatalogItemOut(BaseModel):
     name: str
     default_unit: str | None
     default_kg_per_bag: float | None = None
+    default_items_per_box: float | None = None
+    default_weight_per_tin: float | None = None
     default_purchase_unit: str | None = None
     default_sale_unit: str | None = None
     hsn_code: str | None = None
+    item_code: str | None = None
     tax_percent: float | None = None
     default_landing_cost: float | None = None
     default_selling_cost: float | None = None
     last_purchase_price: float | None = None
+    default_supplier_ids: list[uuid.UUID] = Field(default_factory=list)
+    default_broker_ids: list[uuid.UUID] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 
@@ -360,7 +397,10 @@ _CATALOG_ITEM_CORE = (
     CatalogItem.name,
     CatalogItem.default_unit,
     CatalogItem.default_kg_per_bag,
+    CatalogItem.default_items_per_box,
+    CatalogItem.default_weight_per_tin,
     CatalogItem.hsn_code,
+    CatalogItem.item_code,
     CatalogItem.tax_percent,
     CatalogItem.default_landing_cost,
     CatalogItem.default_selling_cost,
@@ -376,8 +416,12 @@ def _catalog_item_out(
     type_name: str | None = None,
     *,
     type_id: uuid.UUID | None | _UnsetSentinel = _UNSET,
+    default_supplier_ids: list[uuid.UUID] | None = None,
+    default_broker_ids: list[uuid.UUID] | None = None,
 ) -> CatalogItemOut:
     tid = i.type_id if type_id is _UNSET else type_id
+    dipb = getattr(i, "default_items_per_box", None)
+    dwt = getattr(i, "default_weight_per_tin", None)
     return CatalogItemOut(
         id=i.id,
         category_id=i.category_id,
@@ -386,9 +430,12 @@ def _catalog_item_out(
         name=i.name,
         default_unit=i.default_unit,
         default_kg_per_bag=float(i.default_kg_per_bag) if i.default_kg_per_bag is not None else None,
+        default_items_per_box=float(dipb) if dipb is not None else None,
+        default_weight_per_tin=float(dwt) if dwt is not None else None,
         default_purchase_unit=getattr(i, "default_purchase_unit", None),
         default_sale_unit=getattr(i, "default_sale_unit", None),
         hsn_code=getattr(i, "hsn_code", None),
+        item_code=getattr(i, "item_code", None),
         tax_percent=float(i.tax_percent) if getattr(i, "tax_percent", None) is not None else None,
         default_landing_cost=float(i.default_landing_cost)
         if getattr(i, "default_landing_cost", None) is not None
@@ -399,7 +446,199 @@ def _catalog_item_out(
         last_purchase_price=float(i.last_purchase_price)
         if getattr(i, "last_purchase_price", None) is not None
         else None,
+        default_supplier_ids=list(default_supplier_ids or ()),
+        default_broker_ids=list(default_broker_ids or ()),
     )
+
+
+async def _assert_supplier_ids_in_business(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    supplier_ids: list[uuid.UUID],
+) -> None:
+    if not supplier_ids:
+        return
+    r = await db.execute(
+        select(func.count(Supplier.id)).where(
+            Supplier.business_id == business_id,
+            Supplier.id.in_(supplier_ids),
+        )
+    )
+    if int(r.scalar() or 0) != len(supplier_ids):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="One or more default_supplier_ids are invalid for this business",
+        )
+
+
+async def _assert_broker_ids_in_business(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    broker_ids: list[uuid.UUID],
+) -> None:
+    if not broker_ids:
+        return
+    r = await db.execute(
+        select(func.count(Broker.id)).where(
+            Broker.business_id == business_id,
+            Broker.id.in_(broker_ids),
+        )
+    )
+    if int(r.scalar() or 0) != len(broker_ids):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="One or more default_broker_ids are invalid for this business",
+        )
+
+
+async def _default_supplier_broker_ids_for_items(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    item_ids: list[uuid.UUID],
+) -> tuple[dict[uuid.UUID, list[uuid.UUID]], dict[uuid.UUID, list[uuid.UUID]]]:
+    if not item_ids:
+        return {}, {}
+    sup_map: dict[uuid.UUID, list[uuid.UUID]] = {i: [] for i in item_ids}
+    brok_map: dict[uuid.UUID, list[uuid.UUID]] = {i: [] for i in item_ids}
+    sr = await db.execute(
+        select(
+            CatalogItemDefaultSupplier.catalog_item_id,
+            CatalogItemDefaultSupplier.supplier_id,
+            CatalogItemDefaultSupplier.sort_order,
+        )
+        .where(
+            CatalogItemDefaultSupplier.business_id == business_id,
+            CatalogItemDefaultSupplier.catalog_item_id.in_(item_ids),
+        )
+        .order_by(
+            CatalogItemDefaultSupplier.catalog_item_id,
+            CatalogItemDefaultSupplier.sort_order,
+            CatalogItemDefaultSupplier.supplier_id,
+        )
+    )
+    for cid, sid, _ord in sr.all():
+        sup_map[cid].append(sid)
+    br = await db.execute(
+        select(
+            CatalogItemDefaultBroker.catalog_item_id,
+            CatalogItemDefaultBroker.broker_id,
+            CatalogItemDefaultBroker.sort_order,
+        )
+        .where(
+            CatalogItemDefaultBroker.business_id == business_id,
+            CatalogItemDefaultBroker.catalog_item_id.in_(item_ids),
+        )
+        .order_by(
+            CatalogItemDefaultBroker.catalog_item_id,
+            CatalogItemDefaultBroker.sort_order,
+            CatalogItemDefaultBroker.broker_id,
+        )
+    )
+    for cid, bid, _ord in br.all():
+        brok_map[cid].append(bid)
+    return sup_map, brok_map
+
+
+async def _replace_default_supplier_rows(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    catalog_item_id: uuid.UUID,
+    supplier_ids: list[uuid.UUID],
+) -> None:
+    await db.execute(
+        delete(CatalogItemDefaultSupplier).where(
+            CatalogItemDefaultSupplier.business_id == business_id,
+            CatalogItemDefaultSupplier.catalog_item_id == catalog_item_id,
+        )
+    )
+    for order, sid in enumerate(supplier_ids):
+        db.add(
+            CatalogItemDefaultSupplier(
+                business_id=business_id,
+                catalog_item_id=catalog_item_id,
+                supplier_id=sid,
+                sort_order=order,
+            )
+        )
+
+
+async def _replace_default_broker_rows(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    catalog_item_id: uuid.UUID,
+    broker_ids: list[uuid.UUID],
+) -> None:
+    await db.execute(
+        delete(CatalogItemDefaultBroker).where(
+            CatalogItemDefaultBroker.business_id == business_id,
+            CatalogItemDefaultBroker.catalog_item_id == catalog_item_id,
+        )
+    )
+    for order, bid in enumerate(broker_ids):
+        db.add(
+            CatalogItemDefaultBroker(
+                business_id=business_id,
+                catalog_item_id=catalog_item_id,
+                broker_id=bid,
+                sort_order=order,
+            )
+        )
+
+
+async def _seed_supplier_item_defaults(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    catalog_item_id: uuid.UUID,
+    supplier_ids: list[uuid.UUID],
+) -> None:
+    for sid in supplier_ids:
+        ex = await db.execute(
+            select(SupplierItemDefault.id).where(
+                SupplierItemDefault.business_id == business_id,
+                SupplierItemDefault.catalog_item_id == catalog_item_id,
+                SupplierItemDefault.supplier_id == sid,
+            )
+        )
+        if ex.first() is None:
+            db.add(
+                SupplierItemDefault(
+                    business_id=business_id,
+                    catalog_item_id=catalog_item_id,
+                    supplier_id=sid,
+                    purchase_count=0,
+                )
+            )
+
+
+def _sync_item_unit_extras(i: CatalogItem) -> None:
+    u = i.default_unit
+    if u != "bag":
+        i.default_kg_per_bag = None
+    if u != "box":
+        i.default_items_per_box = None
+    if u != "tin":
+        i.default_weight_per_tin = None
+
+
+def _validate_item_unit_constraints(i: CatalogItem) -> None:
+    u = i.default_unit
+    if u == "bag":
+        if i.default_kg_per_bag is None or float(i.default_kg_per_bag) <= 0:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail="default_kg_per_bag is required and must be positive when default_unit is bag",
+            )
+    elif u == "box":
+        if i.default_items_per_box is None or float(i.default_items_per_box) <= 0:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail="default_items_per_box is required and must be positive when default_unit is box",
+            )
+    elif u == "tin" and i.default_weight_per_tin is not None and float(i.default_weight_per_tin) <= 0:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="default_weight_per_tin must be positive when set",
+        )
 
 
 async def _verify_type_in_category(
@@ -719,7 +958,18 @@ async def list_catalog_items(
                 q = q.where(CatalogItem.type_id == type_id)
             q = q.order_by(func.lower(CatalogItem.name))
             r = await db.execute(q)
-            return [_catalog_item_out(i, tn) for i, tn in r.all()]
+            rows = r.all()
+            ids = [i.id for i, _ in rows]
+            sup_m, br_m = await _default_supplier_broker_ids_for_items(db, business_id, ids)
+            return [
+                _catalog_item_out(
+                    i,
+                    tn,
+                    default_supplier_ids=sup_m.get(i.id, []),
+                    default_broker_ids=br_m.get(i.id, []),
+                )
+                for i, tn in rows
+            ]
 
         q = (
             select(CatalogItem)
@@ -730,7 +980,19 @@ async def list_catalog_items(
             q = q.where(CatalogItem.category_id == category_id)
         q = q.order_by(func.lower(CatalogItem.name))
         r = await db.execute(q)
-        return [_catalog_item_out(i, None, type_id=None) for i in r.scalars().all()]
+        items = r.scalars().all()
+        ids = [i.id for i in items]
+        sup_m, br_m = await _default_supplier_broker_ids_for_items(db, business_id, ids)
+        return [
+            _catalog_item_out(
+                i,
+                None,
+                type_id=None,
+                default_supplier_ids=sup_m.get(i.id, []),
+                default_broker_ids=br_m.get(i.id, []),
+            )
+            for i in items
+        ]
     except SQLAlchemyError:
         logger.exception(
             "list_catalog_items failed business_id=%s category_id=%s type_id=%s",
@@ -783,8 +1045,16 @@ async def create_catalog_item(
                 "existing_item_id": str(eid),
             },
         )
-    dkg = body.default_kg_per_bag if body.default_unit == "bag" else None
+    u = body.default_unit
+    dkg = body.default_kg_per_bag if u == "bag" else None
+    dbox = body.default_items_per_box if u == "box" else None
+    dwt = body.default_weight_per_tin if u == "tin" else None
     purchase_u = body.default_purchase_unit or body.default_unit
+    supplier_ids = _dedupe_preserve_order(body.default_supplier_ids)
+    broker_ids = _dedupe_preserve_order(list(body.default_broker_ids or ()))
+    await _assert_supplier_ids_in_business(db, business_id, supplier_ids)
+    await _assert_broker_ids_in_business(db, business_id, broker_ids)
+
     i = CatalogItem(
         business_id=business_id,
         category_id=body.category_id,
@@ -792,21 +1062,30 @@ async def create_catalog_item(
         name=body.name.strip(),
         default_unit=body.default_unit,
         default_kg_per_bag=dkg,
+        default_items_per_box=dbox,
+        default_weight_per_tin=dwt,
         default_purchase_unit=purchase_u,
         default_sale_unit=body.default_sale_unit,
         hsn_code=(body.hsn_code or "").strip() or None,
+        item_code=(body.item_code or "").strip() or None,
         tax_percent=body.tax_percent,
         default_landing_cost=body.default_landing_cost,
         default_selling_cost=body.default_selling_cost,
     )
     db.add(i)
+    await db.flush()
+    await _replace_default_supplier_rows(db, business_id, i.id, supplier_ids)
+    await _replace_default_broker_rows(db, business_id, i.id, broker_ids)
+    await _seed_supplier_item_defaults(db, business_id, i.id, supplier_ids)
     await db.commit()
     await db.refresh(i)
     tn = None
     if i.type_id is not None:
         tr = await db.execute(select(CategoryType.name).where(CategoryType.id == i.type_id))
         tn = tr.scalar_one_or_none()
-    return _catalog_item_out(i, tn)
+    return _catalog_item_out(
+        i, tn, default_supplier_ids=supplier_ids, default_broker_ids=broker_ids
+    )
 
 
 @router.get("/catalog-items/{item_id}", response_model=CatalogItemOut)
@@ -832,7 +1111,13 @@ async def get_catalog_item(
             if row is None:
                 raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")
             i, tn = row
-            return _catalog_item_out(i, tn)
+            sup_m, br_m = await _default_supplier_broker_ids_for_items(db, business_id, [i.id])
+            return _catalog_item_out(
+                i,
+                tn,
+                default_supplier_ids=sup_m.get(i.id, []),
+                default_broker_ids=br_m.get(i.id, []),
+            )
 
         r = await db.execute(
             select(CatalogItem)
@@ -845,7 +1130,14 @@ async def get_catalog_item(
         i = r.scalar_one_or_none()
         if i is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")
-        return _catalog_item_out(i, None, type_id=None)
+        sup_m, br_m = await _default_supplier_broker_ids_for_items(db, business_id, [i.id])
+        return _catalog_item_out(
+            i,
+            None,
+            type_id=None,
+            default_supplier_ids=sup_m.get(i.id, []),
+            default_broker_ids=br_m.get(i.id, []),
+        )
     except SQLAlchemyError:
         logger.exception("get_catalog_item failed business_id=%s item_id=%s", business_id, item_id)
         raise
@@ -1341,25 +1633,62 @@ async def update_catalog_item(
         i.name = data["name"].strip()
     if "default_unit" in data:
         i.default_unit = data["default_unit"]
-        if i.default_unit != "bag":
-            i.default_kg_per_bag = None
     if "default_kg_per_bag" in data:
         if i.default_unit == "bag":
             i.default_kg_per_bag = data["default_kg_per_bag"]
         else:
             i.default_kg_per_bag = None
+    if "default_items_per_box" in data:
+        if i.default_unit == "box":
+            i.default_items_per_box = data["default_items_per_box"]
+        else:
+            i.default_items_per_box = None
+    if "default_weight_per_tin" in data:
+        if i.default_unit == "tin":
+            i.default_weight_per_tin = data["default_weight_per_tin"]
+        else:
+            i.default_weight_per_tin = None
     if "default_purchase_unit" in data:
         i.default_purchase_unit = data["default_purchase_unit"]
     if "default_sale_unit" in data:
         i.default_sale_unit = data["default_sale_unit"]
     if "hsn_code" in data:
         i.hsn_code = data["hsn_code"].strip() if data["hsn_code"] else None
+    if "item_code" in data:
+        ic = data["item_code"]
+        i.item_code = ic.strip() if ic else None
     if "tax_percent" in data:
         i.tax_percent = data["tax_percent"]
     if "default_landing_cost" in data:
         i.default_landing_cost = data["default_landing_cost"]
     if "default_selling_cost" in data:
         i.default_selling_cost = data["default_selling_cost"]
+    _sync_item_unit_extras(i)
+    unit_touched = any(
+        k in data
+        for k in (
+            "default_unit",
+            "default_kg_per_bag",
+            "default_items_per_box",
+            "default_weight_per_tin",
+        )
+    )
+    if unit_touched:
+        _validate_item_unit_constraints(i)
+    if "default_supplier_ids" in data and data["default_supplier_ids"] is not None:
+        sids = _dedupe_preserve_order(data["default_supplier_ids"])
+        if not sids:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail="At least one default_supplier_ids entry is required when updating defaults",
+            )
+        await _assert_supplier_ids_in_business(db, business_id, sids)
+        await _replace_default_supplier_rows(db, business_id, item_id, sids)
+        await _seed_supplier_item_defaults(db, business_id, item_id, sids)
+    if "default_broker_ids" in data and data["default_broker_ids"] is not None:
+        bids = _dedupe_preserve_order(data["default_broker_ids"] or [])
+        await _assert_broker_ids_in_business(db, business_id, bids)
+        await _replace_default_broker_rows(db, business_id, item_id, bids)
     await db.commit()
     if not has_type_col:
         rr = await db.execute(
@@ -1368,13 +1697,26 @@ async def update_catalog_item(
             .where(CatalogItem.id == item_id, CatalogItem.business_id == business_id)
         )
         i_out = rr.scalar_one()
-        return _catalog_item_out(i_out, None, type_id=None)
+        sup_m, br_m = await _default_supplier_broker_ids_for_items(db, business_id, [item_id])
+        return _catalog_item_out(
+            i_out,
+            None,
+            type_id=None,
+            default_supplier_ids=sup_m.get(item_id, []),
+            default_broker_ids=br_m.get(item_id, []),
+        )
     await db.refresh(i)
     tn = None
     if i.type_id is not None:
         tr = await db.execute(select(CategoryType.name).where(CategoryType.id == i.type_id))
         tn = tr.scalar_one_or_none()
-    return _catalog_item_out(i, tn)
+    sup_m, br_m = await _default_supplier_broker_ids_for_items(db, business_id, [item_id])
+    return _catalog_item_out(
+        i,
+        tn,
+        default_supplier_ids=sup_m.get(item_id, []),
+        default_broker_ids=br_m.get(item_id, []),
+    )
 
 
 @router.delete("/catalog-items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)

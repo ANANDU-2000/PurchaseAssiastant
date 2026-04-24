@@ -15,6 +15,8 @@ bool _retryableAssistantRequest(DioException e) {
       t == DioExceptionType.sendTimeout;
 }
 
+bool _reports404HintLogged = false;
+
 bool _isAuthEndpoint(String path) {
   return path.contains('/auth/login') ||
       path.contains('/auth/register') ||
@@ -102,6 +104,25 @@ class HexaApi {
           } on DioException catch (e) {
             return handler.next(e);
           }
+        },
+      ),
+    );
+    _dio.interceptors.add(
+      InterceptorsWrapper(
+        onError: (DioException err, ErrorInterceptorHandler handler) {
+          if (err.response?.statusCode == 404) {
+            final p = err.requestOptions.uri.path;
+            if (p.contains('/reports/') && !_reports404HintLogged) {
+              _reports404HintLogged = true;
+              debugPrint(
+                'HexaApi: 404 on a reports request ($p). If your backend includes '
+                'the reports routes (e.g. reports/trade-suppliers), restart the API from '
+                'the current `main` and point the app at the same base URL and port as '
+                'the running server.',
+              );
+            }
+          }
+          return handler.next(err);
         },
       ),
     );
@@ -592,6 +613,64 @@ class HexaApi {
     return res.data ?? {};
   }
 
+  /// Trade purchase line aggregates (replaces legacy Entry-based `/analytics/items`).
+  Future<List<Map<String, dynamic>>> tradeReportItems({
+    required String businessId,
+    required String from,
+    required String to,
+  }) async {
+    final res = await _dio.get<dynamic>(
+      '/v1/businesses/$businessId/reports/trade-items',
+      queryParameters: {'from': from, 'to': to},
+    );
+    final data = res.data;
+    if (data is! List) return [];
+    return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> tradeReportSuppliers({
+    required String businessId,
+    required String from,
+    required String to,
+  }) async {
+    final res = await _dio.get<dynamic>(
+      '/v1/businesses/$businessId/reports/trade-suppliers',
+      queryParameters: {'from': from, 'to': to},
+    );
+    final data = res.data;
+    if (data is! List) return [];
+    return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> tradeReportCategories({
+    required String businessId,
+    required String from,
+    required String to,
+  }) async {
+    final res = await _dio.get<dynamic>(
+      '/v1/businesses/$businessId/reports/trade-categories',
+      queryParameters: {'from': from, 'to': to},
+    );
+    final data = res.data;
+    if (data is! List) return [];
+    return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  /// Subcategory (CategoryType) spend — matches catalog category → type → items.
+  Future<List<Map<String, dynamic>>> tradeReportTypes({
+    required String businessId,
+    required String from,
+    required String to,
+  }) async {
+    final res = await _dio.get<dynamic>(
+      '/v1/businesses/$businessId/reports/trade-types',
+      queryParameters: {'from': from, 'to': to},
+    );
+    final data = res.data;
+    if (data is! List) return [];
+    return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
   Future<List<Map<String, dynamic>>> listSuppliers(
       {required String businessId}) async {
     final res = await _dio.get<dynamic>('/v1/businesses/$businessId/suppliers');
@@ -904,14 +983,19 @@ class HexaApi {
     required String categoryId,
     required String name,
     required String defaultUnit,
+    required List<String> defaultSupplierIds,
     String? hsnCode,
+    String? itemCode,
     String? typeId,
     double? defaultKgPerBag,
+    double? defaultItemsPerBox,
+    double? defaultWeightPerTin,
     String? defaultPurchaseUnit,
     String? defaultSaleUnit,
     double? taxPercent,
     double? defaultLandingCost,
     double? defaultSellingCost,
+    List<String> defaultBrokerIds = const [],
   }) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/businesses/$businessId/catalog-items',
@@ -919,10 +1003,17 @@ class HexaApi {
         'category_id': categoryId,
         'name': name,
         'default_unit': defaultUnit,
+        'default_supplier_ids': defaultSupplierIds,
+        if (defaultBrokerIds.isNotEmpty) 'default_broker_ids': defaultBrokerIds,
         if (hsnCode != null && hsnCode.trim().isNotEmpty) 'hsn_code': hsnCode.trim(),
+        if (itemCode != null && itemCode.trim().isNotEmpty) 'item_code': itemCode.trim(),
         if (typeId != null && typeId.isNotEmpty) 'type_id': typeId,
         if (defaultKgPerBag != null && defaultKgPerBag > 0)
           'default_kg_per_bag': defaultKgPerBag,
+        if (defaultItemsPerBox != null && defaultItemsPerBox > 0)
+          'default_items_per_box': defaultItemsPerBox,
+        if (defaultWeightPerTin != null && defaultWeightPerTin > 0)
+          'default_weight_per_tin': defaultWeightPerTin,
         if (defaultPurchaseUnit != null && defaultPurchaseUnit.isNotEmpty)
           'default_purchase_unit': defaultPurchaseUnit,
         if (defaultSaleUnit != null && defaultSaleUnit.isNotEmpty)
@@ -976,12 +1067,18 @@ class HexaApi {
     bool includeDefaultUnit = false,
     bool patchDefaultKgPerBag = false,
     double? defaultKgPerBag,
+    bool patchDefaultItemsPerBox = false,
+    double? defaultItemsPerBox,
+    bool patchDefaultWeightPerTin = false,
+    double? defaultWeightPerTin,
     String? defaultPurchaseUnit,
     String? defaultSaleUnit,
     String? hsnCode,
     double? taxPercent,
     double? defaultLandingCost,
     double? defaultSellingCost,
+    List<String>? defaultSupplierIds,
+    List<String>? defaultBrokerIds,
   }) async {
     final data = <String, dynamic>{
       if (categoryId != null) 'category_id': categoryId,
@@ -995,6 +1092,12 @@ class HexaApi {
     }
     if (patchDefaultKgPerBag) {
       data['default_kg_per_bag'] = defaultKgPerBag;
+    }
+    if (patchDefaultItemsPerBox) {
+      data['default_items_per_box'] = defaultItemsPerBox;
+    }
+    if (patchDefaultWeightPerTin) {
+      data['default_weight_per_tin'] = defaultWeightPerTin;
     }
     if (defaultPurchaseUnit != null) {
       data['default_purchase_unit'] = defaultPurchaseUnit;
@@ -1013,6 +1116,12 @@ class HexaApi {
     }
     if (defaultSellingCost != null) {
       data['default_selling_cost'] = defaultSellingCost;
+    }
+    if (defaultSupplierIds != null) {
+      data['default_supplier_ids'] = defaultSupplierIds;
+    }
+    if (defaultBrokerIds != null) {
+      data['default_broker_ids'] = defaultBrokerIds;
     }
     final res = await _dio.patch<Map<String, dynamic>>(
       '/v1/businesses/$businessId/catalog-items/$itemId',

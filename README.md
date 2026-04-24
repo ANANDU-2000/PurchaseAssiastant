@@ -36,6 +36,21 @@ Flutter + FastAPI purchase tracking with in-app AI assistant (`/ai` → `POST ..
 
 Copy [.env.example](.env.example) to `backend/.env` and fill secrets. Never commit real keys.
 
+## API base URL and reports routes
+
+The Flutter app resolves the API host via `API_BASE_URL` (default `http://127.0.0.1:8000`); on web, see [flutter_app/lib/core/config/app_config.dart](flutter_app/lib/core/config/app_config.dart) for `resolvedApiBaseUrl` so the page origin and API origin line up. Trade reports (`GET /v1/businesses/{id}/reports/trade-suppliers` and related breakdowns) are registered in the FastAPI `main` module. If the client shows **404** on `/reports/*` while the code in this repo includes those routers, the running `uvicorn` process is likely an older build or a different port—restart the API from this branch and point the app at the same base URL. A one-time `debugPrint` may appear in the console on the first 404 to `/reports/*` (Dio layer).
+
+## First deploy and seed data
+
+After migrations and a fresh database, you can load baseline catalog and GST suppliers from JSON
+(`python -m scripts.seed_catalog_and_suppliers --business-id=<uuid>`, see
+[backend/scripts/README.md](backend/scripts/README.md)), then optionally bulk-import additional
+suppliers from your CSV: `python -m scripts.seed_suppliers_from_csv --business-id=<uuid>`.
+Re-running these scripts is safe: they skip rows that already match (GST, or name + phone).
+When you add `data/products_categories_items/Products list.xlsx`, use
+[data/products_categories_items/README.txt](data/products_categories_items/README.txt) as the
+intended place for a future Excel-to-catalog script.
+
 ## Repo layout
 
 - `flutter_app/` — Flutter client (run `flutter create .` after installing Flutter — see `flutter_app/README.md`)

@@ -55,6 +55,7 @@ def _supplier_id(h, bid, *, name: str = "TP Test Supplier") -> str:
 def _catalog_item_id(h, bid, *, name: str = "Test rice") -> str:
     """Create a minimal catalog item. Phase 6 requires every purchase line to
     link to one, so tests need to create it up-front."""
+    sid = _supplier_id(h, bid, name=f"Def {uuid.uuid4().hex[:6]}")
     cat = client.post(
         f"/v1/businesses/{bid}/item-categories",
         headers=h,
@@ -76,6 +77,7 @@ def _catalog_item_id(h, bid, *, name: str = "Test rice") -> str:
             "type_id": tid,
             "name": name,
             "default_unit": "kg",
+            "default_supplier_ids": [sid],
         },
     )
     assert item.status_code == 201, item.text
@@ -194,20 +196,6 @@ def test_purchase_response_includes_supplier_profile_and_line_hsn():
     )
     assert types.status_code == 200, types.text
     tid = types.json()[0]["id"]
-    item = client.post(
-        f"/v1/businesses/{bid}/catalog-items",
-        headers=h,
-        json={
-            "category_id": cid,
-            "name": "Test rice",
-            "type_id": tid,
-            "default_unit": "kg",
-            "hsn_code": "10063090",
-        },
-    )
-    assert item.status_code == 201, item.text
-    iid = item.json()["id"]
-
     sup = client.post(
         f"/v1/businesses/{bid}/suppliers",
         headers=h,
@@ -220,6 +208,20 @@ def test_purchase_response_includes_supplier_profile_and_line_hsn():
     )
     assert sup.status_code == 201, sup.text
     sid = sup.json()["id"]
+    item = client.post(
+        f"/v1/businesses/{bid}/catalog-items",
+        headers=h,
+        json={
+            "category_id": cid,
+            "name": "Test rice",
+            "type_id": tid,
+            "default_unit": "kg",
+            "hsn_code": "10063090",
+            "default_supplier_ids": [sid],
+        },
+    )
+    assert item.status_code == 201, item.text
+    iid = item.json()["id"]
 
     body = {
         "purchase_date": date.today().isoformat(),

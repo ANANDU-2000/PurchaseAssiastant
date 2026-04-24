@@ -29,14 +29,27 @@ def _setup_cat_and_item():
     )
     assert r.status_code == 201, r.text
     cid = r.json()["id"]
+    sup = client.post(
+        f"/v1/businesses/{bid}/suppliers",
+        headers=h,
+        json={"name": "CI sup", "phone": "9000000000", "gst_number": "22AAAAA0000A1Z5"},
+    )
+    assert sup.status_code == 201, sup.text
+    sid = sup.json()["id"]
     r = client.post(
         f"/v1/businesses/{bid}/catalog-items",
-        json={"category_id": cid, "name": "Basmati", "default_unit": "kg", "hsn_code": "10063090"},
+        json={
+            "category_id": cid,
+            "name": "Basmati",
+            "default_unit": "kg",
+            "hsn_code": "10063090",
+            "default_supplier_ids": [sid],
+        },
         headers=h,
     )
     assert r.status_code == 201, r.text
     iid = r.json()["id"]
-    return h, bid, cid, iid
+    return h, bid, cid, iid, sid
 
 
 def _preview_confirm_with_catalog(h, bid, item_id: str, day: str, landing: float, selling: float):
@@ -71,7 +84,7 @@ def _preview_confirm_with_catalog(h, bid, item_id: str, day: str, landing: float
 
 
 def test_catalog_item_insights_and_lines_and_category_insights():
-    h, bid, cid, iid = _setup_cat_and_item()
+    h, bid, cid, iid, _sid = _setup_cat_and_item()
     d1 = "2026-03-01"
     d2 = "2026-03-15"
     _preview_confirm_with_catalog(h, bid, iid, d1, 100.0, 120.0)
@@ -111,12 +124,18 @@ def test_catalog_item_insights_and_lines_and_category_insights():
 
 
 def test_duplicate_item_returns_existing_id():
-    h, bid, _, iid = _setup_cat_and_item()
+    h, bid, _, iid, sid = _setup_cat_and_item()
     r = client.get(f"/v1/businesses/{bid}/catalog-items", headers=h)
     cat_id = r.json()[0]["category_id"]
     r2 = client.post(
         f"/v1/businesses/{bid}/catalog-items",
-        json={"category_id": cat_id, "name": "Basmati", "default_unit": "kg", "hsn_code": "10063090"},
+        json={
+            "category_id": cat_id,
+            "name": "Basmati",
+            "default_unit": "kg",
+            "hsn_code": "10063090",
+            "default_supplier_ids": [sid],
+        },
         headers=h,
     )
     assert r2.status_code == 409, r2.text
@@ -155,19 +174,6 @@ def test_catalog_item_trade_supplier_prices_from_trade_purchases():
     )
     assert types.status_code == 200, types.text
     tid = types.json()[0]["id"]
-    item = client.post(
-        f"/v1/businesses/{bid}/catalog-items",
-        headers=h,
-        json={
-            "category_id": cid,
-            "name": "PriceTest Rice",
-            "type_id": tid,
-            "default_unit": "kg",
-            "hsn_code": "10063090",
-        },
-    )
-    assert item.status_code == 201, item.text
-    iid = item.json()["id"]
     s1 = client.post(
         f"/v1/businesses/{bid}/suppliers",
         headers=h,
@@ -182,6 +188,20 @@ def test_catalog_item_trade_supplier_prices_from_trade_purchases():
     )
     assert s2.status_code == 201, s2.text
     sid2 = s2.json()["id"]
+    item = client.post(
+        f"/v1/businesses/{bid}/catalog-items",
+        headers=h,
+        json={
+            "category_id": cid,
+            "name": "PriceTest Rice",
+            "type_id": tid,
+            "default_unit": "kg",
+            "hsn_code": "10063090",
+            "default_supplier_ids": [sid1],
+        },
+    )
+    assert item.status_code == 201, item.text
+    iid = item.json()["id"]
     d1 = date.today() - timedelta(days=2)
     d2 = date.today() - timedelta(days=1)
     b1 = {

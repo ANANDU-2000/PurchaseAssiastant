@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/providers/business_profile_provider.dart';
@@ -469,6 +470,14 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
               tooltip: 'More',
               itemBuilder: (ctx) => [
                 const PopupMenuItem(
+                  value: 'select',
+                  child: ListTile(
+                    leading: Icon(Icons.checklist_rtl_rounded),
+                    title: Text('Select purchases'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+                const PopupMenuItem(
                   value: 'scan',
                   child: ListTile(
                     leading: Icon(Icons.document_scanner_outlined),
@@ -478,7 +487,11 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                 ),
               ],
               onSelected: (v) {
-                if (v == 'scan') context.push('/purchase/scan');
+                if (v == 'select') {
+                  setState(() => _selectMode = true);
+                } else if (v == 'scan') {
+                  context.push('/purchase/scan');
+                }
               },
             ),
             Padding(
@@ -728,10 +741,11 @@ class _PurchaseRow extends StatelessWidget {
                       supp,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
-                          color: Color(0xFF0F172A)),
+                      style: HexaDsType.purchaseQtyUnit.copyWith(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: const Color(0xFF0F172A),
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -785,10 +799,8 @@ class _PurchaseRow extends StatelessWidget {
                 children: [
                   Text(
                     _inr(p.totalAmount.round()),
-                    style: const TextStyle(
+                    style: HexaDsType.purchaseLineMoney.copyWith(
                       fontSize: 20,
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFF0F172A),
                       letterSpacing: -0.3,
                     ),
                   ),
@@ -799,10 +811,10 @@ class _PurchaseRow extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       'Rem ${_inr(p.remaining.round())}',
-                      style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: HexaColors.neutral),
+                      style: HexaDsType.purchaseQtyUnit.copyWith(
+                        fontSize: 10,
+                        color: HexaColors.neutral,
+                      ),
                     ),
                   ],
                   if (st != PurchaseStatus.paid &&

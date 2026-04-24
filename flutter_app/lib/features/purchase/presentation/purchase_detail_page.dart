@@ -262,15 +262,23 @@ class _DetailBodyState extends ConsumerState<_DetailBody> {
             try {
               await downloadPurchasePdf(p, biz);
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      kIsWeb
-                          ? 'Use the browser print/save dialog to download PDF'
-                          : 'Use “Save as PDF” or share from the dialog to save the file',
+                if (kIsWeb) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Use the browser print/save dialog to download PDF',
+                      ),
                     ),
-                  ),
-                );
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Use “Save as PDF” or share from the dialog to save the file',
+                      ),
+                    ),
+                  );
+                }
               }
             } catch (e) {
               if (context.mounted) {

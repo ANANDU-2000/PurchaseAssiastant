@@ -23,7 +23,7 @@ final contactsSuppliersEnrichedProvider =
   final list = await api.listSuppliers(businessId: session.primaryBusiness.id);
   List<Map<String, dynamic>> metrics = [];
   try {
-    metrics = await api.analyticsSuppliers(
+    metrics = await api.tradeReportSuppliers(
         businessId: session.primaryBusiness.id, from: r.from, to: r.to);
   } catch (_) {}
   final byId = <String, Map<String, dynamic>>{};
@@ -66,8 +66,12 @@ final contactsCategoriesProvider =
   if (session == null) return [];
   final api = ref.read(hexaApiProvider);
   final r = contactsDefaultRange();
-  return api.analyticsCategories(
-      businessId: session.primaryBusiness.id, from: r.from, to: r.to);
+  try {
+    return await api.tradeReportCategories(
+        businessId: session.primaryBusiness.id, from: r.from, to: r.to);
+  } catch (_) {
+    return [];
+  }
 });
 
 final contactsItemsProvider =

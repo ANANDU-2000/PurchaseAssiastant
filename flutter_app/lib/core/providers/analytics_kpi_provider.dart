@@ -36,15 +36,15 @@ final analyticsKpiProvider =
   }
   final api = ref.read(hexaApiProvider);
   final fmt = DateFormat('yyyy-MM-dd');
-  final m = await api.analyticsSummary(
+  final m = await api.tradePurchaseSummary(
     businessId: session.primaryBusiness.id,
     from: fmt.format(range.from),
     to: fmt.format(range.to),
   );
   return AnalyticsKpi(
     totalPurchase: (m['total_purchase'] as num?)?.toDouble() ?? 0,
-    totalQtyBase: (m['total_qty_base'] as num?)?.toDouble() ?? 0,
-    totalProfit: (m['total_profit'] as num?)?.toDouble() ?? 0,
-    purchaseCount: (m['purchase_count'] as num?)?.toInt() ?? 0,
+    totalQtyBase: (m['total_qty'] as num?)?.toDouble() ?? 0,
+    totalProfit: 0,
+    purchaseCount: (m['deals'] as num?)?.toInt() ?? 0,
   );
 });

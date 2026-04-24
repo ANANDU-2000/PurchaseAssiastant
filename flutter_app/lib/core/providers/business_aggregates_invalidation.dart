@@ -18,6 +18,7 @@ void invalidateAnalyticsData(dynamic ref) {
   ref.invalidate(analyticsDailyProfitProvider);
   ref.invalidate(analyticsItemsTableProvider);
   ref.invalidate(analyticsCategoriesTableProvider);
+  ref.invalidate(analyticsTypesTableProvider);
   ref.invalidate(analyticsSuppliersTableProvider);
   ref.invalidate(analyticsBrokersTableProvider);
   ref.invalidate(analyticsBestSupplierInsightProvider);

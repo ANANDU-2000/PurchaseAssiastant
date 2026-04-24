@@ -42,8 +42,9 @@ class ShellScreen extends ConsumerWidget {
         ? 0.0
         : 64.0 + MediaQuery.viewPaddingOf(context).bottom;
 
+    // Stable key: tab switches must NOT rebuild the entire shell (would drop branch state).
     return Scaffold(
-      key: ValueKey<String>('shell_${routePath}_$idx'),
+      key: const ValueKey<String>('main_shell'),
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

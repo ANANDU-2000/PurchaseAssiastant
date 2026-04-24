@@ -54,7 +54,6 @@ class _SupplierCard extends StatelessWidget {
   const _SupplierCard({
     required this.data,
     required this.metrics,
-    required this.isOwner,
     required this.onOpen,
     required this.onDial,
     required this.onWhatsApp,
@@ -65,7 +64,6 @@ class _SupplierCard extends StatelessWidget {
 
   final Map<String, dynamic> data;
   final Map<String, dynamic>? metrics;
-  final bool isOwner;
   final String highlightQuery;
   final VoidCallback onOpen;
   final void Function(String? phone) onDial;
@@ -226,9 +224,8 @@ class _SupplierCard extends StatelessWidget {
                       const PopupMenuItem(
                           value: 'detail', child: Text('View detail')),
                       const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                      if (isOwner)
-                        const PopupMenuItem(
-                            value: 'delete', child: Text('Delete')),
+                      const PopupMenuItem(
+                          value: 'delete', child: Text('Delete')),
                     ],
                   ),
                 ],
@@ -245,7 +242,6 @@ class _BrokerCard extends StatelessWidget {
   const _BrokerCard({
     required this.data,
     required this.metrics,
-    required this.isOwner,
     required this.onOpen,
     required this.onEdit,
     required this.onDelete,
@@ -254,7 +250,6 @@ class _BrokerCard extends StatelessWidget {
 
   final Map<String, dynamic> data;
   final Map<String, dynamic>? metrics;
-  final bool isOwner;
   final String highlightQuery;
   final VoidCallback onOpen;
   final VoidCallback onEdit;
@@ -342,9 +337,8 @@ class _BrokerCard extends StatelessWidget {
                       const PopupMenuItem(
                           value: 'detail', child: Text('View detail')),
                       const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                      if (isOwner)
-                        const PopupMenuItem(
-                            value: 'delete', child: Text('Delete')),
+                      const PopupMenuItem(
+                          value: 'delete', child: Text('Delete')),
                     ],
                   ),
                 ],
@@ -728,7 +722,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
     );
   }
 
-  Widget _searchResultsForTab(int tabIndex, {required bool isOwner}) {
+  Widget _searchResultsForTab(int tabIndex) {
     final d = _searchSnapshot ?? {};
     final tt = Theme.of(context).textTheme;
     switch (tabIndex) {
@@ -752,7 +746,6 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
             return _SupplierCard(
               data: m,
               metrics: null,
-              isOwner: isOwner,
               highlightQuery: _searchQuery,
               onOpen: id == null ? () {} : () => context.push('/supplier/$id'),
               onDial: _dial,
@@ -782,7 +775,6 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
             return _BrokerCard(
               data: b,
               metrics: null,
-              isOwner: isOwner,
               highlightQuery: _searchQuery,
               onOpen: id == null ? () {} : () => context.push('/broker/$id'),
               onEdit: () => _editBroker(b),
@@ -911,7 +903,6 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-    final isOwner = ref.watch(sessionProvider)?.primaryBusiness.role == 'owner';
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 72,
@@ -1010,10 +1001,10 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                     : TabBarView(
                         controller: _tabController,
                         children: [
-                          _searchResultsForTab(0, isOwner: isOwner),
-                          _searchResultsForTab(1, isOwner: isOwner),
-                          _searchResultsForTab(2, isOwner: isOwner),
-                          _searchResultsForTab(3, isOwner: isOwner),
+                          _searchResultsForTab(0),
+                          _searchResultsForTab(1),
+                          _searchResultsForTab(2),
+                          _searchResultsForTab(3),
                         ],
                       ))
                 : TabBarView(
@@ -1061,8 +1052,6 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(contactsSuppliersEnrichedProvider);
-    final session = ref.watch(sessionProvider);
-    final isOwner = session?.primaryBusiness.role == 'owner';
     return async.when(
       skipLoadingOnReload: true,
       skipLoadingOnRefresh: true,
@@ -1107,7 +1096,6 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
               return _SupplierCard(
                 data: Map<String, dynamic>.from(s),
                 metrics: m,
-                isOwner: isOwner,
                 onOpen: id == null
                     ? () {}
                     : () => context.push('/supplier/$id'),
@@ -1138,8 +1126,6 @@ class _BrokersTabState extends ConsumerState<_BrokersTab> {
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(contactsBrokersEnrichedProvider);
-    final session = ref.watch(sessionProvider);
-    final isOwner = session?.primaryBusiness.role == 'owner';
     return async.when(
       skipLoadingOnReload: true,
       skipLoadingOnRefresh: true,
@@ -1187,7 +1173,6 @@ class _BrokersTabState extends ConsumerState<_BrokersTab> {
               return _BrokerCard(
                 data: Map<String, dynamic>.from(b),
                 metrics: m,
-                isOwner: isOwner,
                 onOpen: id == null
                     ? () {}
                     : () => context.push('/broker/$id'),

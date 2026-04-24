@@ -127,7 +127,7 @@ class LocalNotificationsService {
       notificationDetails: details,
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       title: 'Payment may be due',
-      body: 'Review payment for $label.',
+      body: 'If settled, mark paid in History. Ref: $label',
     );
   }
 

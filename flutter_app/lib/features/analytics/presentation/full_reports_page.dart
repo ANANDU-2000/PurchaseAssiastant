@@ -10,12 +10,14 @@ import '../../../core/providers/analytics_breakdown_providers.dart';
 import '../../../core/providers/analytics_kpi_provider.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
+import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/services/reports_pdf.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/shell_quick_ref_actions.dart';
 
-enum _DatePreset { today, d7, d30, month }
+/// Aligns with [HomePeriod] on the dashboard: Today / Week / Month / Year.
+enum _DatePreset { today, week, month, year }
 
 enum _ViewType { item, supplier, category }
 
@@ -24,9 +26,9 @@ String _inr(num n) =>
 
 String _presetUiLabel(_DatePreset p) => switch (p) {
       _DatePreset.today => 'Today',
-      _DatePreset.d7 => '7 days',
-      _DatePreset.d30 => '30 days',
-      _DatePreset.month => 'This month',
+      _DatePreset.week => 'Week',
+      _DatePreset.month => 'Month',
+      _DatePreset.year => 'Year',
     };
 
 /// Full-screen reports (also used as shell Reports tab at `/reports`).
@@ -56,42 +58,125 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
     if (_exporting || _exportingPdf) return;
     setState(() => _exporting = true);
     try {
-      var rows = await ref.read(analyticsItemsTableProvider.future);
-      if (_tableQuery.trim().isNotEmpty) {
-        final q = _tableQuery.toLowerCase();
-        rows = rows
-            .where((r) => _itemLabel(r).toLowerCase().contains(q))
-            .toList();
-      }
-      rows = List<Map<String, dynamic>>.from(rows)
-        ..sort((a, b) => _itemMetric(b).compareTo(_itemMetric(a)));
-      if (rows.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Nothing to export for this view.')),
-          );
-        }
-        return;
-      }
       final range = ref.read(analyticsDateRangeProvider);
       final df = DateFormat('yyyy-MM-dd');
-      final buf = StringBuffer();
-      buf.writeln(
-        '# Purchase Assistant — Items — ${df.format(range.from)} to ${df.format(range.to)}',
-      );
-      buf.writeln('name,total_purchase_inr,total_profit_inr');
-      for (final r in rows) {
-        final name = _itemLabel(r);
-        final buy = (r['total_purchase'] as num?)?.toDouble() ?? 0;
-        final prof = (r['total_profit'] as num?)?.toDouble() ?? 0;
-        buf.writeln(
-          '${_csvCell(name)},${buy.toStringAsFixed(2)},${prof.toStringAsFixed(2)}',
-        );
+      final qf = _tableQuery.trim().toLowerCase();
+
+      switch (_viewType) {
+        case _ViewType.item:
+          var rows = await ref.read(analyticsItemsTableProvider.future);
+          if (qf.isNotEmpty) {
+            rows = rows
+                .where((r) => _itemLabel(r).toLowerCase().contains(qf))
+                .toList();
+          }
+          rows = List<Map<String, dynamic>>.from(rows)
+            ..sort((a, b) => _itemMetric(b).compareTo(_itemMetric(a)));
+          if (rows.isEmpty) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Nothing to export for this view.')),
+              );
+            }
+            return;
+          }
+          final buf = StringBuffer();
+          buf.writeln(
+            '# Purchase Assistant — Items — ${df.format(range.from)} to ${df.format(range.to)}',
+          );
+          buf.writeln('name,total_purchase_inr,total_profit_inr');
+          for (final r in rows) {
+            final name = _itemLabel(r);
+            final buy = (r['total_purchase'] as num?)?.toDouble() ?? 0;
+            final prof = (r['total_profit'] as num?)?.toDouble() ?? 0;
+            buf.writeln(
+              '${_csvCell(name)},${buy.toStringAsFixed(2)},${prof.toStringAsFixed(2)}',
+            );
+          }
+          await Share.share(
+            buf.toString(),
+            subject:
+                'Reports Items ${df.format(range.from)}–${df.format(range.to)}',
+          );
+        case _ViewType.supplier:
+          var rows = await ref.read(analyticsSuppliersTableProvider.future);
+          if (qf.isNotEmpty) {
+            rows = rows
+                .where((r) =>
+                    (r['supplier_name']?.toString() ?? '')
+                        .toLowerCase()
+                        .contains(qf))
+                .toList();
+          }
+          rows = List<Map<String, dynamic>>.from(rows)
+            ..sort((a, b) => ((b['total_purchase'] as num?) ?? 0)
+                .compareTo((a['total_purchase'] as num?) ?? 0));
+          if (rows.isEmpty) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Nothing to export for this view.')),
+              );
+            }
+            return;
+          }
+          final buf = StringBuffer();
+          buf.writeln(
+            '# Purchase Assistant — Suppliers — ${df.format(range.from)} to ${df.format(range.to)}',
+          );
+          buf.writeln('supplier_name,purchase_count,total_purchase_inr');
+          for (final r in rows) {
+            final name = r['supplier_name']?.toString() ?? '—';
+            final deals = (r['purchase_count'] as num?)?.toInt() ?? 0;
+            final buy = (r['total_purchase'] as num?)?.toDouble() ?? 0;
+            buf.writeln(
+              '${_csvCell(name)},$deals,${buy.toStringAsFixed(2)}',
+            );
+          }
+          await Share.share(
+            buf.toString(),
+            subject:
+                'Reports Suppliers ${df.format(range.from)}–${df.format(range.to)}',
+          );
+        case _ViewType.category:
+          var rows = await ref.read(analyticsCategoriesTableProvider.future);
+          if (qf.isNotEmpty) {
+            rows = rows
+                .where((r) =>
+                    (r['category_name']?.toString() ?? '')
+                        .toLowerCase()
+                        .contains(qf))
+                .toList();
+          }
+          rows = List<Map<String, dynamic>>.from(rows)
+            ..sort((a, b) => ((b['total_purchase'] as num?) ?? 0)
+                .compareTo((a['total_purchase'] as num?) ?? 0));
+          if (rows.isEmpty) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Nothing to export for this view.')),
+              );
+            }
+            return;
+          }
+          final buf = StringBuffer();
+          buf.writeln(
+            '# Purchase Assistant — Categories — ${df.format(range.from)} to ${df.format(range.to)}',
+          );
+          buf.writeln('category_name,total_qty,total_purchase_inr');
+          for (final r in rows) {
+            final name = r['category_name']?.toString() ?? '—';
+            final qty = (r['total_qty'] as num?)?.toDouble() ?? 0;
+            final buy = (r['total_purchase'] as num?)?.toDouble() ?? 0;
+            buf.writeln(
+              '${_csvCell(name)},${qty.toStringAsFixed(2)},${buy.toStringAsFixed(2)}',
+            );
+          }
+          await Share.share(
+            buf.toString(),
+            subject:
+                'Reports Categories ${df.format(range.from)}–${df.format(range.to)}',
+          );
       }
-      await Share.share(
-        buf.toString(),
-        subject: 'Reports Items ${df.format(range.from)}–${df.format(range.to)}',
-      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -154,22 +239,20 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
 
   void _applyPreset(_DatePreset p) {
     final n = DateTime.now();
+    final today = DateTime(n.year, n.month, n.day);
     ref.read(analyticsDateRangeProvider.notifier).state = switch (p) {
-      _DatePreset.today => (
-          from: DateTime(n.year, n.month, n.day),
-          to: DateTime(n.year, n.month, n.day),
-        ),
-      _DatePreset.d7 => (
-          from: n.subtract(const Duration(days: 6)),
-          to: DateTime(n.year, n.month, n.day),
-        ),
-      _DatePreset.d30 => (
-          from: n.subtract(const Duration(days: 29)),
-          to: DateTime(n.year, n.month, n.day),
+      _DatePreset.today => (from: today, to: today),
+      _DatePreset.week => (
+          from: today.subtract(const Duration(days: 6)),
+          to: today,
         ),
       _DatePreset.month => (
           from: DateTime(n.year, n.month, 1),
-          to: DateTime(n.year, n.month, n.day),
+          to: today,
+        ),
+      _DatePreset.year => (
+          from: DateTime(n.year, 1, 1),
+          to: today,
         ),
     };
     setState(() => _preset = p);
@@ -184,8 +267,8 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
       r['item_name']?.toString() ?? '—';
 
   num _itemMetric(Map<String, dynamic> r) =>
-      (r['total_profit'] as num?) ??
       (r['total_purchase'] as num?) ??
+      (r['total_profit'] as num?) ??
       0;
 
   @override
@@ -389,15 +472,16 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
     if (rows.isEmpty) return _noItemsRowsCard(context);
     return _reportTable(
       context,
-      header: const ['Category', 'Items', 'Total ₹'],
+      header: const ['Category', 'Total qty', 'Total ₹'],
       flexes: const [3, 1, 2],
       rows: rows.map((r) {
         final name = r['category_name']?.toString() ?? '—';
-        final items = (r['item_count'] as num?)?.toInt() ??
-            (r['line_count'] as num?)?.toInt() ??
-            0;
+        final qty = (r['total_qty'] as num?)?.toDouble() ?? 0;
         final total = (r['total_purchase'] as num?)?.toDouble() ?? 0;
-        return [name, '$items', _inr(total.round())];
+        final qtyStr = qty == qty.roundToDouble()
+            ? qty.toInt().toString()
+            : qty.toStringAsFixed(1);
+        return [name, qtyStr, _inr(total.round())];
       }).toList(),
     );
   }
@@ -410,20 +494,37 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
   }) {
     final tt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
-    Widget cell(String v,
-            {bool bold = false,
-            bool rightAlign = false,
-            Color? color}) =>
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
-          child: Text(
-            v,
-            textAlign: rightAlign ? TextAlign.end : TextAlign.start,
-            style: tt.bodySmall?.copyWith(
-                fontWeight: bold ? FontWeight.w800 : FontWeight.w400,
-                color: color),
-          ),
+    Widget cell(
+      String v, {
+      required bool isHeader,
+      bool rightAlign = false,
+      bool isLastCol = false,
+      bool isFirstCol = false,
+    }) {
+      final TextStyle? style;
+      if (isHeader) {
+        style = HexaDsType.label(12, color: cs.onSurface).copyWith(
+          fontWeight: FontWeight.w800,
         );
+      } else if (isLastCol) {
+        style = HexaDsType.reportTableMoney;
+      } else if (isFirstCol) {
+        style = HexaDsType.reportTableRowPrimary;
+      } else {
+        style = tt.bodySmall?.copyWith(
+          fontWeight: FontWeight.w500,
+          color: cs.onSurface,
+        );
+      }
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
+        child: Text(
+          v,
+          textAlign: rightAlign ? TextAlign.end : TextAlign.start,
+          style: style,
+        ),
+      );
+    }
     return Card(
       margin: EdgeInsets.zero,
       child: Column(
@@ -440,9 +541,11 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                 for (var i = 0; i < header.length; i++)
                   Expanded(
                     flex: flexes[i],
-                    child: cell(header[i],
-                        bold: true,
-                        rightAlign: i == header.length - 1),
+                    child: cell(
+                      header[i],
+                      isHeader: true,
+                      rightAlign: i == header.length - 1,
+                    ),
                   ),
               ],
             ),
@@ -461,11 +564,10 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                       flex: flexes[i],
                       child: cell(
                         rows[ri][i],
+                        isHeader: false,
                         rightAlign: i == rows[ri].length - 1,
-                        bold: i == rows[ri].length - 1,
-                        color: i == rows[ri].length - 1
-                            ? HexaColors.brandPrimary
-                            : null,
+                        isLastCol: i == rows[ri].length - 1,
+                        isFirstCol: i == 0,
                       ),
                     ),
                 ],
@@ -496,6 +598,12 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                 selected: _preset == p,
                 onSelected: (_) => _applyPreset(p),
                 visualDensity: VisualDensity.compact,
+                selectedColor: const Color(0xFF0D9488),
+                checkmarkColor: Colors.white,
+                labelStyle: TextStyle(
+                  fontWeight: _preset == p ? FontWeight.w700 : FontWeight.w500,
+                  color: _preset == p ? Colors.white : const Color(0xFF475569),
+                ),
               ),
           ],
         ),
@@ -516,6 +624,12 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                   _tableQuery = '';
                 }),
                 visualDensity: VisualDensity.compact,
+                selectedColor: const Color(0xFF0D9488),
+                checkmarkColor: Colors.white,
+                labelStyle: TextStyle(
+                  fontWeight: _viewType == v ? FontWeight.w700 : FontWeight.w500,
+                  color: _viewType == v ? Colors.white : const Color(0xFF475569),
+                ),
               ),
           ],
         ),
@@ -541,32 +655,29 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
 
 
   Widget _noPurchasesInRangeCard(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(24),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const Icon(Icons.receipt_long_outlined,
+                size: 48, color: Color(0xFFCBD5E1)),
+            const SizedBox(height: 8),
             Text(
-              'Nothing to report yet',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    color: HexaColors.brandPrimary,
+              'No purchases in this period',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF64748B),
                   ),
             ),
-            const SizedBox(height: 6),
-            Text(
-              'This date range has no purchases. Insights, charts, and trends '
-              'appear after you record buys.',
-              style: TextStyle(
-                fontSize: 13,
-                height: 1.35,
-                color: cs.onSurfaceVariant,
-              ),
+            const SizedBox(height: 4),
+            const Text(
+              'Try selecting a different date range above',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             Wrap(
               spacing: 10,
               runSpacing: 10,

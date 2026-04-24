@@ -7,6 +7,10 @@ import '../../core/search/catalog_fuzzy.dart';
 import '../../core/search/search_highlight.dart';
 import '../../core/theme/hexa_design_tokens.dart';
 
+const int kSearchPickerMaxRows = 25;
+const double _kSearchPickerRowApproxH = 56.0;
+const double _kSearchPickerHeaderBlockH = 168.0;
+
 /// Single-select list with fuzzy search — tap row to `Navigator.pop(context, value)`.
 ///
 /// [pinnedRows] show first when the query is empty (e.g. recent suppliers).
@@ -102,6 +106,15 @@ class _SearchPickerBodyState<T> extends State<_SearchPickerBody<T>> {
     super.dispose();
   }
 
+  double _bestFuzzyOnRow(String query, SearchPickerRow<T> r) {
+    final title = catalogFuzzyScore(query, r.title);
+    if (r.subtitle == null || r.subtitle!.isEmpty) return title;
+    final sub = catalogFuzzyScore(query, r.subtitle!);
+    return math.max(title, sub);
+  }
+
+  /// Substring on title/subtitle (not full haystack) so short queries are not
+  /// lost when the subtitle (e.g. address/phone) dilutes full-string fuzzy.
   List<SearchPickerRow<T>> _rowsForQuery() {
     final q = _debouncedQuery.trim();
     final pinned = widget.pinnedRows ?? <SearchPickerRow<T>>[];
@@ -114,14 +127,31 @@ class _SearchPickerBodyState<T> extends State<_SearchPickerBody<T>> {
       final tail = widget.rows.where((r) => !seen.contains(r.value)).toList();
       return <SearchPickerRow<T>>[...pinned, ...tail];
     }
-    final minFuzzy = q.length <= 1 ? 10.0 : 18.0;
-    return catalogFuzzyRank(
-      q,
-      widget.rows,
-      (r) => r.haystack,
-      minScore: minFuzzy,
-      limit: 400,
-    );
+    final qLower = q.toLowerCase();
+    final minFuzzy = q.length <= 1
+        ? 4.0
+        : (q.length <= 2
+            ? 8.0
+            : (q.length <= 3 ? 14.0 : 16.0));
+    final scored = <({SearchPickerRow<T> row, double score})>[];
+    for (final r in widget.rows) {
+      final t = r.title.toLowerCase();
+      final s = (r.subtitle ?? '').toLowerCase();
+      double score;
+      if (t.contains(qLower) || s.contains(qLower)) {
+        score = 100.0;
+        if (t.startsWith(qLower)) score += 2.0;
+      } else {
+        score = _bestFuzzyOnRow(q, r);
+      }
+      if (score >= minFuzzy) scored.add((row: r, score: score));
+    }
+    scored.sort((a, b) {
+      final c = b.score.compareTo(a.score);
+      if (c != 0) return c;
+      return a.row.title.toLowerCase().compareTo(b.row.title.toLowerCase());
+    });
+    return scored.map((e) => e.row).take(kSearchPickerMaxRows).toList();
   }
 
   List<Widget> _buildListTiles(BuildContext context, List<SearchPickerRow<T>> rows) {
@@ -233,18 +263,27 @@ class _SearchPickerBodyState<T> extends State<_SearchPickerBody<T>> {
   @override
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
-    final h = mq.size.height * widget.initialChildFraction;
     final q = _debouncedQuery.trim();
     final rowsToShow = _rowsForQuery();
-    final listMaxH = math
-        .min(HexaDesignTokens.suggestionsMaxHeight, h - 168)
-        .clamp(120.0, HexaDesignTokens.suggestionsMaxHeight);
+    final maxByFraction = mq.size.height * widget.initialChildFraction;
+    final listContentH = rowsToShow.isEmpty
+        ? 120.0
+        : math.min(
+            HexaDesignTokens.suggestionsMaxHeight.toDouble(),
+            rowsToShow.length * _kSearchPickerRowApproxH + 20,
+          )
+            .clamp(100.0, HexaDesignTokens.suggestionsMaxHeight.toDouble());
+    final naturalSheetH = _kSearchPickerHeaderBlockH + listContentH;
+    final sheetH =
+        math.min(maxByFraction, naturalSheetH).clamp(200.0, mq.size.height * 0.95);
+    final listViewportH = (sheetH - _kSearchPickerHeaderBlockH)
+        .clamp(80.0, HexaDesignTokens.suggestionsMaxHeight.toDouble());
 
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.only(bottom: mq.viewInsets.bottom + 16),
         child: SizedBox(
-          height: h,
+          height: sheetH,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -272,31 +311,25 @@ class _SearchPickerBodyState<T> extends State<_SearchPickerBody<T>> {
                 ),
               ),
               const SizedBox(height: 8),
-              if (widget.footerBuilder != null)
-                ...widget.footerBuilder!(context),
-              Expanded(
-                child: Align(
-                  alignment: Alignment.topCenter,
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxHeight: listMaxH),
-                    child: rowsToShow.isEmpty
-                        ? Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(24),
-                              child: Text(
-                                q.isEmpty ? 'Nothing to show.' : 'No matches for “$q”.',
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                          )
-                        : ListView(
-                            shrinkWrap: true,
-                            physics: const ClampingScrollPhysics(),
-                            padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
-                            children: _buildListTiles(context, rowsToShow),
+              if (widget.footerBuilder != null) ...widget.footerBuilder!(context),
+              SizedBox(
+                height: listViewportH,
+                child: rowsToShow.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            q.isEmpty ? 'Nothing to show.' : 'No matches for “$q”.',
+                            textAlign: TextAlign.center,
                           ),
-                  ),
-                ),
+                        ),
+                      )
+                    : ListView(
+                        primary: true,
+                        physics: const ClampingScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+                        children: _buildListTiles(context, rowsToShow),
+                      ),
               ),
             ],
           ),
