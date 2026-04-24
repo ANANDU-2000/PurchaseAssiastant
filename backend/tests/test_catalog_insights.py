@@ -234,3 +234,18 @@ def test_catalog_item_trade_supplier_prices_from_trade_purchases():
     assert data["last_five_landing_prices"][0] == 80.0
     assert data["last_five_landing_prices"][1] == 100.0
     assert abs(data["avg_landing_from_trade"] - 90.0) < 0.01
+
+    q_lines = (
+        f"from={(date.today() - timedelta(days=7)).isoformat()}"
+        f"&to={date.today().isoformat()}&limit=20&offset=0"
+    )
+    lr = client.get(
+        f"/v1/businesses/{bid}/catalog-items/{iid}/lines?{q_lines}",
+        headers=h,
+    )
+    assert lr.status_code == 200, lr.text
+    lines = lr.json()
+    assert len(lines) >= 2
+    names = {row["supplier_name"] for row in lines if row.get("supplier_name")}
+    assert "Sup A" in names and "Sup B" in names
+    assert any(row.get("purchase_human_id") for row in lines)

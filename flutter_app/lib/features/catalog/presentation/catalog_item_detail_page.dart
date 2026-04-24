@@ -204,18 +204,14 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
       if (prev != null && next > prev) {
         ref.invalidate(catalogItemDetailProvider(widget.itemId));
         ref.invalidate(catalogItemTradeSupplierPricesProvider(widget.itemId));
+        ref.invalidate(tradePurchasesCatalogIntelProvider);
       }
     });
 
     final itemAsync = ref.watch(catalogItemDetailProvider(widget.itemId));
-    final tradeAsync =
-        ref.watch(catalogItemTradeSupplierPricesProvider(widget.itemId));
     final catsAsync = ref.watch(itemCategoriesListProvider);
-    final insightsRange = catalogInsightsDefaultRange();
-    final linesAsync = ref.watch(
-      catalogItemLinesProvider(
-          '${widget.itemId}|${insightsRange.from}|${insightsRange.to}'),
-    );
+    final purchasesAsync =
+        ref.watch(tradePurchasesCatalogIntelParsedProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -278,9 +274,12 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                 InkWell(
                   onTap: catName == null || catName.isEmpty
                       ? null
-                      : () => context.push(
-                            '/contacts/category?name=${Uri.encodeComponent(catName)}',
-                          ),
+                      : () {
+                          final c = catName!;
+                          context.push(
+                            '/contacts/category?name=${Uri.encodeComponent(c)}',
+                          );
+                        },
                   child: Text(
                     [
                       if (catName != null && catName.isNotEmpty) catName,
@@ -369,6 +368,43 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                                             size: 18),
                                         label: Text(last.supplierPhone!),
                                       ),
+                                    if (last.brokerName != null &&
+                                        last.brokerName!.trim().isNotEmpty) ...[
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Broker: ${last.brokerName}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      if (last.brokerPhone != null &&
+                                          last.brokerPhone!.trim().isNotEmpty)
+                                        TextButton.icon(
+                                          style: TextButton.styleFrom(
+                                            padding: EdgeInsets.zero,
+                                            visualDensity: VisualDensity.compact,
+                                            alignment: Alignment.centerLeft,
+                                          ),
+                                          onPressed: () async {
+                                            final raw =
+                                                last.brokerPhone!.trim();
+                                            final cleaned = raw.replaceAll(
+                                                RegExp(r'[^\d+]'), '');
+                                            final uri = Uri(
+                                              scheme: 'tel',
+                                              path: cleaned,
+                                            );
+                                            if (await canLaunchUrl(uri)) {
+                                              await launchUrl(uri);
+                                            }
+                                          },
+                                          icon: const Icon(
+                                              Icons.call_rounded,
+                                              size: 18),
+                                          label: Text(last.brokerPhone!),
+                                        ),
+                                    ],
                                   ],
                                 ),
                               ),
@@ -494,8 +530,8 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                                     ),
                                   ),
                                   if (supplierIntelIsBest(s, intel))
-                                    Padding(
-                                      padding: const EdgeInsets.only(left: 6),
+                                    const Padding(
+                                      padding: EdgeInsets.only(left: 6),
                                       child: Text(
                                         'Best price',
                                         style: TextStyle(

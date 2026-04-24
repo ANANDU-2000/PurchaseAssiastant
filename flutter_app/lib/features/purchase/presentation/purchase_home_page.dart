@@ -675,6 +675,7 @@ class _PurchaseRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final st = p.statusEnum;
     final supp = p.supplierName ?? p.supplierId?.toString() ?? '—';
+    final df = DateFormat('d MMM yyyy');
     final bags = _totalBagsOnPurchase(p);
     final bagsText = bags > 0
         ? '${(bags - bags.floor()).abs() < 1e-6 ? bags.toInt() : bags.toStringAsFixed(1)} bags'
@@ -705,17 +706,17 @@ class _PurchaseRow extends StatelessWidget {
               )
             ],
           ),
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SizedBox(
-                width: 28,
+                width: 24,
                 child: Text(
                   '$serial',
                   style: const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
                       color: HexaColors.neutral),
                 ),
               ),
@@ -727,39 +728,46 @@ class _PurchaseRow extends StatelessWidget {
                       supp,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                      style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF0F172A)),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     Text(
                       _purchaseItemsSummary(p),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          fontSize: 12,
+                          fontSize: 13,
                           color: HexaColors.neutral,
-                          height: 1.2,
-                          fontWeight: FontWeight.w500),
+                          height: 1.25,
+                          fontWeight: FontWeight.w600),
                     ),
-                    if (bagsText.isNotEmpty)
+                    if (bagsText.isNotEmpty) ...[
+                      const SizedBox(height: 2),
                       Text(
                         bagsText,
-                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                        style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: HexaColors.neutral),
                       ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            p.humanId,
-                            style: const TextStyle(fontSize: 10, color: HexaColors.neutral),
-                          ),
-                        ),
-                        _MiniBadge(st),
-                      ],
+                    ],
+                    const SizedBox(height: 8),
+                    Text(
+                      '${p.humanId} · ${df.format(p.purchaseDate)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: HexaColors.neutral,
+                      ),
                     ),
                     if (dueFoot != null)
                       Padding(
-                        padding: const EdgeInsets.only(top: 6),
+                        padding: const EdgeInsets.only(top: 4),
                         child: Text(
                           dueFoot,
                           style: TextStyle(
@@ -775,13 +783,28 @@ class _PurchaseRow extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(_inr(p.totalAmount.round()),
+                  Text(
+                    _inr(p.totalAmount.round()),
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF0F172A),
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  _MiniBadge(st),
+                  if (st != PurchaseStatus.paid &&
+                      p.remaining > 0.01) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      'Rem ${_inr(p.remaining.round())}',
                       style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w900,
-                          color: HexaColors.brandPrimary)),
-                  Text('Rem ${_inr(p.remaining.round())}',
-                      style: const TextStyle(fontSize: 10, color: HexaColors.neutral)),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: HexaColors.neutral),
+                    ),
+                  ],
                   if (st != PurchaseStatus.paid &&
                       st != PurchaseStatus.draft &&
                       st != PurchaseStatus.cancelled &&
@@ -794,7 +817,7 @@ class _PurchaseRow extends StatelessWidget {
                         minimumSize: Size.zero,
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
-                      child: const Text('Mark Paid', style: TextStyle(fontSize: 11)),
+                      child: const Text('Mark paid', style: TextStyle(fontSize: 11)),
                     ),
                 ],
               ),

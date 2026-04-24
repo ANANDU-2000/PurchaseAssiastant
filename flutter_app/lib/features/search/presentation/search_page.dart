@@ -236,9 +236,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                               const Icon(Icons.chevron_right_rounded),
                           onTap: id.isEmpty
                               ? null
-                              : () => context.push(
-                                    '/item-analytics/${Uri.encodeComponent(name)}',
-                                  ),
+                              : () => context.push('/catalog/item/$id'),
                         );
                       }),
                     const SizedBox(height: 24),

@@ -23,7 +23,7 @@ from app.models import (
     TradePurchase,
     TradePurchaseLine,
 )
-from app.models.contacts import Supplier
+from app.models.contacts import Broker, Supplier
 from app.models.supplier_item_default import SupplierItemDefault
 from app.models.entry import Entry
 
@@ -217,13 +217,26 @@ class CategoryInsightsOut(BaseModel):
 
 
 class CatalogItemLineRow(BaseModel):
+    """One line for a catalog item across trade purchases and legacy entries.
+
+    ``entry_id`` is unique per row: trade uses ``trade_purchase_lines.id``;
+    legacy uses ``entries.id`` (unchanged).
+    """
+
     entry_id: uuid.UUID
     entry_date: date
     qty: float
     unit: str
     landing_cost: float
-    selling_price: float | None
-    profit: float | None
+    selling_price: float | None = None
+    profit: float | None = None
+    supplier_name: str | None = None
+    supplier_phone: str | None = None
+    broker_name: str | None = None
+    broker_phone: str | None = None
+    purchase_human_id: str | None = None
+    kg_per_unit: float | None = None
+    landing_cost_per_kg: float | None = None
 
 
 class TradeSupplierPriceRow(BaseModel):
@@ -1064,8 +1077,70 @@ async def catalog_item_lines(
     )
     if ir.first() is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")
+
+    cap = min(500, max(limit + offset, 1) * 4 + 20)
+
+    trade_bf = and_(
+        TradePurchase.business_id == business_id,
+        TradePurchase.purchase_date >= from_date,
+        TradePurchase.purchase_date <= to_date,
+        TradePurchase.status.in_(("saved", "confirmed")),
+    )
+    tq = (
+        select(
+            TradePurchaseLine.id,
+            TradePurchase.purchase_date,
+            TradePurchase.human_id,
+            TradePurchaseLine.qty,
+            TradePurchaseLine.unit,
+            TradePurchaseLine.landing_cost,
+            TradePurchaseLine.selling_cost,
+            TradePurchaseLine.kg_per_unit,
+            TradePurchaseLine.landing_cost_per_kg,
+            Supplier.name,
+            Supplier.phone,
+            Broker.name,
+            Broker.phone,
+        )
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchaseLine.trade_purchase_id == TradePurchase.id)
+        .outerjoin(Supplier, Supplier.id == TradePurchase.supplier_id)
+        .outerjoin(Broker, Broker.id == TradePurchase.broker_id)
+        .where(
+            trade_bf,
+            TradePurchaseLine.catalog_item_id == item_id,
+        )
+        .order_by(desc(TradePurchase.purchase_date), desc(TradePurchaseLine.id))
+        .limit(cap)
+    )
+    tr = await db.execute(tq)
+    trade_rows: list[CatalogItemLineRow] = []
+    for row in tr.all():
+        lid, pdate, human_id, qty, unit, lc, sell, kpu, lcpk, sname, sphone, bname, bphone = row
+        sell_f = float(sell) if sell is not None else None
+        kpu_f = float(kpu) if kpu is not None else None
+        lcpk_f = float(lcpk) if lcpk is not None else None
+        trade_rows.append(
+            CatalogItemLineRow(
+                entry_id=lid,
+                entry_date=pdate,
+                qty=float(qty),
+                unit=str(unit),
+                landing_cost=float(lc),
+                selling_price=sell_f,
+                profit=None,
+                supplier_name=str(sname) if sname else None,
+                supplier_phone=str(sphone) if sphone else None,
+                broker_name=str(bname) if bname else None,
+                broker_phone=str(bphone) if bphone else None,
+                purchase_human_id=str(human_id) if human_id else None,
+                kg_per_unit=kpu_f,
+                landing_cost_per_kg=lcpk_f,
+            )
+        )
+
     bf = _entry_date_filter(business_id, from_date, to_date)
-    q = (
+    lq = (
         select(
             Entry.id,
             Entry.entry_date,
@@ -1081,13 +1156,11 @@ async def catalog_item_lines(
             bf,
             EntryLineItem.catalog_item_id == item_id,
         )
-        .order_by(Entry.entry_date.desc(), Entry.id.desc())
-        .limit(limit)
-        .offset(offset)
+        .order_by(desc(Entry.entry_date), desc(Entry.id))
+        .limit(cap)
     )
-    r = await db.execute(q)
-    rows = r.all()
-    return [
+    lr = await db.execute(lq)
+    legacy_rows: list[CatalogItemLineRow] = [
         CatalogItemLineRow(
             entry_id=row[0],
             entry_date=row[1],
@@ -1097,8 +1170,12 @@ async def catalog_item_lines(
             selling_price=float(row[5]) if row[5] is not None else None,
             profit=float(row[6]) if row[6] is not None else None,
         )
-        for row in rows
+        for row in lr.all()
     ]
+
+    merged = trade_rows + legacy_rows
+    merged.sort(key=lambda r: (r.entry_date, r.entry_id), reverse=True)
+    return merged[offset : offset + limit]
 
 
 @router.get("/item-categories/{category_id}/insights", response_model=CategoryInsightsOut)

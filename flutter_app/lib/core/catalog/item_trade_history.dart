@@ -26,6 +26,8 @@ class ItemTradeHistoryRow {
     required this.purchaseDate,
     required this.supplierName,
     this.supplierPhone,
+    this.brokerName,
+    this.brokerPhone,
     required this.line,
   });
 
@@ -34,6 +36,8 @@ class ItemTradeHistoryRow {
   final DateTime purchaseDate;
   final String supplierName;
   final String? supplierPhone;
+  final String? brokerName;
+  final String? brokerPhone;
   final TradePurchaseLine line;
 
   double get lineTotal => lineMoney(tradeLineToCalc(line));
@@ -70,6 +74,8 @@ List<ItemTradeHistoryRow> itemTradeHistoryRows(
           purchaseDate: p.purchaseDate,
           supplierName: p.supplierName ?? '—',
           supplierPhone: p.supplierPhone,
+          brokerName: p.brokerName,
+          brokerPhone: p.brokerPhone,
           line: ln,
         ),
       );
