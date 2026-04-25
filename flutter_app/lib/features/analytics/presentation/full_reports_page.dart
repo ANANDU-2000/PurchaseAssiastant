@@ -347,12 +347,14 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                   _filterBar(),
                   const SizedBox(height: 8),
                   bundle.when(
+                    skipLoadingOnReload: true,
                     loading: () => const ListSkeleton(
                       rowCount: 5,
                       rowHeight: 72,
                       padding: EdgeInsets.fromLTRB(0, 0, 0, 24),
                     ),
                     error: (_, __) => FriendlyLoadError(
+                      message: 'Unable to load cloud data',
                       onRetry: () =>
                           ref.invalidate(fullReportsTradeBundleProvider),
                     ),
@@ -601,6 +603,14 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
   }) {
     final tt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
+    final moneyStyle = HexaDsType.reportTableMoney.copyWith(
+      fontWeight: FontWeight.w900,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    bool colRight(int i, int len) {
+      if (i == len - 1) return true;
+      return header.length == 8 && i >= 5;
+    }
     Widget cell(
       String v, {
       required bool isHeader,
@@ -616,21 +626,21 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
           fontSize: 12,
           fontWeight: FontWeight.w900,
           color: const Color(0xFF166534),
+          fontFeatures: const [FontFeature.tabularFigures()],
         );
       } else if (isHeader) {
         style = HexaDsType.label(12, color: cs.onSurface).copyWith(
           fontWeight: FontWeight.w800,
         );
       } else if (isLastCol || isMoneyCol) {
-        style = HexaDsType.reportTableMoney.copyWith(
-          fontWeight: FontWeight.w900,
-        );
+        style = moneyStyle;
       } else if (isFirstCol) {
         style = HexaDsType.reportTableRowPrimary;
       } else {
         style = tt.bodySmall?.copyWith(
           fontWeight: FontWeight.w800,
           color: cs.onSurface,
+          fontFeatures: const [FontFeature.tabularFigures()],
         );
       }
       return Padding(
@@ -638,86 +648,99 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
         child: Text(
           v,
           textAlign: rightAlign ? TextAlign.end : TextAlign.start,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: style,
         ),
       );
     }
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Column(
-        children: [
-          // Header
-          Container(
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerHighest.withValues(alpha: 0.8),
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(12)),
-            ),
-            child: Row(
-              children: [
-                for (var i = 0; i < header.length; i++)
-                  Expanded(
-                    flex: flexes[i],
-                    child: cell(
-                      header[i],
-                      isHeader: true,
-                      rightAlign: i == header.length - 1,
+    return LayoutBuilder(
+      builder: (context, c) {
+        final minW = c.maxWidth < 600 ? 600.0 : c.maxWidth;
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(
+            width: minW,
+            child: Card(
+              margin: EdgeInsets.zero,
+              child: Column(
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHighest.withValues(alpha: 0.8),
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(12),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        for (var i = 0; i < header.length; i++)
+                          Expanded(
+                            flex: flexes[i],
+                            child: cell(
+                              header[i],
+                              isHeader: true,
+                              rightAlign: colRight(i, header.length),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
-              ],
+                  const Divider(height: 1),
+                  for (var ri = 0; ri < rows.length; ri++) ...[
+                    Container(
+                      color: ri.isOdd
+                          ? cs.surfaceContainerLowest.withValues(alpha: 0.4)
+                          : null,
+                      child: Row(
+                        children: [
+                          for (var i = 0; i < rows[ri].length; i++)
+                            Expanded(
+                              flex: flexes[i],
+                              child: cell(
+                                rows[ri][i],
+                                isHeader: false,
+                                rightAlign: colRight(i, rows[ri].length),
+                                isLastCol: i == rows[ri].length - 1,
+                                isFirstCol: i == 0,
+                                isMoneyCol: header.length == 8 && i >= 5,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    if (ri < rows.length - 1) const Divider(height: 1),
+                  ],
+                  if (footerRow != null &&
+                      footerRow.length == header.length) ...[
+                    const Divider(height: 1),
+                    Container(
+                      color: const Color(0xFFE8F5E9),
+                      child: Row(
+                        children: [
+                          for (var i = 0; i < footerRow.length; i++)
+                            Expanded(
+                              flex: flexes[i],
+                              child: cell(
+                                footerRow[i],
+                                isHeader: false,
+                                rightAlign: colRight(i, footerRow.length),
+                                isLastCol: i == footerRow.length - 1,
+                                isFirstCol: i == 0,
+                                isFooter: true,
+                                isMoneyCol: false,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ),
-          const Divider(height: 1),
-          // Rows
-          for (var ri = 0; ri < rows.length; ri++) ...[
-            Container(
-              color: ri.isOdd
-                  ? cs.surfaceContainerLowest.withValues(alpha: 0.4)
-                  : null,
-              child: Row(
-                children: [
-                  for (var i = 0; i < rows[ri].length; i++)
-                    Expanded(
-                      flex: flexes[i],
-                      child: cell(
-                        rows[ri][i],
-                        isHeader: false,
-                        rightAlign: i == rows[ri].length - 1,
-                        isLastCol: i == rows[ri].length - 1,
-                        isFirstCol: i == 0,
-                        isMoneyCol: header.length == 8 && i >= 5,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            if (ri < rows.length - 1) const Divider(height: 1),
-          ],
-          if (footerRow != null && footerRow.length == header.length) ...[
-            const Divider(height: 1),
-            Container(
-              color: const Color(0xFFE8F5E9),
-              child: Row(
-                children: [
-                  for (var i = 0; i < footerRow.length; i++)
-                    Expanded(
-                      flex: flexes[i],
-                      child: cell(
-                        footerRow[i],
-                        isHeader: false,
-                        rightAlign: i == footerRow.length - 1,
-                        isLastCol: i == footerRow.length - 1,
-                        isFirstCol: i == 0,
-                        isFooter: true,
-                        isMoneyCol: false,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
+        );
+      },
     );
   }
 

@@ -103,6 +103,7 @@ class ReportsTradeBundle {
 
 final fullReportsTradeBundleProvider =
     FutureProvider.autoDispose<ReportsTradeBundle>((ref) async {
+  ref.keepAlive();
   final session = ref.watch(sessionProvider);
   final range = ref.watch(analyticsDateRangeProvider);
   if (session == null) {

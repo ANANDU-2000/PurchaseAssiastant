@@ -311,6 +311,7 @@ HomeDashboardData homeDashboardDataFromApiSnapshot(
 /// the analytics date range in `lib/core/providers/analytics_kpi_provider.dart`.
 final homeDashboardDataProvider =
     FutureProvider.autoDispose<HomeDashboardData>((ref) async {
+  ref.keepAlive();
   final period = ref.watch(homePeriodProvider);
   final custom = ref.watch(homeCustomDateRangeProvider);
   final session = ref.watch(sessionProvider);

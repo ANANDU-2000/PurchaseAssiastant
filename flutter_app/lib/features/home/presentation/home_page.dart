@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -21,6 +20,7 @@ import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/shell_quick_ref_actions.dart';
 import '../../purchase/presentation/widgets/purchase_saved_sheet.dart';
 import '../../../core/providers/home_dashboard_provider.dart';
+import 'spend_ring_chart.dart';
 
 String _inr(num n) =>
     NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
@@ -31,6 +31,14 @@ String _fmtQty(double q) =>
 
 String _fmtDate(DateTime d) =>
     DateFormat.MMMd().format(d); // e.g. Apr 23
+
+String _periodCenterLabel(HomePeriod p) => switch (p) {
+      HomePeriod.today => 'Today',
+      HomePeriod.week => 'This week',
+      HomePeriod.month => 'This month',
+      HomePeriod.year => 'This year',
+      HomePeriod.custom => 'Selected range',
+    };
 
 /// Purchase + item flow only — no revenue/profit finance cards.
 class HomePage extends ConsumerStatefulWidget {
@@ -169,7 +177,7 @@ class _HomePageState extends ConsumerState<HomePage>
                     skipLoadingOnReload: true,
                     loading: () => const LinearProgressIndicator(minHeight: 3),
                     error: (_, __) => FriendlyLoadError(
-                      message: 'Could not load dashboard',
+                      message: 'Unable to load cloud data',
                       onRetry: () => unawaited(_refresh()),
                     ),
                     data: (_) => const SizedBox.shrink(),
@@ -596,13 +604,6 @@ String _kpiUnitsLine(HomeDashboardData data) {
   return parts.join(' | ');
 }
 
-/// Same as [_kpiUnitsLine] but stacked to avoid a long line in the donut center.
-String _kpiUnitsLineStacked(HomeDashboardData data) {
-  final s = _kpiUnitsLine(data);
-  if (s.isEmpty) return s;
-  return s.replaceAll(' | ', '\n');
-}
-
 class _HomeKpiCard extends StatelessWidget {
   const _HomeKpiCard({required this.data});
   final HomeDashboardData data;
@@ -610,7 +611,8 @@ class _HomeKpiCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
-    final units = _kpiUnitsLine(data);
+    final q = data.totalQtyAllLines;
+    final avg = q > 1e-9 ? data.totalPurchase / q : null;
     return Card(
       elevation: 0,
       color: Colors.white,
@@ -624,7 +626,7 @@ class _HomeKpiCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Purchases (₹)',
+              'Total spend',
               style: HexaDsType.label(12, color: const Color(0xFF64748B)),
             ),
             const SizedBox(height: 2),
@@ -632,44 +634,62 @@ class _HomeKpiCard extends StatelessWidget {
               _inr(data.totalPurchase),
               textAlign: TextAlign.left,
               style: HexaDsType.purchaseLineMoney.copyWith(
-                fontSize: 24,
-                height: 1.15,
+                fontSize: 28,
+                height: 1.12,
               ),
             ),
-            if (units.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Text(
-                units,
-                style: tt.titleSmall?.copyWith(
-                  color: const Color(0xFF0F172A),
-                  fontWeight: FontWeight.w800,
-                  height: 1.25,
-                ),
-              ),
-            ],
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 10),
               child: Divider(height: 1),
             ),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Deals: ${data.purchaseCount}',
-                  style: tt.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF0F172A),
+                Expanded(
+                  child: Text(
+                    'Deals\n${data.purchaseCount}',
+                    textAlign: TextAlign.center,
+                    style: tt.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF0F172A),
+                      height: 1.25,
+                    ),
                   ),
                 ),
-                Text(
-                  'Total line qty: ${_fmtQty(data.totalQtyAllLines)}',
-                  style: tt.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF0F172A),
+                Expanded(
+                  child: Text(
+                    'Qty\n${_fmtQty(q)}',
+                    textAlign: TextAlign.center,
+                    style: tt.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF0F172A),
+                      height: 1.25,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    avg != null ? 'Avg ₹\n${_inr(avg.round())}' : 'Avg ₹\n—',
+                    textAlign: TextAlign.center,
+                    style: tt.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF0F172A),
+                      height: 1.25,
+                    ),
                   ),
                 ),
               ],
             ),
+            if (_kpiUnitsLine(data).isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                _kpiUnitsLine(data),
+                style: tt.labelSmall?.copyWith(
+                  color: const Color(0xFF64748B),
+                  fontWeight: FontWeight.w600,
+                  height: 1.3,
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -766,15 +786,11 @@ class _DonutSection extends StatelessWidget {
   Widget _donutForCategories(
       BuildContext context, BoxConstraints constraints) {
     final slice = data.categories.where((e) => e.totalAmount > 0).toList();
-    final qSlice = slice.fold<double>(0, (a, s) => a + s.totalQty);
     return _buildDonut(
       context,
       constraints,
       slice.isEmpty,
       'No category spend in this period',
-      slice.isEmpty
-          ? 0
-          : slice.fold<double>(0, (a, b) => a + b.totalAmount),
       (i) {
         if (i < 0 || i >= slice.length) return;
         final cat = slice[i];
@@ -784,31 +800,19 @@ class _DonutSection extends StatelessWidget {
           context.go('/catalog/category/${cat.categoryId}');
         }
       },
-      List.generate(
-        slice.length,
-        (i) => PieChartSectionData(
-          value: slice[i].totalAmount,
-          color: colors[i % colors.length],
-          showTitle: false,
-        ),
-      ),
+      List.generate(slice.length, (i) => slice[i].totalAmount),
       _legendCategory(context, slice),
-      sliceLineQty: qSlice,
     );
   }
 
   Widget _donutForSubcategories(
       BuildContext context, BoxConstraints constraints) {
     final slice = data.subcategories.where((e) => e.totalAmount > 0).toList();
-    final qSlice = slice.fold<double>(0, (a, s) => a + s.totalQty);
     return _buildDonut(
       context,
       constraints,
       slice.isEmpty,
       'No subcategory spend in this period',
-      slice.isEmpty
-          ? 0
-          : slice.fold<double>(0, (a, b) => a + b.totalAmount),
       (i) {
         if (i < 0 || i >= slice.length) return;
         final s = slice[i];
@@ -819,31 +823,19 @@ class _DonutSection extends StatelessWidget {
           context.go('/catalog');
         }
       },
-      List.generate(
-        slice.length,
-        (i) => PieChartSectionData(
-          value: slice[i].totalAmount,
-          color: colors[i % colors.length],
-          showTitle: false,
-        ),
-      ),
+      List.generate(slice.length, (i) => slice[i].totalAmount),
       _legendSubcategory(context, slice),
-      sliceLineQty: qSlice,
     );
   }
 
   Widget _donutForItems(
       BuildContext context, BoxConstraints constraints) {
     final slice = data.itemSlices.where((e) => e.totalAmount > 0).toList();
-    final qSlice = slice.fold<double>(0, (a, s) => a + s.totalQty);
     return _buildDonut(
       context,
       constraints,
       slice.isEmpty,
       'No item spend in this period',
-      slice.isEmpty
-          ? 0
-          : slice.fold<double>(0, (a, b) => a + b.totalAmount),
       (i) {
         if (i < 0 || i >= slice.length) return;
         final it = slice[i];
@@ -855,16 +847,8 @@ class _DonutSection extends StatelessWidget {
           context.push('/item-analytics/$enc');
         }
       },
-      List.generate(
-        slice.length,
-        (i) => PieChartSectionData(
-          value: slice[i].totalAmount,
-          color: colors[i % colors.length],
-          showTitle: false,
-        ),
-      ),
+      List.generate(slice.length, (i) => slice[i].totalAmount),
       _legendItem(context, slice),
-      sliceLineQty: qSlice,
     );
   }
 
@@ -873,12 +857,10 @@ class _DonutSection extends StatelessWidget {
     BoxConstraints constraints,
     bool isEmpty,
     String emptyText,
-    double total,
     void Function(int) onSectionTap,
-    List<PieChartSectionData> sections,
-    Widget legend, {
-    required double sliceLineQty,
-  }) {
+    List<double> segmentAmounts,
+    Widget legend,
+  ) {
     if (isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 12),
@@ -895,111 +877,19 @@ class _DonutSection extends StatelessWidget {
       );
     }
     final maxW = constraints.maxWidth;
-    final side = (maxW * 0.36).clamp(120.0, 164.0);
-    final ring = (side * 0.26).clamp(30.0, 48.0);
-    final centerR = (ring * 0.78).clamp(30.0, 48.0);
-    final units = _kpiUnitsLineStacked(data);
-
-    final chartSections = sections
-        .map(
-          (s) => PieChartSectionData(
-            value: s.value,
-            color: s.color,
-            radius: ring,
-            showTitle: false,
-          ),
-        )
-        .toList();
-
+    final side = (maxW * 0.85).clamp(200.0, 320.0);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Center(
           child: RepaintBoundary(
-            child: SizedBox(
-              width: side,
-              height: side,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  PieChart(
-                    PieChartData(
-                      sectionsSpace: 0,
-                      centerSpaceRadius: centerR,
-                      sections: chartSections,
-                      pieTouchData: PieTouchData(
-                        enabled: true,
-                        touchCallback: (event, response) {
-                          final idx =
-                              response?.touchedSection?.touchedSectionIndex;
-                          if (idx == null) return;
-                          onSectionTap(idx);
-                        },
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(maxWidth: side * 0.9),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              'In view',
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                    color: const Color(0xFF64748B),
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 10,
-                                  ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              _inr(total),
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w900,
-                                    color: HexaColors.brandPrimary,
-                                    fontSize: 15,
-                                    height: 1.1,
-                                  ),
-                            ),
-                            if (units.isNotEmpty) ...[
-                              const SizedBox(height: 3),
-                              Text(
-                                units,
-                                textAlign: TextAlign.center,
-                                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                      color: const Color(0xFF0F172A),
-                                      fontWeight: FontWeight.w700,
-                                      height: 1.15,
-                                      fontSize: 9,
-                                    ),
-                              ),
-                            ],
-                            Text(
-                              sliceLineQty > 0
-                                  ? 'Qty ${_fmtQty(sliceLineQty)} · All ${_fmtQty(data.totalQtyAllLines)}'
-                                  : 'All lines ${_fmtQty(data.totalQtyAllLines)}',
-                              textAlign: TextAlign.center,
-                              maxLines: 2,
-                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                    color: const Color(0xFF64748B),
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 8,
-                                    height: 1.2,
-                                  ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+            child: SpendRingChart(
+              diameter: side,
+              values: segmentAmounts,
+              colors: colors,
+              centerLabel: _periodCenterLabel(data.period),
+              centerValue: _inr(data.totalPurchase),
+              onSectionTap: onSectionTap,
             ),
           ),
         ),

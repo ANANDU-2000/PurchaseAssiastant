@@ -177,10 +177,54 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
           Expanded(
             child: visible.isEmpty
                 ? Center(
-                    child: Text(
-                      filtered.isEmpty ? 'No notifications' : 'No matches',
-                      style: tt.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.notifications_none_rounded,
+                            size: 56,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant
+                                .withValues(alpha: 0.55),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            filtered.isEmpty
+                                ? 'No reminders yet'
+                                : 'No matches',
+                            textAlign: TextAlign.center,
+                            style: tt.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              color: onSurf,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            filtered.isEmpty
+                                ? 'Price alerts, due purchases, and cloud billing will show up here.'
+                                : 'Try a different search or filter.',
+                            textAlign: TextAlign.center,
+                            style: tt.bodySmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                              height: 1.35,
+                            ),
+                          ),
+                          if (filtered.isEmpty) ...[
+                            const SizedBox(height: 20),
+                            FilledButton.icon(
+                              onPressed: () => context.push('/purchase/new'),
+                              icon: const Icon(Icons.add_shopping_cart_rounded,
+                                  size: 20),
+                              label: const Text('Record a purchase'),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   )
                 : ListView.builder(

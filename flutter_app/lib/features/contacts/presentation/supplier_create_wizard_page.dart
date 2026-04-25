@@ -29,7 +29,6 @@ const _stepTitles = <String>[
   'Purchase defaults',
   'Brokers',
   'Items & categories',
-  'AI memory',
   'Review',
 ];
 
@@ -351,7 +350,7 @@ class _SupplierCreateWizardPageState
       final m = jsonDecode(raw) as Map<String, dynamic>;
       if (!mounted) return;
       setState(() {
-        _step = (m['step'] as num?)?.toInt() ?? 0;
+        _step = ((m['step'] as num?)?.toInt() ?? 0).clamp(0, 5);
         _name.text = m['name']?.toString() ?? '';
         _phone.text = m['phone']?.toString() ?? '';
         _wa.text = m['whatsapp']?.toString() ?? '';
@@ -1374,28 +1373,6 @@ class _SupplierCreateWizardPageState
     );
   }
 
-  Widget _buildStep5() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _stepHeader('AI assistant memory'),
-        SwitchListTile(
-          title: const Text('Remember this supplier behavior'),
-          subtitle: const Text(
-            'When on, we store patterns (typical items, cadence) for smarter suggestions later.',
-          ),
-          value: _aiMemory,
-          onChanged: (v) {
-            setState(() {
-              _aiMemory = v;
-              _markDirty();
-            });
-          },
-        ),
-      ],
-    );
-  }
-
   Widget _buildStep6() {
     final disc = _resolvedDiscount();
     final pay = _resolvedPaymentDays();
@@ -1481,6 +1458,7 @@ class _SupplierCreateWizardPageState
         ),
         _reviewCard(
           title: 'Business Info',
+          onEdit: () => setState(() => _step = 1),
           child: Column(
             children: [
               _kvRow('GST Number', _gst.text.trim().isEmpty ? '—' : _gst.text.trim()),
@@ -1491,6 +1469,7 @@ class _SupplierCreateWizardPageState
         ),
         _reviewCard(
           title: 'Purchase Defaults',
+          onEdit: () => setState(() => _step = 2),
           child: Column(
             children: [
               _kvRow('Payment Days', pay == null ? '—' : '$pay days'),
@@ -1538,6 +1517,7 @@ class _SupplierCreateWizardPageState
         ),
         _reviewCard(
           title: 'Items & Categories',
+          onEdit: () => setState(() => _step = 4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1582,10 +1562,6 @@ class _SupplierCreateWizardPageState
                 ),
           ),
         ),
-        _reviewCard(
-          title: 'AI Memory',
-          child: _kvRow('Remember behavior', _aiMemory ? 'On' : 'Off'),
-        ),
       ],
     );
   }
@@ -1594,6 +1570,7 @@ class _SupplierCreateWizardPageState
     required String title,
     required Widget child,
     bool initiallyExpanded = false,
+    VoidCallback? onEdit,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
@@ -1618,11 +1595,22 @@ class _SupplierCreateWizardPageState
                 color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.7),
               ),
             ),
-            title: Text(
-              title,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
+            title: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
                   ),
+                ),
+                if (onEdit != null)
+                  TextButton(
+                    onPressed: onEdit,
+                    child: const Text('Edit'),
+                  ),
+              ],
             ),
             children: [child],
           ),
@@ -1703,15 +1691,13 @@ class _SupplierCreateWizardPageState
         return _buildStep3();
       case 4:
         return _buildStep4();
-      case 5:
-        return _buildStep5();
       default:
         return _buildStep6();
     }
   }
 
   Widget _wizardBottomBar() {
-    final isSummary = _step == 6;
+    final isSummary = _step == 5;
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -1743,7 +1729,7 @@ class _SupplierCreateWizardPageState
                 child: FilledButton(
                   onPressed: () {
                     if (_step == 0 && !_validateStep0()) return;
-                    final nextStep = (_step + 1).clamp(0, 6);
+                    final nextStep = (_step + 1).clamp(0, 5);
                     setState(() {
                       _step = nextStep;
                       _dirty = true;
@@ -1796,7 +1782,7 @@ class _SupplierCreateWizardPageState
   Widget build(BuildContext context) {
     final viewInsetsBottom = MediaQuery.viewInsetsOf(context).bottom;
     final title = widget.supplierId != null ? 'Edit supplier' : 'New supplier';
-    final subtitle = '${_stepTitles[_step]} · Step ${_step + 1} of 7';
+    final subtitle = '${_stepTitles[_step]} · Step ${_step + 1} of 6';
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {

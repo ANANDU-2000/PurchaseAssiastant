@@ -9,7 +9,7 @@ class FriendlyLoadError extends StatelessWidget {
   const FriendlyLoadError({
     super.key,
     required this.onRetry,
-    this.message = 'Could not load data',
+    this.message = 'Unable to load data',
     this.subtitle = kFriendlyLoadNetworkSubtitle,
   });
 

@@ -57,6 +57,7 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
 
   bool _saving = false;
   bool _touched = false;
+  int _step = 0;
   final _categoryAnchorKey = GlobalKey();
   final _typeAnchorKey = GlobalKey();
   String? _kgErr;
@@ -129,6 +130,7 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
             ..clear()
             ..addAll((m['brokerIds'] as List).map((e) => e.toString()));
         }
+        _step = ((m['step'] as num?)?.toInt() ?? 0).clamp(0, 5);
       });
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _nameFocus.requestFocus();
@@ -159,6 +161,7 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
         'typeId': _typeId,
         'supplierIds': _supplierIds,
         'brokerIds': _brokerIds,
+        'step': _step,
       }),
     );
   }
@@ -545,6 +548,56 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
     ];
   }
 
+  bool _canAdvanceFromStep() {
+    switch (_step) {
+      case 0:
+        return _categoryId != null && _typeId != null;
+      case 1:
+        return _name.text.trim().isNotEmpty && _unit != null && _unit!.isNotEmpty;
+      case 2:
+        if (_unit == 'bag') {
+          return parseOptionalKgPerBag(_kg.text) != null;
+        }
+        if (_unit == 'box') {
+          final v = double.tryParse(_perBox.text.trim());
+          return v != null && v > 0;
+        }
+        if (_unit == 'tin' && _perTin.text.trim().isNotEmpty) {
+          final w = double.tryParse(_perTin.text.trim());
+          return w != null && w > 0;
+        }
+        return true;
+      case 3:
+        return true;
+      case 4:
+        return _supplierIds.isNotEmpty;
+      default:
+        return _isValid;
+    }
+  }
+
+  void _goNext() {
+    setState(() => _touched = true);
+    if (!_canAdvanceFromStep()) {
+      if (_step == 0) {
+        unawaited(ensureFormFieldVisible(_categoryAnchorKey));
+      } else if (_step == 1) {
+        _nameFocus.requestFocus();
+      }
+      return;
+    }
+    if (_step < 5) {
+      unawaited(_saveDraft());
+      setState(() => _step += 1);
+    }
+  }
+
+  void _goBack() {
+    if (_step > 0) {
+      setState(() => _step -= 1);
+    }
+  }
+
   Widget _brokerChips(List<Map<String, dynamic>> allRows) {
     final nameById = {
       for (final b in allRows)
@@ -640,7 +693,18 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('New item'),
+          title: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('New item'),
+              Text(
+                'Step ${_step + 1} of 6',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+            ],
+          ),
           leading: IconButton(
             icon: const Icon(Icons.close_rounded),
             onPressed: _saving
@@ -662,6 +726,7 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
             physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
             padding: EdgeInsets.fromLTRB(16, 8, 16, 12 + bottomOverlay),
             children: [
+              if (_step == 0) ...[
               Text('Category & subcategory', style: HexaDsType.formSectionLabel),
               const SizedBox(height: 6),
               categoriesAsync.when(
@@ -769,11 +834,14 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                   ),
                 ),
               ],
-              const SizedBox(height: 12),
+              ],
+              if (_step == 1) ...[
+              Text('Name & unit', style: HexaDsType.formSectionLabel),
+              const SizedBox(height: 6),
               TextField(
                 controller: _name,
                 focusNode: _nameFocus,
-                autofocus: true,
+                autofocus: _step == 1,
                 textCapitalization: TextCapitalization.words,
                 textInputAction: TextInputAction.next,
                 decoration: InputDecoration(
@@ -849,6 +917,10 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(color: HexaColors.loss),
                   ),
                 ),
+              ],
+              if (_step == 2) ...[
+              Text('Unit configuration', style: HexaDsType.formSectionLabel),
+              const SizedBox(height: 6),
               if (_unit == 'bag') ...[
                 const SizedBox(height: 10),
                 TextField(
@@ -904,7 +976,21 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                   },
                 ),
               ],
-              const SizedBox(height: 12),
+              if (_unit != null &&
+                  _unit != 'bag' &&
+                  _unit != 'box' &&
+                  _unit != 'tin')
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'No extra defaults for ${_unit!.toUpperCase()}.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                ),
+              ],
+              if (_step == 3) ...[
               Text('Product code, HSN & tax', style: HexaDsType.formSectionLabel),
               const SizedBox(height: 6),
               Text(
@@ -956,7 +1042,8 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                 ),
                 onChanged: (_) => setState(() {}),
               ),
-              const SizedBox(height: 12),
+              ],
+              if (_step == 4) ...[
               Text('Default suppliers *', style: HexaDsType.formSectionLabel),
               const SizedBox(height: 4),
               if (supErr)
@@ -1082,6 +1169,25 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                       );
                     },
                   ),
+              ],
+              if (_step == 5) ...[
+                Text('Review', style: HexaDsType.formSectionLabel),
+                const SizedBox(height: 6),
+                ..._reviewLines(
+                  context,
+                  supplierRows: supRows,
+                  brokerRows: broRows,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Unit prices are set on each purchase.',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ],
             ],
           ),
         ),
@@ -1096,43 +1202,62 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
             top: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text('Review', style: HexaDsType.formSectionLabel),
-                  const SizedBox(height: 6),
-                  ..._reviewLines(
-                    context,
-                    supplierRows: supRows,
-                    brokerRows: broRows,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Unit prices are set on each purchase.',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+              child: _step < 5
+                  ? Row(
+                      children: [
+                        if (_step > 0)
+                          TextButton(
+                            onPressed: _goBack,
+                            child: const Text('Back'),
+                          ),
+                        if (_step > 0) const SizedBox(width: 8),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: _goNext,
+                            child: Text(
+                              _canAdvanceFromStep() ? 'Next' : 'Fill required fields',
+                            ),
+                          ),
                         ),
-                  ),
-                  const SizedBox(height: 10),
-                  FilledButton(
-                    onPressed: (_saving || !_isValid) ? null : _create,
-                    style: FilledButton.styleFrom(
-                      disabledBackgroundColor: HexaColors.brandDisabledBg,
-                      disabledForegroundColor: HexaColors.brandDisabledText,
+                      ],
+                    )
+                  : Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            TextButton(
+                              onPressed: _goBack,
+                              child: const Text('Back'),
+                            ),
+                            const Spacer(),
+                            Text(
+                              'Step 6 of 6',
+                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        FilledButton(
+                          onPressed: (_saving || !_isValid) ? null : _create,
+                          style: FilledButton.styleFrom(
+                            disabledBackgroundColor: HexaColors.brandDisabledBg,
+                            disabledForegroundColor: HexaColors.brandDisabledText,
+                          ),
+                          child: _saving
+                              ? const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white),
+                                )
+                              : Text(_isValid ? 'Create item' : 'Complete required fields'),
+                        ),
+                      ],
                     ),
-                    child: _saving
-                        ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
-                        : Text(_isValid ? 'Create item' : 'Complete required fields'),
-                  ),
-                ],
-              ),
             ),
           ),
         ),

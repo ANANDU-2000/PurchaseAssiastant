@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:http_parser/http_parser.dart';
 
+import 'dio_auto_retry_interceptor.dart';
 import '../config/app_config.dart';
 import '../models/session.dart';
 
@@ -126,6 +127,7 @@ class HexaApi {
         },
       ),
     );
+    _dio.interceptors.add(DioAutoRetryInterceptor(_dio));
   }
 
   final Dio _dio;
