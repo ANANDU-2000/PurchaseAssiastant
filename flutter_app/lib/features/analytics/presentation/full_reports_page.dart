@@ -1,9 +1,11 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/business_profile_provider.dart';
 import '../../../core/providers/analytics_breakdown_providers.dart'
@@ -184,8 +186,11 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
       }
     } catch (e) {
       if (mounted) {
+        final msg = e is DioException
+            ? friendlyApiError(e)
+            : 'Something went wrong. Please try again.';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: $e')),
+          SnackBar(content: Text('Export failed. $msg')),
         );
       }
     } finally {
@@ -231,8 +236,11 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
       );
     } catch (e) {
       if (mounted) {
+        final msg = e is DioException
+            ? friendlyApiError(e)
+            : 'Something went wrong. Please try again.';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('PDF export failed: $e')),
+          SnackBar(content: Text("Couldn't create PDF. $msg")),
         );
       }
     } finally {

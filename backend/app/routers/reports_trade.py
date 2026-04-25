@@ -7,7 +7,7 @@ from datetime import date
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import String, and_, case, func, literal, select
+from sqlalchemy import String, and_, case, cast, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -165,7 +165,8 @@ async def trade_dashboard_snapshot(
             func.max(TradePurchaseLine.unit).label("unit"),
             func.coalesce(func.sum(amt), 0.0).label("amount"),
             func.coalesce(func.sum(TradePurchaseLine.qty), 0.0).label("qty"),
-            func.max(TradePurchaseLine.catalog_item_id).label("catalog_item_id"),
+            # PostgreSQL has no max(uuid) in all versions; aggregate as text (see analytics.py).
+            func.max(cast(TradePurchaseLine.catalog_item_id, String)).label("catalog_item_id"),
         )
         .select_from(TradePurchaseLine)
         .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
