@@ -467,6 +467,26 @@ def test_compute_totals_freight_separate_vs_included():
     assert compute_totals(inc)[1] == Decimal("100")
 
 
+def test_compute_totals_billty_and_delivered_fixed_rupees():
+    line = TradePurchaseLineIn(
+        catalog_item_id=uuid.uuid4(),
+        item_name="Rice",
+        qty=1,
+        unit="kg",
+        landing_cost=100,
+        tax_percent=0,
+    )
+    sid = uuid.uuid4()
+    req = TradePurchaseCreateRequest(
+        purchase_date=date.today(),
+        supplier_id=sid,
+        billty_rate=10,
+        delivered_rate=5,
+        lines=[line],
+    )
+    assert compute_totals(req)[1] == Decimal("115")
+
+
 def test_line_money_kg_fields_matches_per_bag_landing():
     """100 bag × 50 kg × ₹42/kg == 100 × ₹2100/bag."""
     from app.services.trade_purchase_service import _line_money

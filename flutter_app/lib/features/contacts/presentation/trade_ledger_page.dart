@@ -4,9 +4,11 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/router/navigation_ext.dart';
 import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/providers/business_write_revision.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/utils/trade_purchase_commission.dart';
 import '../../../shared/widgets/hexa_empty_state.dart';
 
 enum TradeLedgerKind { supplier, broker }
@@ -30,6 +32,7 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
   bool _loading = true;
   String? _error;
   List<TradePurchase> _rows = const [];
+  final _searchCtrl = TextEditingController();
 
   String get _title => widget.kind == TradeLedgerKind.supplier
       ? 'Supplier ledger'
@@ -38,7 +41,25 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
   @override
   void initState() {
     super.initState();
+    _searchCtrl.addListener(() => setState(() {}));
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  List<TradePurchase> get _visibleRows {
+    final q = _searchCtrl.text.trim().toLowerCase();
+    if (q.isEmpty) return _rows;
+    return _rows.where((p) {
+      for (final l in p.lines) {
+        if (l.itemName.toLowerCase().contains(q)) return true;
+      }
+      return p.itemsSummary.toLowerCase().contains(q);
+    }).toList();
   }
 
   Future<void> _load() async {
@@ -96,8 +117,33 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
       }
     });
 
-    final sumTotal = _rows.fold<double>(0, (s, p) => s + p.totalAmount);
-    final sumDue = _rows.fold<double>(0, (s, p) => s + p.remaining);
+    final data = _visibleRows;
+    final sumTotal = data.fold<double>(0, (s, p) => s + p.totalAmount);
+    final sumDue = data.fold<double>(0, (s, p) => s + p.remaining);
+    var lineSum = 0.0;
+    for (final p in data) {
+      for (final l in p.lines) {
+        lineSum += tradePurchaseLineSumForLine(l);
+      }
+    }
+    var commSum = 0.0;
+    if (widget.kind == TradeLedgerKind.broker) {
+      for (final p in data) {
+        commSum += tradePurchaseCommissionInr(p);
+      }
+    }
+    final first = _rows.isNotEmpty ? _rows.first : null;
+    final entityTitle = widget.kind == TradeLedgerKind.supplier
+        ? (first?.supplierName?.trim().isNotEmpty == true
+            ? first!.supplierName!
+            : 'Supplier')
+        : (first?.brokerName?.trim().isNotEmpty == true
+            ? first!.brokerName!
+            : 'Broker');
+    final phone = widget.kind == TradeLedgerKind.supplier
+        ? (first?.supplierPhone ?? first?.supplierWhatsapp)
+        : first?.brokerPhone;
+
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
@@ -105,7 +151,7 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.pop(),
+          onPressed: () => context.popOrGo('/home'),
         ),
         title: Text(_title),
         actions: [
@@ -131,8 +177,10 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(
-                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                    physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    physics: const AlwaysScrollableScrollPhysics(
+                        parent: BouncingScrollPhysics()),
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                     children: [
                       Card(
@@ -142,6 +190,23 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
+                                entityTitle,
+                                style: tt.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              if (phone != null && phone.trim().isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  phone,
+                                  style: tt.bodySmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: 10),
+                              Text(
                                 'Summary',
                                 style: tt.titleSmall?.copyWith(
                                   fontWeight: FontWeight.w900,
@@ -149,11 +214,29 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                '${_rows.length} purchase(s) · Bill total ${_inr(sumTotal.round())}',
+                                '${data.length} purchase(s) · Bill total ${_inr(sumTotal.round())}',
                                 style: tt.bodyMedium?.copyWith(
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Line subtotal (catalog math) ${_inr(lineSum.round())}',
+                                style: tt.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: cs.onSurfaceVariant,
+                                ),
+                              ),
+                              if (widget.kind == TradeLedgerKind.broker) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Commission (stored %) ${_inr(commSum.round())}',
+                                  style: tt.bodySmall?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: HexaColors.brandPrimary,
+                                  ),
+                                ),
+                              ],
                               const SizedBox(height: 4),
                               Text(
                                 'Outstanding (unpaid balance) ${_inr(sumDue.round())}',
@@ -168,23 +251,42 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 14),
-                      if (_rows.isEmpty)
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _searchCtrl,
+                        decoration: const InputDecoration(
+                          hintText: 'Search by item on line…',
+                          filled: true,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.all(Radius.circular(12)),
+                          ),
+                          isDense: true,
+                          prefixIcon: Icon(Icons.search_rounded, size: 20),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      if (data.isEmpty)
                         HexaEmptyState(
                           icon: Icons.receipt_long_outlined,
-                          title: 'No trade purchases yet',
-                          subtitle: widget.kind == TradeLedgerKind.supplier
-                              ? 'Record a purchase with this supplier as the party to see it here.'
-                              : 'Record a purchase with this broker attached to see it here.',
+                          title: _rows.isEmpty
+                              ? 'No trade purchases yet'
+                              : 'No matches',
+                          subtitle: _rows.isEmpty
+                              ? (widget.kind == TradeLedgerKind.supplier
+                                  ? 'Record a purchase with this supplier as the party to see it here.'
+                                  : 'Record a purchase with this broker attached to see it here.')
+                              : 'Try a different item name.',
                           primaryActionLabel: 'New purchase',
                           onPrimaryAction: () => context.push('/purchase/new'),
                         )
                       else
-                        ..._rows.map((p) {
+                        ...data.map((p) {
                           final st = p.statusEnum;
+                          final comm = tradePurchaseCommissionInr(p);
                           return Card(
-                            margin: const EdgeInsets.only(bottom: 8),
+                            margin: const EdgeInsets.only(bottom: 6),
                             child: ListTile(
+                              dense: true,
                               title: Text(
                                 p.humanId,
                                 style: const TextStyle(
@@ -199,6 +301,7 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
                               trailing: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 crossAxisAlignment: CrossAxisAlignment.end,
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Text(
                                     _inr(p.totalAmount.round()),
@@ -206,6 +309,17 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
                                       fontWeight: FontWeight.w800,
                                     ),
                                   ),
+                                  if (widget.kind == TradeLedgerKind.broker &&
+                                      p.commissionPercent != null &&
+                                      p.commissionPercent! > 0)
+                                    Text(
+                                      'Comm ${_inr(comm.round())}',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        color: cs.primary,
+                                      ),
+                                    ),
                                   Text(
                                     st.label,
                                     style: TextStyle(

@@ -133,8 +133,14 @@ Future<void> shareReportsSummaryPdf({
             style: pw.TextStyle(
                 fontSize: 10, fontWeight: pw.FontWeight.bold)),
         pw.Text(
-          '${_df.format(from)} – ${_df.format(to)}',
-          style: const pw.TextStyle(fontSize: 9, color: _muted),
+          '${_df.format(from)} - ${_df.format(to)}',
+            style: const pw.TextStyle(fontSize: 9, color: _muted),
+        ),
+        pw.SizedBox(height: 3),
+        pw.Text(
+          'Total purchases is the sum of trade line amounts for deals in this range (same method as the in-app reports). A single purchase PDF invoice total can differ because it includes header terms (discount, freight, etc.).',
+          style: const pw.TextStyle(
+              fontSize: 7.2, color: _muted, height: 1.3),
         ),
         _divider(),
 
@@ -252,7 +258,17 @@ Future<void> shareReportsSummaryPdf({
   );
 }
 
-/// Item purchase statement from trade rows (black/white tables).
+/// Sanitize for PDF default fonts (WinAnsi) — avoid rupee, en-dash, and emoji.
+String _pdfAscii(String s) {
+  return s
+      .replaceAll('₹', 'Rs. ')
+      .replaceAll('—', '-')
+      .replaceAll('–', '-')
+      .replaceAll('\u2013', '-')
+      .replaceAll('\u2014', '-');
+}
+
+/// Item purchase statement from trade rows (black/white tables, ASCII-friendly).
 Future<void> shareItemPurchaseTradeHistoryPdf({
   required BusinessProfile business,
   required String itemName,
@@ -260,6 +276,7 @@ Future<void> shareItemPurchaseTradeHistoryPdf({
   DateTime? periodFrom,
   DateTime? periodTo,
   String? periodDescription,
+  String? totalLineLabel,
 }) async {
   if (rows.isEmpty) return;
   final periodParts = <String>[];
@@ -267,52 +284,76 @@ Future<void> shareItemPurchaseTradeHistoryPdf({
     periodParts.add(periodDescription);
   }
   if (periodFrom != null && periodTo != null) {
-    periodParts.add('${_df.format(periodFrom)} – ${_df.format(periodTo)}');
+    // Hyphen, not en-dash, so default PDF font encodes it.
+    periodParts
+        .add('${_df.format(periodFrom)} - ${_df.format(periodTo)}');
   }
   final periodLine = periodParts.isEmpty
       ? 'All available lines in export'
-      : periodParts.join(' · ');
+      : periodParts.join(' | ');
+  final cleanItem = _pdfAscii(itemName);
+  const headers = <String>[
+    'Date',
+    'Supplier',
+    'Broker',
+    'Qty',
+    'Rate',
+    'Landing',
+    'Selling',
+    'Line total',
+  ];
+  if (rows.any((r) => r.length != headers.length)) {
+    throw ArgumentError(
+      'Item statement rows must have ${headers.length} columns, '
+      'got ${rows.map((r) => r.length).toSet()}',
+    );
+  }
   final doc = pw.Document();
   doc.addPage(
     pw.MultiPage(
       pageFormat: PdfPageFormat.a4,
-      margin: const pw.EdgeInsets.all(40),
+      margin: const pw.EdgeInsets.all(32),
       build: (context) => [
         pw.Text(
-          business.legalName.trim().isNotEmpty
-              ? business.legalName.trim()
-              : (business.displayTitle.trim().isNotEmpty
-                  ? business.displayTitle.trim()
-                  : 'NEW HARISREE AGENCY'),
-          style:
-              pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColors.black),
+          _pdfAscii(
+            business.legalName.trim().isNotEmpty
+                ? business.legalName.trim()
+                : (business.displayTitle.trim().isNotEmpty
+                    ? business.displayTitle.trim()
+                    : 'NEW HARISREE AGENCY'),
+          ),
+          style: pw.TextStyle(
+              fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColors.black),
         ),
         pw.SizedBox(height: 6),
-        pw.Text('Item statement — $itemName',
+        pw.Text('Item statement - $cleanItem',
             style: const pw.TextStyle(fontSize: 10, color: PdfColors.black)),
         pw.SizedBox(height: 4),
-        pw.Text('Period: $periodLine',
+        pw.Text('Period: ${_pdfAscii(periodLine)}',
             style: const pw.TextStyle(fontSize: 8.5, color: _muted)),
         pw.SizedBox(height: 10),
         pw.Table(
           border: pw.TableBorder.all(color: _border, width: 0.5),
           columnWidths: {
-            0: const pw.FlexColumnWidth(2),
-            1: const pw.FlexColumnWidth(2.2),
-            2: const pw.FlexColumnWidth(1.6),
-            3: const pw.FlexColumnWidth(1.6),
-            4: const pw.FlexColumnWidth(1.6),
+            0: const pw.FlexColumnWidth(1.4),
+            1: const pw.FlexColumnWidth(1.6),
+            2: const pw.FlexColumnWidth(1.2),
+            3: const pw.FlexColumnWidth(1.1),
+            4: const pw.FlexColumnWidth(1.4),
+            5: const pw.FlexColumnWidth(1.2),
+            6: const pw.FlexColumnWidth(1.1),
+            7: const pw.FlexColumnWidth(1.3),
           },
           children: [
             pw.TableRow(
               decoration: const pw.BoxDecoration(color: _headerBg),
               children: [
-                for (final h in ['Date', 'Supplier', 'Qty', 'Rate', 'Line total'])
+                for (final h in headers)
                   pw.Padding(
-                    padding: const pw.EdgeInsets.all(4),
+                    padding: const pw.EdgeInsets.all(3),
                     child: pw.Text(h,
                         style: pw.TextStyle(
-                            fontSize: 8.5,
+                            fontSize: 7,
                             fontWeight: pw.FontWeight.bold,
                             color: PdfColors.black)),
                   ),
@@ -323,17 +364,29 @@ Future<void> shareItemPurchaseTradeHistoryPdf({
                 children: [
                   for (var i = 0; i < r.length; i++)
                     pw.Padding(
-                      padding: const pw.EdgeInsets.all(4),
+                      padding: const pw.EdgeInsets.all(3),
                       child: pw.Text(
-                        r[i],
-                        textAlign: i == r.length - 1 ? pw.TextAlign.right : pw.TextAlign.left,
-                        style: const pw.TextStyle(fontSize: 8.5, color: PdfColors.black),
+                        _pdfAscii(r[i]),
+                        textAlign:
+                            i == r.length - 1 ? pw.TextAlign.right : pw.TextAlign.left,
+                        style: const pw.TextStyle(fontSize: 6.5, color: PdfColors.black),
                       ),
                     ),
                 ],
               ),
           ],
         ),
+        if (totalLineLabel != null && totalLineLabel.isNotEmpty) ...[
+          pw.SizedBox(height: 8),
+          pw.Align(
+            alignment: pw.Alignment.centerRight,
+            child: pw.Text(
+              _pdfAscii(totalLineLabel),
+              style: pw.TextStyle(
+                  fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.black),
+            ),
+          ),
+        ],
         pw.SizedBox(height: 12),
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,

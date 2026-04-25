@@ -265,6 +265,9 @@ class HexaApi {
     String? gstNumber,
     String? address,
     String? phone,
+    /// When true, always sends [contactEmail] (use empty string to clear).
+    bool includeContactEmail = false,
+    String? contactEmail,
   }) async {
     final res = await _dio.patch<Map<String, dynamic>>(
       '/v1/me/businesses/$businessId/branding',
@@ -274,6 +277,7 @@ class HexaApi {
         if (gstNumber != null) 'gst_number': gstNumber,
         if (address != null) 'address': address,
         if (phone != null) 'phone': phone,
+        if (includeContactEmail) 'contact_email': (contactEmail ?? '').trim(),
       },
     );
     return res.data ?? {};
@@ -427,20 +431,25 @@ class HexaApi {
   Future<List<Map<String, dynamic>>> listTradePurchases({
     required String businessId,
     int limit = 50,
+    int offset = 0,
     String status = 'all',
     String? q,
     String? supplierId,
     String? brokerId,
+    String? catalogItemId,
   }) async {
     final res = await _dio.get<dynamic>(
       '/v1/businesses/$businessId/trade-purchases',
       queryParameters: {
         'limit': limit,
+        'offset': offset,
         'status': status,
         if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
         if (supplierId != null && supplierId.trim().isNotEmpty)
           'supplier_id': supplierId.trim(),
         if (brokerId != null && brokerId.trim().isNotEmpty) 'broker_id': brokerId.trim(),
+        if (catalogItemId != null && catalogItemId.trim().isNotEmpty)
+          'catalog_item_id': catalogItemId.trim(),
       },
     );
     final data = res.data;
@@ -669,6 +678,32 @@ class HexaApi {
     final data = res.data;
     if (data is! List) return [];
     return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  /// Single call: same definitions as trade reports + nested category line items + mapping recs.
+  Future<Map<String, dynamic>> tradeDashboardSnapshot({
+    required String businessId,
+    required String from,
+    required String to,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/reports/trade-dashboard-snapshot',
+      queryParameters: {'from': from, 'to': to},
+    );
+    return Map<String, dynamic>.from(res.data ?? {});
+  }
+
+  /// Per (item, supplier, broker) trade stats and best-supplier recommendations (deals≥2 vwap).
+  Future<Map<String, dynamic>> tradeSupplierBrokerMap({
+    required String businessId,
+    required String from,
+    required String to,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/reports/trade-supplier-broker-map',
+      queryParameters: {'from': from, 'to': to},
+    );
+    return Map<String, dynamic>.from(res.data ?? {});
   }
 
   Future<List<Map<String, dynamic>>> listSuppliers(

@@ -1,8 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/models/trade_purchase_models.dart';
-import '../../../core/providers/catalog_providers.dart';
-import '../../../core/providers/trade_purchases_provider.dart';
+import '../auth/session_notifier.dart';
+import '../models/trade_purchase_models.dart';
 
 /// Period chips on the home dashboard. [custom] uses
 /// [homeCustomDateRangeProvider] (inclusive start/end dates).
@@ -186,41 +185,149 @@ class HomeDashboardData {
   );
 }
 
-/// Aggregated snapshot for the home dashboard. Fed by trade purchases + catalog;
-/// window comes from [homePeriodProvider] + optional custom range.
+String _apiDate(DateTime d) {
+  return '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+}
+
+/// Server-side trade report snapshot (line amounts + [trade_query] statuses) for one date window.
+HomeDashboardData homeDashboardDataFromApiSnapshot(
+  HomePeriod period,
+  Map<String, dynamic> snap,
+) {
+  final summary = (snap['summary'] is Map) ? snap['summary']! as Map : const {};
+  final unitTotals =
+      (snap['unit_totals'] is Map) ? snap['unit_totals']! as Map : const {};
+  final deals = (summary['deals'] as num?)?.toInt() ?? 0;
+  final totalPurchase = (summary['total_purchase'] as num?)?.toDouble() ?? 0.0;
+  final totalQtyAllLines = (summary['total_qty'] as num?)?.toDouble() ?? 0.0;
+  final totalKg = (unitTotals['total_kg'] as num?)?.toDouble() ?? 0.0;
+  final totalBags = (unitTotals['total_bags'] as num?)?.toDouble() ?? 0.0;
+  final totalBoxes = (unitTotals['total_boxes'] as num?)?.toDouble() ?? 0.0;
+  final totalTins = (unitTotals['total_tins'] as num?)?.toDouble() ?? 0.0;
+
+  final rawCats = snap['categories'];
+  final categories = <CategoryStat>[];
+  if (rawCats is List) {
+    for (final c in rawCats) {
+      if (c is! Map) continue;
+      final m = Map<String, dynamic>.from(c);
+      final u = m['units'];
+      final umap = u is Map ? Map<String, dynamic>.from(u) : const {};
+      final itemRows = <CategoryItemStat>[];
+      final items = m['items'];
+      if (items is List) {
+        for (final it in items) {
+          if (it is! Map) continue;
+          final im = Map<String, dynamic>.from(it);
+          itemRows.add(
+            CategoryItemStat(
+              name: im['name']?.toString() ?? '—',
+              qty: (im['qty'] as num?)?.toDouble() ?? 0.0,
+              unit: im['unit']?.toString() ?? '—',
+              amount: (im['amount'] as num?)?.toDouble() ?? 0.0,
+            ),
+          );
+        }
+      }
+      itemRows.sort((a, b) => b.amount.compareTo(a.amount));
+      categories.add(
+        CategoryStat(
+          categoryId: m['category_id']?.toString() ?? '_uncat',
+          categoryName: m['category_name']?.toString() ?? 'Uncategorised',
+          totalAmount: (m['total_purchase'] as num?)?.toDouble() ?? 0.0,
+          totalQty: (m['total_qty'] as num?)?.toDouble() ?? 0.0,
+          units: CategoryUnitTotals(
+            bags: (umap['bags'] as num?)?.toDouble() ?? 0.0,
+            boxes: (umap['boxes'] as num?)?.toDouble() ?? 0.0,
+            tins: (umap['tins'] as num?)?.toDouble() ?? 0.0,
+          ),
+          items: itemRows,
+        ),
+      );
+    }
+  }
+  categories.sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
+
+  final subcategories = <SubcategoryStat>[];
+  final rawTypes = snap['subcategories'];
+  if (rawTypes is List) {
+    for (final t in rawTypes) {
+      if (t is! Map) continue;
+      final tm = Map<String, dynamic>.from(t);
+      final cat = tm['category_name']?.toString() ?? '';
+      final tname = tm['type_name']?.toString() ?? '';
+      final label = tname.isEmpty ? '$cat — No type' : '$cat — $tname';
+      final id = '$cat|${tm['type_name'] ?? 'none'}';
+      subcategories.add(
+        SubcategoryStat(
+          id: id,
+          label: label,
+          totalAmount: (tm['total_purchase'] as num?)?.toDouble() ?? 0.0,
+          totalQty: (tm['total_qty'] as num?)?.toDouble() ?? 0.0,
+        ),
+      );
+    }
+  }
+  subcategories.sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
+
+  final itemSlices = <ItemSliceStat>[];
+  final rawItems = snap['item_slices'];
+  if (rawItems is List) {
+    for (final it in rawItems) {
+      if (it is! Map) continue;
+      final im = Map<String, dynamic>.from(it);
+      itemSlices.add(
+        ItemSliceStat(
+          name: im['item_name']?.toString() ?? '—',
+          catalogItemId: im['catalog_item_id']?.toString(),
+          totalAmount: (im['total_purchase'] as num?)?.toDouble() ?? 0.0,
+          totalQty: (im['total_qty'] as num?)?.toDouble() ?? 0.0,
+          unit: im['unit']?.toString() ?? '—',
+        ),
+      );
+    }
+  }
+  itemSlices.sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
+
+  return HomeDashboardData(
+    period: period,
+    totalPurchase: totalPurchase,
+    totalQtyAllLines: totalQtyAllLines,
+    totalKg: totalKg,
+    totalBags: totalBags,
+    totalBoxes: totalBoxes,
+    totalTins: totalTins,
+    purchaseCount: deals,
+    categories: categories,
+    subcategories: subcategories,
+    itemSlices: itemSlices,
+  );
+}
+
+/// Aggregated snapshot: server [tradeDashboardSnapshot] — same numbers as report APIs.
+/// To match Analytics KPI for a period, align calendar `from`/`to` with
+/// the analytics date range in `lib/core/providers/analytics_kpi_provider.dart`.
 final homeDashboardDataProvider =
-    Provider.autoDispose<AsyncValue<HomeDashboardData>>((ref) {
+    FutureProvider.autoDispose<HomeDashboardData>((ref) async {
   final period = ref.watch(homePeriodProvider);
   final custom = ref.watch(homeCustomDateRangeProvider);
-  final purchasesAsync = ref.watch(tradePurchasesParsedProvider);
-  final itemsAsync = ref.watch(catalogItemsListProvider);
-  final catsAsync = ref.watch(itemCategoriesListProvider);
-
-  if (purchasesAsync.isLoading &&
-      !purchasesAsync.hasValue &&
-      !purchasesAsync.hasError) {
-    return const AsyncValue<HomeDashboardData>.loading();
+  final session = ref.watch(sessionProvider);
+  if (session == null) {
+    return HomeDashboardData.empty;
   }
-  if (purchasesAsync.hasError && !purchasesAsync.hasValue) {
-    return AsyncValue<HomeDashboardData>.error(
-      purchasesAsync.error!,
-      purchasesAsync.stackTrace ?? StackTrace.current,
-    );
-  }
-
-  final purchases = purchasesAsync.valueOrNull ?? const <TradePurchase>[];
-  final items = itemsAsync.valueOrNull ?? const <Map<String, dynamic>>[];
-  final cats = catsAsync.valueOrNull ?? const <Map<String, dynamic>>[];
-
   final range = homePeriodRange(period, now: DateTime.now(), custom: custom);
-  return AsyncValue.data(_aggregate(
-    period: period,
-    purchases: purchases,
-    items: items,
-    categories: cats,
-    rangeStart: range.start,
-    rangeEnd: range.end,
-  ));
+  final lastInclusive =
+      range.end.subtract(const Duration(milliseconds: 1));
+  final from = _apiDate(range.start);
+  final to = _apiDate(lastInclusive);
+  final snap = await ref.read(hexaApiProvider).tradeDashboardSnapshot(
+        businessId: session.primaryBusiness.id,
+        from: from,
+        to: to,
+      );
+  return homeDashboardDataFromApiSnapshot(period, snap);
 });
 
 /// Pure function — safe to call from tests.

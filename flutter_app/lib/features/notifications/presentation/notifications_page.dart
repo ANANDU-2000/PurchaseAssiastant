@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../../core/router/navigation_ext.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/providers/notifications_provider.dart';
@@ -30,7 +32,9 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
         return n.type == NotificationType.priceAlert ||
             n.type == NotificationType.profitLow;
       case 'reminders':
-        return n.type == NotificationType.reminder;
+        return n.type == NotificationType.reminder ||
+            n.type == NotificationType.purchaseDue ||
+            n.type == NotificationType.purchaseOverdue;
       case 'system':
         return n.type == NotificationType.system ||
             n.type == NotificationType.whatsapp;
@@ -42,7 +46,13 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
-    final items = ref.watch(notificationsProvider);
+    final manual = ref.watch(notificationsProvider);
+    final dismissed = ref.watch(dismissedPurchaseAlertIdsProvider);
+    final tradeAlerts = ref
+        .watch(purchaseDueAlertItemsProvider)
+        .where((n) => !dismissed.contains(n.id))
+        .toList();
+    final items = [...tradeAlerts, ...manual];
     final filtered = items.where(_matchesFilter).toList();
     final q = _textSearch.text.trim().toLowerCase();
     final visible = q.isEmpty
@@ -65,7 +75,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
         leading: IconButton(
           icon: Icon(Icons.arrow_back_rounded,
               color: Theme.of(context).colorScheme.onSurfaceVariant),
-          onPressed: () => context.pop(),
+          onPressed: () => context.popOrGo('/home'),
         ),
         actions: [
           IconButton(
@@ -174,6 +184,8 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                         NotificationType.profitLow => HexaColors.loss,
                         NotificationType.reminder => HexaColors.primaryMid,
                         NotificationType.whatsapp => const Color(0xFF25D366),
+                        NotificationType.purchaseDue => const Color(0xFFF59E0B),
+                        NotificationType.purchaseOverdue => HexaColors.loss,
                         _ => Theme.of(context).colorScheme.outline,
                       };
                       final icon = switch (n.type) {
@@ -183,6 +195,9 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                           Icons.trending_down_rounded,
                         NotificationType.reminder => Icons.schedule_rounded,
                         NotificationType.whatsapp => Icons.chat_rounded,
+                        NotificationType.purchaseDue => Icons.event_rounded,
+                        NotificationType.purchaseOverdue =>
+                            Icons.gavel_rounded,
                         _ => Icons.notifications_rounded,
                       };
                       return Padding(
@@ -193,12 +208,14 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                           child: InkWell(
                             borderRadius: BorderRadius.circular(14),
                             onTap: () {
-                              ref
-                                  .read(notificationsProvider.notifier)
-                                  .markRead(n.id);
+                              if (n.id.startsWith('pur_') == false) {
+                                ref
+                                    .read(notificationsProvider.notifier)
+                                    .markRead(n.id);
+                              }
                               final route = n.actionRoute;
                               if (route != null && route.isNotEmpty) {
-                                context.go(route);
+                                context.push(route);
                               }
                             },
                             child: ClipRRect(
@@ -259,10 +276,24 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                                         color: Theme.of(context)
                                             .colorScheme
                                             .onSurfaceVariant,
-                                        onPressed: () => ref
-                                            .read(
-                                                notificationsProvider.notifier)
-                                            .dismiss(n.id),
+                                        onPressed: () {
+                                          if (n.id.startsWith('pur_')) {
+                                            final cur = ref.read(
+                                                dismissedPurchaseAlertIdsProvider);
+                                            ref
+                                                    .read(
+                                                        dismissedPurchaseAlertIdsProvider
+                                                            .notifier)
+                                                    .state =
+                                                {...cur, n.id};
+                                          } else {
+                                            ref
+                                                .read(
+                                                    notificationsProvider
+                                                        .notifier)
+                                                .dismiss(n.id);
+                                          }
+                                        },
                                       ),
                                     ],
                                   ),

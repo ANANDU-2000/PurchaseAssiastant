@@ -121,6 +121,7 @@ class PurchaseLineDraft {
     this.sellingPrice,
     this.taxPercent,
     this.lineDiscountPercent,
+    this.hsnCode,
   });
 
   final String? catalogItemId;
@@ -136,6 +137,8 @@ class PurchaseLineDraft {
   final double? sellingPrice;
   final double? taxPercent;
   final double? lineDiscountPercent;
+  /// Carried for GST lines; from catalog or edited purchase line.
+  final String? hsnCode;
 
   Map<String, dynamic> toLineMap() {
     final m = <String, dynamic>{
@@ -152,10 +155,14 @@ class PurchaseLineDraft {
     if (sellingPrice != null) m['selling_cost'] = sellingPrice;
     if (taxPercent != null) m['tax_percent'] = taxPercent;
     if (lineDiscountPercent != null) m['discount'] = lineDiscountPercent;
+    if (hsnCode != null && hsnCode!.trim().isNotEmpty) {
+      m['hsn_code'] = hsnCode!.trim();
+    }
     return m;
   }
 
   static PurchaseLineDraft fromLineMap(Map<String, dynamic> e) {
+    final rawHsn = e['hsn_code']?.toString().trim() ?? '';
     return PurchaseLineDraft(
       catalogItemId: e['catalog_item_id']?.toString(),
       itemName: e['item_name']?.toString() ?? '',
@@ -167,25 +174,59 @@ class PurchaseLineDraft {
       sellingPrice: (e['selling_cost'] as num?)?.toDouble(),
       taxPercent: (e['tax_percent'] as num?)?.toDouble(),
       lineDiscountPercent: (e['discount'] as num?)?.toDouble(),
+      hsnCode: rawHsn.isEmpty ? null : rawHsn,
     );
   }
 }
 
-/// True when qty, name, and money inputs are consistent for [lineMoney] / API.
-/// Phase 5: a catalog link is required — free-typed items must be created in
-/// the catalog first, then picked. This prevents saving lines that cannot be
-/// reliably aggregated by category, item, or unit.
-bool purchaseLineIsValidForSave(PurchaseLineDraft l) {
-  if ((l.catalogItemId ?? '').trim().isEmpty) return false;
-  if (l.itemName.trim().isEmpty) return false;
-  if (l.qty <= 0) return false;
+bool _isBagOrSackUnit(String unit) {
+  final x = unit.trim().toLowerCase();
+  return x == 'bag' || x == 'sack';
+}
+
+/// First validation failure for [l] that would also fail API line rules, or null
+/// when the line is save-ready (aligned with [TradePurchase] create/update).
+String? purchaseLineSaveBlockReason(PurchaseLineDraft l) {
+  if ((l.catalogItemId ?? '').trim().isEmpty) {
+    return 'Pick the item from the list (free-typed items cannot be saved).';
+  }
+  if (l.itemName.trim().isEmpty) {
+    return 'Item name is required.';
+  }
+  if (l.unit.trim().isEmpty) {
+    return 'Unit is required.';
+  }
+  if (l.qty <= 0) {
+    return 'Quantity must be greater than 0.';
+  }
   final kpu = l.kgPerUnit;
   final pk = l.landingCostPerKg;
-  if (kpu != null || pk != null) {
-    return kpu != null && kpu > 0 && pk != null && pk > 0;
+  final weightLine = kpu != null || pk != null;
+  final unitIsBagSack = _isBagOrSackUnit(l.unit);
+  if (weightLine || unitIsBagSack) {
+    if (kpu == null || kpu <= 0) {
+      return unitIsBagSack
+          ? 'Kg per bag/sack is required for this unit.'
+          : 'Kg per unit must be greater than 0.';
+    }
+    if (pk == null || pk <= 0) {
+      return 'Per-kg cost must be greater than 0.';
+    }
+  } else if (l.landingCost <= 0) {
+    return 'Landing cost must be greater than 0.';
   }
-  return l.landingCost > 0;
+  final tax = l.taxPercent ?? 0;
+  if (tax > 0 || unitIsBagSack) {
+    if ((l.hsnCode ?? '').trim().isEmpty) {
+      return 'HSN is required when the line has tax or the unit is bag/sack.';
+    }
+  }
+  return null;
 }
+
+/// True when qty, name, unit, and money inputs match API rules for saved lines.
+bool purchaseLineIsValidForSave(PurchaseLineDraft l) =>
+    purchaseLineSaveBlockReason(l) == null;
 
 /// Strict footer / invoice-style row breakdown (mirrors prior wizard `\_strictFooterBreakdown`).
 @immutable

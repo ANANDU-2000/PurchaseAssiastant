@@ -141,13 +141,16 @@ async def build_entry_create_request(
         raw.get("selling_price")
     )
 
+    # Single rate field: landing and "buy" are the same for trade/entry lines.
+    if buy is not None and buy > 0 and (land is None or land <= 0):
+        land = buy
+    if land is not None and land > 0 and (buy is None or buy <= 0):
+        buy = land
+
     missing: list[str] = []
     if qty is None or qty <= 0:
         missing.append("qty")
-    # Strict positive pricing for purchases (zero is invalid / likely mistake)
-    if buy is None or buy <= 0:
-        missing.append("buy_price")
-    if land is None or land <= 0:
+    if (buy is None or buy <= 0) and (land is None or land <= 0):
         missing.append("landing_cost")
     if missing:
         return None, missing

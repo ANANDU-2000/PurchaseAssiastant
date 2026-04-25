@@ -11,7 +11,10 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/calc_engine.dart' show lineMoney;
+import '../../../core/catalog/item_trade_history.dart' show tradeLineToCalc;
 import '../../../core/config/app_config.dart';
+import '../../../core/router/navigation_ext.dart';
 import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/providers/purchase_prefill_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
@@ -108,6 +111,22 @@ class _SupplierStatCard extends StatelessWidget {
 
 DateTime _dOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
+List<TradePurchase> _tradesInDateWindow(
+  List<TradePurchase> all,
+  DateTime from,
+  DateTime to,
+) {
+  return [
+    for (final p in all)
+      if (!_dOnly(p.purchaseDate).isBefore(from) &&
+          !_dOnly(p.purchaseDate).isAfter(to))
+        p,
+  ];
+}
+
+double _lineAmountInr(TradePurchaseLine ln) =>
+    lineMoney(tradeLineToCalc(ln));
+
 class SupplierDetailPage extends ConsumerStatefulWidget {
   const SupplierDetailPage({super.key, required this.supplierId});
 
@@ -122,9 +141,9 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
   late DateTime _from;
   bool _loading = false;
   Map<String, dynamic>? _metrics;
-  List<dynamic>? _entries;
   List<Map<String, dynamic>>? _supplierRankRows;
-  List<TradePurchase> _recentTrades = const [];
+  /// PUR bills in the selected date range (trade flow only; legacy entries removed)
+  List<TradePurchase> _trades = const [];
 
   @override
   void initState() {
@@ -151,39 +170,34 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
           supplierId: widget.supplierId,
           from: f,
           to: t);
-      final e = await api.listEntries(
-          businessId: session.primaryBusiness.id,
-          from: f,
-          to: t,
-          supplierId: widget.supplierId);
       List<Map<String, dynamic>>? rank;
       try {
         rank = await api.analyticsSuppliers(
             businessId: session.primaryBusiness.id, from: f, to: t);
       } catch (_) {}
-      var recentTrades = <TradePurchase>[];
+      var trades = <TradePurchase>[];
       try {
         final traw = await api.listTradePurchases(
           businessId: session.primaryBusiness.id,
-          limit: 5,
+          limit: 200,
           status: 'all',
           supplierId: widget.supplierId,
         );
         for (final row in traw) {
           try {
-            recentTrades.add(
+            trades.add(
               TradePurchase.fromJson(Map<String, dynamic>.from(row as Map)),
             );
           } catch (_) {}
         }
-        recentTrades.sort((a, b) => b.purchaseDate.compareTo(a.purchaseDate));
+        trades = _tradesInDateWindow(trades, _from, _to);
+        trades.sort((a, b) => b.purchaseDate.compareTo(a.purchaseDate));
       } catch (_) {}
       if (mounted) {
         setState(() {
           _metrics = m;
-          _entries = e;
           _supplierRankRows = rank;
-          _recentTrades = recentTrades;
+          _trades = trades;
           _loading = false;
         });
       }
@@ -222,24 +236,25 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
   }
 
   List<FlSpot> _chartSpots() {
-    final items = _entries;
-    if (items == null || items.isEmpty) return [];
+    if (_trades.isEmpty) return [];
     final byDay = <String, List<double>>{};
-    for (final raw in items) {
-      if (raw is! Map) continue;
-      final e = Map<String, dynamic>.from(raw);
-      final ed = e['entry_date'];
-      if (ed == null) continue;
-      final ds = ed.toString().split('T').first;
-      final lines = e['lines'];
-      if (lines is! List) continue;
-      for (final ln in lines) {
-        if (ln is! Map) continue;
-        final lc = (ln['landing_cost'] as num?)?.toDouble();
-        if (lc == null || lc <= 0) continue;
-        byDay.putIfAbsent(ds, () => []).add(lc);
+    for (final p in _trades) {
+      if (p.statusEnum == PurchaseStatus.draft ||
+          p.statusEnum == PurchaseStatus.cancelled) {
+        continue;
+      }
+      final ds = p.purchaseDate.toIso8601String().split('T').first;
+      for (final ln in p.lines) {
+        final kpu = ln.kgPerUnit;
+        final lcpk = ln.landingCostPerKg;
+        final val = (kpu != null && lcpk != null && kpu > 0 && lcpk > 0)
+            ? lcpk
+            : (ln.landingCost > 0 ? ln.landingCost : 0.0);
+        if (val <= 0) continue;
+        byDay.putIfAbsent(ds, () => []).add(val);
       }
     }
+    if (byDay.isEmpty) return [];
     final sorted = byDay.keys.toList()..sort();
     final spots = <FlSpot>[];
     for (var i = 0; i < sorted.length; i++) {
@@ -272,36 +287,27 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
   }
 
   Future<void> _exportCsv() async {
-    final buf = StringBuffer('date,items,qty,avg_landing,profit\n');
-    final rows = _entries;
-    if (rows == null) return;
-    for (final raw in rows) {
-      if (raw is! Map) continue;
-      final e = Map<String, dynamic>.from(raw);
-      final d = e['entry_date']?.toString().split('T').first ?? '';
-      final lines = e['lines'];
-      if (lines is! List) continue;
-      double q = 0, p = 0;
-      final names = <String>[];
-      for (final ln in lines) {
-        if (ln is! Map) continue;
-        final m = Map<String, dynamic>.from(ln);
-        q += (m['qty'] as num?)?.toDouble() ?? 0;
-        p += (m['profit'] as num?)?.toDouble() ?? 0;
-        names.add(m['item_name']?.toString() ?? '');
+    final buf = StringBuffer(
+        'date,pur_id,item,qty,unit,landing_per_unit,selling,total_line\n');
+    for (final p in _trades) {
+      final d = p.purchaseDate.toIso8601String().split('T').first;
+      for (final ln in p.lines) {
+        final lpu = (ln.kgPerUnit != null &&
+                ln.landingCostPerKg != null &&
+                (ln.kgPerUnit ?? 0) > 0)
+            ? ln.landingCostPerKg
+            : ln.landingCost;
+        buf.writeln(
+            '$d,${p.humanId},"${ln.itemName.replaceAll('"', "'")}",${ln.qty},${ln.unit},$lpu,${ln.sellingCost ?? ''},${_lineAmountInr(ln)}');
       }
-      var avgL = 0.0;
-      if (lines.isNotEmpty) {
-        var s = 0.0;
-        for (final ln in lines) {
-          if (ln is! Map) continue;
-          s += (Map<String, dynamic>.from(ln)['landing_cost'] as num?)
-                  ?.toDouble() ??
-              0;
-        }
-        avgL = s / lines.length;
+    }
+    if (buf.length < 100) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No trade lines to export in this range.')),
+        );
       }
-      buf.writeln('$d,"${names.join(';')}",$q,$avgL,$p');
+      return;
     }
     await Share.share(buf.toString(),
         subject: '${AppConfig.appName} supplier export');
@@ -329,7 +335,7 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
       appBar: AppBar(
         leading: IconButton(
             icon: const Icon(Icons.arrow_back_rounded),
-            onPressed: () => context.pop()),
+            onPressed: () => context.popOrGo('/contacts')),
         title: async.maybeWhen(
           data: (s) => Text(s['name']?.toString() ?? 'Supplier'),
           orElse: () => const Text('Supplier'),
@@ -344,8 +350,7 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
           IconButton(
             tooltip: 'Export CSV',
             icon: const Icon(Icons.ios_share_rounded),
-            onPressed:
-                _entries == null || _entries!.isEmpty ? null : _exportCsv,
+            onPressed: _trades.isEmpty ? null : _exportCsv,
           ),
         ],
       ),
@@ -502,61 +507,6 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                   const SizedBox(height: 10),
                   _metricsGrid(_metrics!, tt),
                   const SizedBox(height: 16),
-                  Text(
-                    'Recent trade purchases (PUR)',
-                    style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 8),
-                  if (_recentTrades.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Text(
-                        'No PUR bills yet — record one with this supplier.',
-                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-                      ),
-                    )
-                  else
-                    Card(
-                      margin: EdgeInsets.zero,
-                      child: Column(
-                        children: [
-                          for (final p in _recentTrades.take(5))
-                            ListTile(
-                              dense: true,
-                              title: Text(
-                                p.humanId,
-                                style: const TextStyle(fontWeight: FontWeight.w700),
-                              ),
-                              subtitle: Text(
-                                '${DateFormat.yMMMd().format(p.purchaseDate)} · ${p.derivedStatus}',
-                                style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-                              ),
-                              trailing: Text(
-                                NumberFormat.currency(
-                                  locale: 'en_IN',
-                                  symbol: '₹',
-                                  decimalDigits: 0,
-                                ).format(p.totalAmount.round()),
-                                style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
-                              ),
-                              onTap: () => context.push('/purchase/detail/${p.id}'),
-                            ),
-                          ListTile(
-                            dense: true,
-                            leading: Icon(Icons.receipt_long_outlined, size: 20, color: cs.primary),
-                            title: Text(
-                              'Full PUR ledger',
-                              style: TextStyle(
-                                color: cs.primary,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            onTap: () => context.push('/supplier/${widget.supplierId}/ledger'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  const SizedBox(height: 16),
                   Text('Price vs other suppliers',
                       style:
                           tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
@@ -576,26 +526,45 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Purchase history',
+                      Text('Trade purchase history',
                           style: tt.titleSmall
                               ?.copyWith(fontWeight: FontWeight.w800)),
-                      Text('${_entries?.length ?? 0} entries',
-                          style: tt.labelSmall
-                              ?.copyWith(color: HexaColors.textSecondary)),
+                      Text(
+                        _trades.isEmpty
+                            ? '0 bills'
+                            : '${_trades.length} bill${_trades.length == 1 ? '' : 's'} · '
+                                '${_trades.fold<int>(0, (a, p) => a + p.lines.length)} lines',
+                        style: tt.labelSmall
+                            ?.copyWith(color: HexaColors.textSecondary),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  if ((_entries ?? []).isEmpty)
+                  if (_trades.isEmpty)
                     HexaEmptyState(
                       icon: Icons.receipt_long_rounded,
-                      title: 'No purchases from this supplier yet',
+                      title: 'No trade purchases in this date range',
                       subtitle:
-                          'Add a purchase and link it to this supplier to see metrics.',
+                          'Record a PUR for this supplier or widen the range above.',
                       primaryActionLabel: 'Add purchase',
                       onPrimaryAction: () => context.push('/purchase/new'),
                     )
                   else
-                    _EntryTable(entries: _entries ?? []),
+                    _SupplierTradeTable(trades: _trades),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.receipt_long_outlined,
+                        size: 20, color: cs.primary),
+                    title: Text(
+                      'Full PUR ledger',
+                      style: TextStyle(
+                        color: cs.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    onTap: () =>
+                        context.push('/supplier/${widget.supplierId}/ledger'),
+                  ),
                 ],
               ],
             ),
@@ -801,10 +770,10 @@ class _LandingChart extends StatelessWidget {
   }
 }
 
-class _EntryTable extends StatelessWidget {
-  const _EntryTable({required this.entries});
+class _SupplierTradeTable extends StatelessWidget {
+  const _SupplierTradeTable({required this.trades});
 
-  final List<dynamic> entries;
+  final List<TradePurchase> trades;
 
   String _inr(num v) => NumberFormat.currency(
         locale: 'en_IN',
@@ -812,65 +781,128 @@ class _EntryTable extends StatelessWidget {
         decimalDigits: 0,
       ).format(v);
 
+  String _rateL(TradePurchaseLine ln) {
+    final kpu = ln.kgPerUnit;
+    final lcpk = ln.landingCostPerKg;
+    if (kpu != null && lcpk != null && kpu > 0 && lcpk > 0) {
+      return 'L ${_inr(lcpk)}/kg';
+    }
+    return 'L ${_inr(ln.landingCost)}/${ln.unit}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     return Card(
+      margin: EdgeInsets.zero,
       child: ListView.separated(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        itemCount: entries.whereType<Map>().length,
-        separatorBuilder: (_, __) => const Divider(height: 1),
-        itemBuilder: (context, i) {
-          final raw = entries.whereType<Map>().elementAt(i);
-          return _entryTile(context, Map<String, dynamic>.from(raw), tt);
+        itemCount: trades.length,
+        separatorBuilder: (_, __) => const Divider(height: 1, indent: 12, endIndent: 12),
+        itemBuilder: (context, ip) {
+          final p = trades[ip];
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ListTile(
+                dense: true,
+                title: Text(
+                  p.humanId,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                subtitle: Text(
+                  '${DateFormat.yMMMd().format(p.purchaseDate)} · ${p.derivedStatus}'
+                  '${(p.brokerName ?? '').isNotEmpty ? ' · ${p.brokerName}' : ''}',
+                  style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                ),
+                trailing: Text(
+                  _inr(p.totalAmount.round()),
+                  style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                onTap: () => context.push('/purchase/detail/${p.id}'),
+              ),
+              if (p.lines.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Text(
+                    'No line items',
+                    style: tt.labelSmall
+                        ?.copyWith(color: cs.onSurfaceVariant),
+                  ),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                  child: Column(
+                    children: [
+                      for (final ln in p.lines)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: Text(
+                                  ln.itemName,
+                                  style: tt.bodySmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  '${ln.qty % 1 == 0 ? ln.qty.toInt() : ln.qty.toStringAsFixed(1)} ${ln.unit}',
+                                  textAlign: TextAlign.right,
+                                  style: tt.labelSmall,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  _rateL(ln),
+                                  textAlign: TextAlign.right,
+                                  style: tt.labelSmall
+                                      ?.copyWith(color: cs.onSurfaceVariant),
+                                ),
+                              ),
+                              if (ln.sellingCost != null) ...[
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  flex: 2,
+                                  child: Text(
+                                    'S ${_inr(ln.sellingCost!)}',
+                                    textAlign: TextAlign.right,
+                                    style: tt.labelSmall
+                                        ?.copyWith(color: cs.onSurfaceVariant),
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(width: 4),
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  _inr(_lineAmountInr(ln).round()),
+                                  textAlign: TextAlign.right,
+                                  style: tt.labelSmall?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+            ],
+          );
         },
       ),
-    );
-  }
-
-  Widget _entryTile(
-      BuildContext context, Map<String, dynamic> e, TextTheme tt) {
-    final d = e['entry_date']?.toString().split('T').first ?? '';
-    final lines = e['lines'];
-    double q = 0, profit = 0;
-    double sales = 0;
-    final names = <String>[];
-    if (lines is List) {
-      for (final ln in lines) {
-        if (ln is! Map) continue;
-        final m = Map<String, dynamic>.from(ln);
-        q += (m['qty'] as num?)?.toDouble() ?? 0;
-        profit += (m['profit'] as num?)?.toDouble() ?? 0;
-        final sp = (m['selling_price'] as num?)?.toDouble();
-        if (sp != null) {
-          sales += ((m['qty'] as num?)?.toDouble() ?? 0) * sp;
-        }
-        names.add(m['item_name']?.toString() ?? '');
-      }
-    }
-    var avgL = 0.0;
-    if (lines is List && lines.isNotEmpty) {
-      var s = 0.0;
-      for (final ln in lines) {
-        if (ln is! Map) continue;
-        s += (Map<String, dynamic>.from(ln)['landing_cost'] as num?)
-                ?.toDouble() ??
-            0;
-      }
-      avgL = s / lines.length;
-    }
-    final margin = sales > 0 ? (profit / sales) * 100 : null;
-    return ListTile(
-      onTap: null,
-      title: Text(d, style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-      subtitle: Text(
-        '${names.take(3).join(', ')}${names.length > 3 ? '…' : ''}\n'
-        'Qty ${q.toStringAsFixed(1)} · Avg ${_inr(avgL)} · Profit ${_inr(profit)}'
-        '${margin == null ? '' : ' · ${margin.toStringAsFixed(1)}% margin'}',
-        style: tt.bodySmall,
-      ),
-      isThreeLine: true,
     );
   }
 }

@@ -11,6 +11,7 @@ import '../../features/catalog/presentation/catalog_add_item_page.dart';
 import '../../features/catalog/presentation/catalog_add_subcategory_page.dart';
 import '../../features/catalog/presentation/catalog_category_detail_page.dart';
 import '../../features/catalog/presentation/catalog_item_detail_page.dart';
+import '../../features/catalog/presentation/catalog_item_purchase_history_page.dart';
 import '../../features/catalog/presentation/catalog_page.dart';
 import '../../features/catalog/presentation/catalog_type_items_page.dart';
 import '../../features/assistant/presentation/assistant_chat_page.dart';
@@ -81,7 +82,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         if (public) return null;
         return '/login';
       }
-      // Signed in → skip auth screens.
+      // Password reset from email should work even with a stale / other-tab session.
+      final resetTok = state.uri.queryParameters['token']?.trim() ?? '';
+      if (loc == '/reset-password' && resetTok.isNotEmpty) {
+        return null;
+      }
+      // Allow forgot-password so users aren't bounced to /home if session state is wrong.
+      if (loc == '/forgot-password') {
+        return null;
+      }
+      // Signed in → skip other auth / onboarding screens.
       if (public) return '/home';
       return null;
     },
@@ -195,6 +205,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           return iosPushPage(
             key: state.pageKey,
             child: CatalogItemDetailPage(itemId: id),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/catalog/item/:itemId/purchase-history',
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['itemId']!;
+          return iosPushPage(
+            key: state.pageKey,
+            child: CatalogItemPurchaseHistoryPage(itemId: id),
           );
         },
       ),

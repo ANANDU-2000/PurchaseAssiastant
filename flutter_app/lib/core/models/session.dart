@@ -8,6 +8,7 @@ class BusinessBrief {
     this.gstNumber,
     this.address,
     this.phone,
+    this.contactEmail,
   });
 
   final String id;
@@ -22,6 +23,8 @@ class BusinessBrief {
   final String? gstNumber;
   final String? address;
   final String? phone;
+  /// Purchase invoice / contact (optional).
+  final String? contactEmail;
 
   /// Title for MaterialApp / chrome — not the OS store name.
   String get effectiveDisplayTitle {
@@ -40,6 +43,7 @@ class BusinessBrief {
       gstNumber: j['gst_number'] as String?,
       address: j['address'] as String?,
       phone: j['phone'] as String?,
+      contactEmail: j['contact_email'] as String?,
     );
   }
 
@@ -52,6 +56,7 @@ class BusinessBrief {
         if (gstNumber != null) 'gst_number': gstNumber,
         if (address != null) 'address': address,
         if (phone != null) 'phone': phone,
+        if (contactEmail != null) 'contact_email': contactEmail,
       };
 }
 

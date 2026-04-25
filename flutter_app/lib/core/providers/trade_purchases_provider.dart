@@ -6,6 +6,7 @@ import '../models/trade_purchase_models.dart';
 /// Bust list + catalog-intel snapshots together.
 void invalidateTradePurchaseCaches(dynamic ref) {
   ref.invalidate(tradePurchasesListProvider);
+  ref.invalidate(tradePurchasesForAlertsProvider);
   ref.invalidate(tradePurchasesCatalogIntelProvider);
 }
 
@@ -19,6 +20,18 @@ final purchaseHistorySearchProvider = StateProvider<String>((ref) => '');
 /// Optional secondary chip: `pending` | `paid` | `overdue` (client-side only).
 final purchaseHistorySecondaryFilterProvider =
     StateProvider<String?>((ref) => null);
+
+/// Unfiltered list for due/overdue alert derivation (ignores history tab filters).
+final tradePurchasesForAlertsProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return [];
+  return ref.read(hexaApiProvider).listTradePurchases(
+        businessId: session.primaryBusiness.id,
+        limit: 200,
+        status: 'all',
+      );
+});
 
 final tradePurchasesListProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {

@@ -13,7 +13,8 @@ import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/providers/business_profile_provider.dart';
-import '../../../core/providers/business_aggregates_invalidation.dart';
+import '../../../core/providers/business_aggregates_invalidation.dart'
+    show invalidatePurchaseWorkspace;
 import '../../../core/providers/trade_purchases_provider.dart';
 import 'widgets/due_soon_banner.dart';
 import '../../../core/services/purchase_pdf.dart';
@@ -267,11 +268,10 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
             businessId: session.primaryBusiness.id,
             purchaseId: p.id,
           );
-      invalidateTradePurchaseCaches(ref);
+      invalidatePurchaseWorkspace(ref);
       try {
         await ref.read(tradePurchasesListProvider.future);
       } catch (_) {}
-      invalidateBusinessAggregates(ref);
       if (!mounted) return;
       setState(() => _pendingDeleteIds.remove(p.id));
       messenger.showSnackBar(const SnackBar(content: Text('Deleted')));
@@ -319,11 +319,10 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
         }
       }
     }
-    invalidateTradePurchaseCaches(ref);
+    invalidatePurchaseWorkspace(ref);
     try {
       await ref.read(tradePurchasesListProvider.future);
     } catch (_) {}
-    invalidateBusinessAggregates(ref);
     if (mounted) {
       setState(() => _pendingDeleteIds.removeAll(ids));
     }
@@ -367,11 +366,10 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
             businessId: session.primaryBusiness.id,
             purchaseId: p.id,
           );
-      invalidateTradePurchaseCaches(ref);
+      invalidatePurchaseWorkspace(ref);
       try {
         await ref.read(tradePurchasesListProvider.future);
       } catch (_) {}
-      invalidateBusinessAggregates(ref);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Marked paid')));
       }
@@ -462,8 +460,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
           ] else ...[
             ShellQuickRefActions(
               onRefresh: () {
-                invalidateTradePurchaseCaches(ref);
-                invalidateBusinessAggregates(ref);
+                invalidatePurchaseWorkspace(ref);
               },
             ),
             PopupMenuButton<String>(
@@ -518,8 +515,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
               loading: () => const ListSkeleton(),
               error: (_, __) => FriendlyLoadError(
                 onRetry: () {
-                  invalidateTradePurchaseCaches(ref);
-                  invalidateBusinessAggregates(ref);
+                  invalidatePurchaseWorkspace(ref);
                 },
               ),
               data: (List<TradePurchase> items) {
@@ -609,7 +605,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                               padding: EdgeInsets.fromLTRB(
                                   16, 8, 16, 96 + MediaQuery.of(context).padding.bottom),
                               itemCount: visible.length,
-                              separatorBuilder: (_, __) => const SizedBox(height: 10),
+                              separatorBuilder: (_, __) => const SizedBox(height: 6),
                               itemBuilder: (context, i) {
                                 final p = visible[i];
                                 return _PurchaseRow(
@@ -700,36 +696,29 @@ class _PurchaseRow extends StatelessWidget {
 
     final card = Material(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(8),
       child: InkWell(
         onTap: onTap,
         onLongPress: onLongPress,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(8),
         child: Container(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(8),
             border: Border.all(
                 color: selected ? HexaColors.brandPrimary : HexaColors.brandBorder,
                 width: selected ? 2 : 1),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              )
-            ],
           ),
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SizedBox(
-                width: 24,
+                width: 22,
                 child: Text(
                   '$serial',
                   style: const TextStyle(
                       fontWeight: FontWeight.w800,
-                      fontSize: 12,
+                      fontSize: 11,
                       color: HexaColors.neutral),
                 ),
               ),
@@ -742,20 +731,20 @@ class _PurchaseRow extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: HexaDsType.purchaseQtyUnit.copyWith(
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.w900,
                         color: const Color(0xFF0F172A),
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Text(
                       _purchaseItemsSummary(p),
-                      maxLines: 2,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          fontSize: 13,
+                          fontSize: 12,
                           color: HexaColors.neutral,
-                          height: 1.25,
+                          height: 1.2,
                           fontWeight: FontWeight.w600),
                     ),
                     if (bagsText.isNotEmpty) ...[
@@ -763,18 +752,18 @@ class _PurchaseRow extends StatelessWidget {
                       Text(
                         bagsText,
                         style: const TextStyle(
-                            fontSize: 11,
+                            fontSize: 10,
                             fontWeight: FontWeight.w600,
                             color: HexaColors.neutral),
                       ),
                     ],
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
                     Text(
                       '${p.humanId} · ${df.format(p.purchaseDate)}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 11,
+                        fontSize: 10,
                         fontWeight: FontWeight.w700,
                         color: HexaColors.neutral,
                       ),
@@ -800,11 +789,11 @@ class _PurchaseRow extends StatelessWidget {
                   Text(
                     _inr(p.totalAmount.round()),
                     style: HexaDsType.purchaseLineMoney.copyWith(
-                      fontSize: 20,
+                      fontSize: 17,
                       letterSpacing: -0.3,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 2),
                   _MiniBadge(st),
                   if (st != PurchaseStatus.paid &&
                       p.remaining > 0.01) ...[

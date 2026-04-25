@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../../core/calc_engine.dart';
@@ -13,12 +15,17 @@ class PurchaseItemEntrySheet extends StatefulWidget {
     this.initial,
     required this.isEdit,
     required this.onCommitted,
+    /// When set, each catalog pick refetches the item so HSN/tax/kg match the server
+    /// (list payloads may be incomplete). Failures keep list-row data only.
+    this.resolveCatalogItem,
   });
 
   final List<Map<String, dynamic>> catalog;
   final Map<String, dynamic>? initial;
   final bool isEdit;
   final void Function(Map<String, dynamic> line) onCommitted;
+  final Future<Map<String, dynamic>> Function(String catalogItemId)?
+      resolveCatalogItem;
 
   @override
   State<PurchaseItemEntrySheet> createState() => _PurchaseItemEntrySheetState();
@@ -32,6 +39,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   final _landingKey = GlobalKey();
   final _sellingKey = GlobalKey();
   final _kgPerBagKey = GlobalKey();
+  final _taxKey = GlobalKey();
 
   final _itemCtrl = TextEditingController();
   final _itemFocus = FocusNode();
@@ -57,6 +65,9 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   String? _errLanding;
   String? _errSelling;
   String? _errKgPerBag;
+  String? _errHsn;
+  String? _hsnCode;
+  final Map<String, Map<String, dynamic>> _catalogFetchById = {};
 
   void _onItemTextChanged() {
     if (!mounted) return;
@@ -71,6 +82,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         setState(() {
           _catalogItemId = null;
           _errItem = null;
+          _hsnCode = null;
         });
         return;
       }
@@ -140,6 +152,8 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       _discCtrl.text = d is num && d > 0 ? d.toString() : '';
       final t = init['tax_percent'];
       _taxCtrl.text = t is num && t > 0 ? t.toString() : '';
+      final hsn = init['hsn_code']?.toString().trim() ?? '';
+      _hsnCode = hsn.isEmpty ? null : hsn;
     }
     _syncKgStateFromCatalogRow();
   }
@@ -178,10 +192,19 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   }
 
   Map<String, dynamic>? _catalogRowById(String id) {
+    final cached = _catalogFetchById[id];
+    if (cached != null) return cached;
     for (final m in widget.catalog) {
       if (m['id']?.toString() == id) return m;
     }
     return null;
+  }
+
+  String? _hsnFromRow(Map<String, dynamic> row) {
+    final a = row['hsn_code']?.toString().trim() ?? '';
+    if (a.isNotEmpty) return a;
+    final b = row['hsn']?.toString().trim() ?? '';
+    return b.isEmpty ? null : b;
   }
 
   static bool _isWeightUnit(String? u) {
@@ -312,6 +335,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       _errLanding = null;
       _errSelling = null;
       _errKgPerBag = null;
+      _errHsn = null;
     });
   }
 
@@ -379,6 +403,14 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
           _errSelling = null;
         }
       }
+      final taxV = _parseD(_taxCtrl.text);
+      final uLow = unit.toLowerCase();
+      final needHsn =
+          (taxV != null && taxV > 0) || uLow == 'bag' || uLow == 'sack';
+      final hsn = _hsnCode?.trim() ?? '';
+      _errHsn = (needHsn && hsn.isEmpty)
+          ? 'HSN is required (from catalog) for taxed or bag/sack lines'
+          : null;
     });
 
     if (_errItem != null) {
@@ -403,6 +435,10 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     }
     if (_errSelling != null) {
       _scrollToKey(_sellingKey);
+      return null;
+    }
+    if (_errHsn != null) {
+      _scrollToKey(_taxKey);
       return null;
     }
 
@@ -430,6 +466,8 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     if (sellSt.isNotEmpty) {
       m['selling_cost'] = _sellingForPayloadForWire(_parseD(sellSt)!);
     }
+    final hOut = _hsnCode?.trim() ?? '';
+    if (hOut.isNotEmpty) m['hsn_code'] = hOut;
     return m;
   }
 
@@ -452,6 +490,8 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       _errLanding = null;
       _errSelling = null;
       _errKgPerBag = null;
+      _errHsn = null;
+      _hsnCode = null;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _itemFocus.requestFocus();
@@ -514,32 +554,24 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   }
 
   void _onCatalogPick(InlineSearchItem it) {
-    if (it.id.isEmpty) {
-      setState(() {
-        _catalogItemId = null;
-        _weightPricing = false;
-        _kgPerUnit = null;
-        _kgPerBagCtrl.clear();
-        _errItem = null;
-      });
-      return;
-    }
-    final row = _catalogRowById(it.id);
-    if (row == null) {
-      setState(() {
-        _catalogItemId = it.id;
-        _itemCtrl.text = it.label;
-        _errItem = null;
-      });
-      return;
-    }
+    unawaited(_onCatalogPickAsync(it));
+  }
+
+  /// Applies [row] only — no merge with a prior line (call after fresh fetch or list row).
+  void _applyCatalogRowToLineState(
+    Map<String, dynamic> row, {
+    required String catalogId,
+    required String nameFallback,
+  }) {
+    final name = (row['name']?.toString() ?? nameFallback).trim();
     final kpb = row['default_kg_per_bag'];
     final kpbD = kpb is num && kpb > 0 ? kpb.toDouble() : null;
     final unit0 = _lineUnitForCatalog(row, kpbD: kpbD);
     setState(() {
-      _catalogItemId = it.id;
-      _itemCtrl.text = it.label;
+      _catalogItemId = catalogId;
+      _itemCtrl.text = name.isNotEmpty ? name : nameFallback;
       _unitCtrl.text = unit0;
+      _hsnCode = _hsnFromRow(row);
       if (kpbD != null && kpbD > 0) {
         _weightPricing = true;
         _kgPerUnit = kpbD;
@@ -575,6 +607,50 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       _taxCtrl.text = tax is num && tax > 0 ? tax.toString() : '';
       _errItem = null;
     });
+  }
+
+  Future<void> _onCatalogPickAsync(InlineSearchItem it) async {
+    if (it.id.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _catalogItemId = null;
+        _weightPricing = false;
+        _kgPerUnit = null;
+        _kgPerBagCtrl.clear();
+        _errItem = null;
+        _hsnCode = null;
+      });
+      return;
+    }
+
+    Map<String, dynamic>? row = _catalogRowById(it.id);
+    if (widget.resolveCatalogItem != null) {
+      try {
+        final fresh = await widget.resolveCatalogItem!(it.id);
+        if (fresh.isNotEmpty && mounted) {
+          setState(() {
+            _catalogFetchById[it.id] = Map<String, dynamic>.from(fresh);
+          });
+          row = _catalogRowById(it.id);
+        }
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
+    if (row == null) {
+      setState(() {
+        _catalogItemId = it.id;
+        _itemCtrl.text = it.label;
+        _errItem = null;
+        _hsnCode = null;
+      });
+      return;
+    }
+    _applyCatalogRowToLineState(
+      row,
+      catalogId: it.id,
+      nameFallback: it.label,
+    );
   }
 
   /// Line total + profit: weight lines show "qty × kgkg = total_kg" and ₹/kg → ₹total.
@@ -821,50 +897,77 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                 ),
               ),
               const SizedBox(height: 2),
-              Theme(
-                data: theme.copyWith(dividerColor: Colors.transparent),
-                child: ExpansionTile(
-                  tilePadding: EdgeInsets.zero,
-                  childrenPadding: const EdgeInsets.fromLTRB(0, 0, 0, 4),
-                  title: Text(
-                    'Discount / Tax',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
+              KeyedSubtree(
+                key: _taxKey,
+                child: Theme(
+                  data: theme.copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    tilePadding: EdgeInsets.zero,
+                    childrenPadding: const EdgeInsets.fromLTRB(0, 0, 0, 4),
+                    title: Text(
+                      'Discount / Tax',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
                     ),
-                  ),
-                  initiallyExpanded: false,
-                  expansionAnimationStyle: const AnimationStyle(
-                    duration: Duration.zero,
-                    curve: Curves.linear,
-                    reverseCurve: Curves.linear,
-                    reverseDuration: Duration.zero,
-                  ),
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _discCtrl,
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            decoration: _deco('Discount %'),
-                            onChanged: (_) => setState(() {}),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: TextField(
-                            controller: _taxCtrl,
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            decoration: _deco('Tax %'),
-                            onChanged: (_) => setState(() {}),
-                          ),
-                        ),
-                      ],
+                    initiallyExpanded: false,
+                    expansionAnimationStyle: const AnimationStyle(
+                      duration: Duration.zero,
+                      curve: Curves.linear,
+                      reverseCurve: Curves.linear,
+                      reverseDuration: Duration.zero,
                     ),
-                  ],
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _discCtrl,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              decoration: _deco('Discount %'),
+                              onChanged: (_) => setState(() {}),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: TextField(
+                              controller: _taxCtrl,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              decoration: _deco('Tax %'),
+                              onChanged: (_) {
+                                _clearFieldErrors();
+                                setState(() {});
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
+              if (_errHsn != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  _errHsn!,
+                  style: TextStyle(
+                    color: Colors.red[800],
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ] else if (_hsnCode != null && _hsnCode!.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(
+                  'HSN: ${_hsnCode!}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Colors.blueGrey[800],
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
               const SizedBox(height: 4),
               _liveTotalsCard(theme),
               const SizedBox(height: 8),

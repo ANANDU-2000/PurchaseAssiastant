@@ -2,14 +2,16 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../../core/router/navigation_ext.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/providers/business_profile_provider.dart';
-import '../../../core/providers/business_aggregates_invalidation.dart';
-import '../../../core/providers/trade_purchases_provider.dart';
+import '../../../core/providers/business_aggregates_invalidation.dart'
+    show invalidatePurchaseWorkspace;
 import '../../../core/services/purchase_pdf.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
@@ -40,6 +42,10 @@ class PurchaseDetailPage extends ConsumerWidget {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => context.popOrGo('/purchase'),
+        ),
         title: const Text('Purchase'),
         backgroundColor: Colors.transparent,
         foregroundColor: HexaColors.brandPrimary,
@@ -202,6 +208,15 @@ class _DetailBodyState extends ConsumerState<_DetailBody> {
             const Text('Payment', style: TextStyle(fontWeight: FontWeight.w800)),
             const SizedBox(height: 8),
             _kv('Total', _inr(p.totalAmount.round())),
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Invoice total includes line subtotal and terms (discount, freight, commission, etc.) where you entered them. '
+                'Analytics "Spend" sums line amounts over a date range — same per-line rules, not the same as this single-bill total.',
+                style: TextStyle(
+                    fontSize: 11, height: 1.3, color: HexaColors.neutral),
+              ),
+            ),
             _kv('Paid', _inr(p.paidAmount.round())),
             _kv('Remaining', _inr(p.remaining.round())),
             if (p.dueDate != null)
@@ -383,9 +398,8 @@ class _DetailBodyState extends ConsumerState<_DetailBody> {
             purchaseId: p.id,
             paidAmount: v,
           );
-      invalidateTradePurchaseCaches(ref);
+      invalidatePurchaseWorkspace(ref);
       ref.invalidate(_purchaseDetailProvider(p.id));
-      invalidateBusinessAggregates(ref);
       widget.onRefresh();
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

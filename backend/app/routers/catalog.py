@@ -27,6 +27,7 @@ from app.models.catalog import CatalogItemDefaultBroker, CatalogItemDefaultSuppl
 from app.models.contacts import Broker, Supplier
 from app.models.supplier_item_default import SupplierItemDefault
 from app.models.entry import Entry
+from app.services import trade_query as tq
 
 router = APIRouter(prefix="/v1/businesses/{business_id}", tags=["catalog"])
 
@@ -283,6 +284,8 @@ class TradeSupplierPriceRow(BaseModel):
     unit: str
     last_purchase_date: date
     is_best: bool = False
+    deals: int = 0
+    volume_weighted_landing: float | None = None
 
 
 class CatalogItemTradeSupplierPricesOut(BaseModel):
@@ -1210,14 +1213,18 @@ async def catalog_item_trade_supplier_prices(
     if ir.first() is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")
 
+    line_amt = tq.trade_line_amount_expr()
     line_rows = (
         select(
+            TradePurchase.id.label("tp_id"),
             TradePurchase.supplier_id,
-            Supplier.name,
+            Supplier.name.label("supplier_name"),
             TradePurchaseLine.landing_cost,
+            TradePurchaseLine.qty,
             TradePurchaseLine.unit,
             TradePurchase.purchase_date,
             TradePurchaseLine.id,
+            line_amt.label("line_amt"),
         )
         .select_from(TradePurchaseLine)
         .join(TradePurchase, TradePurchaseLine.trade_purchase_id == TradePurchase.id)
@@ -1226,39 +1233,75 @@ async def catalog_item_trade_supplier_prices(
             TradePurchase.business_id == business_id,
             TradePurchaseLine.catalog_item_id == item_id,
             TradePurchase.supplier_id.isnot(None),
-            TradePurchase.status.in_(("saved", "confirmed")),
+            tq.trade_purchase_status_in_reports(),
         )
         .order_by(desc(TradePurchase.purchase_date), desc(TradePurchaseLine.id))
     )
     lr = await db.execute(line_rows)
-    all_rows = lr.all()
+    all_rows = lr.mappings().all()
 
     seen_suppliers: set[uuid.UUID] = set()
-    supplier_rows: list[tuple] = []
+    supplier_latest: list[tuple[uuid.UUID, str, float, str, date, uuid.UUID]] = []
+    sum_amt: dict[uuid.UUID, float] = {}
+    sum_qty: dict[uuid.UUID, float] = {}
+    deals: dict[uuid.UUID, set[uuid.UUID]] = {}
     landing_for_avg: list[float] = []
     last_five_prices: list[float] = []
 
     for row in all_rows:
-        sid, sname, lc, unit, pdate, lid = row
+        sid = row["supplier_id"]
+        sname = row["supplier_name"]
+        lc = row["landing_cost"]
+        qty = float(row["qty"] or 0)
+        unit = row["unit"]
+        pdate = row["purchase_date"]
+        lid = row["id"]
+        tp_id = row["tp_id"]
+        la = float(row["line_amt"] or 0)
         lc_f = float(lc) if lc is not None else None
         if lc_f is None:
             continue
+        sum_amt[sid] = sum_amt.get(sid, 0.0) + la
+        sum_qty[sid] = sum_qty.get(sid, 0.0) + qty
+        if sid not in deals:
+            deals[sid] = set()
+        deals[sid].add(tp_id)
         landing_for_avg.append(lc_f)
         if len(last_five_prices) < 5:
             last_five_prices.append(lc_f)
         if sid in seen_suppliers:
             continue
         seen_suppliers.add(sid)
-        supplier_rows.append(
-            (sid, sname, lc_f, unit, pdate, lid),
-        )
+        supplier_latest.append((sid, sname, lc_f, unit, pdate, lid))
 
-    best_landing: float | None = None
-    if supplier_rows:
-        best_landing = min(r[2] for r in supplier_rows)
+    vwap: dict[uuid.UUID, float | None] = {}
+    for sid in sum_amt:
+        qn = sum_qty.get(sid, 0.0)
+        vwap[sid] = (sum_amt[sid] / qn) if qn > 1e-12 else None
+
+    best_supplier: uuid.UUID | None = None
+    eligible = [
+        sid
+        for sid in sum_amt
+        if len(deals.get(sid, ())) >= 2
+        and vwap.get(sid) is not None
+        and sum_qty.get(sid, 0) > 1e-12
+    ]
+    if eligible:
+        best_supplier = min(
+            eligible,
+            key=lambda s: (vwap.get(s) if vwap.get(s) is not None else float("inf"), str(s)),
+        )
+    elif supplier_latest:
+        best_supplier = min(supplier_latest, key=lambda r: (r[2], r[0]))[0]
 
     suppliers_out: list[TradeSupplierPriceRow] = []
-    for sid, sname, lc_f, unit, pdate, _lid in sorted(supplier_rows, key=lambda r: (r[2], r[0].hex)):
+    for sid, sname, lc_f, unit, pdate, _lid in sorted(
+        supplier_latest, key=lambda r: (r[2], r[0].hex)
+    ):
+        ndeals = len(deals.get(sid, ()))
+        vw = vwap.get(sid)
+        is_b = best_supplier is not None and sid == best_supplier
         suppliers_out.append(
             TradeSupplierPriceRow(
                 supplier_id=sid,
@@ -1266,7 +1309,9 @@ async def catalog_item_trade_supplier_prices(
                 landing_cost=lc_f,
                 unit=unit,
                 last_purchase_date=pdate,
-                is_best=best_landing is not None and abs(lc_f - best_landing) < 1e-9,
+                is_best=is_b,
+                deals=ndeals,
+                volume_weighted_landing=vw,
             )
         )
     # Sort display: best first, then by price
@@ -1376,9 +1421,9 @@ async def catalog_item_lines(
         TradePurchase.business_id == business_id,
         TradePurchase.purchase_date >= from_date,
         TradePurchase.purchase_date <= to_date,
-        TradePurchase.status.in_(("saved", "confirmed")),
+        tq.trade_purchase_status_in_reports(),
     )
-    tq = (
+    trade_lines_q = (
         select(
             TradePurchaseLine.id,
             TradePurchase.purchase_date,
@@ -1405,7 +1450,7 @@ async def catalog_item_lines(
         .order_by(desc(TradePurchase.purchase_date), desc(TradePurchaseLine.id))
         .limit(cap)
     )
-    tr = await db.execute(tq)
+    tr = await db.execute(trade_lines_q)
     trade_rows: list[CatalogItemLineRow] = []
     for row in tr.all():
         lid, pdate, human_id, qty, unit, lc, sell, kpu, lcpk, sname, sphone, bname, bphone = row

@@ -102,4 +102,17 @@ void main() {
     expect(sep.amountSum, 150.0);
     expect(inc.amountSum, 100.0);
   });
+
+  test('computeTradeTotals includes billty and delivered as fixed rupees', () {
+    const line = TradeCalcLine(
+      qty: 1,
+      landingCost: 100,
+    );
+    final t = computeTradeTotals(TradeCalcRequest(
+      lines: const [line],
+      billtyRate: 3,
+      deliveredRate: 2,
+    ));
+    expect(t.amountSum, 105.0);
+  });
 }

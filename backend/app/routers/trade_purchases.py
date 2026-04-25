@@ -94,20 +94,26 @@ async def list_trade_purchases(
     db: Annotated[AsyncSession, Depends(get_db)],
     _m: Annotated[Membership, Depends(require_membership)],
     limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0, le=10_000),
     status: Literal["all", "draft", "due_soon", "overdue", "paid"] = Query("all"),
     q: str | None = Query(None, max_length=200),
     supplier_id: uuid.UUID | None = Query(None),
     broker_id: uuid.UUID | None = Query(None),
+    catalog_item_id: uuid.UUID | None = Query(
+        None, description="Only purchases that include a line for this catalog item"
+    ),
 ):
     del user
     return await tps.list_trade_purchases(
         db,
         business_id,
         limit=limit,
+        offset=offset,
         status_filter=status,
         q=q,
         supplier_id=supplier_id,
         broker_id=broker_id,
+        catalog_item_id=catalog_item_id,
     )
 
 

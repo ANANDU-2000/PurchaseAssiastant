@@ -7,7 +7,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -130,6 +130,10 @@ def compute_totals(req: TradePurchaseCreateRequest) -> tuple[Decimal, Decimal]:
     comm = _dec(req.commission_percent) if req.commission_percent is not None else Decimal("0")
     if comm > 0:
         amt_sum += after_header * min(comm, Decimal("100")) / Decimal("100")
+    # Fixed-rupee header charges (PDF / wizard footer; must match client computeTradeTotals).
+    billty = _dec(req.billty_rate) if req.billty_rate is not None else Decimal("0")
+    delivered = _dec(req.delivered_rate) if req.delivered_rate is not None else Decimal("0")
+    amt_sum += billty + delivered
     return qty_sum, amt_sum
 
 
@@ -243,13 +247,17 @@ async def list_trade_purchases(
     business_id: uuid.UUID,
     limit: int = 100,
     *,
+    offset: int = 0,
     status_filter: str | None = None,
     q: str | None = None,
     supplier_id: uuid.UUID | None = None,
     broker_id: uuid.UUID | None = None,
+    catalog_item_id: uuid.UUID | None = None,
 ) -> list[TradePurchaseOut]:
     """List purchases; optional status_filter: all|draft|due_soon|overdue|paid and search q."""
-    has_entity_filter = supplier_id is not None or broker_id is not None
+    has_entity_filter = (
+        supplier_id is not None or broker_id is not None or catalog_item_id is not None
+    )
     if has_entity_filter:
         fetch_cap = min(max(limit, 1), 500)
     else:
@@ -268,7 +276,17 @@ async def list_trade_purchases(
         stmt = stmt.where(TradePurchase.supplier_id == supplier_id)
     if broker_id is not None:
         stmt = stmt.where(TradePurchase.broker_id == broker_id)
-    stmt = stmt.limit(fetch_cap)
+    if catalog_item_id is not None:
+        stmt = stmt.where(
+            exists(
+                select(1).where(
+                    TradePurchaseLine.trade_purchase_id == TradePurchase.id,
+                    TradePurchaseLine.catalog_item_id == catalog_item_id,
+                )
+            )
+        )
+    off = min(max(int(offset or 0), 0), 10_000)
+    stmt = stmt.offset(off).limit(fetch_cap)
     res = await db.execute(stmt)
     rows = [trade_purchase_to_out(p) for p in res.scalars().unique().all()]
     sf = (status_filter or "all").strip().lower()
@@ -324,6 +342,13 @@ async def create_trade_purchase(
 ) -> TradePurchaseOut:
     if not body.lines:
         raise ValueError("At least one line item is required")
+    for i, li in enumerate(body.lines):
+        if li.qty <= 0:
+            raise ValueError(f"line {i + 1}: quantity must be greater than 0")
+        if not (li.item_name or "").strip():
+            raise ValueError(f"line {i + 1}: item name is required")
+        if not (li.unit or "").strip():
+            raise ValueError(f"line {i + 1}: unit is required")
     initial_status = body.status if body.status in ("draft", "saved", "confirmed") else "confirmed"
     if initial_status == "confirmed":
         if body.supplier_id is None:
@@ -399,6 +424,13 @@ async def update_trade_purchase(
 ) -> TradePurchaseOut | None:
     if not body.lines:
         raise ValueError("At least one line item is required")
+    for i, li in enumerate(body.lines):
+        if li.qty <= 0:
+            raise ValueError(f"line {i + 1}: quantity must be greater than 0")
+        if not (li.item_name or "").strip():
+            raise ValueError(f"line {i + 1}: item name is required")
+        if not (li.unit or "").strip():
+            raise ValueError(f"line {i + 1}: unit is required")
     new_status = body.status if body.status in ("draft", "saved", "confirmed") else "confirmed"
     if new_status == "confirmed":
         if body.supplier_id is None:

@@ -42,6 +42,8 @@ TradeCalcRequest draftToCalcRequest(PurchaseDraft d) {
     commissionPercent: d.commissionPercent,
     freightAmount: d.freightAmount,
     freightType: d.freightType,
+    billtyRate: d.billtyRate,
+    deliveredRate: d.deliveredRate,
     lines: [for (final l in d.lines) _lineToCalc(l)],
   );
 }
@@ -167,12 +169,12 @@ final purchaseSaveValidationProvider = Provider<PurchaseSaveValidation>((ref) {
   }
   for (var i = 0; i < d.lines.length; i++) {
     final it = d.lines[i];
-    if (!purchaseLineIsValidForSave(it)) {
-      final missingCatalog = (it.catalogItemId ?? '').trim().isEmpty;
-      final msg = missingCatalog
-          ? 'Line ${i + 1}: pick the item from the list (free-typed items cannot be saved).'
-          : 'Line ${i + 1} is invalid: need item name, quantity > 0, and valid landing / per-kg rates.';
-      return PurchaseSaveValidation(errorMessage: msg, lineIndex: i);
+    final lineReason = purchaseLineSaveBlockReason(it);
+    if (lineReason != null) {
+      return PurchaseSaveValidation(
+        errorMessage: 'Line ${i + 1}: $lineReason',
+        lineIndex: i,
+      );
     }
   }
   return const PurchaseSaveValidation();
@@ -242,7 +244,8 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
       supplierId: id,
       supplierName: name,
       brokerId: bFrom,
-      brokerName: bFrom == null ? null : state.brokerName,
+      // Never carry over a label from a previous broker; resolved after fetch in wizard.
+      brokerName: bFrom == null ? null : null,
       brokerIdFromSupplier: bFrom,
       clearBroker: bFrom == null,
       clearPaymentDays: pay == null,
@@ -253,6 +256,20 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
       billtyRate: bill,
       freightType: ft,
     );
+  }
+
+  /// Clears terms tied to the previous supplier, then applies [row] (fresh API or list).
+  /// Does not change line items — avoids reusing payment/delivered/billty/freight/broker
+  /// from an earlier selection when the user picks a new supplier.
+  void applySupplierSelection(Map<String, dynamic> row, String id, String name) {
+    state = state.copyWith(
+      clearPaymentDays: true,
+      clearDelivered: true,
+      clearBillty: true,
+      clearFreight: true,
+      clearBroker: true,
+    );
+    setSupplierFromMap(row, id, name);
   }
 
   void setSupplierNameOnly(String? name) {

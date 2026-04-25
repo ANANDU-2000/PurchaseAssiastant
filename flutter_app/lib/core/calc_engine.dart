@@ -31,6 +31,8 @@ class TradeCalcRequest {
     this.commissionPercent,
     this.freightAmount,
     this.freightType,
+    this.billtyRate,
+    this.deliveredRate,
   });
 
   final List<TradeCalcLine> lines;
@@ -39,6 +41,10 @@ class TradeCalcRequest {
   final double? freightAmount;
   /// `separate` adds freight; `included` ignores [freightAmount] for totals.
   final String? freightType;
+  /// Fixed-rupee billty (matches backend [TradePurchaseCreateRequest.billty_rate]).
+  final double? billtyRate;
+  /// Fixed-rupee delivered charge (matches backend [TradePurchaseCreateRequest.delivered_rate]).
+  final double? deliveredRate;
 }
 
 class TradeCalcTotals {
@@ -63,15 +69,23 @@ double lineGrossBase(TradeCalcLine li) {
   return _dec(li.qty) * _dec(li.landingCost);
 }
 
-/// Per-line amount after line discount and tax multiplier (matches backend).
-double lineMoney(TradeCalcLine li) {
+/// Taxable value after line discount, before GST multiplier (matches backend).
+double lineTaxableAfterLineDisc(TradeCalcLine li) {
   final base = lineGrossBase(li);
   final ld = li.discountPercent != null ? _dec(li.discountPercent) : 0.0;
-  final afterDisc = base * (1.0 - (ld > 100 ? 100 : ld) / 100.0);
+  return base * (1.0 - (ld > 100 ? 100 : ld) / 100.0);
+}
+
+/// Per-line amount after line discount and tax multiplier (matches backend).
+double lineMoney(TradeCalcLine li) {
+  final afterDisc = lineTaxableAfterLineDisc(li);
   final tax = li.taxPercent != null ? _dec(li.taxPercent) : 0.0;
   final t = tax > 1000 ? 1000.0 : tax;
   return afterDisc * (1.0 + t / 100.0);
 }
+
+/// Tax component of [lineMoney] (difference between inclusive and taxable).
+double lineTaxAmount(TradeCalcLine li) => lineMoney(li) - lineTaxableAfterLineDisc(li);
 
 /// Returns total quantity sum and final amount (matches backend `compute_totals`).
 TradeCalcTotals computeTradeTotals(TradeCalcRequest req) {
@@ -103,6 +117,10 @@ TradeCalcTotals computeTradeTotals(TradeCalcRequest req) {
     final c = comm > 100 ? 100.0 : comm;
     amtSum += afterHeader * c / 100.0;
   }
+
+  final billty = req.billtyRate != null ? _dec(req.billtyRate) : 0.0;
+  final delivered = req.deliveredRate != null ? _dec(req.deliveredRate) : 0.0;
+  amtSum += billty + delivered;
 
   return TradeCalcTotals(qtySum: qtySum, amountSum: amtSum);
 }

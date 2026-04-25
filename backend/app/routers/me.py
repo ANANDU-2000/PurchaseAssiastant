@@ -70,6 +70,7 @@ class BusinessBrief(BaseModel):
     gst_number: str | None = None
     address: str | None = None
     phone: str | None = None
+    contact_email: str | None = None
 
     model_config = {"from_attributes": False}
 
@@ -113,6 +114,7 @@ async def my_businesses(
             gst_number=b.gst_number,
             address=b.address,
             phone=b.phone,
+            contact_email=b.contact_email,
         )
         for m, b in rows
     ]
@@ -124,6 +126,7 @@ class BusinessBrandingPatch(BaseModel):
     gst_number: str | None = Field(None, max_length=20)
     address: str | None = None
     phone: str | None = Field(None, max_length=32)
+    contact_email: str | None = Field(None, max_length=255)
 
 
 @router.patch("/businesses/{business_id}/branding", response_model=BusinessBrief)
@@ -159,6 +162,12 @@ async def patch_my_business_branding(
     if "phone" in data:
         p = data["phone"]
         b.phone = (p.strip() or None) if isinstance(p, str) else p
+    if "contact_email" in data:
+        e = data["contact_email"]
+        if e is None or (isinstance(e, str) and not e.strip()):
+            b.contact_email = None
+        elif isinstance(e, str):
+            b.contact_email = e.strip().lower()
     await db.commit()
     await db.refresh(b)
     return BusinessBrief(
@@ -170,6 +179,7 @@ async def patch_my_business_branding(
         gst_number=b.gst_number,
         address=b.address,
         phone=b.phone,
+        contact_email=b.contact_email,
     )
 
 
@@ -218,4 +228,5 @@ async def upload_business_logo(
         gst_number=b.gst_number,
         address=b.address,
         phone=b.phone,
+        contact_email=b.contact_email,
     )

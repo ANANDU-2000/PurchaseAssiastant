@@ -506,11 +506,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     ),
                     Align(
                       alignment: Alignment.centerRight,
-                      child: TextButton(
+                        child: TextButton(
                         onPressed: _loading
                             ? null
                             : () {
-                                context.push('/forgot-password');
+                                // go() avoids a stale stack on web refresh/back.
+                                context.go('/forgot-password');
                               },
                         child: const Text(
                           'Forgot password?',

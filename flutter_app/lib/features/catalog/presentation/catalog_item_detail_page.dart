@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/models/trade_purchase_models.dart' show TradePurchaseLine;
+import '../../../core/router/navigation_ext.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
@@ -159,6 +161,20 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
     await ref.read(catalogItemDetailProvider(widget.itemId).future);
   }
 
+  String _pdfMoney(num? n) {
+    if (n == null) return '-';
+    return _inr(n).replaceAll('₹', 'Rs. ');
+  }
+
+  String _pdfLandingCol(TradePurchaseLine ln) {
+    final kpu = ln.kgPerUnit;
+    final lcpk = ln.landingCostPerKg;
+    if (kpu != null && lcpk != null && kpu > 0 && lcpk > 0) {
+      return 'Rs. ${_fmtNum(lcpk)}/kg';
+    }
+    return 'Rs. ${_fmtNum(ln.landingCost)}/${ln.unit}';
+  }
+
   Future<void> _exportItemPdf(
     String itemName,
     List<ItemTradeHistoryRow> hist,
@@ -174,21 +190,30 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
     try {
       final biz = ref.read(invoiceBusinessProfileProvider);
       final df = DateFormat('dd MMM yyyy');
-      final rows = hist
-          .map(
-            (r) => [
-              df.format(r.purchaseDate),
-              r.supplierName,
-              '${_fmtNum(r.line.qty)} ${r.line.unit}',
-              r.rateLabel().replaceAll('₹', 'Rs. '),
-              _inr(r.lineTotal),
-            ],
-          )
-          .toList();
+      final rows = <List<String>>[];
+      var sum = 0.0;
+      for (final r in hist) {
+        final ln = r.line;
+        sum += r.lineTotal;
+        final broker = (r.brokerName ?? '').trim();
+        rows.add([
+          df.format(r.purchaseDate),
+          r.supplierName,
+          broker.isEmpty ? '-' : broker,
+          '${_fmtNum(ln.qty)} ${ln.unit}',
+          r.rateLabel().replaceAll('₹', 'Rs. '),
+          _pdfLandingCol(ln),
+          _pdfMoney(ln.sellingCost),
+          _pdfMoney(r.lineTotal),
+        ]);
+      }
       final now = DateTime.now();
       final periodTo = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
       final periodFrom = DateTime(now.year, now.month, now.day)
           .subtract(Duration(days: _historyRangeDays));
+      final totalLabel =
+          'Total: Rs. ${NumberFormat('#,##,##0', 'en_IN').format(sum.round())} '
+          '(${hist.length} lines)';
       await shareItemPurchaseTradeHistoryPdf(
         business: biz,
         itemName: itemName,
@@ -196,6 +221,7 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
         periodFrom: periodFrom,
         periodTo: periodTo,
         periodDescription: 'Last $_historyRangeDays days (trade)',
+        totalLineLabel: totalLabel,
       );
     } catch (e) {
       if (mounted) {
@@ -232,13 +258,7 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go('/catalog');
-            }
-          },
+          onPressed: () => context.popOrGo('/catalog'),
         ),
         title: itemAsync.when(
           data: (m) => Text(
@@ -249,6 +269,15 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
           loading: () => const Text('Item'),
           error: (_, __) => const Text('Catalog item'),
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Purchase history',
+            icon: const Icon(Icons.receipt_long_outlined),
+            onPressed: () => context.push(
+              '/catalog/item/${widget.itemId}/purchase-history',
+            ),
+          ),
+        ],
       ),
       floatingActionButton: itemAsync.hasValue
           ? FloatingActionButton.extended(
@@ -335,8 +364,12 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                         ref.invalidate(tradePurchasesCatalogIntelProvider),
                   ),
                   data: (purchases) {
-                    final hist =
-                        itemTradeHistoryRows(purchases, widget.itemId);
+                    final itemName = item['name']?.toString() ?? 'Item';
+                    final hist = itemTradeHistoryRows(
+                      purchases,
+                      widget.itemId,
+                      catalogItemName: itemName,
+                    );
                     final rangeHist =
                         itemTradeHistoryRowsInRange(hist, _historyRangeDays);
                     final intel = itemSupplierIntel(rangeHist);
@@ -347,7 +380,6 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                     for (final r in rangeHist) {
                       qtySum += r.line.qty;
                     }
-                    final itemName = item['name']?.toString() ?? 'Item';
 
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,

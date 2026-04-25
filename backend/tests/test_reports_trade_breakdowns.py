@@ -116,3 +116,20 @@ def test_trade_items_suppliers_categories_endpoints():
         r.get("category_name") == "RTCat" and float(r.get("total_qty") or 0) > 0
         for r in types_rows
     )
+
+    snap = client.get(
+        f"/v1/businesses/{bid}/reports/trade-dashboard-snapshot?{q}", headers=h
+    )
+    assert snap.status_code == 200, snap.text
+    sd = snap.json()
+    assert float(sd.get("summary", {}).get("total_purchase", 0)) > 0
+    assert "categories" in sd and isinstance(sd["categories"], list)
+    assert "recommendations" in sd
+
+    mpr = client.get(
+        f"/v1/businesses/{bid}/reports/trade-supplier-broker-map?{q}", headers=h
+    )
+    assert mpr.status_code == 200, mpr.text
+    mpd = mpr.json()
+    assert "rows" in mpd and "recommendations" in mpd
+    assert any(r.get("catalog_item_id") == str(iid) for r in (mpd.get("rows") or []))

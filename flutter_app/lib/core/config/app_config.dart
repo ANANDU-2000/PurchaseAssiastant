@@ -76,4 +76,11 @@ class AppConfig {
     'GOOGLE_OAUTH_CLIENT_ID',
     defaultValue: '',
   );
+
+  /// True when [apiBaseUrl] targets this machine (typical local dev). Used for
+  /// user-facing copy: "start the API" vs generic offline messaging.
+  static bool get apiBasePointsToLoopback {
+    final h = Uri.tryParse(apiBaseUrl)?.host.toLowerCase() ?? '';
+    return h == 'localhost' || h == '127.0.0.1' || h == '::1';
+  }
 }

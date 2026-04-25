@@ -20,6 +20,7 @@ class _BusinessProfilePageState extends ConsumerState<BusinessProfilePage> {
   late final TextEditingController _gstCtrl;
   late final TextEditingController _addressCtrl;
   late final TextEditingController _phoneCtrl;
+  late final TextEditingController _emailCtrl;
   bool _saving = false;
 
   @override
@@ -30,6 +31,7 @@ class _BusinessProfilePageState extends ConsumerState<BusinessProfilePage> {
     _gstCtrl = TextEditingController();
     _addressCtrl = TextEditingController();
     _phoneCtrl = TextEditingController();
+    _emailCtrl = TextEditingController();
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadFromSession());
   }
 
@@ -42,6 +44,7 @@ class _BusinessProfilePageState extends ConsumerState<BusinessProfilePage> {
       _gstCtrl.text = pb.gstNumber ?? '';
       _addressCtrl.text = pb.address ?? '';
       _phoneCtrl.text = pb.phone ?? '';
+      _emailCtrl.text = pb.contactEmail ?? '';
     });
   }
 
@@ -52,6 +55,7 @@ class _BusinessProfilePageState extends ConsumerState<BusinessProfilePage> {
     _gstCtrl.dispose();
     _addressCtrl.dispose();
     _phoneCtrl.dispose();
+    _emailCtrl.dispose();
     super.dispose();
   }
 
@@ -95,6 +99,8 @@ class _BusinessProfilePageState extends ConsumerState<BusinessProfilePage> {
             gstNumber: _gstCtrl.text.trim().toUpperCase(),
             address: _addressCtrl.text.trim(),
             phone: _phoneCtrl.text.trim(),
+            includeContactEmail: true,
+            contactEmail: _emailCtrl.text,
           );
       await ref.read(sessionProvider.notifier).refreshBusinesses();
       if (!mounted) return;
@@ -133,7 +139,7 @@ class _BusinessProfilePageState extends ConsumerState<BusinessProfilePage> {
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
         children: [
           Text(
-            'Shown on purchase invoice PDFs (GSTIN, address, phone).',
+            'Shown on purchase invoice PDFs (GSTIN, address, phone, contact email).',
             style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
           ),
           const SizedBox(height: 16),
@@ -179,6 +185,17 @@ class _BusinessProfilePageState extends ConsumerState<BusinessProfilePage> {
                     keyboardType: TextInputType.phone,
                     decoration: const InputDecoration(
                       labelText: 'Phone (optional)',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _emailCtrl,
+                    keyboardType: TextInputType.emailAddress,
+                    autocorrect: false,
+                    decoration: const InputDecoration(
+                      labelText: 'Contact email (optional)',
+                      hintText: 'For invoice PDF header',
                       border: OutlineInputBorder(),
                     ),
                   ),

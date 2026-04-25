@@ -92,7 +92,10 @@ def _intent_user_payload(
     snap = (business_snapshot or "").strip()
     head = ""
     if snap:
-        head = f"Database snapshot (aggregates for this business; use for disambiguation, not invented numbers):\n{snap[:4500]}\n\n"
+        head = (
+            "Database snapshot (TRADE block first; use for wholesale / PUR- questions; do not mix with legacy entry totals):\n"
+            f"{snap[:4500]}\n\n"
+        )
     if not (conversation_context or "").strip():
         return (head + user_text.strip())[:12000]
     merged = (
@@ -709,7 +712,7 @@ async def synthesize_app_query_reply(
 
     sys_p = _APP_QUERY_SYSTEM.strip()
     snap = (business_snapshot or "").strip()
-    snap_block = f"\n\nOVERVIEW (month-to-date aggregates):\n{snap[:2500]}" if snap else ""
+    snap_block = f"\n\nOVERVIEW (MTD; TRADE first if present):\n{snap[:2500]}" if snap else ""
     user_block = f"USER MESSAGE:\n{ut}{snap_block}\n\nFACTS (from Harisree database):\n{facts}"
 
     gk, qk, ok = keys.get("gemini"), keys.get("groq"), keys.get("openai")

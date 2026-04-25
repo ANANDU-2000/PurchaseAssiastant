@@ -16,6 +16,29 @@ import 'session_cache.dart';
 /// Bumps when session changes — wired to [GoRouter.refreshListenable].
 final authRefresh = ValueNotifier<int>(0);
 
+/// All parallel 401s share one refresh; avoids racing refresh/retries, double
+/// refresh use, and provider storms that complete after Riverpod has disposed
+/// [FutureProvider] elements (defunct + markNeedsBuild crashes on web).
+Future<bool>? _unauthorizedRefreshInFlight;
+
+Future<bool> _singleFlightUnauthorizedRefresh(
+  bool Function() isDisposed,
+  Future<bool> Function() refresh,
+) {
+  if (isDisposed()) return Future.value(false);
+  if (_unauthorizedRefreshInFlight != null) {
+    return _unauthorizedRefreshInFlight!;
+  }
+  _unauthorizedRefreshInFlight = () async {
+    if (isDisposed()) return false;
+    return refresh();
+  }()
+      .whenComplete(() {
+    _unauthorizedRefreshInFlight = null;
+  });
+  return _unauthorizedRefreshInFlight!;
+}
+
 final hexaApiProvider = Provider<HexaApi>((ref) {
   // Riverpod 2.6 lacks `ref.mounted` — track disposal manually so async
   // callbacks don't read a dead ProviderContainer after widget/container
@@ -38,38 +61,41 @@ final hexaApiProvider = Provider<HexaApi>((ref) {
         return null;
       }
     },
-    onUnauthorizedRefresh: () async {
-      if (disposed) return false;
-      final store = ref.read(tokenStoreProvider);
-      final t = await store.read();
-      if (t.refresh == null) return false;
-      try {
-        final pair = await api.refreshTokens(refreshToken: t.refresh!);
-        if (disposed) return false;
-        await store.write(access: pair.access, refresh: pair.refresh);
-        api.setAuthToken(pair.access);
-        if (disposed) return true;
-        try {
-          await ref
-              .read(sessionProvider.notifier)
-              .applyRefreshedTokens(pair.access, pair.refresh);
-        } catch (_) {
-          // SessionNotifier torn down — token is still persisted + attached.
-        }
-        return true;
-      } on DioException catch (e) {
-        final sc = e.response?.statusCode;
-        final invalidRefresh = sc == 401 || sc == 403;
-        if (invalidRefresh && !disposed) {
-          try {
-            await ref.read(sessionProvider.notifier).logout();
-          } catch (_) {/* container disposed */}
-        }
-        return false;
-      } catch (_) {
-        return false;
-      }
-    },
+    onUnauthorizedRefresh: () => _singleFlightUnauthorizedRefresh(
+          () => disposed,
+          () async {
+            if (disposed) return false;
+            final store = ref.read(tokenStoreProvider);
+            final t = await store.read();
+            if (t.refresh == null) return false;
+            try {
+              final pair = await api.refreshTokens(refreshToken: t.refresh!);
+              if (disposed) return false;
+              await store.write(access: pair.access, refresh: pair.refresh);
+              api.setAuthToken(pair.access);
+              if (disposed) return true;
+              try {
+                await ref
+                    .read(sessionProvider.notifier)
+                    .applyRefreshedTokens(pair.access, pair.refresh);
+              } catch (_) {
+                // SessionNotifier torn down — token is still persisted + attached.
+              }
+              return true;
+            } on DioException catch (e) {
+              final sc = e.response?.statusCode;
+              final invalidRefresh = sc == 401 || sc == 403;
+              if (invalidRefresh && !disposed) {
+                try {
+                  await ref.read(sessionProvider.notifier).logout();
+                } catch (_) {/* container disposed */}
+              }
+              return false;
+            } catch (_) {
+              return false;
+            }
+          },
+        ),
   );
   return api;
 });

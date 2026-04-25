@@ -3,6 +3,40 @@ import 'package:hexa_purchase_assistant/features/purchase/domain/purchase_draft.
 import 'package:hexa_purchase_assistant/features/purchase/state/purchase_draft_provider.dart';
 
 void main() {
+  test('purchaseLineSaveBlockReason: empty unit fails', () {
+    const l = PurchaseLineDraft(
+      catalogItemId: 'cid1',
+      itemName: 'Rice',
+      qty: 1,
+      unit: '   ',
+      landingCost: 10,
+    );
+    expect(purchaseLineSaveBlockReason(l), isNotNull);
+  });
+
+  test('purchaseLineSaveBlockReason: valid plain line', () {
+    const l = PurchaseLineDraft(
+      catalogItemId: 'cid1',
+      itemName: 'Rice',
+      qty: 1,
+      unit: 'kg',
+      landingCost: 10,
+    );
+    expect(purchaseLineSaveBlockReason(l), isNull);
+  });
+
+  test('purchaseLineSaveBlockReason: HSN required when line has tax', () {
+    const l = PurchaseLineDraft(
+      catalogItemId: 'cid1',
+      itemName: 'Rice',
+      qty: 1,
+      unit: 'kg',
+      landingCost: 10,
+      taxPercent: 5,
+    );
+    expect(purchaseLineSaveBlockReason(l), isNotNull);
+  });
+
   test('totals: single line, no tax/discount, separate freight, commission 10%', () {
     final d = PurchaseDraft(
       purchaseDate: DateTime(2025, 1, 1),
@@ -11,6 +45,7 @@ void main() {
       commissionPercent: 10,
       lines: const [
         PurchaseLineDraft(
+          catalogItemId: 'c1',
           itemName: 'A',
           qty: 2,
           unit: 'kg',
@@ -33,11 +68,13 @@ void main() {
       freightType: 'separate',
       lines: const [
         PurchaseLineDraft(
+          catalogItemId: 'c1',
           itemName: 'A',
           qty: 1,
           unit: 'kg',
           landingCost: 100,
           taxPercent: 10,
+          hsnCode: '10063020',
         ),
       ],
     );
@@ -52,6 +89,7 @@ void main() {
       freightAmount: 100,
       lines: const [
         PurchaseLineDraft(
+          catalogItemId: 'c1',
           itemName: 'A',
           qty: 1,
           unit: 'kg',
@@ -71,14 +109,17 @@ void main() {
       freightType: 'separate',
       lines: const [
         PurchaseLineDraft(
+          catalogItemId: 'c1',
           itemName: 'Rice',
           qty: 100,
           unit: 'bag',
           landingCost: 2100,
           kgPerUnit: 50,
           landingCostPerKg: 42,
+          hsnCode: '10063020',
         ),
         PurchaseLineDraft(
+          catalogItemId: 'c2',
           itemName: 'Loose',
           qty: 10,
           unit: 'kg',

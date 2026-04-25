@@ -15,11 +15,10 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/calc_engine.dart';
 import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart'
-    show invalidateBusinessAggregates, invalidateWorkspaceSeedData;
+    show invalidatePurchaseWorkspace, invalidateWorkspaceSeedData;
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/prefs_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
-import '../../../core/providers/trade_purchases_provider.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/notifications/local_notifications_service.dart';
@@ -61,6 +60,9 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
   bool _catalogLinePrefillOpened = false;
   /// When catalog line defaults reduce suppliers to a single option, we auto-pick once per signature.
   String? _lastAutoSupplierFromCatalogSig;
+  /// [tradeSupplierBrokerMap] top suppliers for current line catalog ids (hint only).
+  String? _historyHintKey;
+  Future<List<String>>? _historySupplierNamesFuture;
   Timer? _draftDebounce;
 
   final _supplierSectionKey = GlobalKey();
@@ -339,6 +341,52 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     return v?.toString().trim() ?? '';
   }
 
+  String _apiDateOnly(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+
+  /// Top-3 suppliers by aggregated [deals] across all [catalogIds] (hint only).
+  Future<List<String>> _fetchSupplierHistoryHintsForCatalogs(
+      String businessId, Set<String> catalogIds) async {
+    if (catalogIds.isEmpty) return [];
+    final now = DateTime.now();
+    final from = DateTime(now.year, now.month, now.day)
+        .subtract(const Duration(days: 365));
+    final m = await ref.read(hexaApiProvider).tradeSupplierBrokerMap(
+          businessId: businessId,
+          from: _apiDateOnly(from),
+          to: _apiDateOnly(now),
+        );
+    final rows = (m['rows'] as List?) ?? const [];
+    final bySupplierId = <String, Map<String, dynamic>>{};
+    for (final r in rows) {
+      if (r is! Map) continue;
+      final row = Map<String, dynamic>.from(r);
+      final cid = row['catalog_item_id']?.toString();
+      if (cid == null || !catalogIds.contains(cid)) continue;
+      final sid = row['supplier_id']?.toString().trim() ?? '';
+      if (sid.isEmpty) continue;
+      final name = row['supplier_name']?.toString().trim() ?? '';
+      final deals = (row['deals'] as num?)?.toInt() ?? 0;
+      final ex = bySupplierId[sid];
+      if (ex == null) {
+        bySupplierId[sid] = {'name': name, 'deals': deals};
+      } else {
+        ex['deals'] = (ex['deals'] as int) + deals;
+      }
+    }
+    final list = bySupplierId.entries.toList()
+      ..sort((a, b) => (b.value['deals'] as int)
+          .compareTo(a.value['deals'] as int));
+    final names = <String>[];
+    for (final e in list.take(3)) {
+      final n = e.value['name'] as String;
+      if (n.isNotEmpty) names.add(n);
+    }
+    return names;
+  }
+
   /// Restricts supplier pick to intersection of [default_supplier_ids] on every line
   /// that has a catalog item with non-empty defaults. If any such line has no defaults,
   /// fall back to the full list. Empty intersection falls back to full list.
@@ -380,23 +428,62 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     List<Map<String, dynamic>> list,
     InlineSearchItem it,
   ) {
+    unawaited(_applySupplierSelectionAsync(list, it));
+  }
+
+  Future<void> _applySupplierSelectionAsync(
+    List<Map<String, dynamic>> list,
+    InlineSearchItem it,
+  ) async {
     if (it.id.isEmpty) return;
     final want = it.id.trim().toLowerCase();
     Map<String, dynamic>? row;
     for (final m in list) {
       if (_supplierRowId(m).toLowerCase() == want) {
-        row = m;
+        row = Map<String, dynamic>.from(m);
         break;
       }
     }
-    // Still commit id+label so Next / gates work even if the row shape drifts
-    // (e.g. stale list vs. suggestion) or the API uses an alternate id key.
     row ??= <String, dynamic>{'id': it.id, 'name': it.label};
+    final session = ref.read(sessionProvider);
+    if (session != null) {
+      try {
+        final fresh = await ref.read(hexaApiProvider).getSupplier(
+              businessId: session.primaryBusiness.id,
+              supplierId: it.id,
+            );
+        if (fresh.isNotEmpty) {
+          row = fresh;
+        }
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    final supplierRow = row!;
     ref
         .read(purchaseDraftProvider.notifier)
-        .setSupplierFromMap(row, it.id, it.label);
-    // The `ref.listen` in build() reflects supplierName → _supplierCtrl.
-    // Terms/delivered/billty/etc. come from the row.
+        .applySupplierSelection(supplierRow, it.id, it.label);
+    final bid = supplierRow['broker_id']?.toString();
+    if (bid != null && bid.isNotEmpty && session != null) {
+      try {
+        final b = await ref.read(hexaApiProvider).getBroker(
+              businessId: session.primaryBusiness.id,
+              brokerId: bid,
+            );
+        final nm = b['name']?.toString().trim();
+        ref.read(purchaseDraftProvider.notifier).setBroker(
+              bid,
+              (nm != null && nm.isNotEmpty) ? nm : 'Broker',
+              fromSupplier: true,
+            );
+      } catch (_) {
+        ref.read(purchaseDraftProvider.notifier).setBroker(
+              bid,
+              'Broker',
+              fromSupplier: true,
+            );
+      }
+    }
+    if (!mounted) return;
     _syncControllersFromDraft();
     setState(() {
       _supplierFieldError = null;
@@ -474,6 +561,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
   }) async {
     final draft = ref.read(purchaseDraftProvider);
     if (draft.supplierId == null || draft.supplierId!.isEmpty) return;
+    final session = ref.read(sessionProvider);
     final initial = initialOverride ??
         (editIndex != null
             ? ref.read(purchaseDraftProvider).lines[editIndex].toLineMap()
@@ -484,7 +572,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     if (cid != null && cid.isNotEmpty) {
       final has = catalogForSheet.any((m) => m['id']?.toString() == cid);
       if (!has) {
-        final session = ref.read(sessionProvider);
         if (session != null) {
           try {
             final row = await ref.read(hexaApiProvider).getCatalogItem(
@@ -520,6 +607,12 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
             catalog: catalogForSheet,
             initial: initial,
             isEdit: editIndex != null,
+            resolveCatalogItem: session == null
+                ? null
+                : (String catalogItemId) => ref.read(hexaApiProvider).getCatalogItem(
+                      businessId: session.primaryBusiness.id,
+                      itemId: catalogItemId,
+                    ),
             onCommitted: (line) {
               final p = PurchaseLineDraft.fromLineMap(
                 Map<String, dynamic>.from(line),
@@ -709,9 +802,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
               businessId: bid,
               body: body,
             );
-      invalidateTradePurchaseCaches(ref);
-      ref.invalidate(suppliersListProvider);
-      invalidateBusinessAggregates(ref);
+      invalidatePurchaseWorkspace(ref);
       ref.read(purchaseDraftProvider.notifier).reset();
       await _clearDraftInPrefs();
       if (mounted) {
@@ -1124,6 +1215,46 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     );
   }
 
+  /// Non-blocking: for lines with catalog ids, show top-3 suppliers from [tradeSupplierBrokerMap].
+  Widget _buildSupplierHistoryHint() {
+    final session = ref.watch(sessionProvider);
+    final draft = ref.watch(purchaseDraftProvider);
+    final cids = draft.lines
+        .map((l) => l.catalogItemId)
+        .whereType<String>()
+        .where((s) => s.isNotEmpty)
+        .toList()
+      ..sort();
+    final key = cids.join('|');
+    if (session == null || key.isEmpty) {
+      _historyHintKey = null;
+      _historySupplierNamesFuture = null;
+      return const SizedBox.shrink();
+    }
+    if (_historyHintKey != key) {
+      _historyHintKey = key;
+      _historySupplierNamesFuture = _fetchSupplierHistoryHintsForCatalogs(
+        session.primaryBusiness.id,
+        cids.toSet(),
+      );
+    }
+    return FutureBuilder<List<String>>(
+      future: _historySupplierNamesFuture,
+      builder: (context, snap) {
+        if (snap.hasData && (snap.data?.isNotEmpty ?? false)) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              'From your trade history: ${snap.data!.join(" · ")}',
+              style: TextStyle(color: Colors.grey[700], fontSize: 12),
+            ),
+          );
+        }
+        return const SizedBox.shrink();
+      },
+    );
+  }
+
   Widget _buildSupplierSearch(List<Map<String, dynamic>> catalog) {
     final av = ref.watch(suppliersListProvider);
     return av.when(
@@ -1357,7 +1488,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      'Auto-filled from ${draft.supplierName}',
+                      'Defaults from supplier — ${draft.supplierName} (editable)',
                       style: const TextStyle(
                         fontSize: 12,
                         color: Color(0xFF0D9488),
@@ -1503,6 +1634,8 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
           label: const Text('Add item'),
         ),
         const SizedBox(height: 8),
+        _buildSupplierHistoryHint(),
+        const SizedBox(height: 4),
         if (lines.isEmpty)
           const Text(
             'No items yet. Tap Add item.',

@@ -2,12 +2,32 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../auth/session_notifier.dart';
+import '../models/trade_purchase_models.dart';
+import '../trade/trade_line_profit.dart';
 import 'analytics_kpi_provider.dart';
 
 /// One calendar day of summed line profit (for Overview trend chart).
 typedef AnalyticsDailyProfitPoint = ({DateTime day, double profit});
 
+List<TradePurchase> _tradePurchasesInLocalDateRange(
+  List<TradePurchase> all,
+  DateTime startInclusive,
+  DateTime endInclusive,
+) {
+  final a = DateTime(startInclusive.year, startInclusive.month, startInclusive.day);
+  final b = DateTime(endInclusive.year, endInclusive.month, endInclusive.day);
+  return [
+    for (final p in all)
+      if (!DateTime(p.purchaseDate.year, p.purchaseDate.month, p.purchaseDate.day)
+              .isBefore(a) &&
+          !DateTime(p.purchaseDate.year, p.purchaseDate.month, p.purchaseDate.day)
+              .isAfter(b))
+        p,
+  ];
+}
+
 /// Last 30 calendar days ending on [analyticsDateRangeProvider].to (inclusive).
+/// **Trade lines only** — estimated from selling vs landed cost (see [estimatedTradeLineProfit]).
 final analyticsDailyProfitProvider =
     FutureProvider.autoDispose<List<AnalyticsDailyProfitPoint>>((ref) async {
   final session = ref.watch(sessionProvider);
@@ -16,26 +36,26 @@ final analyticsDailyProfitProvider =
   final end = DateTime(range.to.year, range.to.month, range.to.day);
   final start = end.subtract(const Duration(days: 29));
   final fmt = DateFormat('yyyy-MM-dd');
-  final raw = await ref.read(hexaApiProvider).listEntries(
+  final raw = await ref.read(hexaApiProvider).listTradePurchases(
         businessId: session.primaryBusiness.id,
-        from: fmt.format(start),
-        to: fmt.format(end),
+        limit: 500,
+        status: 'all',
       );
+  final purchases = <TradePurchase>[];
+  for (final row in raw) {
+    try {
+      purchases.add(TradePurchase.fromJson(Map<String, dynamic>.from(row)));
+    } catch (_) {}
+  }
+  final inRange = _tradePurchasesInLocalDateRange(purchases, start, end);
   final byDay = <String, double>{};
-  for (final e in raw) {
-    if (e is! Map) continue;
-    final m = Map<String, dynamic>.from(e);
-    final ds = m['entry_date']?.toString().split('T').first;
-    if (ds == null) continue;
-    final lines = m['lines'];
-    var p = 0.0;
-    if (lines is List) {
-      for (final ln in lines) {
-        if (ln is! Map) continue;
-        p += (Map<String, dynamic>.from(ln)['profit'] as num?)?.toDouble() ?? 0;
-      }
+  for (final p in inRange) {
+    final ds = p.purchaseDate.toIso8601String().split('T').first;
+    var pro = 0.0;
+    for (final ln in p.lines) {
+      pro += estimatedTradeLineProfit(ln);
     }
-    byDay[ds] = (byDay[ds] ?? 0) + p;
+    byDay[ds] = (byDay[ds] ?? 0) + pro;
   }
   final out = <AnalyticsDailyProfitPoint>[];
   for (var i = 0; i < 30; i++) {
@@ -46,43 +66,95 @@ final analyticsDailyProfitProvider =
   return out;
 });
 
-/// Last 7 calendar days ending today (local), for Home mini trend chart (independent of analytics date range).
-final homeSevenDayProfitProvider =
-    FutureProvider.autoDispose<List<AnalyticsDailyProfitPoint>>((ref) async {
+/// Same KPI numbers as [analyticsKpiProvider] but from one [tradeDashboardSnapshot] response.
+AnalyticsKpi analyticsKpiFromTradeDashboardSnapshot(Map<String, dynamic> snap) {
+  final summary = snap['summary'] is Map
+      ? Map<String, dynamic>.from(snap['summary']! as Map)
+      : <String, dynamic>{};
+  final u = snap['unit_totals'] is Map
+      ? Map<String, dynamic>.from(snap['unit_totals']! as Map)
+      : <String, dynamic>{};
+  return AnalyticsKpi(
+    totalPurchase: (summary['total_purchase'] as num?)?.toDouble() ?? 0,
+    totalQtyBase: (summary['total_qty'] as num?)?.toDouble() ?? 0,
+    totalProfit: 0,
+    purchaseCount: (summary['deals'] as num?)?.toInt() ?? 0,
+    totalKg: (u['total_kg'] as num?)?.toDouble() ?? 0,
+    totalBags: (u['total_bags'] as num?)?.toDouble() ?? 0,
+    totalBoxes: (u['total_boxes'] as num?)?.toDouble() ?? 0,
+    totalTins: (u['total_tins'] as num?)?.toDouble() ?? 0,
+  );
+}
+
+/// Full Reports tab: **one** [tradeDashboardSnapshot] call (items, suppliers, category rollups, KPI + units).
+class ReportsTradeBundle {
+  const ReportsTradeBundle({
+    required this.kpi,
+    required this.items,
+    required this.suppliers,
+    required this.categories,
+  });
+
+  final AnalyticsKpi kpi;
+  final List<Map<String, dynamic>> items;
+  final List<Map<String, dynamic>> suppliers;
+  final List<Map<String, dynamic>> categories;
+}
+
+final fullReportsTradeBundleProvider =
+    FutureProvider.autoDispose<ReportsTradeBundle>((ref) async {
   final session = ref.watch(sessionProvider);
-  if (session == null) return [];
-  final now = DateTime.now();
-  final end = DateTime(now.year, now.month, now.day);
-  final start = end.subtract(const Duration(days: 6));
+  final range = ref.watch(analyticsDateRangeProvider);
+  if (session == null) {
+    throw StateError('Not signed in');
+  }
   final fmt = DateFormat('yyyy-MM-dd');
-  final raw = await ref.read(hexaApiProvider).listEntries(
+  final snap = await ref.read(hexaApiProvider).tradeDashboardSnapshot(
         businessId: session.primaryBusiness.id,
-        from: fmt.format(start),
-        to: fmt.format(end),
+        from: fmt.format(range.from),
+        to: fmt.format(range.to),
       );
-  final byDay = <String, double>{};
-  for (final e in raw) {
-    if (e is! Map) continue;
-    final m = Map<String, dynamic>.from(e);
-    final ds = m['entry_date']?.toString().split('T').first;
-    if (ds == null) continue;
-    final lines = m['lines'];
-    var p = 0.0;
-    if (lines is List) {
-      for (final ln in lines) {
-        if (ln is! Map) continue;
-        p += (Map<String, dynamic>.from(ln)['profit'] as num?)?.toDouble() ?? 0;
-      }
+  final kpi = analyticsKpiFromTradeDashboardSnapshot(snap);
+  final items = <Map<String, dynamic>>[];
+  final itemsRaw = snap['item_slices'];
+  if (itemsRaw is List) {
+    for (final e in itemsRaw) {
+      if (e is Map) items.add(Map<String, dynamic>.from(e));
     }
-    byDay[ds] = (byDay[ds] ?? 0) + p;
   }
-  final out = <AnalyticsDailyProfitPoint>[];
-  for (var i = 0; i < 7; i++) {
-    final d = start.add(Duration(days: i));
-    final key = fmt.format(d);
-    out.add((day: d, profit: byDay[key] ?? 0));
+  final suppliers = <Map<String, dynamic>>[];
+  final supRaw = snap['suppliers'];
+  if (supRaw is List) {
+    for (final e in supRaw) {
+      if (e is Map) suppliers.add(Map<String, dynamic>.from(e));
+    }
   }
-  return out;
+  final categories = <Map<String, dynamic>>[];
+  final catRaw = snap['categories'];
+  if (catRaw is List) {
+    for (final e in catRaw) {
+      if (e is! Map) continue;
+      final m = Map<String, dynamic>.from(e);
+      final nest = m['items'];
+      final n = nest is List ? nest.length : 0;
+      categories.add({
+        'category_name': m['category_name']?.toString() ?? '—',
+        'category': m['category_name']?.toString() ?? '—',
+        'total_purchase': (m['total_purchase'] as num?)?.toDouble() ?? 0,
+        'total_qty': (m['total_qty'] as num?)?.toDouble() ?? 0,
+        'line_count': 0,
+        'item_count': n,
+        'total_profit': 0.0,
+        'type_name': '—',
+      });
+    }
+  }
+  return ReportsTradeBundle(
+    kpi: kpi,
+    items: items,
+    suppliers: suppliers,
+    categories: categories,
+  );
 });
 
 final analyticsItemsTableProvider =

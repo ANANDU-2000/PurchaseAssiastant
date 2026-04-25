@@ -231,8 +231,8 @@ def _format_missing_fields(fields: list[str] | None) -> str:
         "item_name",
         "qty",
         "unit",
-        "buy_price",
         "landing_cost",
+        "buy_price",
         "selling_price",
         "supplier_name",
         "broker_name",
@@ -240,7 +240,7 @@ def _format_missing_fields(fields: list[str] | None) -> str:
     ]
     clean = [str(f).strip() for f in (fields or []) if str(f).strip()]
     if not clean:
-        return "Need: item, qty, buy_price, landing_cost."
+        return "Need: item, qty, landing cost (or selling if applicable)."
     seen: set[str] = set()
     dedup = []
     for f in clean:

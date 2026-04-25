@@ -1,16 +1,30 @@
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 
 import '../api/fastapi_error.dart';
+import '../config/app_config.dart';
+
+bool _blobLooksLikeConnectionRefused(String blob) {
+  final lower = blob.toLowerCase();
+  return lower.contains('connection refused') ||
+      lower.contains('err_connection_refused') ||
+      lower.contains('active refused') ||
+      lower.contains('failed to connect');
+}
 
 /// When the browser cannot open a TCP connection to the API (backend not running / wrong host).
 String? _connectionUnreachableHint(DioException e) {
   final blob = '${e.message} ${e.error}';
   final lower = blob.toLowerCase();
-  if (lower.contains('connection refused') ||
-      lower.contains('err_connection_refused') ||
-      lower.contains('failed to connect') ||
-      lower.contains('network is unreachable') ||
+  if (_blobLooksLikeConnectionRefused(blob)) {
+    if (kDebugMode || AppConfig.apiBasePointsToLoopback) {
+      return 'Cannot reach the API (connection refused). For local development, '
+          'start the backend on port 8000 and open the app from the same host '
+          '(e.g. localhost with localhost, or 127.0.0.1 with 127.0.0.1).';
+    }
+    return 'Cannot reach the server. It may be temporarily unavailable—try again shortly.';
+  }
+  if (lower.contains('network is unreachable') ||
       lower.contains('connection reset') ||
       lower.contains('connection timed out') ||
       lower.contains('timed out')) {
@@ -59,9 +73,9 @@ String friendlyAuthError(
       if (kIsWeb) {
         final web = _webBrowserNetworkHint(error);
         if (web != null) return web;
-        return 'No internet connection. Check your network and try again.';
+        return 'Cannot complete the request. Check your network and try again.';
       }
-      return 'No internet connection. Check your network and try again.';
+      return 'Cannot complete the request. Check your network and try again.';
     }
 
     final sc = error.response?.statusCode;
@@ -102,9 +116,9 @@ String friendlyGoogleSignInError(Object error) {
         if (web != null) {
           return '$web You can use email sign-in instead.';
         }
-        return 'No internet connection. Try email sign-in, or try again later.';
+        return 'Cannot complete the request. Try email sign-in, or try again later.';
       }
-      return 'No internet connection. Check your network and try again.';
+      return 'Cannot complete the request. Check your network and try again.';
     }
 
     final sc = error.response?.statusCode;
@@ -138,29 +152,29 @@ enum AuthErrorContext { login, register }
 /// Banner title: distinguish "no Wi‑Fi" from "API not listening" (common on Flutter web + localhost).
 String authUnreachableBannerTitle(DioException? e) {
   if (e == null) return "Can't reach server";
-  final b = '${e.message} ${e.error}'.toLowerCase();
-  if (b.contains('connection refused') ||
-      b.contains('err_connection_refused') ||
-      b.contains('failed to connect') ||
-      b.contains('active refused')) {
+  final b = '${e.message} ${e.error}';
+  if (_blobLooksLikeConnectionRefused(b)) {
     return 'API not reachable';
   }
-  return 'No internet connection';
+  return 'Connection problem';
 }
 
 String? authServerUnreachableDetail(DioException? e) {
   if (e == null) return null;
-  final b = '${e.message} ${e.error}'.toLowerCase();
-  if (b.contains('connection refused') ||
-      b.contains('err_connection_refused') ||
-      b.contains('failed to connect') ||
-      b.contains('active refused')) {
-    return 'Nothing is listening on port 8000 (connection refused). '
-        'Start the FastAPI app from the backend folder, e.g. '
-        'uvicorn app.main:app --reload --host 127.0.0.1 --port 8000. '
-        'When you open the web app on localhost, the client calls http://localhost:8000 on purpose (same-site with the page host).';
+  final b = '${e.message} ${e.error}';
+  if (_blobLooksLikeConnectionRefused(b)) {
+    if (kDebugMode || AppConfig.apiBasePointsToLoopback) {
+      return 'Nothing is listening on port 8000 (connection refused). '
+          'Start the API from the backend folder, e.g. '
+          'uvicorn app.main:app --reload --host 127.0.0.1 --port 8000. '
+          'Production builds must set API_BASE_URL to your real HTTPS API when you run '
+          'flutter build web.';
+    }
+    return 'The app could not reach your server. If you are the administrator, '
+        'confirm the API URL used for this deployment.';
   }
-  if (b.contains('timed out') || b.contains('network is unreachable')) {
+  if (b.toLowerCase().contains('timed out') ||
+      b.toLowerCase().contains('network is unreachable')) {
     return 'Check your network, firewall, and VPN, then try again.';
   }
   return null;
@@ -221,7 +235,7 @@ String friendlyApiError(Object error, {bool forAssistant = false}) {
       }
       return forAssistant
           ? "Can't reach the assistant. Check your connection and try again."
-          : 'No internet connection. Check your network and try again.';
+          : 'Cannot complete the request. Check your network and try again.';
     }
     return 'Request could not be completed. Try again.';
   }

@@ -1,3 +1,4 @@
+import 'home_dashboard_provider.dart';
 import 'analytics_breakdown_providers.dart';
 import 'business_write_revision.dart';
 import 'analytics_kpi_provider.dart';
@@ -25,6 +26,7 @@ void invalidateAnalyticsData(dynamic ref) {
   ref.invalidate(fullReportsInsightsProvider);
   ref.invalidate(fullReportsGoalsProvider);
   ref.invalidate(reportsPriorPeriodDeltaProvider);
+  ref.invalidate(fullReportsTradeBundleProvider);
 }
 
 /// After purchases, entries, or other business writes, bust derived KPIs so
@@ -37,8 +39,8 @@ void invalidateAnalyticsData(dynamic ref) {
 void invalidateBusinessAggregates(dynamic ref) {
   invalidateAnalyticsData(ref);
   ref.invalidate(dashboardProvider);
+  ref.invalidate(homeDashboardDataProvider);
   ref.invalidate(homeInsightsProvider);
-  ref.invalidate(homeSevenDayProfitProvider);
   ref.invalidate(contactsSuppliersEnrichedProvider);
   ref.invalidate(contactsBrokersEnrichedProvider);
   ref.invalidate(contactsCategoriesProvider);
@@ -64,4 +66,11 @@ void invalidateWorkspaceSeedData(dynamic ref) {
   ref.invalidate(catalogItemsListProvider);
   invalidateTradePurchaseCaches(ref);
   bumpBusinessDataWriteRevision(ref);
+}
+
+/// Bust purchase lists, trade reports, and dashboard KPIs after a purchase
+/// mutation (create, update, delete, or cancel). Prefer this over ad-hoc
+/// [invalidateTradePurchaseCaches] + [invalidateBusinessAggregates] pairs.
+void invalidatePurchaseWorkspace(dynamic ref) {
+  invalidateBusinessAggregates(ref);
 }

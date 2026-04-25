@@ -6,10 +6,12 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/business_profile_provider.dart';
-import '../../../core/providers/analytics_breakdown_providers.dart';
-import '../../../core/providers/analytics_kpi_provider.dart';
-import '../../../core/providers/business_aggregates_invalidation.dart';
-import '../../../core/providers/trade_purchases_provider.dart';
+import '../../../core/providers/analytics_breakdown_providers.dart'
+    show fullReportsTradeBundleProvider;
+import '../../../core/providers/analytics_kpi_provider.dart'
+    show AnalyticsKpi, analyticsDateRangeProvider;
+import '../../../core/providers/business_aggregates_invalidation.dart'
+    show invalidateAnalyticsData, invalidatePurchaseWorkspace;
 import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/services/reports_pdf.dart';
@@ -43,6 +45,8 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
   _DatePreset _preset = _DatePreset.month;
   _ViewType _viewType = _ViewType.item;
   String _tableQuery = '';
+  /// Primary table shows this many rows; "View more" increases the cap.
+  int _tableRowCap = 8;
   bool _exporting = false;
   bool _exportingPdf = false;
 
@@ -61,10 +65,11 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
       final range = ref.read(analyticsDateRangeProvider);
       final df = DateFormat('yyyy-MM-dd');
       final qf = _tableQuery.trim().toLowerCase();
+      final b = await ref.read(fullReportsTradeBundleProvider.future);
 
       switch (_viewType) {
         case _ViewType.item:
-          var rows = await ref.read(analyticsItemsTableProvider.future);
+          var rows = List<Map<String, dynamic>>.from(b.items);
           if (qf.isNotEmpty) {
             rows = rows
                 .where((r) => _itemLabel(r).toLowerCase().contains(qf))
@@ -99,7 +104,7 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                 'Reports Items ${df.format(range.from)}–${df.format(range.to)}',
           );
         case _ViewType.supplier:
-          var rows = await ref.read(analyticsSuppliersTableProvider.future);
+          var rows = List<Map<String, dynamic>>.from(b.suppliers);
           if (qf.isNotEmpty) {
             rows = rows
                 .where((r) =>
@@ -138,7 +143,7 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                 'Reports Suppliers ${df.format(range.from)}–${df.format(range.to)}',
           );
         case _ViewType.category:
-          var rows = await ref.read(analyticsCategoriesTableProvider.future);
+          var rows = List<Map<String, dynamic>>.from(b.categories);
           if (qf.isNotEmpty) {
             rows = rows
                 .where((r) =>
@@ -192,14 +197,12 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
     if (_exportingPdf || _exporting) return;
     setState(() => _exportingPdf = true);
     try {
-      final kpi = await ref.read(analyticsKpiProvider.future);
-      var itemRows = await ref.read(analyticsItemsTableProvider.future);
-      itemRows = List<Map<String, dynamic>>.from(itemRows)
+      final b = await ref.read(fullReportsTradeBundleProvider.future);
+      final kpi = b.kpi;
+      var itemRows = List<Map<String, dynamic>>.from(b.items)
         ..sort((a, b) => _itemMetric(b).compareTo(_itemMetric(a)));
-      final catRows =
-          await ref.read(analyticsCategoriesTableProvider.future);
-      final supRows =
-          await ref.read(analyticsSuppliersTableProvider.future);
+      final catRows = b.categories;
+      final supRows = b.suppliers;
       if (itemRows.isEmpty && catRows.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -255,7 +258,10 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
           to: today,
         ),
     };
-    setState(() => _preset = p);
+    setState(() {
+      _preset = p;
+      _tableRowCap = 8;
+    });
     _invalidateAnalytics();
   }
 
@@ -273,10 +279,7 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final kpi = ref.watch(analyticsKpiProvider);
-    final items = ref.watch(analyticsItemsTableProvider);
-    final suppliers = ref.watch(analyticsSuppliersTableProvider);
-    final categories = ref.watch(analyticsCategoriesTableProvider);
+    final bundle = ref.watch(fullReportsTradeBundleProvider);
     final session = ref.watch(sessionProvider);
 
     return Scaffold(
@@ -317,8 +320,7 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
           ),
           ShellQuickRefActions(
             onRefresh: () {
-              invalidateTradePurchaseCaches(ref);
-              invalidateBusinessAggregates(ref);
+              invalidatePurchaseWorkspace(ref);
             },
           ),
         ],
@@ -327,9 +329,8 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
           ? const Center(child: Text('Sign in'))
           : RefreshIndicator(
               onRefresh: () async {
-                invalidateTradePurchaseCaches(ref);
-                invalidateBusinessAggregates(ref);
-                await ref.read(analyticsKpiProvider.future);
+                invalidatePurchaseWorkspace(ref);
+                await ref.read(fullReportsTradeBundleProvider.future);
               },
               child: ListView(
                 keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -339,97 +340,101 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                 children: [
                   _filterBar(),
                   const SizedBox(height: 8),
-                  kpi.when(
+                  bundle.when(
                     loading: () => const LinearProgressIndicator(),
                     error: (_, __) => FriendlyLoadError(
-                      onRetry: () => ref.invalidate(analyticsKpiProvider),
+                      onRetry: () =>
+                          ref.invalidate(fullReportsTradeBundleProvider),
                     ),
-                    data: (k) => Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (k.purchaseCount == 0)
-                          _noPurchasesInRangeCard(context),
-                        _kpiStrip(k),
-                      ],
-                    ),
+                    data: (b) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (b.kpi.purchaseCount == 0)
+                            _noPurchasesInRangeCard(context),
+                          _kpiStrip(context, b.kpi),
+                          const SizedBox(height: 8),
+                          if (_viewType == _ViewType.item)
+                            _cappedForBundle(
+                              b.items,
+                              buildPrimary: (page) => _itemsTable(context, page),
+                              nameForFilter: (r) => _itemLabel(r),
+                              sortByItemMetric: true,
+                            )
+                          else if (_viewType == _ViewType.supplier)
+                            _cappedForBundle(
+                              b.suppliers,
+                              buildPrimary: (page) =>
+                                  _supplierTable(context, page),
+                              nameForFilter: (r) =>
+                                  r['supplier_name']?.toString() ?? '',
+                              sortByItemMetric: false,
+                            )
+                          else
+                            _cappedForBundle(
+                              b.categories,
+                              buildPrimary: (page) =>
+                                  _categoryTable(context, page),
+                              nameForFilter: (r) =>
+                                  r['category_name']?.toString() ?? '',
+                              sortByItemMetric: false,
+                            ),
+                        ],
+                      );
+                    },
                   ),
-                  const SizedBox(height: 8),
-                  // ── VIEW TABLE ─────────────────────────────────────────
-                  if (_viewType == _ViewType.item)
-                    items.when(
-                      loading: () => const LinearProgressIndicator(),
-                      error: (_, __) => FriendlyLoadError(
-                        onRetry: () =>
-                            ref.invalidate(analyticsItemsTableProvider),
-                      ),
-                      data: (iRows) {
-                        var rows = List<Map<String, dynamic>>.from(iRows);
-                        if (_tableQuery.isNotEmpty) {
-                          final q = _tableQuery.toLowerCase();
-                          rows = rows
-                              .where((r) =>
-                                  _itemLabel(r).toLowerCase().contains(q))
-                              .toList();
-                        }
-                        rows.sort((a, b) =>
-                            _itemMetric(b).compareTo(_itemMetric(a)));
-                        return _itemsTable(context, rows);
-                      },
-                    )
-                  else if (_viewType == _ViewType.supplier)
-                    suppliers.when(
-                      loading: () => const LinearProgressIndicator(),
-                      error: (_, __) => FriendlyLoadError(
-                        onRetry: () =>
-                            ref.invalidate(analyticsSuppliersTableProvider),
-                      ),
-                      data: (sRows) {
-                        var rows = List<Map<String, dynamic>>.from(sRows);
-                        if (_tableQuery.isNotEmpty) {
-                          final q = _tableQuery.toLowerCase();
-                          rows = rows
-                              .where((r) => (r['supplier_name']
-                                      ?.toString() ??
-                                  '')
-                                  .toLowerCase()
-                                  .contains(q))
-                              .toList();
-                        }
-                        rows.sort((a, b) =>
-                            ((b['total_purchase'] as num?) ?? 0)
-                                .compareTo(
-                                    (a['total_purchase'] as num?) ?? 0));
-                        return _supplierTable(context, rows);
-                      },
-                    )
-                  else
-                    categories.when(
-                      loading: () => const LinearProgressIndicator(),
-                      error: (_, __) => FriendlyLoadError(
-                        onRetry: () =>
-                            ref.invalidate(analyticsCategoriesTableProvider),
-                      ),
-                      data: (cRows) {
-                        var rows = List<Map<String, dynamic>>.from(cRows);
-                        if (_tableQuery.isNotEmpty) {
-                          final q = _tableQuery.toLowerCase();
-                          rows = rows
-                              .where((r) =>
-                                  (r['category_name']?.toString() ?? '')
-                                      .toLowerCase()
-                                      .contains(q))
-                              .toList();
-                        }
-                        rows.sort((a, b) =>
-                            ((b['total_purchase'] as num?) ?? 0)
-                                .compareTo(
-                                    (a['total_purchase'] as num?) ?? 0));
-                        return _categoryTable(context, rows);
-                      },
-                    ),
                 ],
               ),
             ),
+    );
+  }
+
+  /// Filter/sort/cap for snapshot-backed tables; [rows.length] drives “View more”.
+  Widget _cappedForBundle(
+    List<Map<String, dynamic>> source, {
+    required Widget Function(List<Map<String, dynamic>> page) buildPrimary,
+    required String Function(Map<String, dynamic> r) nameForFilter,
+    required bool sortByItemMetric,
+  }) {
+    var rows = List<Map<String, dynamic>>.from(source);
+    if (_tableQuery.isNotEmpty) {
+      final q = _tableQuery.toLowerCase();
+      rows = rows
+          .where((r) => nameForFilter(r).toLowerCase().contains(q))
+          .toList();
+    }
+    if (sortByItemMetric) {
+      rows.sort((a, b) => _itemMetric(b).compareTo(_itemMetric(a)));
+    } else {
+      rows.sort(
+        (a, b) => ((b['total_purchase'] as num?) ?? 0)
+            .compareTo((a['total_purchase'] as num?) ?? 0),
+      );
+    }
+    return _cappedPrimaryTable(
+      buildPrimary(rows.take(_tableRowCap).toList()),
+      rows.length,
+    );
+  }
+
+  Widget _cappedPrimaryTable(Widget table, int totalRows) {
+    if (totalRows <= _tableRowCap) return table;
+    final more = totalRows - _tableRowCap;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        table,
+        Padding(
+          padding: const EdgeInsets.only(top: 4, bottom: 8),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: () => setState(() => _tableRowCap += 8),
+              child: Text('View more ($more more)'),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -622,6 +627,7 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                 onSelected: (_) => setState(() {
                   _viewType = v;
                   _tableQuery = '';
+                  _tableRowCap = 8;
                 }),
                 visualDensity: VisualDensity.compact,
                 selectedColor: const Color(0xFF0D9488),
@@ -729,18 +735,31 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
     );
   }
 
-  Widget _kpiStrip(AnalyticsKpi k) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+  Widget _kpiStrip(BuildContext context, AnalyticsKpi k) {
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _pill('Spend', _inr(k.totalPurchase.round())),
-        _pill('Deals', '${k.purchaseCount}'),
-        _pill(
-          'Avg',
-          k.purchaseCount > 0
-              ? _inr((k.totalPurchase / k.purchaseCount).round())
-              : '—',
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _pill('Spend', _inr(k.totalPurchase.round())),
+            _pill('Deals', '${k.purchaseCount}'),
+            if (k.totalKg > 0) _pill('Total kg', k.totalKg.toStringAsFixed(0)),
+            if (k.totalBags > 0) _pill('Total bags', k.totalBags.toStringAsFixed(0)),
+            if (k.totalBoxes > 0) _pill('Total boxes', k.totalBoxes.toStringAsFixed(0)),
+            if (k.totalTins > 0) _pill('Total tins', k.totalTins.toStringAsFixed(0)),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Spend = sum of trade line amounts in this range (matches PDF summary and home snapshot for the same dates).',
+          style: TextStyle(
+            fontSize: 12,
+            height: 1.3,
+            color: cs.onSurfaceVariant,
+          ),
         ),
       ],
     );

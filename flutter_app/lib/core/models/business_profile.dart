@@ -8,6 +8,7 @@ class BusinessProfile {
     this.gstNumber,
     this.address,
     this.phone,
+    this.contactEmail,
     this.logoUrl,
   });
 
@@ -16,6 +17,8 @@ class BusinessProfile {
   final String? gstNumber;
   final String? address;
   final String? phone;
+  /// Shown on purchase invoice header when set.
+  final String? contactEmail;
   final String? logoUrl;
 
   static String? _trimOrNull(String? s) {
@@ -31,6 +34,7 @@ class BusinessProfile {
       gstNumber: _trimOrNull(b.gstNumber),
       address: _trimOrNull(b.address),
       phone: _trimOrNull(b.phone),
+      contactEmail: _trimOrNull(b.contactEmail),
       logoUrl: _trimOrNull(b.brandingLogoUrl),
     );
   }

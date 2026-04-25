@@ -15,7 +15,7 @@ import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/shell_quick_ref_actions.dart';
 import '../../purchase/presentation/widgets/purchase_saved_sheet.dart';
-import '../state/home_dashboard_provider.dart';
+import '../../../core/providers/home_dashboard_provider.dart';
 
 String _inr(num n) =>
     NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
@@ -38,6 +38,9 @@ class HomePage extends ConsumerStatefulWidget {
 class _HomePageState extends ConsumerState<HomePage>
     with WidgetsBindingObserver {
   Timer? _poll;
+  /// Debounced: resume must not mass-invalidate [FutureProvider]s while
+  /// in-flight requests complete (avoids defunct element / markNeedsBuild).
+  Timer? _resumeRefreshDebounce;
   bool _handlingPurchasePostSave = false;
 
   static const _donutColors = <Color>[
@@ -57,6 +60,7 @@ class _HomePageState extends ConsumerState<HomePage>
     WidgetsBinding.instance.addObserver(this);
     _poll = Timer.periodic(const Duration(minutes: 10), (_) {
       if (!mounted) return;
+      ref.invalidate(homeDashboardDataProvider);
       invalidateTradePurchaseCaches(ref);
       invalidateBusinessAggregates(ref);
     });
@@ -65,6 +69,7 @@ class _HomePageState extends ConsumerState<HomePage>
   @override
   void dispose() {
     _poll?.cancel();
+    _resumeRefreshDebounce?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -72,14 +77,19 @@ class _HomePageState extends ConsumerState<HomePage>
   @override
   void didChangeAppLifecycleState(AppLifecycleState s) {
     if (s != AppLifecycleState.resumed) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    _resumeRefreshDebounce?.cancel();
+    // Let pending Dio/interceptor work and the frame settle; only refresh
+    // dashboard + purchase lists here. Full [invalidateBusinessAggregates] on
+    // resume can stampede 10+ refetches and race disposed providers on web.
+    _resumeRefreshDebounce = Timer(const Duration(milliseconds: 320), () {
       if (!mounted) return;
+      ref.invalidate(homeDashboardDataProvider);
       invalidateTradePurchaseCaches(ref);
-      invalidateBusinessAggregates(ref);
     });
   }
 
   Future<void> _refresh() async {
+    ref.invalidate(homeDashboardDataProvider);
     invalidateTradePurchaseCaches(ref);
     invalidateBusinessAggregates(ref);
   }
@@ -436,6 +446,13 @@ String _kpiUnitsLine(HomeDashboardData data) {
   return parts.join(' | ');
 }
 
+/// Same as [_kpiUnitsLine] but stacked to avoid a long line in the donut center.
+String _kpiUnitsLineStacked(HomeDashboardData data) {
+  final s = _kpiUnitsLine(data);
+  if (s.isEmpty) return s;
+  return s.replaceAll(' | ', '\n');
+}
+
 class _HomeKpiCard extends StatelessWidget {
   const _HomeKpiCard({required this.data});
   final HomeDashboardData data;
@@ -714,10 +731,10 @@ class _DonutSection extends StatelessWidget {
       );
     }
     final maxW = constraints.maxWidth;
-    final side = (maxW * 0.42).clamp(132.0, 176.0);
-    final ring = (side * 0.28).clamp(34.0, 52.0);
-    final centerR = (ring * 0.88).clamp(30.0, 46.0);
-    final units = _kpiUnitsLine(data);
+    final side = (maxW * 0.36).clamp(120.0, 164.0);
+    final ring = (side * 0.26).clamp(30.0, 48.0);
+    final centerR = (ring * 0.72).clamp(28.0, 44.0);
+    final units = _kpiUnitsLineStacked(data);
 
     final chartSections = sections
         .map(
@@ -758,63 +775,71 @@ class _DonutSection extends StatelessWidget {
                     ),
                   ),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'In view',
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                color: const Color(0xFF64748B),
-                                fontWeight: FontWeight.w600,
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: side * 0.9),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'In view',
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: const Color(0xFF64748B),
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 10,
+                                  ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              _inr(total),
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w900,
+                                    color: HexaColors.brandPrimary,
+                                    fontSize: 15,
+                                    height: 1.1,
+                                  ),
+                            ),
+                            if (units.isNotEmpty) ...[
+                              const SizedBox(height: 3),
+                              Text(
+                                units,
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                      color: const Color(0xFF0F172A),
+                                      fontWeight: FontWeight.w700,
+                                      height: 1.15,
+                                      fontSize: 9,
+                                    ),
                               ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _inr(total),
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w900,
-                                color: HexaColors.brandPrimary,
-                                fontSize: 16,
-                                height: 1.1,
+                            ],
+                            if (sliceLineQty > 0) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                'Chart qty ${_fmtQty(sliceLineQty)}',
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                      color: const Color(0xFF475569),
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 8.5,
+                                    ),
                               ),
+                            ],
+                            Text(
+                              'All lines qty ${_fmtQty(data.totalQtyAllLines)}',
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: const Color(0xFF64748B),
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 8.5,
+                                  ),
+                            ),
+                          ],
                         ),
-                        if (units.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            units,
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                  color: const Color(0xFF0F172A),
-                                  fontWeight: FontWeight.w800,
-                                  height: 1.2,
-                                ),
-                          ),
-                        ],
-                        if (sliceLineQty > 0) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            'Chart Σ qty ${_fmtQty(sliceLineQty)}',
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                  color: const Color(0xFF475569),
-                                  fontWeight: FontWeight.w700,
-                                ),
-                          ),
-                        ],
-                        Text(
-                          'Period total qty ${_fmtQty(data.totalQtyAllLines)}',
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                color: const Color(0xFF64748B),
-                                fontWeight: FontWeight.w600,
-                              ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ],

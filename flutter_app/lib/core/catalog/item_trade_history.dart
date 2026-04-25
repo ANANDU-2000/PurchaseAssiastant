@@ -56,17 +56,40 @@ class ItemTradeHistoryRow {
 String _fmtNum(double n) =>
     n == n.roundToDouble() ? n.toInt().toString() : n.toStringAsFixed(2);
 
+/// True when the line belongs to this catalog item (ID match, or legacy
+/// lines with no [TradePurchaseLine.catalogItemId] matched by exact name).
+bool itemLineBelongsToCatalog(
+  TradePurchaseLine ln,
+  String catalogItemId, {
+  String? catalogItemName,
+}) {
+  final lid = (ln.catalogItemId ?? '').trim();
+  if (catalogItemId.isNotEmpty && lid == catalogItemId) return true;
+  final want = catalogItemName?.trim();
+  if (want != null && want.isNotEmpty && lid.isEmpty) {
+    if (ln.itemName.trim().toLowerCase() == want.toLowerCase()) return true;
+  }
+  return false;
+}
+
 /// All trade lines for this catalog item, newest purchase first.
 List<ItemTradeHistoryRow> itemTradeHistoryRows(
   List<TradePurchase> purchases,
-  String catalogItemId,
-) {
+  String catalogItemId, {
+  String? catalogItemName,
+}) {
   if (catalogItemId.isEmpty) return [];
   final out = <ItemTradeHistoryRow>[];
   for (final p in purchases) {
     if (!purchaseCountsForCatalogIntel(p)) continue;
     for (final ln in p.lines) {
-      if (ln.catalogItemId != catalogItemId) continue;
+      if (!itemLineBelongsToCatalog(
+        ln,
+        catalogItemId,
+        catalogItemName: catalogItemName,
+      )) {
+        continue;
+      }
       out.add(
         ItemTradeHistoryRow(
           purchaseId: p.id,

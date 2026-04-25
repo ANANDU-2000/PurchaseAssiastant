@@ -1,8 +1,11 @@
 {
   "name": "Harisree Purchases",
   "short_name": "Harisree",
-  "start_url": "/",
+  "id": "/",
+  "start_url": "/?utm_source=pwa",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "browser"],
   "background_color": "#FFFFFF",
   "theme_color": "#17A8A7",
   "description": "Purchase intelligence for Harisree Agency",

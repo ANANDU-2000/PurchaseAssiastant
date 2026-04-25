@@ -6,7 +6,10 @@ import 'package:intl/intl.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/router/navigation_ext.dart';
 import '../../../core/models/trade_purchase_models.dart';
+import '../../../core/trade/trade_line_profit.dart';
+import '../../../core/utils/trade_purchase_commission.dart';
 import '../../../core/providers/purchase_prefill_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
@@ -37,10 +40,11 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
   late DateTime _to;
   late DateTime _from;
   /// '7' | '30' | '90' | '0' (all time) — matches [DropdownButton] value.
-  late String _rangePreset;
+  late   String _rangePreset;
   bool _loading = false;
   Map<String, dynamic>? _metrics;
-  List<dynamic>? _entries;
+  /// Trades for [_from, _to] (broker-filtered) — used for chart; single source: trade purchase lines.
+  List<TradePurchase> _rangeTrades = const [];
   List<TradePurchase> _recentTrades = const [];
 
   @override
@@ -69,32 +73,36 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
           brokerId: widget.brokerId,
           from: f,
           to: t);
-      final e = await api.listEntries(
-          businessId: session.primaryBusiness.id,
-          from: f,
-          to: t,
-          brokerId: widget.brokerId);
-      var recentTrades = <TradePurchase>[];
+      var rangeTrades = <TradePurchase>[];
       try {
-        final traw = await api.listTradePurchases(
-          businessId: session.primaryBusiness.id,
-          limit: 5,
-          status: 'all',
-          brokerId: widget.brokerId,
-        );
-        for (final row in traw) {
-          try {
-            recentTrades.add(
-              TradePurchase.fromJson(Map<String, dynamic>.from(row as Map)),
-            );
-          } catch (_) {}
+        const page = 200;
+        for (var off = 0; off < 20000; off += page) {
+          final traw = await api.listTradePurchases(
+            businessId: session.primaryBusiness.id,
+            limit: page,
+            offset: off,
+            status: 'all',
+            brokerId: widget.brokerId,
+          );
+          if (traw.isEmpty) break;
+          for (final row in traw) {
+            try {
+              rangeTrades.add(
+                TradePurchase.fromJson(
+                    Map<String, dynamic>.from(row as Map)),
+              );
+            } catch (_) {}
+          }
+          if (traw.length < page) break;
         }
-        recentTrades.sort((a, b) => b.purchaseDate.compareTo(a.purchaseDate));
+        rangeTrades = rangeTrades.where(_inSelectedRange).toList();
+        rangeTrades.sort((a, b) => b.purchaseDate.compareTo(a.purchaseDate));
       } catch (_) {}
+      final recentTrades = rangeTrades.take(5).toList();
       if (mounted) {
         setState(() {
           _metrics = m;
-          _entries = e;
+          _rangeTrades = rangeTrades;
           _recentTrades = recentTrades;
           _loading = false;
         });
@@ -118,27 +126,23 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
     _reload();
   }
 
-  /// Month key -> gross line profit, commission allocated by entry month.
+  bool _inSelectedRange(TradePurchase p) {
+    final d = _dOnly(p.purchaseDate);
+    return !d.isBefore(_from) && !d.isAfter(_to);
+  }
+
+  /// Month key -> gross line profit, commission (same as PDF/wizard) by purchase month.
   Map<String, ({double gross, double commission})> _monthly() {
     final out = <String, ({double gross, double commission})>{};
-    final items = _entries;
-    if (items == null) return out;
-    for (final raw in items) {
-      if (raw is! Map) continue;
-      final e = Map<String, dynamic>.from(raw);
-      final ed = e['entry_date']?.toString().split('T').first;
-      if (ed == null || ed.length < 7) continue;
+    for (final p in _rangeTrades) {
+      final ed = p.purchaseDate.toIso8601String().split('T').first;
+      if (ed.length < 7) continue;
       final mk = ed.substring(0, 7);
-      final comm = (e['commission_amount'] as num?)?.toDouble() ?? 0;
-      final lines = e['lines'];
       var g = 0.0;
-      if (lines is List) {
-        for (final ln in lines) {
-          if (ln is! Map) continue;
-          g += (Map<String, dynamic>.from(ln)['profit'] as num?)?.toDouble() ??
-              0;
-        }
+      for (final ln in p.lines) {
+        g += estimatedTradeLineProfit(ln);
       }
+      final comm = tradePurchaseCommissionInr(p);
       final prev = out[mk] ?? (gross: 0.0, commission: 0.0);
       out[mk] = (gross: prev.gross + g, commission: prev.commission + comm);
     }
@@ -202,7 +206,7 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
       appBar: AppBar(
         leading: IconButton(
             icon: const Icon(Icons.arrow_back_rounded),
-            onPressed: () => context.pop()),
+            onPressed: () => context.popOrGo('/contacts')),
         title: async.maybeWhen(
           data: (b) => Text(
             b['name']?.toString() ?? 'Broker',
@@ -414,7 +418,7 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
                           ?.copyWith(color: HexaColors.textSecondary)),
                   const SizedBox(height: 12),
                   if (groups.isEmpty)
-                    Text('No broker-linked entries in this range.',
+                    Text('No broker-linked trade purchases in this range.',
                         style: tt.bodySmall
                             ?.copyWith(color: HexaColors.textSecondary))
                   else
