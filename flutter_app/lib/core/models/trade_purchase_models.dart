@@ -81,6 +81,7 @@ class TradePurchaseLine {
     this.taxPercent,
     this.catalogItemId,
     this.hsnCode,
+    this.itemCode,
     this.paymentDays,
     this.description,
     this.defaultUnit,
@@ -103,6 +104,7 @@ class TradePurchaseLine {
   final double? taxPercent;
   final String? catalogItemId;
   final String? hsnCode;
+  final String? itemCode;
   final int? paymentDays;
   final String? description;
   /// From catalog when line is linked; used for BAG/kg display and edit wizard.
@@ -122,6 +124,7 @@ class TradePurchaseLine {
       taxPercent: (j['tax_percent'] as num?)?.toDouble(),
       catalogItemId: j['catalog_item_id']?.toString(),
       hsnCode: j['hsn_code']?.toString(),
+      itemCode: j['item_code']?.toString(),
       paymentDays: (j['payment_days'] as num?)?.toInt(),
       description: j['description']?.toString(),
       defaultUnit: j['default_unit']?.toString(),

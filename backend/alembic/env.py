@@ -27,6 +27,9 @@ def _sync_url() -> str:
         return "postgresql://" + url.removeprefix("postgresql+asyncpg://")
     if url.startswith("postgres+asyncpg://"):
         return "postgresql://" + url.removeprefix("postgres+asyncpg://")
+    # Alembic runs sync SQLAlchemy; aiosqlite is async-only and breaks connect().
+    if "sqlite+aiosqlite" in url:
+        return url.replace("sqlite+aiosqlite", "sqlite", 1)
     return url
 
 

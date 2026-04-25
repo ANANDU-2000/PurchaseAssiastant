@@ -24,6 +24,7 @@ from app.routers import (
     auth,
     billing,
     catalog,
+    cloud_expense,
     contacts,
     dashboard,
     entries,
@@ -417,6 +418,13 @@ async def lifespan(app: FastAPI):
                     )
                 else:
                     alters.append("ALTER TABLE trade_purchase_lines ADD COLUMN landing_cost_per_kg NUMERIC(18,4) NULL")
+            if "item_code" not in cols:
+                if dialect == "postgresql":
+                    alters.append(
+                        "ALTER TABLE trade_purchase_lines ADD COLUMN IF NOT EXISTS item_code VARCHAR(64) NULL"
+                    )
+                else:
+                    alters.append("ALTER TABLE trade_purchase_lines ADD COLUMN item_code VARCHAR(64) NULL")
             for sql in alters:
                 try:
                     sync_conn.exec_driver_sql(sql)
@@ -569,6 +577,7 @@ app.include_router(analytics.router)
 app.include_router(dashboard.router)
 app.include_router(price_intelligence.router)
 app.include_router(catalog.router)
+app.include_router(cloud_expense.router)
 app.include_router(contacts.router)
 app.include_router(media.router)
 app.include_router(realtime.router)

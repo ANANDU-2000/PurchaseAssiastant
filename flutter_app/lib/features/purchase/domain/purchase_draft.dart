@@ -122,6 +122,7 @@ class PurchaseLineDraft {
     this.taxPercent,
     this.lineDiscountPercent,
     this.hsnCode,
+    this.itemCode,
   });
 
   final String? catalogItemId;
@@ -139,6 +140,7 @@ class PurchaseLineDraft {
   final double? lineDiscountPercent;
   /// Carried for GST lines; from catalog or edited purchase line.
   final String? hsnCode;
+  final String? itemCode;
 
   Map<String, dynamic> toLineMap() {
     final m = <String, dynamic>{
@@ -158,11 +160,15 @@ class PurchaseLineDraft {
     if (hsnCode != null && hsnCode!.trim().isNotEmpty) {
       m['hsn_code'] = hsnCode!.trim();
     }
+    if (itemCode != null && itemCode!.trim().isNotEmpty) {
+      m['item_code'] = itemCode!.trim();
+    }
     return m;
   }
 
   static PurchaseLineDraft fromLineMap(Map<String, dynamic> e) {
     final rawHsn = e['hsn_code']?.toString().trim() ?? '';
+    final rawIc = e['item_code']?.toString().trim() ?? '';
     return PurchaseLineDraft(
       catalogItemId: e['catalog_item_id']?.toString(),
       itemName: e['item_name']?.toString() ?? '',
@@ -175,6 +181,7 @@ class PurchaseLineDraft {
       taxPercent: (e['tax_percent'] as num?)?.toDouble(),
       lineDiscountPercent: (e['discount'] as num?)?.toDouble(),
       hsnCode: rawHsn.isEmpty ? null : rawHsn,
+      itemCode: rawIc.isEmpty ? null : rawIc,
     );
   }
 }

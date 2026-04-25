@@ -219,6 +219,30 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
     _reload();
   }
 
+  bool _isPreset7d() {
+    final n = _dOnly(DateTime.now());
+    return _dOnly(_to) == n && _dOnly(_from) == n.subtract(const Duration(days: 6));
+  }
+
+  bool _isPreset30d() {
+    final n = _dOnly(DateTime.now());
+    return _dOnly(_to) == n && _dOnly(_from) == n.subtract(const Duration(days: 29));
+  }
+
+  bool _isPreset90d() {
+    final n = _dOnly(DateTime.now());
+    return _dOnly(_to) == n && _dOnly(_from) == n.subtract(const Duration(days: 89));
+  }
+
+  bool _isYtd() {
+    final n = _dOnly(DateTime.now());
+    return _dOnly(_to) == n && _dOnly(_from) == _dOnly(DateTime(n.year, 1, 1));
+  }
+
+  bool _isAllTime() {
+    return _dOnly(_from) == _dOnly(DateTime(2020));
+  }
+
   Future<void> _dial(String? phone) async {
     if (phone == null || phone.trim().isEmpty) return;
     final uri = Uri(scheme: 'tel', path: phone.replaceAll(RegExp(r'\s'), ''));
@@ -447,19 +471,26 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                         runSpacing: 8,
                         children: [
                           _ChipPill(
-                              label: '7d',
-                              onTap: () => _preset(7),
-                              onGradient: false),
+                            label: '7d',
+                            selected: _isPreset7d(),
+                            onTap: () => _preset(7),
+                            onGradient: false,
+                          ),
                           _ChipPill(
-                              label: '30d',
-                              onTap: () => _preset(30),
-                              onGradient: false),
+                            label: '30d',
+                            selected: _isPreset30d(),
+                            onTap: () => _preset(30),
+                            onGradient: false,
+                          ),
                           _ChipPill(
-                              label: '90d',
-                              onTap: () => _preset(90),
-                              onGradient: false),
+                            label: '90d',
+                            selected: _isPreset90d(),
+                            onTap: () => _preset(90),
+                            onGradient: false,
+                          ),
                           _ChipPill(
                             label: 'YTD',
+                            selected: _isYtd(),
                             onGradient: false,
                             onTap: () {
                               final n = DateTime.now();
@@ -471,9 +502,11 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                             },
                           ),
                           _ChipPill(
-                              label: 'All',
-                              onTap: () => _preset(0),
-                              onGradient: false),
+                            label: 'All',
+                            selected: _isAllTime(),
+                            onTap: () => _preset(0),
+                            onGradient: false,
+                          ),
                         ],
                       ),
                       const SizedBox(height: 10),
@@ -640,15 +673,21 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
 }
 
 class _ChipPill extends StatelessWidget {
-  const _ChipPill(
-      {required this.label, required this.onTap, this.onGradient = false});
+  const _ChipPill({
+    required this.label,
+    required this.onTap,
+    this.onGradient = false,
+    this.selected = false,
+  });
 
   final String label;
   final VoidCallback onTap;
   final bool onGradient;
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final child = onGradient
         ? ActionChip(
             label: Text(label,
@@ -658,7 +697,25 @@ class _ChipPill extends StatelessWidget {
             side: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
             onPressed: onTap,
           )
-        : ActionChip(label: Text(label), onPressed: onTap);
+        : FilterChip(
+            label: Text(
+              label,
+              style: TextStyle(
+                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                color: selected ? cs.primary : cs.onSurfaceVariant,
+              ),
+            ),
+            showCheckmark: false,
+            selected: selected,
+            onSelected: (_) => onTap(),
+            selectedColor: cs.primaryContainer,
+            checkmarkColor: cs.primary,
+            side: BorderSide(
+              color: selected ? cs.primary : cs.outlineVariant,
+              width: selected ? 1.5 : 1,
+            ),
+            visualDensity: VisualDensity.compact,
+          );
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: child,

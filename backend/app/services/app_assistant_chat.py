@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from datetime import date
@@ -36,6 +37,8 @@ from app.services.chat_draft_store import (
     save_chat_draft,
 )
 from app.services.fuzzy_catalog import best_token_sort_match
+
+logger = logging.getLogger(__name__)
 from app.services.entry_intent_resolution import (
     build_entry_create_request,
     ist_today,
@@ -1085,6 +1088,12 @@ async def run_app_assistant_turn(
         }
 
     # Stub path (no LLM structured intent)
+    if llm is None:
+        logger.info(
+            "app_assistant_intent_stub_fallback business_id=%s meta_keys=%s",
+            business_id,
+            sorted(intent_meta.keys()) if isinstance(intent_meta, dict) else intent_meta,
+        )
     data, stub_missing = stub_intent_from_text(text)
     tx = _intent_data_to_transaction_dict(data)
     req, miss = await build_entry_create_request(db, business_id, tx)

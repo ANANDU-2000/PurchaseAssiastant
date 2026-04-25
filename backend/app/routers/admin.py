@@ -1,13 +1,16 @@
 import hashlib
 import hmac
+import os
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import create_engine, func, select
+from sqlalchemy.engine.url import make_url
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import sessionmaker
 
 from app.config import Settings, get_settings
 from app.database import get_db
@@ -663,3 +666,30 @@ async def admin_whatsapp_stats(_caller: Annotated[AdminCaller, Depends(require_a
         "delivery_rate": None,
         "note": "Wire 360dialog or WhatsApp Business metrics when available.",
     }
+
+
+@router.post("/seed-all-businesses")
+async def admin_seed_all_businesses(
+    _caller: Annotated[AdminCaller, Depends(require_admin_caller)],
+    settings: Annotated[Settings, Depends(get_settings)],
+):
+    """Idempotent catalog + GST supplier seed for every business (same data as bootstrap)."""
+    del _caller
+    try:
+        sync_url = _admin_sync_database_url(settings)
+    except HTTPException:
+        raise
+    eng = create_engine(sync_url, future=True)
+    SessionLocal = sessionmaker(bind=eng, future=True)
+    out: list[dict] = []
+    with SessionLocal() as s:
+        bids = s.execute(select(Business.id)).scalars().all()
+        for bid in bids:
+            try:
+                stats = run_catalog_suppliers_seed(s, bid)
+                s.commit()
+                out.append({"business_id": str(bid), "ok": True, "stats": stats})
+            except Exception as e:  # noqa: BLE001
+                s.rollback()
+                out.append({"business_id": str(bid), "ok": False, "error": str(e)})
+    return {"businesses": len(out), "results": out}

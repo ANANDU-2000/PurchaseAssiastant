@@ -14,6 +14,7 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/models/session.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
+import '../../../core/providers/cloud_expense_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/theme/theme_context_ext.dart';
 import '../../../shared/widgets/search_picker_sheet.dart';
@@ -511,6 +512,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ),
           const SizedBox(height: 20),
+          Text('Cloud hosting',
+              style: tt.titleSmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          if (session != null) _CloudSettingsCard(businessId: session.primaryBusiness.id),
+          const SizedBox(height: 20),
           Text('Troubleshooting',
               style: tt.titleSmall?.copyWith(
                   color: cs.onSurfaceVariant,
@@ -702,6 +710,210 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _CloudSettingsCard extends ConsumerWidget {
+  const _CloudSettingsCard({required this.businessId});
+
+  final String businessId;
+
+  Future<void> _edit(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic> m,
+  ) async {
+    final amtCtrl = TextEditingController(
+      text: ((m['amount_inr'] as num?) ?? 0).toString(),
+    );
+    final dueCtrl = TextEditingController(
+      text: (m['due_day'] ?? 1).toString(),
+    );
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cloud cost'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: amtCtrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Amount (Rs. / month)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: dueCtrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Due day of month (1–31)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) {
+      amtCtrl.dispose();
+      dueCtrl.dispose();
+      return;
+    }
+    final amt = double.tryParse(amtCtrl.text.trim());
+    final due = int.tryParse(dueCtrl.text.trim());
+    amtCtrl.dispose();
+    dueCtrl.dispose();
+    if (amt == null || amt <= 0 || due == null || due < 1 || due > 31) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Invalid amount or due day')),
+      );
+      return;
+    }
+    try {
+      await ref.read(hexaApiProvider).patchCloudCost(
+            businessId: businessId,
+            amountInr: amt,
+            dueDay: due,
+          );
+      ref.invalidate(cloudCostProvider);
+      invalidateBusinessAggregates(ref);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Saved')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(friendlyApiError(e))),
+        );
+      }
+    }
+  }
+
+  Future<void> _pay(BuildContext context, WidgetRef ref) async {
+    try {
+      await ref.read(hexaApiProvider).postCloudCostPay(businessId: businessId);
+      ref.invalidate(cloudCostProvider);
+      invalidateBusinessAggregates(ref);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Marked as paid')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(friendlyApiError(e))),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    final async = ref.watch(cloudCostProvider);
+    return async.when(
+      loading: () => Card(
+        color: context.adaptiveCard,
+        child: const ListTile(
+          leading: SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          title: Text('Cloud cost…'),
+        ),
+      ),
+      error: (e, _) => Card(
+        color: context.adaptiveCard,
+        child: ListTile(
+          title: Text('Cloud cost: $e'),
+          trailing: TextButton(
+            onPressed: () => ref.invalidate(cloudCostProvider),
+            child: const Text('Retry'),
+          ),
+        ),
+      ),
+      data: (m) {
+        if (m.isEmpty) return const SizedBox.shrink();
+        final amt = (m['amount_inr'] as num?)?.toDouble() ?? 0;
+        final next = m['next_due_date']?.toString() ?? '—';
+        final need = m['show_alert'] == true;
+        return Card(
+          color: context.adaptiveCard,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.cloud_outlined,
+                      color: need ? Colors.redAccent : Colors.green,
+                      size: 22,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        m['name']?.toString() ?? 'Cloud Cost',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      'Rs. ${amt.round()}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Next due: $next · ${need ? "Pending" : "Paid up"}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    OutlinedButton(
+                      onPressed: () => _edit(context, ref, m),
+                      child: const Text('Edit amount / due day'),
+                    ),
+                    const SizedBox(width: 8),
+                    if (need)
+                      FilledButton(
+                        onPressed: () => _pay(context, ref),
+                        child: const Text('Mark paid'),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

@@ -1556,4 +1556,44 @@ class HexaApi {
     );
     return res.data ?? {};
   }
+
+  /// Monthly cloud / infra line (Settings + Home card).
+  Future<Map<String, dynamic>> getCloudCost({required String businessId}) async {
+    final res = await _dio.get<dynamic>('/v1/businesses/$businessId/cloud-cost');
+    final d = res.data;
+    if (d is! Map) return {};
+    return Map<String, dynamic>.from(d);
+  }
+
+  Future<Map<String, dynamic>> patchCloudCost({
+    required String businessId,
+    String? name,
+    double? amountInr,
+    int? dueDay,
+  }) async {
+    final res = await _dio.patch<dynamic>(
+      '/v1/businesses/$businessId/cloud-cost',
+      data: {
+        if (name != null) 'name': name,
+        if (amountInr != null) 'amount_inr': amountInr,
+        if (dueDay != null) 'due_day': dueDay,
+      },
+    );
+    final d = res.data;
+    if (d is! Map) return {};
+    return Map<String, dynamic>.from(d);
+  }
+
+  Future<Map<String, dynamic>> postCloudCostPay({
+    required String businessId,
+    double? amountInr,
+  }) async {
+    final res = await _dio.post<dynamic>(
+      '/v1/businesses/$businessId/cloud-cost/pay',
+      data: {if (amountInr != null) 'amount_inr': amountInr},
+    );
+    final d = res.data;
+    if (d is! Map) return {};
+    return Map<String, dynamic>.from(d);
+  }
 }

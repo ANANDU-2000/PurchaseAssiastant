@@ -6,8 +6,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/auth/auth_error_messages.dart';
+import '../../../core/auth/session_notifier.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
+import '../../../core/providers/cloud_expense_provider.dart';
 import '../../../core/providers/purchase_post_save_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart'
     show invalidateTradePurchaseCaches;
@@ -168,6 +171,114 @@ class _HomePageState extends ConsumerState<HomePage>
                       onRetry: () => unawaited(_refresh()),
                     ),
                     data: (_) => const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                  child: Consumer(
+                    builder: (context, ref, _) {
+                      final cc = ref.watch(cloudCostProvider);
+                      return cc.when(
+                        loading: () => const SizedBox.shrink(),
+                        error: (_, __) => const SizedBox.shrink(),
+                        data: (m) {
+                          if (m.isEmpty) {
+                            return const SizedBox.shrink();
+                          }
+                          final name = m['name']?.toString() ?? 'Cloud Cost';
+                          final amt = (m['amount_inr'] as num?)?.toDouble() ?? 0;
+                          final next = m['next_due_date']?.toString() ?? '—';
+                          final needPay = m['show_alert'] == true;
+                          return Card(
+                            margin: EdgeInsets.zero,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 10),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.cloud_outlined,
+                                    size: 20,
+                                    color: needPay
+                                        ? const Color(0xFFDC2626)
+                                        : const Color(0xFF16A34A),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          name,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                        Text(
+                                          'Due $next',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: HexaColors.textSecondary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Text(
+                                    'Rs. ${amt.round()}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  if (needPay)
+                                    FilledButton(
+                                      onPressed: () async {
+                                        final s = ref.read(sessionProvider);
+                                        if (s == null) return;
+                                        try {
+                                          await ref
+                                              .read(hexaApiProvider)
+                                              .postCloudCostPay(
+                                                businessId:
+                                                    s.primaryBusiness.id,
+                                              );
+                                          if (!context.mounted) return;
+                                          ref.invalidate(cloudCostProvider);
+                                          invalidateBusinessAggregates(ref);
+                                        } catch (e) {
+                                          if (!context.mounted) return;
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            SnackBar(
+                                                content: Text(
+                                                    friendlyApiError(e))),
+                                          );
+                                        }
+                                      },
+                                      child: const Text('Pay now'),
+                                    )
+                                  else
+                                    Text(
+                                      'Paid up',
+                                      style: TextStyle(
+                                        color: Colors.green[700],
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
                   ),
                 ),
               ),
@@ -563,12 +674,26 @@ class _DonutSection extends StatelessWidget {
                     padding: const EdgeInsets.only(right: 8),
                     child: FilterChip(
                       showCheckmark: false,
-                      label: Text(switch (v) {
-                        _DonutView.category => 'Category',
-                        _DonutView.subcategory => 'Subcategory',
-                        _DonutView.item => 'Items',
-                      }),
+                      label: Text(
+                        switch (v) {
+                          _DonutView.category => 'Category',
+                          _DonutView.subcategory => 'Subcategory',
+                          _DonutView.item => 'Items',
+                        },
+                        style: TextStyle(
+                          fontWeight: view == v ? FontWeight.w800 : FontWeight.w600,
+                          color: view == v ? HexaColors.brandPrimary : const Color(0xFF334155),
+                        ),
+                      ),
                       selected: view == v,
+                      selectedColor: HexaColors.brandPrimary.withValues(alpha: 0.18),
+                      checkmarkColor: HexaColors.brandPrimary,
+                      side: BorderSide(
+                        color: view == v
+                            ? HexaColors.brandPrimary
+                            : const Color(0xFFCBD5E1),
+                        width: view == v ? 1.5 : 1,
+                      ),
                       onSelected: (_) => onViewChanged(v),
                     ),
                   ),

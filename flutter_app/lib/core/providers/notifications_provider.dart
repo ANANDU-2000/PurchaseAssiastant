@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../config/app_config.dart';
 import '../models/trade_purchase_models.dart';
+import 'cloud_expense_provider.dart';
 import 'trade_purchases_provider.dart';
 
 enum NotificationType {
@@ -12,6 +13,7 @@ enum NotificationType {
   whatsapp,
   purchaseDue,
   purchaseOverdue,
+  cloudCost,
 }
 
 class NotificationItem {
@@ -98,7 +100,8 @@ final notificationsProvider =
 final notificationsUnreadCountProvider = Provider<int>((ref) {
   final manual = ref.watch(notificationsProvider).where((e) => !e.isRead).length;
   final tradeN = ref.watch(purchaseActionAlertCountProvider);
-  return manual + tradeN;
+  final cloudN = ref.watch(cloudCostAlertCountProvider);
+  return manual + tradeN + cloudN;
 });
 
 /// PUR bills that need attention (unpaid with due date approaching or past).
@@ -218,4 +221,42 @@ final purchaseActionAlertCountProvider = Provider<int>((ref) {
   final all = ref.watch(purchaseDueAlertItemsProvider);
   final dis = ref.watch(dismissedPurchaseAlertIdsProvider);
   return all.where((n) => !dis.contains(n.id)).length;
+});
+
+/// 1 if monthly cloud line is due (server `show_alert`).
+final cloudCostAlertCountProvider = Provider<int>((ref) {
+  final async = ref.watch(cloudCostProvider);
+  return async.maybeWhen(
+    data: (m) {
+      if (m['show_alert'] == true) return 1;
+      return 0;
+    },
+    orElse: () => 0,
+  );
+});
+
+/// In-app row for the alerts list (when cloud bill is due).
+final cloudCostNotificationItemsProvider = Provider<List<NotificationItem>>((ref) {
+  final async = ref.watch(cloudCostProvider);
+  return async.maybeWhen(
+    data: (m) {
+      if (m['show_alert'] != true) return [];
+      final name = m['name']?.toString() ?? 'Cloud Cost';
+      final amt = m['amount_inr'];
+      final next = m['next_due_date']?.toString() ?? '—';
+      return [
+        NotificationItem(
+          id: 'cloud_cost_due',
+          type: NotificationType.cloudCost,
+          title: 'Due: $name',
+          subtitle:
+              'Rs. ${amt is num ? amt.round() : amt} · due date $next — mark paid in Home or Settings.',
+          createdAt: DateTime.now(),
+          isRead: false,
+          actionRoute: '/settings',
+        ),
+      ];
+    },
+    orElse: () => const [],
+  );
 });

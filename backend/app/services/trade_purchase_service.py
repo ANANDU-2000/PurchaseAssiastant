@@ -402,6 +402,7 @@ async def create_trade_purchase(
                 tax_percent=li.tax_percent,
                 payment_days=li.payment_days,
                 hsn_code=(li.hsn_code.strip() if (li.hsn_code and li.hsn_code.strip()) else None),
+                item_code=(li.item_code.strip() if (li.item_code and str(li.item_code).strip()) else None),
                 description=(li.description.strip() if (li.description and li.description.strip()) else None),
             )
         )
@@ -479,11 +480,14 @@ async def update_trade_purchase(
                 qty=li.qty,
                 unit=li.unit,
                 landing_cost=li.landing_cost,
+                kg_per_unit=li.kg_per_unit,
+                landing_cost_per_kg=li.landing_cost_per_kg,
                 selling_cost=li.selling_cost,
                 discount=li.discount,
                 tax_percent=li.tax_percent,
                 payment_days=li.payment_days,
                 hsn_code=(li.hsn_code.strip() if (li.hsn_code and li.hsn_code.strip()) else None),
+                item_code=(li.item_code.strip() if (li.item_code and str(li.item_code).strip()) else None),
                 description=(li.description.strip() if (li.description and li.description.strip()) else None),
             )
         )
@@ -614,6 +618,20 @@ async def delete_trade_purchase(
     return True
 
 
+def _line_item_code(li: TradePurchaseLine) -> str | None:
+    raw = getattr(li, "item_code", None)
+    if raw is not None and str(raw).strip():
+        return str(raw).strip()
+    ci = getattr(li, "catalog_item", None)
+    if ci is None:
+        return None
+    ic = getattr(ci, "item_code", None)
+    if ic is None:
+        return None
+    s = str(ic).strip()
+    return s or None
+
+
 def _line_hsn(li: TradePurchaseLine) -> str | None:
     raw = getattr(li, "hsn_code", None)
     if raw is not None and str(raw).strip():
@@ -662,6 +680,7 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
                 tax_percent=float(li.tax_percent) if li.tax_percent is not None else None,
                 payment_days=getattr(li, "payment_days", None),
                 hsn_code=_line_hsn(li),
+                item_code=_line_item_code(li),
                 description=getattr(li, "description", None),
                 default_unit=du_s,
                 default_kg_per_bag=kpb_f,

@@ -1,4 +1,5 @@
 import 'home_dashboard_provider.dart';
+import 'cloud_expense_provider.dart';
 import 'analytics_breakdown_providers.dart';
 import 'business_write_revision.dart';
 import 'analytics_kpi_provider.dart';
@@ -40,6 +41,7 @@ void invalidateBusinessAggregates(dynamic ref) {
   invalidateAnalyticsData(ref);
   ref.invalidate(dashboardProvider);
   ref.invalidate(homeDashboardDataProvider);
+  ref.invalidate(cloudCostProvider);
   ref.invalidate(homeInsightsProvider);
   ref.invalidate(contactsSuppliersEnrichedProvider);
   ref.invalidate(contactsBrokersEnrichedProvider);

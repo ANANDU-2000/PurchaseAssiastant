@@ -4,6 +4,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../models/business_profile.dart';
+import 'pdf_text_safe.dart';
 
 final _money = NumberFormat('#,##,##0', 'en_IN');
 final _df = DateFormat('dd MMM yyyy');
@@ -115,9 +116,12 @@ Future<void> shareReportsSummaryPdf({
   // Optional per-supplier rows: [{supplier_name, purchase_count, total_purchase}]
   List<Map<String, dynamic>>? supplierRows,
 }) async {
-  final bizTitle = business.displayTitle.trim().isNotEmpty
-      ? business.displayTitle
-      : 'NEW HARISREE AGENCY';
+  final bizTitle = safePdfText(
+    business.displayTitle.trim().isNotEmpty
+        ? business.displayTitle
+        : 'NEW HARISREE AGENCY',
+  );
+  final modeSafe = safePdfText(modeLabel);
 
   final doc = pw.Document();
   doc.addPage(
@@ -129,7 +133,7 @@ Future<void> shareReportsSummaryPdf({
         pw.Text(bizTitle.toUpperCase(),
             style: pw.TextStyle(
                 fontSize: 15, fontWeight: pw.FontWeight.bold)),
-        pw.Text('Purchase Report · $modeLabel',
+        pw.Text('Purchase Report · $modeSafe',
             style: pw.TextStyle(
                 fontSize: 10, fontWeight: pw.FontWeight.bold)),
         pw.Text(
@@ -258,16 +262,6 @@ Future<void> shareReportsSummaryPdf({
   );
 }
 
-/// Sanitize for PDF default fonts (WinAnsi) — avoid rupee, en-dash, and emoji.
-String _pdfAscii(String s) {
-  return s
-      .replaceAll('₹', 'Rs. ')
-      .replaceAll('—', '-')
-      .replaceAll('–', '-')
-      .replaceAll('\u2013', '-')
-      .replaceAll('\u2014', '-');
-}
-
 /// Item purchase statement from trade rows (black/white tables, ASCII-friendly).
 Future<void> shareItemPurchaseTradeHistoryPdf({
   required BusinessProfile business,
@@ -291,7 +285,7 @@ Future<void> shareItemPurchaseTradeHistoryPdf({
   final periodLine = periodParts.isEmpty
       ? 'All available lines in export'
       : periodParts.join(' | ');
-  final cleanItem = _pdfAscii(itemName);
+  final cleanItem = safePdfText(itemName);
   const headers = <String>[
     'Date',
     'Supplier',
@@ -315,7 +309,7 @@ Future<void> shareItemPurchaseTradeHistoryPdf({
       margin: const pw.EdgeInsets.all(32),
       build: (context) => [
         pw.Text(
-          _pdfAscii(
+          safePdfText(
             business.legalName.trim().isNotEmpty
                 ? business.legalName.trim()
                 : (business.displayTitle.trim().isNotEmpty
@@ -329,7 +323,7 @@ Future<void> shareItemPurchaseTradeHistoryPdf({
         pw.Text('Item statement - $cleanItem',
             style: const pw.TextStyle(fontSize: 10, color: PdfColors.black)),
         pw.SizedBox(height: 4),
-        pw.Text('Period: ${_pdfAscii(periodLine)}',
+        pw.Text('Period: ${safePdfText(periodLine)}',
             style: const pw.TextStyle(fontSize: 8.5, color: _muted)),
         pw.SizedBox(height: 10),
         pw.Table(
@@ -366,7 +360,7 @@ Future<void> shareItemPurchaseTradeHistoryPdf({
                     pw.Padding(
                       padding: const pw.EdgeInsets.all(3),
                       child: pw.Text(
-                        _pdfAscii(r[i]),
+                        safePdfText(r[i]),
                         textAlign:
                             i == r.length - 1 ? pw.TextAlign.right : pw.TextAlign.left,
                         style: const pw.TextStyle(fontSize: 6.5, color: PdfColors.black),
@@ -381,7 +375,7 @@ Future<void> shareItemPurchaseTradeHistoryPdf({
           pw.Align(
             alignment: pw.Alignment.centerRight,
             child: pw.Text(
-              _pdfAscii(totalLineLabel),
+              safePdfText(totalLineLabel),
               style: pw.TextStyle(
                   fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.black),
             ),

@@ -12,6 +12,7 @@ import '../models/business_profile.dart';
 import '../models/trade_purchase_models.dart';
 import 'purchase_invoice_amount_words.dart';
 import 'purchase_invoice_pdf_layout.dart';
+import 'pdf_text_safe.dart';
 
 final _money = NumberFormat('#,##,##0.00', 'en_IN');
 String _inrPdf(num n) => 'Rs. ${_money.format(n)}';
@@ -39,7 +40,7 @@ Future<pw.ImageProvider?> _tryLogo(String? url) async {
   }
 }
 
-String _partyName(String? s) => (s == null || s.trim().isEmpty) ? '—' : s.trim();
+String _partyName(String? s) => (s == null || s.trim().isEmpty) ? '—' : safePdfText(s.trim());
 
 /// One-page receipt: ASCII money, minimal lines.
 Future<pw.Document> buildPurchaseReceiptDoc(
@@ -54,7 +55,9 @@ Future<pw.Document> buildPurchaseReceiptDoc(
       margin: const pw.EdgeInsets.all(28),
       build: (ctx) => [
         pw.Text(
-          biz.displayTitle.trim().isNotEmpty ? biz.displayTitle : 'Business',
+          safePdfText(
+            biz.displayTitle.trim().isNotEmpty ? biz.displayTitle : 'Business',
+          ),
           style: pw.TextStyle(
             fontSize: 16,
             fontWeight: pw.FontWeight.bold,
@@ -62,7 +65,7 @@ Future<pw.Document> buildPurchaseReceiptDoc(
         ),
         if (biz.address != null && biz.address!.trim().isNotEmpty)
           pw.Text(
-            biz.address!.trim(),
+            safePdfText(biz.address!.trim()),
             style: const pw.TextStyle(fontSize: 9, color: _muted, height: 1.35),
           ),
         if (biz.phone != null && biz.phone!.trim().isNotEmpty)
@@ -97,9 +100,19 @@ Future<pw.Document> buildPurchaseReceiptDoc(
         pw.SizedBox(height: 4),
         for (final l in p.lines) ...[
           pw.Text(
-            l.itemName,
+            safePdfText(l.itemName),
             style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
           ),
+          if (l.hsnCode != null && l.hsnCode!.trim().isNotEmpty)
+            pw.Text(
+              '  HSN: ${safePdfText(l.hsnCode)}',
+              style: const pw.TextStyle(fontSize: 8.5, color: _muted),
+            ),
+          if (l.itemCode != null && l.itemCode!.trim().isNotEmpty)
+            pw.Text(
+              '  Code: ${safePdfText(l.itemCode)}',
+              style: const pw.TextStyle(fontSize: 8.5, color: _muted),
+            ),
           pw.Text(
             '  ${l.qty} ${l.unit}  ·  line total ${_inrPdf(lineMoney(tradePurchaseLineToCalcLine(l)))}',
             style: const pw.TextStyle(fontSize: 9.5, color: _muted),
@@ -113,7 +126,7 @@ Future<pw.Document> buildPurchaseReceiptDoc(
           style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
         ),
         pw.Text(
-          'Full invoice: line tax, HSN, and terms on the main PDF export.',
+          'Full PDF export: line tax, HSN, item code, and terms.',
           style: const pw.TextStyle(fontSize: 7.5, color: _muted, height: 1.25),
         ),
         if (brokerAmt > 0)

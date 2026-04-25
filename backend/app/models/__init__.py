@@ -18,6 +18,7 @@ from app.models.webhook_event_log import WebhookEventLog
 from app.models.api_usage_log import ApiUsageLog
 from app.models.admin_audit_log import AdminAuditLog
 from app.models.platform_monthly_expense import PlatformMonthlyExpense
+from app.models.cloud_expense import CloudExpense, CloudPaymentHistory
 
 __all__ = [
     "Base",
@@ -30,6 +31,8 @@ __all__ = [
     "ApiUsageLog",
     "AdminAuditLog",
     "PlatformMonthlyExpense",
+    "CloudExpense",
+    "CloudPaymentHistory",
     "AssistantSession",
     "AssistantDecision",
     "CatalogAlias",

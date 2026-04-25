@@ -67,6 +67,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   String? _errKgPerBag;
   String? _errHsn;
   String? _hsnCode;
+  String? _itemCode;
   final Map<String, Map<String, dynamic>> _catalogFetchById = {};
 
   void _onItemTextChanged() {
@@ -83,6 +84,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
           _catalogItemId = null;
           _errItem = null;
           _hsnCode = null;
+          _itemCode = null;
         });
         return;
       }
@@ -154,6 +156,8 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       _taxCtrl.text = t is num && t > 0 ? t.toString() : '';
       final hsn = init['hsn_code']?.toString().trim() ?? '';
       _hsnCode = hsn.isEmpty ? null : hsn;
+      final ic = init['item_code']?.toString().trim() ?? '';
+      _itemCode = ic.isEmpty ? null : ic;
     }
     _syncKgStateFromCatalogRow();
   }
@@ -205,6 +209,11 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     if (a.isNotEmpty) return a;
     final b = row['hsn']?.toString().trim() ?? '';
     return b.isEmpty ? null : b;
+  }
+
+  String? _itemCodeFromRow(Map<String, dynamic> row) {
+    final a = row['item_code']?.toString().trim() ?? '';
+    return a.isEmpty ? null : a;
   }
 
   static bool _isWeightUnit(String? u) {
@@ -468,6 +477,8 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     }
     final hOut = _hsnCode?.trim() ?? '';
     if (hOut.isNotEmpty) m['hsn_code'] = hOut;
+    final icOut = _itemCode?.trim() ?? '';
+    if (icOut.isNotEmpty) m['item_code'] = icOut;
     return m;
   }
 
@@ -492,6 +503,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       _errKgPerBag = null;
       _errHsn = null;
       _hsnCode = null;
+      _itemCode = null;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _itemFocus.requestFocus();
@@ -572,6 +584,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       _itemCtrl.text = name.isNotEmpty ? name : nameFallback;
       _unitCtrl.text = unit0;
       _hsnCode = _hsnFromRow(row);
+      _itemCode = _itemCodeFromRow(row);
       if (kpbD != null && kpbD > 0) {
         _weightPricing = true;
         _kgPerUnit = kpbD;
@@ -619,6 +632,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         _kgPerBagCtrl.clear();
         _errItem = null;
         _hsnCode = null;
+        _itemCode = null;
       });
       return;
     }
@@ -643,6 +657,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         _itemCtrl.text = it.label;
         _errItem = null;
         _hsnCode = null;
+        _itemCode = null;
       });
       return;
     }
@@ -779,16 +794,25 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                   fontSize: 16,
                 ),
               ),
+              const SizedBox(height: 4),
+              Text(
+                'Catalog, qty, rate first. Use Discount / Tax for HSN and bag/sack rules.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: Colors.blueGrey[700],
+                  fontSize: 12,
+                  height: 1.25,
+                ),
+              ),
               const SizedBox(height: 8),
               KeyedSubtree(
                 key: _itemKey,
                 child: InlineSearchField(
                   controller: _itemCtrl,
                   focusNode: _itemFocus,
-                  placeholder: 'Search item (2+ letters)…',
+                  placeholder: 'Search item (name, code, HSN)…',
                   prefixIcon: const Icon(Icons.inventory_2_outlined, size: 18),
                   items: searchItems,
-                  minQueryLength: 2,
+                  minQueryLength: 1,
                   focusAfterSelection: _qtyFocus,
                   onSelected: _onCatalogPick,
                 ),
@@ -961,6 +985,17 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                 const SizedBox(height: 2),
                 Text(
                   'HSN: ${_hsnCode!}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Colors.blueGrey[800],
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+              if (_itemCode != null && _itemCode!.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(
+                  'Item code: ${_itemCode!}',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: Colors.blueGrey[800],
                     fontSize: 12,

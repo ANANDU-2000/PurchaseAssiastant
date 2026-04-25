@@ -88,6 +88,8 @@ class TradePurchaseLine(Base):
     tax_percent: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
     payment_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     hsn_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Snapshot or override; falls back to catalog item_code in API when unset.
+    item_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     description: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     purchase = relationship("TradePurchase", back_populates="lines")

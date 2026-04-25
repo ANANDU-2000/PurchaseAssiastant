@@ -8,6 +8,7 @@ import '../calc_engine.dart';
 import '../models/business_profile.dart';
 import '../models/trade_purchase_models.dart';
 import 'purchase_invoice_amount_words.dart';
+import 'pdf_text_safe.dart';
 
 final _num2 = NumberFormat('#,##,##0.00', 'en_IN');
 final _num0 = NumberFormat('#,##,##0.##', 'en_IN');
@@ -19,7 +20,8 @@ const _muted = PdfColor.fromInt(0xFF64748B);
 String _rsPdf(num n) => 'Rs. ${_num2.format(n)}';
 String _empty(String? s) {
   final t = s?.trim();
-  return (t == null || t.isEmpty) ? '—' : t;
+  if (t == null || t.isEmpty) return '—';
+  return safePdfText(t);
 }
 
 /// Maps API line to calc line (mirrors [purchase_draft] `_lineToCalc` semantics).
@@ -80,7 +82,9 @@ pw.Widget _invoiceHeader({
   required TradePurchase p,
   pw.ImageProvider? logo,
 }) {
-  final title = biz.displayTitle.trim().isNotEmpty ? biz.displayTitle : 'Business';
+  final title = safePdfText(
+    biz.displayTitle.trim().isNotEmpty ? biz.displayTitle : 'Business',
+  );
   return pw.Container(
     padding: const pw.EdgeInsets.only(bottom: 10),
     decoration: const pw.BoxDecoration(
@@ -111,7 +115,7 @@ pw.Widget _invoiceHeader({
               ),
               if (biz.address != null && biz.address!.trim().isNotEmpty)
                 pw.Text(
-                  biz.address!,
+                  safePdfText(biz.address!),
                   style: const pw.TextStyle(fontSize: 9, color: _muted, height: 1.3),
                 ),
               pw.Text(
@@ -268,11 +272,15 @@ pw.Widget _lineItemsTable(TradePurchase p) {
     final taxPStr = taxP == null
         ? '—'
         : (taxP == taxP.roundToDouble() ? '${taxP.round()}' : _num0.format(taxP));
+    final ic = l.itemCode?.trim();
+    final itemBlock = (ic != null && ic.isNotEmpty)
+        ? '${l.itemName}\nCode: $ic'
+        : l.itemName;
     rows.add(
       pw.TableRow(
         children: [
           _tCell('${i + 1}', align: pw.TextAlign.center, fs: 6.5),
-          _tCell(l.itemName, fs: 6.5, maxLines: 2),
+          _tCell(safePdfText(itemBlock), fs: 6.5, maxLines: 3),
           _tCell(_empty(l.hsnCode), align: pw.TextAlign.center, fs: 6.0),
           _tCell(l.unit, align: pw.TextAlign.center, fs: 6.5),
           _tCell(_num0.format(l.qty), align: pw.TextAlign.right, fs: 6.5),

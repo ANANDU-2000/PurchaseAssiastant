@@ -75,8 +75,12 @@ class UnifiedSearchOut(BaseModel):
 def _hydrate_catalog_rows(rows: list[tuple[Any, ...]]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for row in rows:
-        if len(row) == 10:
+        icode: str | None
+        if len(row) == 11:
+            _id, name, cat, tname, du, dkg, hsn, icode, tax, dlc, lpp = row
+        elif len(row) == 10:
             _id, name, cat, tname, du, dkg, hsn, tax, dlc, lpp = row
+            icode = None
         else:
             _id, name, cat, tname, du, dkg, hsn, tax, dlc, lpp = (
                 row[0],
@@ -90,6 +94,8 @@ def _hydrate_catalog_rows(rows: list[tuple[Any, ...]]) -> list[dict[str, Any]]:
                 row[7],
                 row[8],
             )
+            icode = None
+        icode_s = str(icode).strip() if icode is not None and str(icode).strip() else None
         out.append(
             {
                 "id": str(_id),
@@ -99,6 +105,7 @@ def _hydrate_catalog_rows(rows: list[tuple[Any, ...]]) -> list[dict[str, Any]]:
                 "default_unit": du,
                 "default_kg_per_bag": float(dkg) if dkg is not None else None,
                 "hsn_code": hsn,
+                "item_code": icode_s,
                 "tax_percent": float(tax) if tax is not None else None,
                 "default_landing_cost": float(dlc) if dlc is not None else None,
                 "last_purchase_price": float(lpp) if lpp is not None else None,
@@ -128,6 +135,7 @@ async def unified_search(
             CatalogItem.default_unit,
             CatalogItem.default_kg_per_bag,
             CatalogItem.hsn_code,
+            CatalogItem.item_code,
             CatalogItem.tax_percent,
             CatalogItem.default_landing_cost,
             CatalogItem.last_purchase_price,
@@ -138,6 +146,10 @@ async def unified_search(
             and_(
                 CatalogItem.hsn_code.isnot(None),
                 func.lower(CatalogItem.hsn_code).contains(needle),
+            ),
+            and_(
+                CatalogItem.item_code.isnot(None),
+                func.lower(CatalogItem.item_code).contains(needle),
             ),
         )
         if has_type:

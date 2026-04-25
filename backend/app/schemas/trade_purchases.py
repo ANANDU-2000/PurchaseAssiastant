@@ -32,6 +32,7 @@ class TradePurchaseLineIn(BaseModel):
     tax_percent: float | None = Field(None, ge=0)
     payment_days: int | None = Field(None, ge=0, le=3650)
     hsn_code: str | None = Field(None, max_length=32)
+    item_code: str | None = Field(None, max_length=64)
     description: str | None = Field(None, max_length=512)
 
     @model_validator(mode="after")
@@ -72,6 +73,7 @@ class TradePurchaseLineOut(BaseModel):
     tax_percent: float | None
     payment_days: int | None = None
     hsn_code: str | None = None
+    item_code: str | None = None
     description: str | None = None
     # From linked catalog item (for BAG/kg math in clients; omitted when no catalog row).
     default_unit: str | None = None

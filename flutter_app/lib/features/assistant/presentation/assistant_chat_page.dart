@@ -206,7 +206,14 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
         entryDraft: confirming ? _pendingEntryDraft : null,
       );
 
-      final reply = data['reply'] as String? ?? '';
+      var reply = data['reply'] as String? ?? '';
+      if (kDebugMode) {
+        final src = data['reply_source']?.toString() ?? '—';
+        final prov = data['llm_provider']?.toString() ?? '—';
+        final fo = data['llm_failover_used']?.toString() ?? '—';
+        reply =
+            '$reply\n\n[debug: reply_source=$src · llm_provider=$prov · llm_failover_used=$fo]';
+      }
       final intent = data['intent'] as String? ?? '';
       final previewUi = intent == 'add_purchase_preview' || intent == 'entity_preview';
       Map<String, dynamic>? snap;
