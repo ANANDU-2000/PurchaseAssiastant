@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/hexa_colors.dart';
 import '../auth_brand_assets.dart';
 
-/// Full-bleed gradient + top-aligned, keyboard-safe scroll. Max width 420.
+/// Blurred hero image + light scrim, keyboard-safe scroll. Max width 420.
 class AuthPageShell extends StatelessWidget {
   const AuthPageShell({super.key, required this.children});
 
@@ -17,10 +17,19 @@ class AuthPageShell extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Same as get-started: avoid photo assets with embedded logo / tagline text.
         Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(gradient: HexaColors.atmosphereGradient),
+          child: Image.asset(
+            AuthBrandAssets.background,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => DecoratedBox(
+              decoration: BoxDecoration(gradient: HexaColors.atmosphereGradient),
+            ),
+          ),
+        ),
+        Positioned.fill(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: const ColoredBox(color: Color(0x00000000)),
           ),
         ),
         Positioned.fill(

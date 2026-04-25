@@ -13,12 +13,14 @@ class GetStartedPage extends StatefulWidget {
 
 class _GetStartedPageState extends State<GetStartedPage>
     with SingleTickerProviderStateMixin {
+  static const _bgAsset = 'assets/brand/getstarted_bg.png';
   static const _entryDuration = Duration(milliseconds: 820);
 
   late final AnimationController _entryController;
   late final Animation<Offset> _contentSlide;
   late final Animation<double> _contentFade;
   late final Animation<double> _buttonScaleIn;
+  bool _didPrecache = false;
 
   @override
   void initState() {
@@ -64,6 +66,14 @@ class _GetStartedPageState extends State<GetStartedPage>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_didPrecache) return;
+    _didPrecache = true;
+    precacheImage(const AssetImage(_bgAsset), context);
+  }
+
+  @override
   void dispose() {
     _entryController.dispose();
     super.dispose();
@@ -78,13 +88,18 @@ class _GetStartedPageState extends State<GetStartedPage>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Gradient only — hero PNG contained embedded logo & taglines we cannot strip in code.
           Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(gradient: HexaColors.atmosphereGradient),
+            child: Image.asset(
+              _bgAsset,
+              fit: BoxFit.cover,
+              alignment: Alignment.center,
+              filterQuality: FilterQuality.high,
+              gaplessPlayback: true,
+              errorBuilder: (_, __, ___) => DecoratedBox(
+                decoration: BoxDecoration(gradient: HexaColors.atmosphereGradient),
+              ),
             ),
           ),
-          // Light vignette so bottom CTAs stay crisp.
           Positioned.fill(
             child: DecoratedBox(
               decoration: BoxDecoration(
@@ -92,10 +107,54 @@ class _GetStartedPageState extends State<GetStartedPage>
                   begin: Alignment.bottomCenter,
                   end: Alignment.topCenter,
                   colors: [
-                    Colors.black.withValues(alpha: 0.22),
+                    Colors.black.withValues(alpha: 0.58),
+                    Colors.black.withValues(alpha: 0.32),
+                    Colors.black.withValues(alpha: 0.12),
+                    Colors.black.withValues(alpha: 0.06),
+                  ],
+                  stops: const [0.0, 0.32, 0.62, 1.0],
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 220,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.72),
+                    Colors.black.withValues(alpha: 0.35),
                     Colors.transparent,
                   ],
-                  stops: const [0.0, 0.55],
+                  stops: const [0.0, 0.55, 1.0],
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: 200,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.5),
+                      Colors.black.withValues(alpha: 0.2),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 0.45, 1.0],
+                  ),
                 ),
               ),
             ),

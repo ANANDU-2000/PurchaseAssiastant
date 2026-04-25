@@ -1,6 +1,5 @@
-/// Logo asset for [AuthSmallLogo] (see `assets/brand/` in pubspec).
-/// Screen backgrounds use [HexaColors.atmosphereGradient] — not the old hero PNG
-/// (that file had embedded business text and could not be “removed” in layout).
+/// Brand imagery for [AuthSmallLogo] and full-bleed shells (see `pubspec` assets).
 abstract final class AuthBrandAssets {
   static const logo = 'assets/brand/logo.png';
+  static const background = 'assets/brand/getstarted_bg.png';
 }
