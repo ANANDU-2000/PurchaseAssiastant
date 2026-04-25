@@ -18,6 +18,7 @@ import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/services/reports_pdf.dart';
 import '../../../core/widgets/friendly_load_error.dart';
+import '../../../core/widgets/list_skeleton.dart';
 import '../../../shared/widgets/shell_quick_ref_actions.dart';
 
 /// Aligns with [HomePeriod] on the dashboard: Today / Week / Month / Year.
@@ -236,11 +237,8 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
       );
     } catch (e) {
       if (mounted) {
-        final msg = e is DioException
-            ? friendlyApiError(e)
-            : 'Something went wrong. Please try again.';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Couldn't create PDF. $msg")),
+          SnackBar(content: Text('PDF export failed: $e')),
         );
       }
     } finally {
@@ -349,7 +347,11 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                   _filterBar(),
                   const SizedBox(height: 8),
                   bundle.when(
-                    loading: () => const LinearProgressIndicator(),
+                    loading: () => const ListSkeleton(
+                      rowCount: 5,
+                      rowHeight: 72,
+                      padding: EdgeInsets.fromLTRB(0, 0, 0, 24),
+                    ),
                     error: (_, __) => FriendlyLoadError(
                       onRetry: () =>
                           ref.invalidate(fullReportsTradeBundleProvider),

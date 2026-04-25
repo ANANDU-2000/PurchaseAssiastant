@@ -340,21 +340,7 @@ class _HomePageState extends ConsumerState<HomePage>
       backgroundColor: HexaColors.brandBackground,
       surfaceTintColor: Colors.transparent,
       scrolledUnderElevation: 0,
-      title: Row(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: Image.asset(
-              'assets/images/app_logo.png',
-              width: 40,
-              height: 40,
-              fit: BoxFit.cover,
-              gaplessPlayback: true,
-              filterQuality: FilterQuality.high,
-            ),
-          ),
-        ],
-      ),
+      title: const SizedBox.shrink(),
       actions: [
         ShellQuickRefActions(onRefresh: _refresh),
       ],

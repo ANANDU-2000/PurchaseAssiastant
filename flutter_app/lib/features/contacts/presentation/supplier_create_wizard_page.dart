@@ -1163,7 +1163,10 @@ class _SupplierCreateWizardPageState
         recentByItem[n] = r;
       }
     }
+    // Must not use an unbounded ListView inside the outer SingleChildScrollView (Step 5 was blank in release).
     return ListView(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       children: [
@@ -1172,8 +1175,22 @@ class _SupplierCreateWizardPageState
         const SizedBox(height: 8),
         cats.when(
           loading: () => const LinearProgressIndicator(),
-          error: (_, __) => const Text('Could not load categories'),
-          data: (rows) => Wrap(
+          error: (_, __) => Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              'Could not load categories. Check your connection, then go back and open this step again.',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.error,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          data: (rows) => rows.isEmpty
+              ? Text(
+                  'No categories in catalog yet. Add categories under Catalog, then return here.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                )
+              : Wrap(
             spacing: 8,
             runSpacing: 8,
             children: rows.map((c) {
@@ -1195,7 +1212,7 @@ class _SupplierCreateWizardPageState
                 },
               );
             }).toList(),
-          ),
+                ),
         ),
         if (_categoryIds.isNotEmpty) ...[
           const SizedBox(height: 16),
@@ -1208,7 +1225,12 @@ class _SupplierCreateWizardPageState
                 padding: EdgeInsets.all(8),
                 child: LinearProgressIndicator(),
               ),
-              error: (_, __) => const SizedBox.shrink(),
+              error: (_, __) => Text(
+                'Could not load types for a selected category.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+              ),
               data: (types) {
                 if (types.isEmpty) return const SizedBox.shrink();
                 return Padding(
@@ -1461,8 +1483,8 @@ class _SupplierCreateWizardPageState
           child: Column(
             children: [
               _kvRow('GST Number', _gst.text.trim().isEmpty ? '—' : _gst.text.trim()),
-              _kvRow('Address', _addr.text.trim().isEmpty ? 'Not configured yet' : _addr.text.trim()),
-              _kvRow('Notes', notesPreview.isEmpty ? 'Not configured yet' : notesPreview),
+              _kvRow('Address', _addr.text.trim().isEmpty ? 'Not set' : _addr.text.trim()),
+              _kvRow('Notes', notesPreview.isEmpty ? 'Not set' : notesPreview),
             ],
           ),
         ),
@@ -1470,8 +1492,8 @@ class _SupplierCreateWizardPageState
           title: 'Purchase Defaults',
           child: Column(
             children: [
-              _kvRow('Payment Days', pay == null ? 'Not configured yet' : '$pay days'),
-              _kvRow('Discount', disc == null ? 'Not configured yet' : '$disc%'),
+              _kvRow('Payment Days', pay == null ? 'Not set' : '$pay days'),
+              _kvRow('Discount', disc == null ? 'Not set' : '$disc%'),
               _kvRow('Delivered', _fmtMoney(_delivered.text)),
               _kvRow('Billty', _fmtMoney(_billty.text)),
               _kvRow('Freight', _freightIncluded ? 'Included' : 'Separate'),
@@ -1625,7 +1647,7 @@ class _SupplierCreateWizardPageState
 
   String _fmtMoney(String raw) {
     final n = double.tryParse(raw.trim());
-    if (n == null) return 'Not configured yet';
+    if (n == null) return 'Not set';
     if (n == n.roundToDouble()) return '₹${n.toStringAsFixed(0)}';
     return '₹${n.toStringAsFixed(2)}';
   }

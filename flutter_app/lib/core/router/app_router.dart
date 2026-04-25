@@ -404,6 +404,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           child: const VoicePage(),
         ),
       ),
+      // Main app tabs: keep navigation in this shell only; use `navigationShell.goBranch`
+      // or `context.go('/home'|'/reports'|...)` — avoid `push` onto the root stack for these paths
+      // or the active tab and visible content can disagree.
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
             ShellScreen(navigationShell: navigationShell),

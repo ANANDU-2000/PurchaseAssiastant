@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
@@ -71,7 +72,11 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
     super.initState();
     _categoryId = widget.categoryId;
     _typeId = widget.typeId;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _offerResumeDraft());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).clearSnackBars();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_offerResumeDraft()));
   }
 
   String get _activeDraftKey =>
@@ -101,7 +106,8 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
     if (go == true) {
       setState(() {
         _name.text = m!['name']?.toString() ?? '';
-        _unit = m['unit']?.toString();
+        final rawU = m['unit']?.toString().trim();
+        _unit = (rawU != null && rawU.isNotEmpty) ? rawU.toLowerCase() : null;
         _kg.text = m['kg']?.toString() ?? '';
         _perBox.text = m['perBox']?.toString() ?? '';
         _perTin.text = m['perTin']?.toString() ?? '';
@@ -563,6 +569,11 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
           orElse: () => <Map<String, dynamic>>[],
         );
 
+    /// Bottom strip (review + create) sits in [Scaffold.bottomNavigationBar]; pad the scroll view
+    /// so fields stay above it, the home indicator, and the keyboard.
+    final bottomOverlay =
+        MediaQuery.paddingOf(context).bottom + 200 + MediaQuery.viewInsetsOf(context).bottom;
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
@@ -593,7 +604,7 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                 child: ListView(
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            padding: EdgeInsets.fromLTRB(16, 8, 16, 12 + bottomOverlay),
             children: [
               Text('Category & subcategory', style: HexaDsType.formSectionLabel),
               const SizedBox(height: 6),
@@ -742,7 +753,7 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                       label: Text(u.toUpperCase()),
                       selected: _unit == u,
                       onSelected: (_) => setState(() {
-                        _unit = u;
+                        _unit = u; // _kUnits are lowercase — keeps review + chips in sync
                         _kgErr = null;
                         _boxErr = null;
                         _tinErr = null;
@@ -883,7 +894,21 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                       final list =
                           rows.map((e) => Map<String, dynamic>.from(e as Map)).toList();
                       if (list.isEmpty) {
-                        return const Text('Create a supplier under Contacts first.');
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'No suppliers yet.',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                            const SizedBox(height: 8),
+                            TextButton.icon(
+                              onPressed: () => context.push('/contacts'),
+                              icon: const Icon(Icons.group_add_outlined, size: 20),
+                              label: const Text('Open Contacts to add a supplier'),
+                            ),
+                          ],
+                        );
                       }
                       final pick = _supplierPickItems(list);
                       return Column(
@@ -1014,13 +1039,17 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                   const SizedBox(height: 10),
                   FilledButton(
                     onPressed: (_saving || !_isValid) ? null : _create,
+                    style: FilledButton.styleFrom(
+                      disabledBackgroundColor: HexaColors.brandDisabledBg,
+                      disabledForegroundColor: HexaColors.brandDisabledText,
+                    ),
                     child: _saving
                         ? const SizedBox(
                             width: 22,
                             height: 22,
                             child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                           )
-                        : const Text('Create item'),
+                        : Text(_isValid ? 'Create item' : 'Complete required fields'),
                   ),
                 ],
               ),

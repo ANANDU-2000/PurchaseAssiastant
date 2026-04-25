@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +8,7 @@ import '../../../core/router/navigation_ext.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/providers/business_profile_provider.dart';
@@ -297,7 +299,15 @@ class _DetailBodyState extends ConsumerState<_DetailBody> {
               }
             } catch (e) {
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      e is DioException
+                          ? friendlyApiError(e)
+                          : 'Something went wrong. Please try again.',
+                    ),
+                  ),
+                );
               }
             }
           },
@@ -409,7 +419,13 @@ class _DetailBodyState extends ConsumerState<_DetailBody> {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$e')),
+          SnackBar(
+            content: Text(
+              e is DioException
+                  ? friendlyApiError(e)
+                  : 'Something went wrong. Please try again.',
+            ),
+          ),
         );
       }
     }

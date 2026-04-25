@@ -27,6 +27,15 @@ class _CatalogAddSubcategoryPageState
   bool _touched = false;
 
   @override
+  void initState() {
+    super.initState();
+    // Avoid showing a previous screen's error (e.g. phone validation) on this route.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ScaffoldMessenger.of(context).clearSnackBars();
+    });
+  }
+
+  @override
   void dispose() {
     _name.dispose();
     super.dispose();

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/search/catalog_fuzzy.dart';
@@ -280,7 +282,15 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
         setState(() => _pendingDeleteIds.remove(p.id));
       }
       if (!mounted) return;
-      messenger.showSnackBar(SnackBar(content: Text('$e')));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            e is DioException
+                ? friendlyApiError(e)
+                : 'Something went wrong. Please try again.',
+          ),
+        ),
+      );
     }
   }
 
@@ -375,7 +385,15 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              e is DioException
+                  ? friendlyApiError(e)
+                  : 'Something went wrong. Please try again.',
+            ),
+          ),
+        );
       }
     }
   }

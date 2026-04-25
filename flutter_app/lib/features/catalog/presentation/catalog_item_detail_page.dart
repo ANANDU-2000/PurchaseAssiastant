@@ -225,8 +225,11 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
       );
     } catch (e) {
       if (mounted) {
+        final msg = e is DioException
+            ? friendlyApiError(e)
+            : 'Could not create PDF. Please try again.';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('PDF failed: $e')),
+          SnackBar(content: Text('PDF failed. $msg')),
         );
       }
     }
