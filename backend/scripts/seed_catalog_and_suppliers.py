@@ -7,6 +7,10 @@ Run from backend/:
   set DATABASE_URL=postgresql://...
   python -m scripts.seed_catalog_and_suppliers --business-id=<uuid> [--dry-run]
 
+Production (Supabase): use the same DATABASE_URL as the API (e.g. postgresql+asyncpg://…),
+do not set HEXA_USE_SQLITE in that shell, then pass the live workspace UUID from
+`select id, name from businesses;` in the Supabase SQL editor.
+
 --dry-run performs inserts then ROLLBACK (safe preview against a real DB).
 
 Requires: DATABASE_URL or SQLALCHEMY_DATABASE_URI (postgresql+asyncpg is converted for sync drivers).
@@ -33,6 +37,8 @@ def _sync_database_url() -> str:
     if not raw:
         print("Set DATABASE_URL or SQLALCHEMY_DATABASE_URI", file=sys.stderr)
         sys.exit(1)
+    if "sqlite+aiosqlite" in raw:
+        return raw.replace("sqlite+aiosqlite", "sqlite", 1)
     if raw.startswith("sqlite"):
         return raw
     if "+asyncpg" in raw:

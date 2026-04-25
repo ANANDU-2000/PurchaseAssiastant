@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import uuid
 from datetime import date
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.models import Entry, EntryLineItem, Supplier
+from app.models import Entry, EntryLineItem, Supplier, TradePurchase, TradePurchaseLine
 from app.schemas.entries import EntryCreateRequest
 from app.services.assistant_entity import (
     EntityKind,
@@ -37,6 +38,7 @@ from app.services.chat_draft_store import (
     save_chat_draft,
 )
 from app.services.fuzzy_catalog import best_token_sort_match
+from app.services import trade_query as tq
 
 logger = logging.getLogger(__name__)
 from app.services.entry_intent_resolution import (
@@ -373,50 +375,49 @@ def _detect_query_intent(text: str) -> bool:
     return any(k in t for k in keys) or "?" in t or t.endswith("?")
 
 
-def _bf(business_id: uuid.UUID, from_date: date, to_date: date):
-    return (
-        Entry.business_id == business_id,
-        Entry.entry_date >= from_date,
-        Entry.entry_date <= to_date,
-    )
-
-
 async def _grounded_query_reply(
     db: AsyncSession,
     business_id: uuid.UUID,
     text: str,
 ) -> str:
-    """Short reply using same aggregates as analytics summary + home insights (month-to-date)."""
+    """Trade-purchase aggregates (same filters as reports/home snapshot) + structured JSON for the LLM."""
     t_raw = text.strip()
     t = t_raw.lower()
     fd, td = _month_to_date_range()
-    bf = _bf(business_id, fd, td)
+    line_amt = tq.trade_line_amount_expr()
+    bf_m = tq.trade_purchase_date_filter(business_id, fd, td)
 
-    # --- Today ---
+    def _pack(grounded: dict[str, Any], human: str) -> str:
+        return "GROUNDED_JSON\n" + json.dumps(grounded, ensure_ascii=False) + "\n\n" + human
+
+    # --- Today (trade) ---
     if "today" in t or "ഇന്ന്" in t_raw:
         day = ist_today()
-        bf_day = _bf(business_id, day, day)
-        purchase = await db.execute(
-            select(func.coalesce(func.sum(EntryLineItem.qty * EntryLineItem.buy_price), 0))
-            .select_from(EntryLineItem)
-            .join(Entry, Entry.id == EntryLineItem.entry_id)
-            .where(*bf_day)
+        bf_day = tq.trade_purchase_date_filter(business_id, day, day)
+        tp = await db.execute(
+            select(func.coalesce(func.sum(line_amt), 0.0))
+            .select_from(TradePurchaseLine)
+            .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+            .where(bf_day)
         )
-        profit = await db.execute(
-            select(func.coalesce(func.sum(EntryLineItem.profit), 0))
-            .select_from(EntryLineItem)
-            .join(Entry, Entry.id == EntryLineItem.entry_id)
-            .where(*bf_day)
+        cnt = await db.execute(
+            select(func.count(func.distinct(TradePurchase.id)))
+            .select_from(TradePurchaseLine)
+            .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+            .where(bf_day)
         )
-        cnt = await db.execute(select(func.count(Entry.id.distinct())).where(*bf_day))
-        tp = float(purchase.scalar() or 0)
-        prf = float(profit.scalar() or 0)
-        n = int(cnt.scalar() or 0)
-        return (
-            f"Today ({day.isoformat()}): purchase ₹{tp:,.0f} · profit ₹{prf:,.0f} · {n} entries."
-        )
+        total = float(tp.scalar() or 0)
+        deals = int(cnt.scalar() or 0)
+        g = {
+            "source": "trade_purchases",
+            "window": "day",
+            "date": day.isoformat(),
+            "totals": {"purchase_inr": total, "deals": deals},
+        }
+        human = f"Today ({day.isoformat()}): trade purchases ₹{total:,.0f} · {deals} bill(s)."
+        return _pack(g, human)
 
-    # --- Supplier comparison for an item keyword: "best supplier for vaani" ---
+    # --- Best / cheapest supplier for an item (trade lines, top 3) ---
     item_kw = None
     m = re.search(r"\bfor\s+([^\s?,.]+)", t)
     if m:
@@ -424,103 +425,147 @@ async def _grounded_query_reply(
     if (
         item_kw
         and len(item_kw) >= 2
-        and any(k in t for k in ("supplier", "cheapest", "cheap", "price", "which", "best", "landing"))
+        and any(
+            k in t
+            for k in (
+                "supplier",
+                "cheapest",
+                "cheap",
+                "price",
+                "which",
+                "best",
+                "landing",
+            )
+        )
     ):
+        kpu = TradePurchaseLine.kg_per_unit
+        lcpk = TradePurchaseLine.landing_cost_per_kg
+        weight_ok = and_(kpu.isnot(None), lcpk.isnot(None), kpu > 0, lcpk > 0)
+        unit_price = case((weight_ok, lcpk), else_=TradePurchaseLine.landing_cost)
         q = (
             select(
                 Supplier.name,
-                func.coalesce(func.avg(EntryLineItem.landing_cost), 0).label("avg_land"),
-                func.coalesce(func.sum(EntryLineItem.profit), 0).label("tp"),
-                func.count().label("deals"),
+                func.coalesce(func.avg(unit_price), 0).label("avg_unit"),
+                func.coalesce(func.sum(line_amt), 0).label("spend"),
+                func.count(TradePurchaseLine.id).label("nlines"),
             )
-            .select_from(EntryLineItem)
-            .join(Entry, Entry.id == EntryLineItem.entry_id)
-            .join(Supplier, Supplier.id == Entry.supplier_id)
+            .select_from(TradePurchaseLine)
+            .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+            .outerjoin(Supplier, Supplier.id == TradePurchase.supplier_id)
             .where(
-                *bf,
-                Entry.supplier_id.isnot(None),
-                EntryLineItem.item_name.ilike(f"%{item_kw}%"),
+                bf_m,
+                TradePurchase.supplier_id.isnot(None),
+                TradePurchaseLine.item_name.ilike(f"%{item_kw}%"),
             )
             .group_by(Supplier.id, Supplier.name)
-            .order_by(func.avg(EntryLineItem.landing_cost).asc())
-            .limit(5)
+            .order_by(func.avg(unit_price).asc())
+            .limit(3)
         )
         rows = (await db.execute(q)).all()
+        ranked = [
+            {
+                "rank": i + 1,
+                "supplier": str(r[0] or "Unknown"),
+                "avg_unit_inr": float(r[1] or 0),
+                "spend_inr": float(r[2] or 0),
+                "line_count": int(r[3] or 0),
+            }
+            for i, r in enumerate(rows)
+        ]
+        g = {
+            "source": "trade_purchases",
+            "intent": "supplier_rank_for_item",
+            "item_keyword": item_kw,
+            "period": {"from": fd.isoformat(), "to": td.isoformat()},
+            "top_suppliers": ranked,
+        }
         if rows:
-            lines = [f"Suppliers for “{item_kw}” (lowest avg landing first):"]
+            lines = [f"Suppliers for “{item_kw}” (trade lines, lowest avg unit cost first, top 3):"]
             for i, r in enumerate(rows):
-                medal = ("1.", "2.", "3.", "4.", "5.")[min(i, 4)]
+                medal = ("1.", "2.", "3.")[min(i, 2)]
                 lines.append(
-                    f"{medal} {r[0]}: avg landing ₹{float(r[1]):,.0f}, "
-                    f"profit ₹{float(r[2]):,.0f} ({int(r[3])} lines)"
+                    f"{medal} {r[0]}: avg unit ₹{float(r[1]):,.0f}, spend ₹{float(r[2]):,.0f} ({int(r[3])} lines)"
                 )
-            return "\n".join(lines)
-        return f"No purchases for “{item_kw}” in {fd.isoformat()} → {td.isoformat()}."
+            return _pack(g, "\n".join(lines))
+        human = f"No trade lines for “{item_kw}” in {fd.isoformat()} → {td.isoformat()}."
+        return _pack(g, human)
 
     purchase = await db.execute(
-        select(func.coalesce(func.sum(EntryLineItem.qty * EntryLineItem.buy_price), 0))
-        .select_from(EntryLineItem)
-        .join(Entry, Entry.id == EntryLineItem.entry_id)
-        .where(*bf)
+        select(func.coalesce(func.sum(line_amt), 0.0))
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .where(bf_m)
     )
-    profit = await db.execute(
-        select(func.coalesce(func.sum(EntryLineItem.profit), 0))
-        .select_from(EntryLineItem)
-        .join(Entry, Entry.id == EntryLineItem.entry_id)
-        .where(*bf)
+    cnt = await db.execute(
+        select(func.count(func.distinct(TradePurchase.id)))
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .where(bf_m)
     )
-    cnt = await db.execute(select(func.count(Entry.id.distinct())).where(*bf))
     total_purchase = float(purchase.scalar() or 0)
-    total_profit = float(profit.scalar() or 0)
     purchase_count = int(cnt.scalar() or 0)
 
     q_top = (
         select(
-            EntryLineItem.item_name,
-            func.coalesce(func.sum(EntryLineItem.profit), 0).label("tp"),
+            TradePurchaseLine.item_name,
+            func.coalesce(func.sum(line_amt), 0).label("spend"),
         )
-        .select_from(EntryLineItem)
-        .join(Entry, Entry.id == EntryLineItem.entry_id)
-        .where(*bf)
-        .group_by(EntryLineItem.item_name)
-        .order_by(func.coalesce(func.sum(EntryLineItem.profit), 0).desc())
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .where(bf_m)
+        .group_by(TradePurchaseLine.item_name)
+        .order_by(func.coalesce(func.sum(line_amt), 0).desc())
         .limit(3)
     )
     top = await db.execute(q_top)
     top_rows = top.all()
 
-    q_best_sup = (
+    q_best3 = (
         select(
             Supplier.name,
-            func.coalesce(func.sum(EntryLineItem.profit), 0).label("tp"),
+            func.coalesce(func.sum(line_amt), 0).label("spend"),
         )
-        .select_from(Entry)
-        .join(EntryLineItem, EntryLineItem.entry_id == Entry.id)
-        .join(Supplier, Supplier.id == Entry.supplier_id)
-        .where(*bf, Entry.supplier_id.isnot(None))
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .outerjoin(Supplier, Supplier.id == TradePurchase.supplier_id)
+        .where(bf_m, TradePurchase.supplier_id.isnot(None))
         .group_by(Supplier.id, Supplier.name)
-        .order_by(func.coalesce(func.sum(EntryLineItem.profit), 0).desc())
-        .limit(1)
+        .order_by(func.coalesce(func.sum(line_amt), 0).desc())
+        .limit(3)
     )
-    bs = await db.execute(q_best_sup)
-    bs_row = bs.first()
-    best_supplier_name = bs_row[0] if bs_row else None
-    best_supplier_profit = float(bs_row[1]) if bs_row else None
+    bs = await db.execute(q_best3)
+    best_rows = bs.all()
+    top_suppliers_payload = [
+        {"rank": i + 1, "supplier": str(r[0] or "Unknown"), "spend_inr": float(r[1] or 0)}
+        for i, r in enumerate(best_rows)
+    ]
+    top_items_payload = [
+        {"rank": i + 1, "item": str(r[0] or ""), "spend_inr": float(r[1] or 0)}
+        for i, r in enumerate(top_rows)
+        if r[0]
+    ]
+
+    grounded: dict[str, Any] = {
+        "source": "trade_purchases",
+        "period": {"from": fd.isoformat(), "to": td.isoformat()},
+        "totals": {"purchase_inr": total_purchase, "deals": purchase_count},
+        "top_suppliers_by_spend": top_suppliers_payload,
+        "top_items_by_spend": top_items_payload,
+    }
 
     lines: list[str] = [
         f"This month ({fd.isoformat()} → {td.isoformat()}): "
-        f"profit ₹{total_profit:,.0f}, purchases ₹{total_purchase:,.0f}, {purchase_count} entries."
+        f"trade purchases ₹{total_purchase:,.0f}, {purchase_count} bill(s)."
     ]
     if top_rows:
         parts = [f"{r[0]} (₹{float(r[1]):,.0f})" for r in top_rows if r[0]]
-        lines.append(f"Top items: {', '.join(parts)}.")
-    if best_supplier_name:
-        lines.append(
-            f"Best supplier (profit): {best_supplier_name} (₹{best_supplier_profit or 0:,.0f})."
-        )
+        lines.append(f"Top items by spend: {', '.join(parts)}.")
+    if best_rows:
+        parts2 = [f"{r[0]} (₹{float(r[1]):,.0f})" for r in best_rows if r[0]]
+        lines.append(f"Top suppliers by spend: {', '.join(parts2)}.")
     if purchase_count == 0:
-        lines.append("No entries this month yet — add a purchase from Entries or chat.")
-    return "\n".join(lines)
+        lines.append("No trade purchases in this range yet — record a purchase from History.")
+    return _pack(grounded, "\n".join(lines))
 
 
 async def _resume_pending_catalog_type_pick(

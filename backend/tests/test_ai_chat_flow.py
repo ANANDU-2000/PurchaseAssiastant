@@ -62,7 +62,10 @@ def test_ai_chat_query_grounded():
     assert r.status_code == 200, r.text
     data = r.json()
     assert data.get("intent") == "query"
-    assert "profit" in data.get("reply", "").lower()
+    rep = data.get("reply", "").lower()
+    assert "grounded_json" in rep
+    assert "trade_purchases" in rep
+    assert "bill" in rep or "purchase" in rep
 
 
 def test_ai_chat_query_today():

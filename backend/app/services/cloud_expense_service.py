@@ -5,7 +5,7 @@ from __future__ import annotations
 import calendar
 import uuid
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -45,23 +45,51 @@ def next_due_after_payment(last_paid: date, due_day: int) -> date:
     return date(y, m, d)
 
 
+# Unpaid: show the home card only inside this many calendar days before due (and when overdue).
+PRE_DUE_VISIBILITY_DAYS = 3
+
+
 @dataclass
 class CloudExpenseFlags:
     show_alert: bool
-    status: str  # "pending" | "paid_ok" | "due_soon"
+    status: str  # "ok" | "due_soon" | "overdue"
     is_overdue: bool
+    show_home_card: bool
+    in_pre_due_window: bool
 
 
 def compute_ui_flags(today: date, row: CloudExpense) -> CloudExpenseFlags:
     """
-    *next_due_date* is the next day payment is expected. While today < next_due_date,
-    the workspace is before the due line (no alert). Once today >= next_due_date,
-    show reminder until POST /pay moves next_due_date forward.
+    Home card visibility (unpaid path):
+    - Hidden when *today* is earlier than (next_due - PRE_DUE_VISIBILITY_DAYS): not in the reminder window.
+    - From (next_due - PRE_DUE_VISIBILITY_DAYS) through the day before next_due: due_soon (soft reminder + UPI).
+    - On or after next_due: overdue, show_alert for primary CTA.
     """
     nd = row.next_due_date
+    window_start = nd - timedelta(days=PRE_DUE_VISIBILITY_DAYS)
+    if today < window_start:
+        return CloudExpenseFlags(
+            show_alert=False,
+            status="ok",
+            is_overdue=False,
+            show_home_card=False,
+            in_pre_due_window=False,
+        )
     if today < nd:
-        return CloudExpenseFlags(show_alert=False, status="ok", is_overdue=False)
-    return CloudExpenseFlags(show_alert=True, status="pending", is_overdue=True)
+        return CloudExpenseFlags(
+            show_alert=False,
+            status="due_soon",
+            is_overdue=False,
+            show_home_card=True,
+            in_pre_due_window=True,
+        )
+    return CloudExpenseFlags(
+        show_alert=True,
+        status="overdue",
+        is_overdue=True,
+        show_home_card=True,
+        in_pre_due_window=False,
+    )
 
 
 async def ensure_cloud_expense(db: AsyncSession, business_id: uuid.UUID, today: date) -> CloudExpense:
@@ -89,13 +117,24 @@ async def pay_cloud_expense(
     row: CloudExpense,
     today: date,
     amount_override: float | None,
+    *,
+    external_payment_id: str | None = None,
+    payment_provider: str | None = None,
 ) -> CloudPaymentHistory:
     amt = float(amount_override) if amount_override is not None else float(row.amount_inr)
     if amt <= 0:
         raise ValueError("amount must be > 0")
     row.last_paid_date = today
     row.next_due_date = next_due_after_payment(today, row.due_day)
-    hist = CloudPaymentHistory(business_id=row.business_id, amount_inr=amt, paid_on=today)
+    ext = (external_payment_id or "").strip() or None
+    prov = (payment_provider or "").strip() or None
+    hist = CloudPaymentHistory(
+        business_id=row.business_id,
+        amount_inr=amt,
+        paid_on=today,
+        external_payment_id=ext,
+        payment_provider=prov,
+    )
     db.add(hist)
     await db.flush()
     return hist
@@ -123,6 +162,7 @@ async def list_history(
 
 def row_to_dict(row: CloudExpense, today: date, history: list[CloudPaymentHistory]) -> dict[str, Any]:
     flags = compute_ui_flags(today, row)
+    paid_up = today < row.next_due_date
     return {
         "id": str(row.id),
         "business_id": str(row.business_id),
@@ -134,13 +174,18 @@ def row_to_dict(row: CloudExpense, today: date, history: list[CloudPaymentHistor
         "show_alert": flags.show_alert,
         "status": flags.status,
         "is_overdue": flags.is_overdue,
-        "paid_up": today < row.next_due_date,
+        "paid_up": paid_up,
+        "show_home_card": flags.show_home_card,
+        "in_pre_due_window": flags.in_pre_due_window,
+        "pre_due_visibility_days": PRE_DUE_VISIBILITY_DAYS,
         "history": [
             {
                 "id": str(h.id),
                 "amount_inr": float(h.amount_inr),
                 "paid_on": h.paid_on.isoformat(),
                 "created_at": h.created_at.isoformat() if h.created_at else None,
+                "external_payment_id": h.external_payment_id,
+                "payment_provider": h.payment_provider,
             }
             for h in history
         ],

@@ -87,6 +87,38 @@ def _clean_phone(p: str | None) -> str | None:
     return t or None
 
 
+def _opt_int(v: object) -> int | None:
+    if v is None or v == "":
+        return None
+    try:
+        return int(float(v))
+    except (TypeError, ValueError):
+        return None
+
+
+def _opt_float(v: object) -> float | None:
+    if v is None or v == "":
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _supplier_seed_notes(row: dict) -> str | None:
+    """Merge optional `email` / `notes` from JSON into `Supplier.notes`."""
+    parts: list[str] = []
+    em = (row.get("email") or "").strip()
+    if em:
+        parts.append(f"Email: {em}")
+    n = (row.get("notes") or "").strip()
+    if n:
+        parts.append(n)
+    if not parts:
+        return None
+    return "\n".join(parts)
+
+
 def run_catalog_suppliers_seed(
     db: Session,
     business_id: uuid.UUID,
@@ -178,6 +210,8 @@ def run_catalog_suppliers_seed(
             default_landing = float(pur) if pur is not None else None
             du = _norm_unit(str(row.get("unit") or type_default_unit))
             kg_bag = _kg_per_bag_from_name(iname) if du == "bag" else None
+            code_raw = (row.get("code") or "").strip()
+            item_code = (code_raw[:64] if code_raw else None) or None
 
             iq = select(CatalogItem).where(
                 CatalogItem.business_id == business_id,
@@ -196,6 +230,7 @@ def run_catalog_suppliers_seed(
                 default_unit=du,
                 default_purchase_unit=du,
                 hsn_code=hsn,
+                item_code=item_code,
                 tax_percent=tax_percent,
                 default_landing_cost=default_landing,
                 default_kg_per_bag=kg_bag,
@@ -225,6 +260,9 @@ def run_catalog_suppliers_seed(
         if db.execute(sq2).scalar_one_or_none():
             stats["suppliers_skipped"] += 1
             continue
+        ft = (s.get("freight_type") or "").strip() or None
+        if ft and len(ft) > 16:
+            ft = ft[:16]
         sup = Supplier(
             business_id=business_id,
             name=name,
@@ -232,6 +270,13 @@ def run_catalog_suppliers_seed(
             gst_number=gst,
             location=(s.get("address") or "").strip() or None,
             address=(s.get("address") or "").strip() or None,
+            whatsapp_number=_clean_phone(s.get("whatsapp")),
+            notes=_supplier_seed_notes(s),
+            default_payment_days=_opt_int(s.get("default_payment_days")),
+            default_delivered_rate=_opt_float(s.get("default_delivered_rate")),
+            default_billty_rate=_opt_float(s.get("default_billty_rate")),
+            default_discount=_opt_float(s.get("default_discount")),
+            freight_type=ft,
         )
         db.add(sup)
         stats["suppliers_inserted"] += 1

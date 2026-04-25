@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/notifications/post_login_notification_prompt.dart';
 import 'core/platform/remove_boot_overlay.dart';
 import 'core/providers/tenant_branding_provider.dart';
 import 'core/router/app_router.dart';
@@ -43,7 +44,7 @@ class HexaApp extends ConsumerWidget {
         final body = child ?? const SizedBox.shrink();
         return DecoratedBox(
           decoration: BoxDecoration(gradient: HexaColors.appShellGradient),
-          child: body,
+          child: PostLoginNotificationPrompt(child: body),
         );
       },
       scrollBehavior: _HexaScrollBehavior(),

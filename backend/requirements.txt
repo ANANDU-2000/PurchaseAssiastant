@@ -4,6 +4,8 @@ python-multipart>=0.0.9
 uvicorn[standard]>=0.32
 sqlalchemy[asyncio]>=2.0.36
 asyncpg>=0.30
+# Sync Postgres (Alembic, seed_*, verify_db_connection) — not used by the async API runtime
+psycopg2-binary>=2.9
 aiosqlite>=0.20
 pydantic>=2.10
 pydantic-settings>=2.6

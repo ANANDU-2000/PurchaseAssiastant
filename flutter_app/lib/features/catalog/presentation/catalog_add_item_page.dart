@@ -16,6 +16,7 @@ import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/form_feedback.dart';
+import '../../../core/widgets/form_field_scroll.dart';
 import '../../../shared/widgets/bag_default_unit_hint.dart';
 import '../../../shared/widgets/inline_search_field.dart';
 
@@ -56,6 +57,8 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
 
   bool _saving = false;
   bool _touched = false;
+  final _categoryAnchorKey = GlobalKey();
+  final _typeAnchorKey = GlobalKey();
   String? _kgErr;
   String? _boxErr;
   String? _tinErr;
@@ -175,6 +178,54 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
     super.dispose();
   }
 
+  String? _nameFromRows(List<Map<String, dynamic>> rows, String? id) {
+    if (id == null) return null;
+    for (final r in rows) {
+      if (r['id']?.toString() == id) return r['name']?.toString();
+    }
+    return null;
+  }
+
+  Future<void> _pickCategorySheet(List<Map<String, dynamic>> cl) async {
+    final id = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final c in cl)
+              ListTile(
+                title: Text(c['name']?.toString() ?? ''),
+                onTap: () => Navigator.pop(ctx, c['id']?.toString()),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (id != null) _onCategoryChanged(id);
+  }
+
+  Future<void> _pickTypeSheet(List<Map<String, dynamic>> tl) async {
+    final id = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final t in tl)
+              ListTile(
+                title: Text(t['name']?.toString() ?? ''),
+                onTap: () => Navigator.pop(ctx, t['id']?.toString()),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (id != null) setState(() => _typeId = id);
+  }
+
   bool get _isValid {
     if (_categoryId == null || _typeId == null) return false;
     if (_name.text.trim().isEmpty) return false;
@@ -204,6 +255,11 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
   Future<void> _create() async {
     if (!_isValid) {
       setState(() => _touched = true);
+      if (_categoryId == null || _typeId == null) {
+        await ensureFormFieldVisible(_categoryAnchorKey);
+      } else if (_name.text.trim().isEmpty) {
+        _nameFocus.requestFocus();
+      }
       return;
     }
     if (_unit == 'bag') {
@@ -613,21 +669,29 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                 error: (_, __) => const Text('Could not load categories'),
                 data: (cats) {
                   final cl = cats.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-                  return DropdownButtonFormField<String>(
-                    value: _categoryId,
-                    decoration: InputDecoration(
-                      labelText: 'Category',
-                      contentPadding: _fieldPad,
-                      border: _fieldBorder(context),
-                    ),
-                    items: [
-                      for (final c in cl)
-                        DropdownMenuItem(
-                          value: c['id']?.toString(),
-                          child: Text(c['name']?.toString() ?? ''),
+                  final label = _nameFromRows(cl, _categoryId) ?? 'Choose category';
+                  return KeyedSubtree(
+                    key: _categoryAnchorKey,
+                    child: InkWell(
+                      onTap: () => unawaited(_pickCategorySheet(cl)),
+                      borderRadius: BorderRadius.circular(12),
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          labelText: 'Category',
+                          contentPadding: _fieldPad,
+                          border: _fieldBorder(context),
+                          suffixIcon: const Icon(Icons.arrow_drop_down_rounded),
                         ),
-                    ],
-                    onChanged: (v) => _onCategoryChanged(v),
+                        child: Text(
+                          label,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
+                        ),
+                      ),
+                    ),
                   );
                 },
               ),
@@ -638,6 +702,16 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                   error: (_, __) => const Text('Could not load subcategories'),
                   data: (types) {
                     final tl = types.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+                    final inList = _typeId != null &&
+                        tl.any((t) => t['id']?.toString() == _typeId);
+                    final tid = inList
+                        ? _typeId
+                        : tl.first['id']?.toString();
+                    if (tid != null && tid != _typeId) {
+                      scheduleMicrotask(() {
+                        if (mounted) setState(() => _typeId = tid);
+                      });
+                    }
                     if (tl.isEmpty) {
                       return Padding(
                         padding: const EdgeInsets.only(top: 4),
@@ -658,23 +732,29 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                         ),
                       );
                     }
-                    return DropdownButtonFormField<String>(
-                      value: _typeId != null && tl.any((t) => t['id']?.toString() == _typeId)
-                          ? _typeId
-                          : tl.first['id']?.toString(),
-                      decoration: InputDecoration(
-                        labelText: 'Subcategory (type)',
-                        contentPadding: _fieldPad,
-                        border: _fieldBorder(context),
-                      ),
-                      items: [
-                        for (final t in tl)
-                          DropdownMenuItem(
-                            value: t['id']?.toString(),
-                            child: Text(t['name']?.toString() ?? ''),
+                    final tlabel = _nameFromRows(tl, tid) ?? 'Choose subcategory';
+                    return KeyedSubtree(
+                      key: _typeAnchorKey,
+                      child: InkWell(
+                        onTap: () => unawaited(_pickTypeSheet(tl)),
+                        borderRadius: BorderRadius.circular(12),
+                        child: InputDecorator(
+                          decoration: InputDecoration(
+                            labelText: 'Subcategory (type)',
+                            contentPadding: _fieldPad,
+                            border: _fieldBorder(context),
+                            suffixIcon: const Icon(Icons.arrow_drop_down_rounded),
                           ),
-                      ],
-                      onChanged: (v) => setState(() => _typeId = v),
+                          child: Text(
+                            tlabel,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: Theme.of(context).colorScheme.onSurface,
+                            ),
+                          ),
+                        ),
+                      ),
                     );
                   },
                 ),

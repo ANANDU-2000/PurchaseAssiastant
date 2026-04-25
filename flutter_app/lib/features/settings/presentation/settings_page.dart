@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/config/app_config.dart';
@@ -804,7 +805,10 @@ class _CloudSettingsCard extends ConsumerWidget {
 
   Future<void> _pay(BuildContext context, WidgetRef ref) async {
     try {
-      await ref.read(hexaApiProvider).postCloudCostPay(businessId: businessId);
+      await ref.read(hexaApiProvider).postCloudCostPay(
+            businessId: businessId,
+            provider: 'manual',
+          );
       ref.invalidate(cloudCostProvider);
       invalidateBusinessAggregates(ref);
       if (context.mounted) {
@@ -852,6 +856,26 @@ class _CloudSettingsCard extends ConsumerWidget {
         final amt = (m['amount_inr'] as num?)?.toDouble() ?? 0;
         final next = m['next_due_date']?.toString() ?? '—';
         final need = m['show_alert'] == true;
+        final inPre = m['in_pre_due_window'] == true;
+        final iconColor =
+            need ? Colors.redAccent : (inPre ? Colors.orange : Colors.green);
+        Future<void> openUpi() async {
+          if (AppConfig.cloudUpiVpa.isEmpty) return;
+          final uri = Uri.parse(
+            'upi://pay?pa=${Uri.encodeComponent(AppConfig.cloudUpiVpa)}'
+            '&pn=${Uri.encodeComponent(AppConfig.cloudUpiPayeeName)}'
+            '&am=${amt.toStringAsFixed(0)}'
+            '&cu=INR',
+          );
+          if (!await launchUrl(uri, mode: LaunchMode.externalApplication) &&
+              context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                  content: Text('Could not open a UPI app. Try again later.')),
+            );
+          }
+        }
+
         return Card(
           color: context.adaptiveCard,
           child: Padding(
@@ -863,7 +887,7 @@ class _CloudSettingsCard extends ConsumerWidget {
                   children: [
                     Icon(
                       Icons.cloud_outlined,
-                      color: need ? Colors.redAccent : Colors.green,
+                      color: iconColor,
                       size: 22,
                     ),
                     const SizedBox(width: 8),
@@ -887,7 +911,11 @@ class _CloudSettingsCard extends ConsumerWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Next due: $next · ${need ? "Pending" : "Paid up"}',
+                  need
+                      ? 'Overdue · next due $next'
+                      : (inPre
+                          ? 'Due soon · $next'
+                          : 'Next due: $next · Paid up'),
                   style: TextStyle(
                     fontSize: 12,
                     color: cs.onSurfaceVariant,
@@ -895,14 +923,21 @@ class _CloudSettingsCard extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 10),
-                Row(
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
                     OutlinedButton(
                       onPressed: () => _edit(context, ref, m),
                       child: const Text('Edit amount / due day'),
                     ),
-                    const SizedBox(width: 8),
-                    if (need)
+                    if (AppConfig.cloudUpiVpa.isNotEmpty)
+                      OutlinedButton.icon(
+                        onPressed: openUpi,
+                        icon: const Icon(Icons.payment_rounded, size: 18),
+                        label: const Text('Pay via UPI'),
+                      ),
+                    if (need || inPre)
                       FilledButton(
                         onPressed: () => _pay(context, ref),
                         child: const Text('Mark paid'),

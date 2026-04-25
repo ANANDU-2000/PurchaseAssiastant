@@ -83,4 +83,16 @@ class AppConfig {
     final h = Uri.tryParse(apiBaseUrl)?.host.toLowerCase() ?? '';
     return h == 'localhost' || h == '127.0.0.1' || h == '::1';
   }
+
+  /// UPI VPA for cloud-cost “Pay via UPI” (optional). Build with:
+  /// `--dart-define=CLOUD_UPI_VPA=merchant@ybl --dart-define=CLOUD_UPI_PAYEE_NAME=Your%20Name`
+  static const String cloudUpiVpa = String.fromEnvironment(
+    'CLOUD_UPI_VPA',
+    defaultValue: '',
+  );
+
+  static const String cloudUpiPayeeName = String.fromEnvironment(
+    'CLOUD_UPI_PAYEE_NAME',
+    defaultValue: 'Workspace billing',
+  );
 }

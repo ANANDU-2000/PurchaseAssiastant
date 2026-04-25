@@ -40,4 +40,6 @@ class CloudPaymentHistory(Base):
     )
     amount_inr: Mapped[float] = mapped_column(Numeric(18, 4), nullable=False)
     paid_on: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    external_payment_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    payment_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

@@ -34,6 +34,8 @@ def _sync_database_url() -> str:
     if not raw:
         print("Set DATABASE_URL or SQLALCHEMY_DATABASE_URI", file=sys.stderr)
         sys.exit(1)
+    if "sqlite+aiosqlite" in raw:
+        return raw.replace("sqlite+aiosqlite", "sqlite", 1)
     if raw.startswith("sqlite"):
         return raw
     if "+asyncpg" in raw:

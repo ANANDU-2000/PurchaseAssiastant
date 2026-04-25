@@ -16,6 +16,10 @@ Requires `DATABASE_URL` / settings pointing at a Postgres (async) instance.
 
 Seeds categories, product hints, and suppliers from `data/files/` (or `SEED_DATA_DIR`).
 
+**Production / Supabase:** set `DATABASE_URL` to your live `postgresql+asyncpg://…` DSN (same as the API), clear `HEXA_USE_SQLITE` in that shell, resolve `businesses.id` (Supabase SQL or `python -m scripts.op_supabase_stack` to list rows), then:
+
+`python -m scripts.seed_catalog_and_suppliers --business-id=<uuid>` (add `--dry-run` first if you want a rollback preview).
+
 ## `validate_seed_data.py`
 
 Checks that every key in `products_by_category_seed.json` exists as a subcategory `name` in
@@ -40,3 +44,19 @@ python -m scripts.seed_suppliers_from_csv --business-id=<uuid> [--dry-run]
 ## `monthly_payment_reminder`
 
 Logic lives in `app/services/monthly_payment_reminder.py`. A daily 08:00 Asia/Kolkata job is registered in `app/main.py` (extend with real DB scan + notifications).
+
+## `op_supabase_stack.py`
+
+End-to-end for a **Postgres** `DATABASE_URL` (same as production): `verify_db_connection` → `alembic upgrade head` → list `businesses` → optional `seed_catalog_and_suppliers`.
+
+```powershell
+cd backend
+$env:HEXA_USE_SQLITE = ""
+$env:DATABASE_URL = "postgresql+asyncpg://..."
+python -m scripts.op_supabase_stack
+python -m scripts.op_supabase_stack --list-businesses
+python -m scripts.op_supabase_stack --no-verify
+python -m scripts.op_supabase_stack --seed --business-id <uuid>
+```
+
+Refuses to run if `HEXA_USE_SQLITE=1` or if `DATABASE_URL` is still SQLite. See [../docs/migrations_and_backfill.md](../docs/migrations_and_backfill.md) (Supabase / production section).

@@ -7,6 +7,9 @@ import '../notifications/local_notifications_service.dart';
 /// SharedPreferences key for notification opt-in (also used at app startup).
 const kNotificationsOptInKey = 'pref_notifications_opt_in';
 
+/// After first successful session, we prompt once for iOS notification permission.
+const kPostLoginNotifPermissionAskedKey = 'pref_post_login_notif_permission';
+
 final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
   throw UnimplementedError(
       'sharedPreferencesProvider must be overridden in ProviderScope');

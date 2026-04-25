@@ -1431,6 +1431,7 @@ class _SupplierCreateWizardPageState
         const SizedBox(height: 8),
         _reviewCard(
           title: 'Supplier Summary',
+          initiallyExpanded: true,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1483,8 +1484,8 @@ class _SupplierCreateWizardPageState
           child: Column(
             children: [
               _kvRow('GST Number', _gst.text.trim().isEmpty ? '—' : _gst.text.trim()),
-              _kvRow('Address', _addr.text.trim().isEmpty ? 'Not set' : _addr.text.trim()),
-              _kvRow('Notes', notesPreview.isEmpty ? 'Not set' : notesPreview),
+              _kvRow('Address', _addr.text.trim().isEmpty ? '—' : _addr.text.trim()),
+              _kvRow('Notes', notesPreview.isEmpty ? '—' : notesPreview),
             ],
           ),
         ),
@@ -1492,8 +1493,8 @@ class _SupplierCreateWizardPageState
           title: 'Purchase Defaults',
           child: Column(
             children: [
-              _kvRow('Payment Days', pay == null ? 'Not set' : '$pay days'),
-              _kvRow('Discount', disc == null ? 'Not set' : '$disc%'),
+              _kvRow('Payment Days', pay == null ? '—' : '$pay days'),
+              _kvRow('Discount', disc == null ? '—' : '$disc%'),
               _kvRow('Delivered', _fmtMoney(_delivered.text)),
               _kvRow('Billty', _fmtMoney(_billty.text)),
               _kvRow('Freight', _freightIncluded ? 'Included' : 'Separate'),
@@ -1541,9 +1542,9 @@ class _SupplierCreateWizardPageState
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _kvRow('Categories',
-                  catNames.isEmpty ? 'Not configured yet' : '${catNames.length} linked'),
+                  catNames.isEmpty ? 'None linked yet' : '${catNames.length} linked'),
               _kvRow('Items',
-                  itemNames.isEmpty ? 'Not configured yet' : '${itemNames.length} linked'),
+                  itemNames.isEmpty ? 'None linked yet' : '${itemNames.length} linked'),
               if (itemNames.isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Text(
@@ -1563,7 +1564,7 @@ class _SupplierCreateWizardPageState
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
                   child: Text(
-                    'Not configured yet',
+                    'Link items on the Categories & items step.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
@@ -1589,29 +1590,43 @@ class _SupplierCreateWizardPageState
     );
   }
 
-  Widget _reviewCard({required String title, required Widget child}) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
+  Widget _reviewCard({
+    required String title,
+    required Widget child,
+    bool initiallyExpanded = false,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Material(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.7),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+        child: Theme(
+          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+          child: ExpansionTile(
+            initiallyExpanded: initiallyExpanded,
+            tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+            childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(
+                color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.7),
+              ),
+            ),
+            collapsedShape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(
+                color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.7),
+              ),
+            ),
+            title: Text(
+              title,
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+            children: [child],
           ),
-          const SizedBox(height: 8),
-          child,
-        ],
+        ),
       ),
     );
   }
@@ -1647,7 +1662,7 @@ class _SupplierCreateWizardPageState
 
   String _fmtMoney(String raw) {
     final n = double.tryParse(raw.trim());
-    if (n == null) return 'Not set';
+    if (n == null) return '—';
     if (n == n.roundToDouble()) return '₹${n.toStringAsFixed(0)}';
     return '₹${n.toStringAsFixed(2)}';
   }

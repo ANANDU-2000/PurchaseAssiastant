@@ -223,34 +223,42 @@ final purchaseActionAlertCountProvider = Provider<int>((ref) {
   return all.where((n) => !dis.contains(n.id)).length;
 });
 
-/// 1 if monthly cloud line is due (server `show_alert`).
+/// 1 when the cloud card is visible (pre-due window or overdue).
 final cloudCostAlertCountProvider = Provider<int>((ref) {
   final async = ref.watch(cloudCostProvider);
   return async.maybeWhen(
     data: (m) {
-      if (m['show_alert'] == true) return 1;
+      if (m['show_home_card'] == false) return 0;
+      if (m['show_alert'] == true || m['in_pre_due_window'] == true) {
+        return 1;
+      }
       return 0;
     },
     orElse: () => 0,
   );
 });
 
-/// In-app row for the alerts list (when cloud bill is due).
+/// In-app row when cloud billing needs attention (matches home card visibility).
 final cloudCostNotificationItemsProvider = Provider<List<NotificationItem>>((ref) {
   final async = ref.watch(cloudCostProvider);
   return async.maybeWhen(
     data: (m) {
-      if (m['show_alert'] != true) return [];
+      if (m['show_home_card'] == false) return [];
+      if (m['show_alert'] != true && m['in_pre_due_window'] != true) {
+        return [];
+      }
       final name = m['name']?.toString() ?? 'Cloud Cost';
       final amt = m['amount_inr'];
       final next = m['next_due_date']?.toString() ?? '—';
+      final overdue = m['show_alert'] == true;
+      final pre = m['in_pre_due_window'] == true;
       return [
         NotificationItem(
           id: 'cloud_cost_due',
           type: NotificationType.cloudCost,
-          title: 'Due: $name',
+          title: overdue ? 'Overdue: $name' : (pre ? 'Due soon: $name' : 'Cloud: $name'),
           subtitle:
-              'Rs. ${amt is num ? amt.round() : amt} · due date $next — mark paid in Home or Settings.',
+              'Rs. ${amt is num ? amt.round() : amt} · $next — pay via UPI or mark paid in Home / Settings.',
           createdAt: DateTime.now(),
           isRead: false,
           actionRoute: '/settings',

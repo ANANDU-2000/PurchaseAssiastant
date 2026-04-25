@@ -52,6 +52,8 @@ double _totalBagsOnPurchase(TradePurchase p) {
 String _purchaseSearchHaystack(TradePurchase p) {
   final df = DateFormat('dd MMM yyyy');
   final b = StringBuffer()
+    ..write(p.id)
+    ..write(' ')
     ..write(p.humanId)
     ..write(' ')
     ..write(p.invoiceNumber ?? '')

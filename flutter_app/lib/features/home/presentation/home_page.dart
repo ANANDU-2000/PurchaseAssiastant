@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
+import '../../../core/config/app_config.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
@@ -187,91 +189,142 @@ class _HomePageState extends ConsumerState<HomePage>
                           if (m.isEmpty) {
                             return const SizedBox.shrink();
                           }
+                          final showCard = m['show_home_card'] != false;
+                          if (!showCard) {
+                            return const SizedBox.shrink();
+                          }
                           final name = m['name']?.toString() ?? 'Cloud Cost';
                           final amt = (m['amount_inr'] as num?)?.toDouble() ?? 0;
                           final next = m['next_due_date']?.toString() ?? '—';
                           final needPay = m['show_alert'] == true;
+                          final inPre = m['in_pre_due_window'] == true;
+                          final iconColor = needPay
+                              ? const Color(0xFFDC2626)
+                              : (inPre
+                                  ? const Color(0xFFF59E0B)
+                                  : const Color(0xFF16A34A));
+                          Future<void> markPaid() async {
+                            final s = ref.read(sessionProvider);
+                            if (s == null) return;
+                            try {
+                              await ref.read(hexaApiProvider).postCloudCostPay(
+                                    businessId: s.primaryBusiness.id,
+                                    provider: 'manual',
+                                  );
+                              if (!context.mounted) return;
+                              ref.invalidate(cloudCostProvider);
+                              invalidateBusinessAggregates(ref);
+                            } catch (e) {
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                    content: Text(friendlyApiError(e))),
+                              );
+                            }
+                          }
+
+                          Future<void> openUpi() async {
+                            if (AppConfig.cloudUpiVpa.isEmpty) return;
+                            final uri = Uri.parse(
+                              'upi://pay?pa=${Uri.encodeComponent(AppConfig.cloudUpiVpa)}'
+                              '&pn=${Uri.encodeComponent(AppConfig.cloudUpiPayeeName)}'
+                              '&am=${amt.toStringAsFixed(0)}'
+                              '&cu=INR',
+                            );
+                            if (!await launchUrl(
+                              uri,
+                              mode: LaunchMode.externalApplication,
+                            )) {
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text(
+                                        'Could not open a UPI app. Try again or pay manually.')),
+                              );
+                            }
+                          }
+
                           return Card(
                             margin: EdgeInsets.zero,
                             child: Padding(
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 12, vertical: 10),
-                              child: Row(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  Icon(
-                                    Icons.cloud_outlined,
-                                    size: 20,
-                                    color: needPay
-                                        ? const Color(0xFFDC2626)
-                                        : const Color(0xFF16A34A),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          name,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 13,
-                                          ),
-                                        ),
-                                        Text(
-                                          'Due $next',
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            color: HexaColors.textSecondary,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Text(
-                                    'Rs. ${amt.round()}',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  if (needPay)
-                                    FilledButton(
-                                      onPressed: () async {
-                                        final s = ref.read(sessionProvider);
-                                        if (s == null) return;
-                                        try {
-                                          await ref
-                                              .read(hexaApiProvider)
-                                              .postCloudCostPay(
-                                                businessId:
-                                                    s.primaryBusiness.id,
-                                              );
-                                          if (!context.mounted) return;
-                                          ref.invalidate(cloudCostProvider);
-                                          invalidateBusinessAggregates(ref);
-                                        } catch (e) {
-                                          if (!context.mounted) return;
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            SnackBar(
-                                                content: Text(
-                                                    friendlyApiError(e))),
-                                          );
-                                        }
-                                      },
-                                      child: const Text('Pay now'),
-                                    )
-                                  else
-                                    Text(
-                                      'Paid up',
-                                      style: TextStyle(
-                                        color: Colors.green[700],
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 12,
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.cloud_outlined,
+                                        size: 20,
+                                        color: iconColor,
                                       ),
-                                    ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              name,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                            Text(
+                                              needPay
+                                                  ? 'Overdue · due $next'
+                                                  : (inPre
+                                                      ? 'Due soon · $next'
+                                                      : 'Due $next'),
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                color: HexaColors.textSecondary,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Text(
+                                        'Rs. ${amt.round()}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    alignment: WrapAlignment.end,
+                                    children: [
+                                      if (AppConfig.cloudUpiVpa.isNotEmpty)
+                                        OutlinedButton.icon(
+                                          icon: const Icon(
+                                              Icons.payment_rounded,
+                                              size: 18),
+                                          label: const Text('Pay via UPI'),
+                                          onPressed: openUpi,
+                                        ),
+                                      if (needPay || inPre)
+                                        FilledButton(
+                                          onPressed: markPaid,
+                                          child: const Text('Mark paid'),
+                                        )
+                                      else
+                                        Text(
+                                          'Paid up',
+                                          style: TextStyle(
+                                            color: Colors.green[700],
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
                                 ],
                               ),
                             ),
@@ -536,10 +589,10 @@ class _DashboardBodyState extends ConsumerState<_DashboardBody> {
 
 String _kpiUnitsLine(HomeDashboardData data) {
   final parts = <String>[];
-  if (data.totalKg > 0) parts.add('${_fmtQty(data.totalKg)} kg');
   if (data.totalBags > 0) parts.add('${_fmtQty(data.totalBags)} bag');
   if (data.totalBoxes > 0) parts.add('${_fmtQty(data.totalBoxes)} box');
   if (data.totalTins > 0) parts.add('${_fmtQty(data.totalTins)} tin');
+  if (data.totalKg > 0) parts.add('${_fmtQty(data.totalKg)} kg');
   return parts.join(' | ');
 }
 
@@ -844,7 +897,7 @@ class _DonutSection extends StatelessWidget {
     final maxW = constraints.maxWidth;
     final side = (maxW * 0.36).clamp(120.0, 164.0);
     final ring = (side * 0.26).clamp(30.0, 48.0);
-    final centerR = (ring * 0.72).clamp(28.0, 44.0);
+    final centerR = (ring * 0.78).clamp(30.0, 48.0);
     final units = _kpiUnitsLineStacked(data);
 
     final chartSections = sections
@@ -927,25 +980,17 @@ class _DonutSection extends StatelessWidget {
                                     ),
                               ),
                             ],
-                            if (sliceLineQty > 0) ...[
-                              const SizedBox(height: 2),
-                              Text(
-                                'Chart qty ${_fmtQty(sliceLineQty)}',
-                                textAlign: TextAlign.center,
-                                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                      color: const Color(0xFF475569),
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 8.5,
-                                    ),
-                              ),
-                            ],
                             Text(
-                              'All lines qty ${_fmtQty(data.totalQtyAllLines)}',
+                              sliceLineQty > 0
+                                  ? 'Qty ${_fmtQty(sliceLineQty)} · All ${_fmtQty(data.totalQtyAllLines)}'
+                                  : 'All lines ${_fmtQty(data.totalQtyAllLines)}',
                               textAlign: TextAlign.center,
+                              maxLines: 2,
                               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                                     color: const Color(0xFF64748B),
                                     fontWeight: FontWeight.w600,
-                                    fontSize: 8.5,
+                                    fontSize: 8,
+                                    height: 1.2,
                                   ),
                             ),
                           ],

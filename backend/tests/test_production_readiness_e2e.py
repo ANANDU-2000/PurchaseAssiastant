@@ -128,6 +128,9 @@ def test_flow_purchase_update_delete_and_summary_matches_snapshot():
     item_rows = items.json()
     item_sum = sum(float(r.get("total_purchase") or 0) for r in item_rows)
     assert abs(item_sum - float(tj["total_purchase"])) < 0.01
+    assert item_rows, "expected at least one item row"
+    for k in ("total_bags", "total_boxes", "total_tins", "total_kg", "total_selling"):
+        assert k in item_rows[0], f"missing {k} on trade-items row"
 
     g = client.get(
         f"/v1/businesses/{bid}/trade-purchases/{pid}",

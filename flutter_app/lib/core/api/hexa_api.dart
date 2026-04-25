@@ -1587,10 +1587,16 @@ class HexaApi {
   Future<Map<String, dynamic>> postCloudCostPay({
     required String businessId,
     double? amountInr,
+    String? paymentId,
+    String? provider,
   }) async {
     final res = await _dio.post<dynamic>(
       '/v1/businesses/$businessId/cloud-cost/pay',
-      data: {if (amountInr != null) 'amount_inr': amountInr},
+      data: {
+        if (amountInr != null) 'amount_inr': amountInr,
+        if (paymentId != null && paymentId.isNotEmpty) 'payment_id': paymentId,
+        if (provider != null && provider.isNotEmpty) 'provider': provider,
+      },
     );
     final d = res.data;
     if (d is! Map) return {};

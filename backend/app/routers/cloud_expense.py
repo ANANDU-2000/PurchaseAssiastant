@@ -34,6 +34,12 @@ class CloudCostPatchBody(BaseModel):
 
 class CloudCostPayBody(BaseModel):
     amount_inr: float | None = Field(default=None, description="Override default row amount")
+    payment_id: str | None = Field(
+        default=None, max_length=256, description="External PSP / UPI reference (optional)"
+    )
+    provider: str | None = Field(
+        default=None, max_length=64, description="e.g. upi, razorpay, manual (optional)"
+    )
 
 
 @router.get("")
@@ -88,8 +94,12 @@ async def pay_cloud_cost(
     today = _today()
     row = await svc.ensure_cloud_expense(db, business_id, today)
     amt = body.amount_inr if body is not None else None
+    ext = body.payment_id if body is not None else None
+    prov = body.provider if body is not None else None
     try:
-        await svc.pay_cloud_expense(db, row, today, amt)
+        await svc.pay_cloud_expense(
+            db, row, today, amt, external_payment_id=ext, payment_provider=prov
+        )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     await db.refresh(row)

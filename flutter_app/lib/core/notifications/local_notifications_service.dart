@@ -47,6 +47,15 @@ class LocalNotificationsService {
     _inited = true;
   }
 
+  /// iOS: request alert/badge/sound (safe to call repeatedly; OS dedupes).
+  Future<void> requestIosNotificationPermission() async {
+    if (kIsWeb || !_inited) return;
+    if (defaultTargetPlatform != TargetPlatform.iOS) return;
+    final ios = _p.resolvePlatformSpecificImplementation<
+        IOSFlutterLocalNotificationsPlugin>();
+    await ios?.requestPermissions(alert: true, badge: true, sound: true);
+  }
+
   Future<void> setOptIn(bool enabled) async {
     if (kIsWeb || !_inited) return;
     await _p.cancel(id: _dailyId);

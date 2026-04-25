@@ -23,7 +23,7 @@ Top-level keys are **subcategory (type) names** that must match `subcategories[]
 | JSON field       | App / `CatalogItem` column | Notes |
 |------------------|----------------------------|--------|
 | `name`           | `name`                     | Required |
-| `code`           | —                          | Not stored; informational |
+| `code`           | `item_code`                | Truncated to 64 chars; optional |
 | `hsn`            | `hsn_code`                 | Truncated to 32 chars |
 | `unit`           | `default_unit` / `default_purchase_unit` | Normalized to `kg`, `bag`, `box`, `piece`, `tin` |
 | `tax_rate`       | `tax_percent`              | |
@@ -41,11 +41,17 @@ Array of suppliers.
 |------------|---------------------|--------|
 | `name`     | `name` | |
 | `gst`      | `gst_number` | Must be 15-char GSTIN if present; use importer validation |
-| `phone`    | `phone` | First plausible number if multiple in one string (script may clean whitespace/newlines) |
-| `email`    | — | Not on `Supplier` model today; can go in `notes` or `preferences` if needed |
-| `address`  | `address` | |
+| `phone`    | `phone` | Whitespace/newlines normalized |
+| `email`    | `notes` | Stored as a line `Email: …` (merged with `notes` if both set) |
+| `whatsapp` | `whatsapp_number` | Same cleaning as `phone` |
+| `notes`    | `notes` | Free text, appended after email line if present |
+| `address`  | `address`, `location` | |
+| `default_payment_days` | `default_payment_days` | Integer; optional |
+| `default_delivered_rate` | `default_delivered_rate` | Optional |
+| `default_billty_rate` | `default_billty_rate` | Optional |
+| `default_discount` | `default_discount` | Optional |
+| `freight_type` | `freight_type` | Max 16 chars (e.g. `included` / `separate`) |
 
 **Freight on supplier:** the model has `default_delivered_rate`, `default_billty_rate`, and
-`freight_type` (included vs separate on purchases). It does **not** have a standing
-`default_freight_amount` column. Optional freight amounts in seed data should be mapped into
-`preferences_json` (or ignored) until the schema supports them.
+`freight_type`. Optional JSON keys above map directly when present. There is no standing
+`default_freight_amount` column; use rates or `preferences_json` in the app for other cases.

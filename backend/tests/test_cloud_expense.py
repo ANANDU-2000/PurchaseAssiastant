@@ -39,6 +39,7 @@ def test_get_ensure_and_pay():
     assert g.status_code == 200, g.text
     j = g.json()
     assert "next_due_date" in j
+    assert "show_home_card" in j
     assert float(j["amount_inr"]) == 2500.0
     assert j["name"] == "Cloud Cost"
     p = client.post(
@@ -53,6 +54,19 @@ def test_get_ensure_and_pay():
     hlist = j2["history"]
     assert len(hlist) == 1
     assert float(hlist[0]["amount_inr"]) == 2500.0
+
+
+def test_pay_optional_payment_id_and_provider():
+    h, bid = _setup()
+    p = client.post(
+        f"/v1/businesses/{bid}/cloud-cost/pay",
+        headers=h,
+        json={"payment_id": "upi_txn_abc", "provider": "upi"},
+    )
+    assert p.status_code == 200, p.text
+    h0 = p.json()["history"][0]
+    assert h0.get("external_payment_id") == "upi_txn_abc"
+    assert h0.get("payment_provider") == "upi"
 
 
 def test_patch_due_day():

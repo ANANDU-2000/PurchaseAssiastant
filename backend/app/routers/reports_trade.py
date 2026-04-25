@@ -147,7 +147,6 @@ async def trade_dashboard_snapshot(
     total_purchase = float(srow["total_purchase"] or 0)
     total_qty = float(srow["total_qty"] or 0)
     deals = int(srow["deals"] or 0)
-    avg_landing = (total_purchase / total_qty) if total_qty > 1e-12 else 0.0
 
     items = await trade_items_breakdown(business_id, _m, db, date_from, date_to)
     types = await trade_types_breakdown(business_id, _m, db, date_from, date_to)
@@ -232,7 +231,6 @@ async def trade_dashboard_snapshot(
             "deals": deals,
             "total_purchase": total_purchase,
             "total_qty": total_qty,
-            "avg_landing": avg_landing,
         },
         "unit_totals": {
             "total_kg": float(roll_row["total_kg"] or 0),
@@ -364,6 +362,53 @@ async def trade_items_breakdown(
     del _m
     amt = _trade_line_amount_expr()
     bf = _trade_purchase_date_filter(business_id, date_from, date_to)
+    kpu = TradePurchaseLine.kg_per_unit
+    lcpk = TradePurchaseLine.landing_cost_per_kg
+    weight_ok = and_(kpu.isnot(None), lcpk.isnot(None), kpu > 0, lcpk > 0)
+    kg_line = case(
+        (weight_ok, TradePurchaseLine.qty * kpu),
+        else_=case(
+            (func.upper(TradePurchaseLine.unit).like("%KG%"), TradePurchaseLine.qty),
+            else_=0.0,
+        ),
+    )
+    bag_sum = func.coalesce(
+        func.sum(
+            case(
+                (func.upper(TradePurchaseLine.unit).like("%BAG%"), TradePurchaseLine.qty),
+                else_=0.0,
+            )
+        ),
+        0.0,
+    )
+    box_sum = func.coalesce(
+        func.sum(
+            case(
+                (func.upper(TradePurchaseLine.unit).like("%BOX%"), TradePurchaseLine.qty),
+                else_=0.0,
+            )
+        ),
+        0.0,
+    )
+    tin_sum = func.coalesce(
+        func.sum(
+            case(
+                (func.upper(TradePurchaseLine.unit).like("%TIN%"), TradePurchaseLine.qty),
+                else_=0.0,
+            )
+        ),
+        0.0,
+    )
+    kg_sum = func.coalesce(func.sum(kg_line), 0.0)
+    sell_sum = func.coalesce(
+        func.sum(
+            case(
+                (TradePurchaseLine.selling_cost.isnot(None), TradePurchaseLine.qty * TradePurchaseLine.selling_cost),
+                else_=0.0,
+            )
+        ),
+        0.0,
+    )
     q = (
         select(
             TradePurchaseLine.item_name,
@@ -372,6 +417,11 @@ async def trade_items_breakdown(
             func.count(TradePurchaseLine.id).label("line_count"),
             func.count(func.distinct(TradePurchaseLine.trade_purchase_id)).label("deals"),
             func.max(TradePurchaseLine.unit).label("unit"),
+            bag_sum.label("total_bags"),
+            box_sum.label("total_boxes"),
+            tin_sum.label("total_tins"),
+            kg_sum.label("total_kg"),
+            sell_sum.label("total_selling"),
         )
         .select_from(TradePurchaseLine)
         .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
@@ -384,6 +434,11 @@ async def trade_items_breakdown(
     for r in rows:
         qty = float(r["total_qty"] or 0)
         tp = float(r["total_purchase"] or 0)
+        tb = float(r["total_bags"] or 0)
+        txb = float(r["total_boxes"] or 0)
+        ttn = float(r["total_tins"] or 0)
+        tkg = float(r["total_kg"] or 0)
+        tsl = float(r["total_selling"] or 0)
         out.append(
             {
                 "item_name": (r["item_name"] or "Unknown").strip() or "Unknown",
@@ -394,6 +449,11 @@ async def trade_items_breakdown(
                 "line_count": int(r["line_count"] or 0),
                 "purchase_count": int(r["deals"] or 0),
                 "avg_landing": (tp / qty) if qty > 1e-12 else 0.0,
+                "total_bags": tb,
+                "total_boxes": txb,
+                "total_tins": ttn,
+                "total_kg": tkg,
+                "total_selling": tsl,
             }
         )
     return out

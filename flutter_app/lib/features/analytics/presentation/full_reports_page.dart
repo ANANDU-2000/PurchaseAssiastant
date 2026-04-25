@@ -367,27 +367,33 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                           if (_viewType == _ViewType.item)
                             _cappedForBundle(
                               b.items,
-                              buildPrimary: (page) => _itemsTable(context, page),
+                              buildPrimary: (page, footer) =>
+                                  _itemsTable(context, page, footer: footer),
                               nameForFilter: (r) => _itemLabel(r),
                               sortByItemMetric: true,
+                              footerRow: _itemFooterRow,
                             )
                           else if (_viewType == _ViewType.supplier)
                             _cappedForBundle(
                               b.suppliers,
-                              buildPrimary: (page) =>
-                                  _supplierTable(context, page),
+                              buildPrimary: (page, footer) =>
+                                  _supplierTable(context, page,
+                                      footer: footer),
                               nameForFilter: (r) =>
                                   r['supplier_name']?.toString() ?? '',
                               sortByItemMetric: false,
+                              footerRow: _supplierFooterRow,
                             )
                           else
                             _cappedForBundle(
                               b.categories,
-                              buildPrimary: (page) =>
-                                  _categoryTable(context, page),
+                              buildPrimary: (page, footer) =>
+                                  _categoryTable(context, page,
+                                      footer: footer),
                               nameForFilter: (r) =>
                                   r['category_name']?.toString() ?? '',
                               sortByItemMetric: false,
+                              footerRow: _categoryFooterRow,
                             ),
                         ],
                       );
@@ -399,12 +405,60 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
     );
   }
 
+  List<String>? _itemFooterRow(List<Map<String, dynamic>> full) {
+    if (full.isEmpty) return null;
+    var bags = 0.0, boxes = 0.0, tins = 0.0, kg = 0.0, sell = 0.0, tot = 0.0;
+    for (final r in full) {
+      bags += (r['total_bags'] as num?)?.toDouble() ?? 0;
+      boxes += (r['total_boxes'] as num?)?.toDouble() ?? 0;
+      tins += (r['total_tins'] as num?)?.toDouble() ?? 0;
+      kg += (r['total_kg'] as num?)?.toDouble() ?? 0;
+      sell += (r['total_selling'] as num?)?.toDouble() ?? 0;
+      tot += (r['total_purchase'] as num?)?.toDouble() ?? 0;
+    }
+    String u(double v) => v == v.roundToDouble() ? v.round().toString() : v.toStringAsFixed(1);
+    return [
+      'Total',
+      u(bags),
+      u(boxes),
+      u(tins),
+      u(kg),
+      '—',
+      sell > 1e-9 ? _inr(sell.round()) : '—',
+      _inr(tot.round()),
+    ];
+  }
+
+  List<String>? _supplierFooterRow(List<Map<String, dynamic>> full) {
+    if (full.isEmpty) return null;
+    var deals = 0, tot = 0.0;
+    for (final r in full) {
+      deals += (r['purchase_count'] as num?)?.toInt() ?? 0;
+      tot += (r['total_purchase'] as num?)?.toDouble() ?? 0;
+    }
+    return ['Total', '$deals', _inr(tot.round())];
+  }
+
+  List<String>? _categoryFooterRow(List<Map<String, dynamic>> full) {
+    if (full.isEmpty) return null;
+    var qty = 0.0, tot = 0.0;
+    for (final r in full) {
+      qty += (r['total_qty'] as num?)?.toDouble() ?? 0;
+      tot += (r['total_purchase'] as num?)?.toDouble() ?? 0;
+    }
+    final qs = qty == qty.roundToDouble() ? qty.round().toString() : qty.toStringAsFixed(1);
+    return ['Total', qs, _inr(tot.round())];
+  }
+
   /// Filter/sort/cap for snapshot-backed tables; [rows.length] drives “View more”.
   Widget _cappedForBundle(
     List<Map<String, dynamic>> source, {
-    required Widget Function(List<Map<String, dynamic>> page) buildPrimary,
+    required Widget Function(
+            List<Map<String, dynamic>> page, List<String>? footer)
+        buildPrimary,
     required String Function(Map<String, dynamic> r) nameForFilter,
     required bool sortByItemMetric,
+    List<String>? Function(List<Map<String, dynamic>> full)? footerRow,
   }) {
     var rows = List<Map<String, dynamic>>.from(source);
     if (_tableQuery.isNotEmpty) {
@@ -421,8 +475,9 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
             .compareTo((a['total_purchase'] as num?) ?? 0),
       );
     }
+    final footer = footerRow?.call(rows);
     return _cappedPrimaryTable(
-      buildPrimary(rows.take(_tableRowCap).toList()),
+      buildPrimary(rows.take(_tableRowCap).toList(), footer),
       rows.length,
     );
   }
@@ -448,26 +503,57 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
     );
   }
 
-  Widget _itemsTable(BuildContext context, List<Map<String, dynamic>> rows) {
+  Widget _itemsTable(
+    BuildContext context,
+    List<Map<String, dynamic>> rows, {
+    List<String>? footer,
+  }) {
     if (rows.isEmpty) return _noItemsRowsCard(context);
+    String uq(double v) =>
+        v == v.roundToDouble() ? v.round().toString() : v.toStringAsFixed(1);
     return _reportTable(
       context,
-      header: const ['Item', 'Qty', 'Unit', 'Total ₹'],
-      flexes: const [3, 1, 1, 2],
+      header: const [
+        'Item',
+        'Bags',
+        'Box',
+        'Tin',
+        'Kg',
+        'Avg ₹',
+        'Sell ₹',
+        'Total ₹',
+      ],
+      flexes: const [3, 1, 1, 1, 1, 1, 1, 2],
       rows: rows.map((r) {
         final name = r['item_name']?.toString() ?? '—';
-        final qty = (r['total_qty'] as num?)?.toDouble() ?? 0;
-        final unit = r['unit']?.toString() ?? '';
         final total = (r['total_purchase'] as num?)?.toDouble() ?? 0;
-        final qtyStr = qty == qty.roundToDouble()
-            ? qty.toInt().toString()
-            : qty.toStringAsFixed(1);
-        return [name, qtyStr, unit, _inr(total.round())];
+        final qty = (r['total_qty'] as num?)?.toDouble() ?? 0;
+        final avg = (r['avg_landing'] as num?)?.toDouble() ?? 0;
+        final bags = (r['total_bags'] as num?)?.toDouble() ?? 0;
+        final boxes = (r['total_boxes'] as num?)?.toDouble() ?? 0;
+        final tins = (r['total_tins'] as num?)?.toDouble() ?? 0;
+        final kg = (r['total_kg'] as num?)?.toDouble() ?? 0;
+        final sell = (r['total_selling'] as num?)?.toDouble() ?? 0;
+        return [
+          name,
+          uq(bags),
+          uq(boxes),
+          uq(tins),
+          uq(kg),
+          qty > 1e-9 ? _inr(avg.round()) : '—',
+          sell > 1e-9 ? _inr(sell.round()) : '—',
+          _inr(total.round()),
+        ];
       }).toList(),
+      footerRow: footer,
     );
   }
 
-  Widget _supplierTable(BuildContext context, List<Map<String, dynamic>> rows) {
+  Widget _supplierTable(
+    BuildContext context,
+    List<Map<String, dynamic>> rows, {
+    List<String>? footer,
+  }) {
     if (rows.isEmpty) return _noItemsRowsCard(context);
     return _reportTable(
       context,
@@ -479,11 +565,15 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
         final total = (r['total_purchase'] as num?)?.toDouble() ?? 0;
         return [name, '$deals', _inr(total.round())];
       }).toList(),
+      footerRow: footer,
     );
   }
 
   Widget _categoryTable(
-      BuildContext context, List<Map<String, dynamic>> rows) {
+    BuildContext context,
+    List<Map<String, dynamic>> rows, {
+    List<String>? footer,
+  }) {
     if (rows.isEmpty) return _noItemsRowsCard(context);
     return _reportTable(
       context,
@@ -498,6 +588,7 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
             : qty.toStringAsFixed(1);
         return [name, qtyStr, _inr(total.round())];
       }).toList(),
+      footerRow: footer,
     );
   }
 
@@ -506,6 +597,7 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
     required List<String> header,
     required List<int> flexes,
     required List<List<String>> rows,
+    List<String>? footerRow,
   }) {
     final tt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
@@ -515,19 +607,29 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
       bool rightAlign = false,
       bool isLastCol = false,
       bool isFirstCol = false,
+      bool isFooter = false,
+      bool isMoneyCol = false,
     }) {
       final TextStyle? style;
-      if (isHeader) {
+      if (isFooter) {
+        style = TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w900,
+          color: const Color(0xFF166534),
+        );
+      } else if (isHeader) {
         style = HexaDsType.label(12, color: cs.onSurface).copyWith(
           fontWeight: FontWeight.w800,
         );
-      } else if (isLastCol) {
-        style = HexaDsType.reportTableMoney;
+      } else if (isLastCol || isMoneyCol) {
+        style = HexaDsType.reportTableMoney.copyWith(
+          fontWeight: FontWeight.w900,
+        );
       } else if (isFirstCol) {
         style = HexaDsType.reportTableRowPrimary;
       } else {
         style = tt.bodySmall?.copyWith(
-          fontWeight: FontWeight.w500,
+          fontWeight: FontWeight.w800,
           color: cs.onSurface,
         );
       }
@@ -583,12 +685,36 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                         rightAlign: i == rows[ri].length - 1,
                         isLastCol: i == rows[ri].length - 1,
                         isFirstCol: i == 0,
+                        isMoneyCol: header.length == 8 && i >= 5,
                       ),
                     ),
                 ],
               ),
             ),
             if (ri < rows.length - 1) const Divider(height: 1),
+          ],
+          if (footerRow != null && footerRow.length == header.length) ...[
+            const Divider(height: 1),
+            Container(
+              color: const Color(0xFFE8F5E9),
+              child: Row(
+                children: [
+                  for (var i = 0; i < footerRow.length; i++)
+                    Expanded(
+                      flex: flexes[i],
+                      child: cell(
+                        footerRow[i],
+                        isHeader: false,
+                        rightAlign: i == footerRow.length - 1,
+                        isLastCol: i == footerRow.length - 1,
+                        isFirstCol: i == 0,
+                        isFooter: true,
+                        isMoneyCol: false,
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ],
         ],
       ),
