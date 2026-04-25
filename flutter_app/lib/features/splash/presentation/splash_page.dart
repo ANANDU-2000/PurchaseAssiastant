@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/session_notifier.dart';
-import '../../../core/config/app_config.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/theme/theme_context_ext.dart';
 
@@ -109,45 +108,6 @@ class _SplashPageState extends ConsumerState<SplashPage>
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      color: HexaColors.primaryLight,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                          color: HexaColors.accentBlue.withValues(alpha: 0.4)),
-                      boxShadow: HexaColors.glowShadow(HexaColors.accentPurple,
-                          blur: 18),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      'H',
-                      style: tt.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: HexaColors.accentBlue,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    AppConfig.appName,
-                    style: tt.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: cs.onSurface,
-                      letterSpacing: -0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Purchase Intelligence',
-                    style: tt.bodyMedium?.copyWith(
-                      color: cs.onSurfaceVariant,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 28),
                   if (_busy)
                     const SizedBox(
                         width: 28,

@@ -100,6 +100,19 @@ abstract final class HexaColors {
   ];
 
   // ── GRADIENTS ──────────────────────────────────────────────────────────────
+  /// Landing / auth scrim — no embedded photo text (replaces warehouse hero PNG).
+  static LinearGradient get atmosphereGradient => const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color(0xFF062E28),
+          brandPrimary,
+          Color(0xFF0D5C50),
+          primaryLight,
+        ],
+        stops: [0.0, 0.35, 0.72, 1.0],
+      );
+
   /// Primary CTA gradient — deep green → teal.
   static LinearGradient get ctaGradient => const LinearGradient(
         begin: Alignment.topLeft,
