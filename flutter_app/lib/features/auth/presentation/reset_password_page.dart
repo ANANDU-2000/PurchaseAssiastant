@@ -143,7 +143,6 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
         ),
         body: AuthPageShell(
           children: [
-            const AuthSmallLogo(),
             AuthFormCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -199,7 +198,6 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
         onTap: () => FocusScope.of(context).unfocus(),
         child: AuthPageShell(
           children: [
-            const AuthSmallLogo(),
             AuthFormCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,

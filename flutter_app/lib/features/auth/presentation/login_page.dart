@@ -9,7 +9,6 @@ import '../../../core/auth/google_sign_in_helper.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/theme/hexa_colors.dart';
-import 'auth_brand_assets.dart';
 import 'widgets/auth_input_styles.dart';
 import 'widgets/auth_network_error_banner.dart';
 import 'widgets/auth_page_shell.dart';
@@ -287,62 +286,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     );
   }
 
-  Widget _brandHeader() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 44,
-          height: 44,
-          decoration: const BoxDecoration(shape: BoxShape.circle),
-          clipBehavior: Clip.antiAlias,
-          child: Image.asset(
-            AuthBrandAssets.logo,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Container(
-              color: HexaColors.brandPrimary,
-              alignment: Alignment.center,
-              child: const Text(
-                'H',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        const Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                AppConfig.appName,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF0F172A),
-                  height: 1.15,
-                ),
-              ),
-              SizedBox(height: 2),
-              Text(
-                'Purchase Intelligence',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Color(0xFF757575),
-                  fontWeight: FontWeight.w400,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _segmented() {
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -392,14 +335,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         onTap: () => FocusScope.of(context).unfocus(),
         child: AuthPageShell(
           children: [
-            const AuthSmallLogo(),
             AuthFormCard(
               child: AutofillGroup(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _brandHeader(),
-                    const SizedBox(height: 12),
                     _segmented(),
                     const SizedBox(height: 12),
                     if (_showNetworkBanner)
@@ -578,7 +518,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     ],
                     const SizedBox(height: 8),
                     Text(
-                      '${AppConfig.appName} © 2026',
+                      '© 2026',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 11,

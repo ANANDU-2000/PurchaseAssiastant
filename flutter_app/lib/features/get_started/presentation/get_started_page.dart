@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/config/app_config.dart';
 import '../../../core/theme/hexa_colors.dart';
 
-/// Full-screen hero landing: cover photo, bottom-weighted scrim, top branding + bottom CTA.
+/// Full-screen hero landing: cover photo, bottom-weighted scrim, bottom CTA.
 class GetStartedPage extends StatefulWidget {
   const GetStartedPage({super.key});
 
@@ -14,7 +13,6 @@ class GetStartedPage extends StatefulWidget {
 
 class _GetStartedPageState extends State<GetStartedPage>
     with SingleTickerProviderStateMixin {
-  static const _logoAsset = 'assets/images/app_logo.png';
   /// Declared in [pubspec.yaml] (there is no `assets/auth/` bundle).
   static const _bgAsset = 'assets/brand/getstarted_bg.png';
   static const _entryDuration = Duration(milliseconds: 820);
@@ -73,7 +71,6 @@ class _GetStartedPageState extends State<GetStartedPage>
     super.didChangeDependencies();
     if (_didPrecache) return;
     _didPrecache = true;
-    precacheImage(const AssetImage(_logoAsset), context);
     precacheImage(const AssetImage(_bgAsset), context);
   }
 
@@ -186,93 +183,7 @@ class _GetStartedPageState extends State<GetStartedPage>
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              Align(
-                                alignment: Alignment.topCenter,
-                                child: Padding(
-                                  padding: const EdgeInsets.only(top: 28),
-                                  child: ConstrainedBox(
-                                    constraints:
-                                        const BoxConstraints(maxWidth: 360),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.center,
-                                      children: [
-                                        // Logo only: no white card / cover crop (avoids “stacked” look).
-                                        SizedBox(
-                                          width: 88,
-                                          height: 88,
-                                          child: Image.asset(
-                                            _logoAsset,
-                                            fit: BoxFit.contain,
-                                            filterQuality: FilterQuality.high,
-                                            gaplessPlayback: true,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 20),
-                                        // Title + tagline on a solid panel so text never sits on the artwork.
-                                        Container(
-                                          width: double.infinity,
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 18,
-                                            vertical: 14,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: Colors.black
-                                                .withValues(alpha: 0.55),
-                                            borderRadius:
-                                                BorderRadius.circular(16),
-                                            border: Border.all(
-                                              color: Colors.white
-                                                  .withValues(alpha: 0.12),
-                                            ),
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: Colors.black
-                                                    .withValues(alpha: 0.25),
-                                                blurRadius: 20,
-                                                offset: const Offset(0, 8),
-                                              ),
-                                            ],
-                                          ),
-                                          child: Column(
-                                            children: [
-                                              const Text(
-                                                AppConfig.appName,
-                                                textAlign: TextAlign.center,
-                                                maxLines: 2,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: TextStyle(
-                                                  fontSize: 26,
-                                                  fontWeight: FontWeight.w800,
-                                                  height: 1.2,
-                                                  letterSpacing: -0.4,
-                                                  color: Colors.white,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 8),
-                                              Text(
-                                                'Purchase Intelligence for '
-                                                'Smart Businesses',
-                                                textAlign: TextAlign.center,
-                                                maxLines: 3,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: TextStyle(
-                                                  fontSize: 14.5,
-                                                  fontWeight: FontWeight.w600,
-                                                  height: 1.35,
-                                                  letterSpacing: 0.15,
-                                                  color: Colors.white
-                                                      .withValues(alpha: 0.92),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
+                              const SizedBox(height: 8),
                               Align(
                                 alignment: Alignment.bottomCenter,
                                 child: Padding(

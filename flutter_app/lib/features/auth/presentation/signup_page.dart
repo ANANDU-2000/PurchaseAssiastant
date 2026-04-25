@@ -202,7 +202,6 @@ class _SignupPageState extends ConsumerState<SignupPage> {
         onTap: () => FocusScope.of(context).unfocus(),
         child: AuthPageShell(
           children: [
-            const AuthSmallLogo(),
             AuthFormCard(
               child: AutofillGroup(
                 child: Column(
@@ -214,15 +213,6 @@ class _SignupPageState extends ConsumerState<SignupPage> {
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
                         color: HexaColors.brandPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Start managing your purchases',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey.shade600,
-                        fontWeight: FontWeight.w400,
                       ),
                     ),
                     const SizedBox(height: 12),

@@ -119,6 +119,7 @@ async def lifespan(app: FastAPI):
             if not insp.has_table("businesses"):
                 return
             cols = {c["name"] for c in insp.get_columns("businesses")}
+            dialect = sync_conn.dialect.name
             if "branding_title" not in cols:
                 sync_conn.exec_driver_sql("ALTER TABLE businesses ADD COLUMN branding_title VARCHAR(128)")
             if "branding_logo_url" not in cols:
@@ -129,6 +130,24 @@ async def lifespan(app: FastAPI):
                 sync_conn.exec_driver_sql("ALTER TABLE businesses ADD COLUMN address TEXT")
             if "phone" not in cols:
                 sync_conn.exec_driver_sql("ALTER TABLE businesses ADD COLUMN phone VARCHAR(32)")
+            if "contact_email" not in cols:
+                if dialect == "postgresql":
+                    sync_conn.exec_driver_sql(
+                        "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS contact_email VARCHAR(255) NULL"
+                    )
+                else:
+                    sync_conn.exec_driver_sql(
+                        "ALTER TABLE businesses ADD COLUMN contact_email VARCHAR(255) NULL"
+                    )
+            if "default_currency" not in cols:
+                if dialect == "postgresql":
+                    sync_conn.exec_driver_sql(
+                        "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS default_currency VARCHAR(3) NOT NULL DEFAULT 'INR'"
+                    )
+                else:
+                    sync_conn.exec_driver_sql(
+                        "ALTER TABLE businesses ADD COLUMN default_currency VARCHAR(3) NOT NULL DEFAULT 'INR'"
+                    )
 
         await conn.run_sync(_ensure_businesses_branding)
 

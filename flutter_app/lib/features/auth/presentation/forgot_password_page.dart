@@ -131,7 +131,6 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
         onTap: () => FocusScope.of(context).unfocus(),
         child: AuthPageShell(
           children: [
-            const AuthSmallLogo(),
             AuthFormCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
