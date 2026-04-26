@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/hexa_colors.dart';
 
-/// Ring chart: round stroke, grey track, colored segments. Center: three text lines.
+/// Ring chart: thin stroke, grey track, colored segments. Center: up to 4 text lines (profit-first).
 class SpendRingChart extends StatelessWidget {
   const SpendRingChart({
     super.key,
@@ -16,7 +16,8 @@ class SpendRingChart extends StatelessWidget {
     this.strokeWidth = 17,
     required this.centerLine1,
     required this.centerLine2,
-    this.centerLine3,
+    required this.centerLine3,
+    this.centerLine4,
     this.onSectionTap,
   });
 
@@ -25,12 +26,14 @@ class SpendRingChart extends StatelessWidget {
   final List<Color> colors;
   final Color trackColor;
   final double strokeWidth;
-  /// e.g. formatted ₹ spend
+  /// e.g. `Profit ₹12,345`
   final String centerLine1;
-  /// e.g. "128 units"
+  /// e.g. `(+3.2%)`
   final String centerLine2;
-  /// e.g. unit breakdown; omit for two-line center
-  final String? centerLine3;
+  /// e.g. `113 units` (bold black)
+  final String centerLine3;
+  /// Unit breakdown (optional), single line
+  final String? centerLine4;
   final void Function(int index)? onSectionTap;
 
   @override
@@ -84,7 +87,7 @@ class SpendRingChart extends StatelessWidget {
               child: FittedBox(
                 fit: BoxFit.scaleDown,
                 child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: diameter * 0.55),
+                  constraints: BoxConstraints(maxWidth: diameter * 0.6),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -100,31 +103,43 @@ class SpendRingChart extends StatelessWidget {
                               height: 1.05,
                             ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 3),
                       Text(
                         centerLine2,
                         textAlign: TextAlign.center,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                              color: const Color(0xFF64748B),
-                              fontWeight: FontWeight.w700,
-                              fontSize: 12,
-                            ),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF334155),
+                        ),
                       ),
-                      if (centerLine3 != null && centerLine3!.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        centerLine3,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                      if (centerLine4 != null && centerLine4!.isNotEmpty) ...[
                         const SizedBox(height: 2),
                         Text(
-                          centerLine3!,
+                          centerLine4!,
                           textAlign: TextAlign.center,
-                          maxLines: 2,
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                color: const Color(0xFF94A3B8),
-                                fontWeight: FontWeight.w600,
-                                fontSize: 9,
-                                height: 1.2,
-                              ),
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF64748B),
+                            height: 1.1,
+                          ),
                         ),
                       ],
                     ],

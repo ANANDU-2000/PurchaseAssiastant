@@ -25,7 +25,9 @@ import '../../features/contacts/presentation/contacts_page.dart';
 import '../../features/contacts/presentation/supplier_create_simple.dart';
 import '../../features/contacts/presentation/supplier_detail_page.dart';
 import '../../features/contacts/presentation/trade_ledger_page.dart';
+import '../../features/home/presentation/home_breakdown_list_page.dart';
 import '../../features/home/presentation/home_page.dart';
+import '../providers/home_breakdown_tab_providers.dart' show homeBreakdownTabFromQuery, HomeBreakdownTab;
 import '../../features/purchase/presentation/purchase_detail_page.dart';
 import '../../features/purchase/presentation/purchase_home_page.dart';
 import '../../features/purchase/presentation/purchase_entry_wizard_v2.dart';
@@ -415,9 +417,23 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(
-                  path: '/home',
-                  name: 'home',
-                  builder: (context, state) => const HomePage()),
+                path: '/home',
+                name: 'home',
+                builder: (context, state) => const HomePage(),
+                routes: [
+                  GoRoute(
+                    path: 'breakdown-more',
+                    name: 'home_breakdown_more',
+                    builder: (context, state) {
+                      final tab = homeBreakdownTabFromQuery(
+                            state.uri.queryParameters['tab'],
+                          ) ??
+                          HomeBreakdownTab.category;
+                      return HomeBreakdownListPage(tab: tab);
+                    },
+                  ),
+                ],
+              ),
             ],
           ),
           // Branch 1 — Reports (full analytics UI)

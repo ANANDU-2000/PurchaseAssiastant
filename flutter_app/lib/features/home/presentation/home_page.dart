@@ -20,6 +20,7 @@ import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/shell_quick_ref_actions.dart';
 import '../../purchase/presentation/widgets/purchase_saved_sheet.dart';
+import '../../../core/providers/home_breakdown_tab_providers.dart';
 import '../../../core/providers/home_dashboard_provider.dart';
 import 'spend_ring_chart.dart';
 
@@ -32,14 +33,6 @@ String _fmtQty(double q) =>
 
 String _fmtDate(DateTime d) =>
     DateFormat.MMMd().format(d); // e.g. Apr 23
-
-String _periodCenterLabel(HomePeriod p) => switch (p) {
-      HomePeriod.today => 'Today',
-      HomePeriod.week => 'This week',
-      HomePeriod.month => 'This month',
-      HomePeriod.year => 'This year',
-      HomePeriod.custom => 'Selected range',
-    };
 
 /// Purchase + item flow only — no revenue/profit finance cards.
 class HomePage extends ConsumerStatefulWidget {
@@ -75,6 +68,7 @@ class _HomePageState extends ConsumerState<HomePage>
     _poll = Timer.periodic(const Duration(minutes: 10), (_) {
       if (!mounted) return;
       ref.invalidate(homeDashboardDataProvider);
+      ref.invalidate(homeShellReportsProvider);
       invalidateTradePurchaseCaches(ref);
       invalidateBusinessAggregates(ref);
     });
@@ -98,12 +92,14 @@ class _HomePageState extends ConsumerState<HomePage>
     _resumeRefreshDebounce = Timer(const Duration(milliseconds: 320), () {
       if (!mounted) return;
       ref.invalidate(homeDashboardDataProvider);
+      ref.invalidate(homeShellReportsProvider);
       invalidateTradePurchaseCaches(ref);
     });
   }
 
   Future<void> _refresh() async {
     ref.invalidate(homeDashboardDataProvider);
+    ref.invalidate(homeShellReportsProvider);
     invalidateTradePurchaseCaches(ref);
     invalidateBusinessAggregates(ref);
   }
@@ -145,8 +141,6 @@ class _HomePageState extends ConsumerState<HomePage>
     final period = ref.watch(homePeriodProvider);
     final custom = ref.watch(homeCustomDateRangeProvider);
     final async = ref.watch(homeDashboardDataProvider);
-    final viewBottom = MediaQuery.viewPaddingOf(context).bottom;
-
     return Scaffold(
       backgroundColor: HexaColors.brandBackground,
       appBar: _buildAppBar(),
@@ -356,10 +350,7 @@ class _HomePageState extends ConsumerState<HomePage>
                 error: (_, __) => const SizedBox.shrink(),
                 data: (d) => _HomeFixedHeaderBody(
                   data: d,
-                  period: period,
                   categoryColors: _donutColors,
-                  listBottomPadding: 8 + viewBottom,
-                  onRefresh: _refresh,
                 ),
               ),
             ),
@@ -557,202 +548,345 @@ class _LoadingPlaceholder extends StatelessWidget {
   }
 }
 
-String _kpiUnitsLine(HomeDashboardData data) {
-  final parts = <String>[];
-  if (data.totalBags > 0) parts.add('${_fmtQty(data.totalBags)} bag');
-  if (data.totalBoxes > 0) parts.add('${_fmtQty(data.totalBoxes)} box');
-  if (data.totalTins > 0) parts.add('${_fmtQty(data.totalTins)} tin');
-  if (data.totalKg > 0) parts.add('${_fmtQty(data.totalKg)} kg');
-  return parts.join(' · ');
+String _kpiUnitsLineUpper(HomeDashboardData data) {
+  final a =
+      '${_fmtQty(data.totalBags)} BAG • ${_fmtQty(data.totalBoxes)} BOX • ${_fmtQty(data.totalTins)} TIN';
+  if (data.totalKg > 1e-9) {
+    return '$a • ${_fmtQty(data.totalKg)} KG';
+  }
+  return a;
 }
+
+/// Profit, percent, units, and matching breakdown (for ring + KPI).
+List<String> _ringCenterLines(HomeDashboardData d) {
+  final p = d.totalProfit;
+  final s = p >= 0 ? '' : '−';
+  final l1 = 'Profit $s${_inr(p.abs())}';
+  final pp = d.profitPercent;
+  final l2 = pp == null
+      ? '(—)'
+      : '(${p >= 0 ? '+' : ''}${pp.toStringAsFixed(1)}%)';
+  final l3 = '${d.totalQtyAllLines.round()} UNITS';
+  final l4 = _kpiUnitsLineUpper(d);
+  return [l1, l2, l3, l4];
+}
+
+String _itemUpperQtyLine(Map<String, dynamic> m) {
+  final tb = (m['total_bags'] as num?)?.toDouble() ?? 0;
+  final txb = (m['total_boxes'] as num?)?.toDouble() ?? 0;
+  final ttn = (m['total_tins'] as num?)?.toDouble() ?? 0;
+  final tkg = (m['total_kg'] as num?)?.toDouble() ?? 0;
+  final parts = <String>[];
+  if (tb > 0) parts.add('${_fmtQty(tb)} BAG');
+  if (txb > 0) parts.add('${_fmtQty(txb)} BOX');
+  if (ttn > 0) parts.add('${_fmtQty(ttn)} TIN');
+  if (tkg > 0) parts.add('${_fmtQty(tkg)} KG');
+  if (parts.isNotEmpty) return parts.join(' • ');
+  final q = (m['total_qty'] as num?)?.toDouble() ?? 0;
+  final u = (m['unit']?.toString() ?? '—').toUpperCase();
+  return '${_fmtQty(q)} $u';
+}
+
+String _categoryQtyLabel(CategoryStat c) {
+  if (c.items.isNotEmpty) {
+    final u = c.items.first.unit.trim().toUpperCase();
+    if (u.isNotEmpty && u != '—') {
+      return '${_fmtQty(c.totalQty)} $u';
+    }
+  }
+  return '${_fmtQty(c.totalQty)} UNITS';
+}
+
+const int _kMaxHomeRows = 6;
 
 class _HomeFixedHeaderBody extends ConsumerWidget {
   const _HomeFixedHeaderBody({
     required this.data,
-    required this.period,
     required this.categoryColors,
-    required this.listBottomPadding,
-    required this.onRefresh,
   });
 
   final HomeDashboardData data;
-  final HomePeriod period;
   final List<Color> categoryColors;
-  final double listBottomPadding;
-  final Future<void> Function() onRefresh;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final slice = data.categories.where((e) => e.totalAmount > 0).toList();
-    final amts = List<double>.generate(slice.length, (i) => slice[i].totalAmount);
+    final tab = ref.watch(homeBreakdownTabProvider);
+    final shell = ref.watch(homeShellReportsProvider);
+    final rc = _ringCenterLines(data);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
       children: [
+        const SizedBox(height: 2),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-          child: _HomeKpiBlock(data: data, period: period),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: _KpiTightBlock(data: data),
         ),
+        const SizedBox(height: 4),
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: LayoutBuilder(
-            builder: (context, c) {
-              final side = math.min(300.0, c.maxWidth);
-              if (slice.isEmpty || amts.every((a) => a <= 0)) {
-                return Center(
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: side, maxHeight: side),
-                    child: AspectRatio(
-                      aspectRatio: 1,
-                      child: Center(
-                        child: Text(
-                          'No category spend in this period',
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: const Color(0xFF64748B),
-                                fontWeight: FontWeight.w600,
-                              ),
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }
-              return Center(
-                child: RepaintBoundary(
-                  child: SpendRingChart(
-                    diameter: side,
-                    strokeWidth: 17,
-                    values: amts,
-                    colors: categoryColors,
-                    centerLine1: _inr(data.totalPurchase),
-                    centerLine2: '${data.totalQtyAllLines.round()} units',
-                    centerLine3: _kpiUnitsLine(data).isNotEmpty
-                        ? _kpiUnitsLine(data)
-                        : null,
-                    onSectionTap: (i) {
-                      if (i < 0 || i >= slice.length) return;
-                      final cat = slice[i];
-                      if (cat.categoryId == '_uncat') {
-                        context.go('/catalog');
-                      } else {
-                        context.go('/catalog/category/${cat.categoryId}');
-                      }
-                    },
-                  ),
-                ),
-              );
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: _HomeBreakdownTabStrip(
+            selected: tab,
+            onSelect: (t) {
+              ref.read(homeBreakdownTabProvider.notifier).state = t;
             },
           ),
         ),
+        const SizedBox(height: 2),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-          child: _ProfitBlock(data: data),
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: _buildRing(
+            context,
+            tab,
+            shell,
+            categoryColors,
+            rc,
+          ),
         ),
-        Expanded(
-          child: RefreshIndicator(
-            onRefresh: onRefresh,
-            color: HexaColors.brandPrimary,
-            child: ListView.builder(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, listBottomPadding),
-              physics: const AlwaysScrollableScrollPhysics(
-                parent: BouncingScrollPhysics(),
+        const SizedBox(height: 2),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: _buildRowSection(context, tab, shell),
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            onPressed: () {
+              context.push(
+                '/home/breakdown-more?tab=${tab.name}',
+              );
+            },
+            child: const Text('View more'),
+          ),
+        ),
+        const SizedBox(height: 2),
+      ],
+    );
+  }
+
+  Widget _buildRing(
+    BuildContext context,
+    HomeBreakdownTab tab,
+    AsyncValue<HomeShellReportsBundle> shell,
+    List<Color> colors,
+    List<String> rc,
+  ) {
+    return LayoutBuilder(
+      builder: (context, c) {
+        final side = math.min(280.0, c.maxWidth);
+        // Keep layout stable: load ring shell data only for non-category tabs.
+        if (tab != HomeBreakdownTab.category && shell.isLoading) {
+          return SizedBox(
+            height: side,
+            child: const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: CircularProgressIndicator(strokeWidth: 2),
               ),
-              itemCount: data.categories.isEmpty ? 1 : data.categories.length,
-              itemBuilder: (context, index) {
-                if (data.categories.isEmpty) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 32),
-                    child: Center(
-                      child: Text(
-                        'No purchases in this period',
-                        style: TextStyle(
-                          color: Color(0xFF64748B),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  );
-                }
-                final stat = data.categories[index];
-                return _CategoryRow(
-                  stat: stat,
-                  dotColor: categoryColors[index % categoryColors.length],
-                );
+            ),
+          );
+        }
+        if (tab != HomeBreakdownTab.category && shell.hasError) {
+          return SizedBox(
+            height: 120,
+            child: Center(
+              child: Text(
+                'Could not load ${tab.label} data',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF64748B),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          );
+        }
+        final HomeShellReportsBundle? bundle = tab == HomeBreakdownTab.category
+            ? null
+            : (shell is AsyncData<HomeShellReportsBundle>
+                ? shell.value
+                : null);
+        final slice = _topSlice(
+          data,
+          tab,
+          bundle,
+          _kMaxHomeRows,
+        );
+        final amts = List<double>.generate(
+            slice.length, (i) => slice[i].ringAmount);
+        if (slice.isEmpty || amts.isEmpty) {
+          return RepaintBoundary(
+            child: SpendRingChart(
+              diameter: side,
+              strokeWidth: 17,
+              values: [1],
+              colors: [const Color(0xFFCBD5E1)],
+              centerLine1: rc[0],
+              centerLine2: rc[1],
+              centerLine3: rc[2],
+              centerLine4: rc[3],
+            ),
+          );
+        }
+        return Center(
+          child: RepaintBoundary(
+            child: SpendRingChart(
+              diameter: side,
+              strokeWidth: 17,
+              values: amts,
+              colors: colors,
+              centerLine1: rc[0],
+              centerLine2: rc[1],
+              centerLine3: rc[2],
+              centerLine4: rc[3],
+              onSectionTap: (i) {
+                if (i < 0 || i >= slice.length) return;
+                slice[i].onTap(context);
               },
             ),
           ),
+        );
+      },
+    );
+  }
+
+  Widget _buildRowSection(
+    BuildContext context,
+    HomeBreakdownTab tab,
+    AsyncValue<HomeShellReportsBundle> shell,
+  ) {
+    if (tab != HomeBreakdownTab.category) {
+      if (shell.isLoading) {
+        return const SizedBox(
+          height: 2,
+        );
+      }
+      if (shell.hasError) {
+        return const SizedBox.shrink();
+      }
+    } else {
+      if (data.categories.isEmpty) {
+        return const Padding(
+          padding: EdgeInsets.symmetric(vertical: 8),
+          child: Center(
+            child: Text(
+              'No purchases in this period',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Color(0xFF64748B),
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        );
+      }
+    }
+    final HomeShellReportsBundle? bundle = tab == HomeBreakdownTab.category
+        ? null
+        : (shell is AsyncData<HomeShellReportsBundle> ? shell.value : null);
+    final slice = _topSlice(
+      data,
+      tab,
+      bundle,
+      _kMaxHomeRows,
+    );
+    if (slice.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: Center(
+          child: Text(
+            'No data',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Color(0xFF64748B),
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+            ),
+          ),
         ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < slice.length; i++)
+          _HomeBreakdownDataRow(
+            title: slice[i].title,
+            amount: slice[i].ringAmount,
+            boldLine2: slice[i].line2,
+            sup: slice[i].sup,
+            bro: slice[i].bro,
+            dotColor: categoryColors[i % categoryColors.length],
+            onTap: () => slice[i].onTap(context),
+          ),
       ],
     );
   }
 }
 
-class _HomeKpiBlock extends StatelessWidget {
-  const _HomeKpiBlock({required this.data, required this.period});
+class _KpiTightBlock extends StatelessWidget {
+  const _KpiTightBlock({required this.data});
   final HomeDashboardData data;
-  final HomePeriod period;
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    final q = data.totalQtyAllLines;
-    final sub = period == HomePeriod.month
-        ? 'This month'
-        : _periodCenterLabel(period);
+    final u = data.totalQtyAllLines.round();
     return Material(
       color: Colors.white,
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         side: const BorderSide(color: HexaColors.brandBorder),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              'Total spend',
-              style: HexaDsType.label(12, color: const Color(0xFF64748B)),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              _inr(data.totalPurchase),
-              style: HexaDsType.purchaseLineMoney.copyWith(
-                fontSize: 28,
-                height: 1.12,
-              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    _inr(data.totalPurchase),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: HexaDsType.purchaseLineMoney.copyWith(
+                      fontSize: 26,
+                      height: 1.08,
+                    ),
+                  ),
+                ),
+                Text(
+                  '$u UNITS',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 15,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 4),
             Text(
-              sub,
-              style: tt.labelSmall?.copyWith(
-                color: const Color(0xFF64748B),
-                fontWeight: FontWeight.w600,
+              _kpiUnitsLineUpper(data),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
                 fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF0F172A),
               ),
             ),
-            const SizedBox(height: 6),
-            Text(
-              '${_fmtQty(q)} units',
-              style: tt.titleSmall?.copyWith(
-                fontWeight: FontWeight.w800,
-                color: const Color(0xFF0F172A),
-              ),
-            ),
-            if (_kpiUnitsLine(data).isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                _kpiUnitsLine(data),
-                style: tt.labelSmall?.copyWith(
-                  color: const Color(0xFF64748B),
-                  fontWeight: FontWeight.w600,
-                  height: 1.3,
-                  fontSize: 11,
-                ),
-              ),
-            ],
           ],
         ),
       ),
@@ -760,102 +894,79 @@ class _HomeKpiBlock extends StatelessWidget {
   }
 }
 
-class _ProfitBlock extends StatelessWidget {
-  const _ProfitBlock({required this.data});
-  final HomeDashboardData data;
+class _HomeBreakdownTabStrip extends StatelessWidget {
+  const _HomeBreakdownTabStrip({
+    required this.selected,
+    required this.onSelect,
+  });
+  final HomeBreakdownTab selected;
+  final ValueChanged<HomeBreakdownTab> onSelect;
 
   @override
   Widget build(BuildContext context) {
-    final s = data.totalSelling;
-    final l = data.totalLanding > 0 ? data.totalLanding : data.totalPurchase;
-    final p = data.totalProfit;
-    final pp = data.profitPercent;
-    if (s < 1e-6) {
-      return Text(
-        'Add selling on lines to see profit',
-        textAlign: TextAlign.center,
-        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: const Color(0xFF94A3B8),
-              fontWeight: FontWeight.w600,
-            ),
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _profitRow('Landing', _inr(l)),
-        const SizedBox(height: 2),
-        _profitRow('Selling', _inr(s)),
-        const SizedBox(height: 2),
-        _profitRow(
-          'Profit',
-          '${p >= 0 ? '' : '−'}${_inr(p.abs())}${pp != null ? '  (${p >= 0 ? '+' : ''}${pp.toStringAsFixed(1)}%)' : ''}',
-        ),
-      ],
-    );
-  }
-
-  Widget _profitRow(String k, String v) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          k,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF64748B),
+        for (final t in HomeBreakdownTab.values) ...[
+          Expanded(
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => onSelect(t),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Center(
+                    child: Text(
+                      t.label,
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: selected == t
+                            ? FontWeight.w900
+                            : FontWeight.w600,
+                        color: selected == t
+                            ? HexaColors.brandPrimary
+                            : const Color(0xFF475569),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
-        ),
-        Text(
-          v,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFF0F172A),
-          ),
-        ),
+        ],
       ],
     );
   }
 }
 
-String _categoryQtyLabel(CategoryStat c) {
-  if (c.items.isNotEmpty) {
-    final u = c.items.first.unit.trim();
-    if (u.isNotEmpty && u != '—') {
-      return '${_fmtQty(c.totalQty)} $u';
-    }
-  }
-  return '${_fmtQty(c.totalQty)} units';
-}
-
-class _CategoryRow extends StatelessWidget {
-  const _CategoryRow({required this.stat, required this.dotColor});
-  final CategoryStat stat;
+class _HomeBreakdownDataRow extends StatelessWidget {
+  const _HomeBreakdownDataRow({
+    required this.title,
+    required this.amount,
+    required this.boldLine2,
+    required this.sup,
+    required this.bro,
+    required this.dotColor,
+    required this.onTap,
+  });
+  final String title;
+  final double amount;
+  final String boldLine2;
+  final String sup;
+  final String bro;
   final Color dotColor;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final sup = (stat.subtitleSupplier == null || stat.subtitleSupplier!.isEmpty)
-        ? '—'
-        : stat.subtitleSupplier!;
-    final bro = (stat.subtitleBroker == null || stat.subtitleBroker!.isEmpty)
-        ? '—'
-        : stat.subtitleBroker!;
-    final sub = '${_categoryQtyLabel(stat)} · $sup · $bro';
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () {
-          if (stat.categoryId == '_uncat') {
-            context.go('/catalog');
-          } else {
-            context.go('/catalog/category/${stat.categoryId}');
-          }
-        },
+        onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          padding: const EdgeInsets.symmetric(vertical: 5),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -873,43 +984,56 @@ class _CategoryRow extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      stat.categoryName,
-                      maxLines: 2,
+                      title,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
-                        fontSize: 15,
+                        fontSize: 14,
                         color: Color(0xFF0F172A),
-                        height: 1.2,
                       ),
                     ),
                   ),
                   Text(
-                    _inr(stat.totalAmount),
+                    _inr(amount),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontWeight: FontWeight.w800,
-                      fontSize: 15,
-                      color: HexaColors.brandPrimary,
+                      fontSize: 14,
+                      color: Color(0xFF0F172A),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               Padding(
-                padding: const EdgeInsets.only(left: 18),
-                child: Text(
-                  sub,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF64748B),
-                    fontWeight: FontWeight.w600,
-                    height: 1.25,
+                padding: const EdgeInsets.only(left: 16),
+                child: Text.rich(
+                  TextSpan(
+                    style: const TextStyle(fontSize: 11, height: 1.2),
+                    children: [
+                      TextSpan(
+                        text: boldLine2,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                      TextSpan(
+                        text: ' · $sup · $bro',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF64748B),
+                        ),
+                      ),
+                    ],
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -917,6 +1041,129 @@ class _CategoryRow extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _BreakdownRowSlice {
+  const _BreakdownRowSlice({
+    required this.title,
+    required this.ringAmount,
+    required this.line2,
+    required this.sup,
+    required this.bro,
+    required this.onTap,
+  });
+
+  final String title;
+  final double ringAmount;
+  final String line2;
+  final String sup;
+  final String bro;
+  final void Function(BuildContext context) onTap;
+}
+
+List<_BreakdownRowSlice> _topSlice(
+  HomeDashboardData d,
+  HomeBreakdownTab tab,
+  HomeShellReportsBundle? bundle,
+  int maxN,
+) {
+  switch (tab) {
+    case HomeBreakdownTab.category:
+      final cats = d.categories
+          .where((e) => e.totalAmount > 0)
+          .toList()
+        ..sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
+      return [
+        for (final c in cats.take(maxN))
+          _BreakdownRowSlice(
+            title: c.categoryName,
+            ringAmount: c.totalAmount,
+            line2: _categoryQtyLabel(c),
+            sup: c.subtitleSupplier?.trim().isNotEmpty == true
+                ? c.subtitleSupplier!
+                : '—',
+            bro: c.subtitleBroker?.trim().isNotEmpty == true
+                ? c.subtitleBroker!
+                : '—',
+            onTap: (ctx) {
+              if (c.categoryId == '_uncat') {
+                ctx.go('/catalog');
+              } else {
+                ctx.go('/catalog/category/${c.categoryId}');
+              }
+            },
+          ),
+      ];
+    case HomeBreakdownTab.subcategory:
+      if (bundle == null) return const [];
+      final rows = List<Map<String, dynamic>>.from(bundle.subcategories)
+        ..sort((a, c) {
+          final pa = (a['total_purchase'] as num?)?.toDouble() ?? 0;
+          final pc = (c['total_purchase'] as num?)?.toDouble() ?? 0;
+          return pc.compareTo(pa);
+        });
+      return [
+        for (final r in rows.take(maxN))
+          _BreakdownRowSlice(
+            title:
+                '${r['category_name'] ?? '—'} — ${r['type_name'] ?? '—'}',
+            ringAmount: (r['total_purchase'] as num?)?.toDouble() ?? 0,
+            line2:
+                '${_fmtQty((r['total_qty'] as num?)?.toDouble() ?? 0)} UNITS',
+            sup: '—',
+            bro: '—',
+            onTap: (ctx) => ctx.go('/catalog'),
+          ),
+      ];
+    case HomeBreakdownTab.supplier:
+      if (bundle == null) return const [];
+      final rows = List<Map<String, dynamic>>.from(bundle.suppliers)
+        ..sort((a, c) {
+          final pa = (a['total_purchase'] as num?)?.toDouble() ?? 0;
+          final pc = (c['total_purchase'] as num?)?.toDouble() ?? 0;
+          return pc.compareTo(pa);
+        });
+      return [
+        for (final r in rows.take(maxN))
+          _BreakdownRowSlice(
+            title: r['supplier_name']?.toString() ?? '—',
+            ringAmount: (r['total_purchase'] as num?)?.toDouble() ?? 0,
+            line2:
+                '${_fmtQty((r['total_qty'] as num?)?.toDouble() ?? 0)} UNITS',
+            sup: '—',
+            bro: '—',
+            onTap: (ctx) {
+              final sid = r['supplier_id']?.toString() ?? '';
+              if (sid.isNotEmpty) {
+                ctx.push('/supplier/$sid');
+              }
+            },
+          ),
+      ];
+    case HomeBreakdownTab.items:
+      if (bundle == null) return const [];
+      final rows = List<Map<String, dynamic>>.from(bundle.items)
+        ..sort((a, c) {
+          final pa = (a['total_purchase'] as num?)?.toDouble() ?? 0;
+          final pc = (c['total_purchase'] as num?)?.toDouble() ?? 0;
+          return pc.compareTo(pa);
+        });
+      return [
+        for (final r in rows.take(maxN))
+          _BreakdownRowSlice(
+            title: r['item_name']?.toString() ?? '—',
+            ringAmount: (r['total_purchase'] as num?)?.toDouble() ?? 0,
+            line2: _itemUpperQtyLine(r),
+            sup: '—',
+            bro: '—',
+            onTap: (ctx) {
+              final name = r['item_name']?.toString() ?? '';
+              if (name.isEmpty) return;
+              ctx.push('/item-analytics/${Uri.encodeComponent(name)}');
+            },
+          ),
+      ];
   }
 }
 
