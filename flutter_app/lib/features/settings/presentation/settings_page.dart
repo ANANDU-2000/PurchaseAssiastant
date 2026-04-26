@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/auth/auth_error_messages.dart';
@@ -17,6 +18,7 @@ import '../../../core/models/session.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/maintenance/maintenance_payment_constants.dart';
 import '../../../core/providers/cloud_expense_provider.dart';
+import '../../../core/providers/cloud_payment_local_provider.dart';
 import '../../../core/providers/maintenance_payment_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/theme/theme_context_ext.dart';
@@ -822,6 +824,12 @@ class _CloudSettingsCard extends ConsumerWidget {
 
   final String businessId;
 
+  static ButtonStyle get _btnCompact => OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        minimumSize: const Size(0, 32),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      );
+
   Future<void> _edit(
     BuildContext context,
     WidgetRef ref,
@@ -896,40 +904,128 @@ class _CloudSettingsCard extends ConsumerWidget {
           const SnackBar(content: Text('Saved')),
         );
       }
-    } catch (e) {
+    } catch (_) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(friendlyApiError(e))),
+          const SnackBar(
+            content: Text('Could not save. Please try again.'),
+          ),
         );
       }
     }
   }
 
-  Future<void> _pay(BuildContext context, WidgetRef ref) async {
+  String _cloudUpiUri({required double amountInr}) {
+    if (AppConfig.cloudUpiVpa.isEmpty) return '';
+    return 'upi://pay?pa=${Uri.encodeComponent(AppConfig.cloudUpiVpa)}'
+        '&pn=${Uri.encodeComponent(AppConfig.cloudUpiPayeeName)}'
+        '&am=${amountInr.toStringAsFixed(0)}'
+        '&cu=INR';
+  }
+
+  Future<void> _openUpiExternal(
+    BuildContext context, {
+    required double amountInr,
+  }) async {
+    if (AppConfig.cloudUpiVpa.isEmpty) return;
+    final s = _cloudUpiUri(amountInr: amountInr);
+    if (s.isEmpty) return;
+    final uri = Uri.parse(s);
     try {
-      await ref.read(hexaApiProvider).postCloudCostPay(
-            businessId: businessId,
-            provider: 'manual',
-          );
+      final ok = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!ok && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No UPI app found')),
+        );
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No UPI app found')),
+        );
+      }
+    }
+  }
+
+  void _showQr(
+    BuildContext context, {
+    required double amountInr,
+  }) {
+    if (AppConfig.cloudUpiVpa.isEmpty) return;
+    final data = _cloudUpiUri(amountInr: amountInr);
+    if (data.isEmpty) return;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Scan to pay'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            QrImageView(
+              data: data,
+              size: 220,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'UPI ID: ${AppConfig.cloudUpiVpa}',
+              style: Theme.of(ctx).textTheme.bodySmall,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Scan to pay with any UPI app',
+              style: Theme.of(ctx)
+                  .textTheme
+                  .labelSmall
+                  ?.copyWith(color: Theme.of(ctx).colorScheme.onSurfaceVariant),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmMarkPaid(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirm payment completed?'),
+        content: const Text('Only confirm after you have completed the UPI transfer.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      ref.read(cloudPaymentLocalProvider.notifier).markCurrentMonthPaid();
       ref.invalidate(cloudCostProvider);
       invalidateBusinessAggregates(ref);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Marked as paid')),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(friendlyApiError(e))),
-        );
-      }
     }
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
+    final local = ref.watch(cloudPaymentLocalProvider);
     final async = ref.watch(cloudCostProvider);
     return async.when(
       loading: () => Card(
@@ -940,13 +1036,13 @@ class _CloudSettingsCard extends ConsumerWidget {
             height: 22,
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
-          title: Text('Cloud cost…'),
+          title: Text('Cloud hosting'),
         ),
       ),
-      error: (e, _) => Card(
+      error: (_, __) => Card(
         color: context.adaptiveCard,
         child: ListTile(
-          title: Text('Cloud cost: $e'),
+          title: const Text('Unable to load cloud payment details'),
           trailing: TextButton(
             onPressed: () => ref.invalidate(cloudCostProvider),
             child: const Text('Retry'),
@@ -959,29 +1055,17 @@ class _CloudSettingsCard extends ConsumerWidget {
         final next = m['next_due_date']?.toString() ?? '—';
         final need = m['show_alert'] == true;
         final inPre = m['in_pre_due_window'] == true;
-        final iconColor =
-            need ? Colors.redAccent : (inPre ? Colors.orange : Colors.green);
-        Future<void> openUpi() async {
-          if (AppConfig.cloudUpiVpa.isEmpty) return;
-          final uri = Uri.parse(
-            'upi://pay?pa=${Uri.encodeComponent(AppConfig.cloudUpiVpa)}'
-            '&pn=${Uri.encodeComponent(AppConfig.cloudUpiPayeeName)}'
-            '&am=${amt.toStringAsFixed(0)}'
-            '&cu=INR',
-          );
-          if (!await launchUrl(uri, mode: LaunchMode.externalApplication) &&
-              context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                  content: Text('Could not open a UPI app. Try again later.')),
-            );
-          }
-        }
+        final paidLocal = local.isPaid;
+        final iconColor = paidLocal
+            ? const Color(0xFF16A34A)
+            : (need
+                ? Colors.redAccent
+                : (inPre ? Colors.orange : cs.primary));
 
         return Card(
           color: context.adaptiveCard,
           child: Padding(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -990,62 +1074,126 @@ class _CloudSettingsCard extends ConsumerWidget {
                     Icon(
                       Icons.cloud_outlined,
                       color: iconColor,
-                      size: 22,
+                      size: 20,
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        m['name']?.toString() ?? 'Cloud Cost',
+                        m['name']?.toString() ?? 'Cloud',
                         style: const TextStyle(
                           fontWeight: FontWeight.w800,
-                          fontSize: 15,
+                          fontSize: 14,
                         ),
                       ),
                     ),
                     Text(
-                      'Rs. ${amt.round()}',
+                      '₹${amt.round()}',
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
-                        fontSize: 16,
+                        fontSize: 15,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  need
-                      ? 'Overdue · next due $next'
-                      : (inPre
-                          ? 'Due soon · $next'
-                          : 'Next due: $next · Paid up'),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: cs.onSurfaceVariant,
-                    fontWeight: FontWeight.w600,
+                if (paidLocal && local.paidAt != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Paid ✔',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.green[800],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    OutlinedButton(
-                      onPressed: () => _edit(context, ref, m),
-                      child: const Text('Edit amount / due day'),
+                  Text(
+                    'Paid on ${DateFormat.yMMMd().format(local.paidAt!)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: cs.onSurfaceVariant,
                     ),
-                    if (AppConfig.cloudUpiVpa.isNotEmpty)
-                      OutlinedButton.icon(
-                        onPressed: openUpi,
-                        icon: const Icon(Icons.payment_rounded, size: 18),
-                        label: const Text('Pay via UPI'),
+                  ),
+                ] else ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    need
+                        ? 'Overdue · $next'
+                        : (inPre ? 'Due soon · $next' : 'Next: $next'),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+                if (!paidLocal) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      OutlinedButton(
+                        style: _btnCompact,
+                        onPressed: () => _edit(context, ref, m),
+                        child: const Text('Edit', style: TextStyle(fontSize: 12)),
                       ),
-                    if (need || inPre)
+                      if (AppConfig.cloudUpiVpa.isNotEmpty) ...[
+                        FilledButton.tonal(
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 4),
+                            minimumSize: const Size(0, 32),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          onPressed: () => _openUpiExternal(
+                            context,
+                            amountInr: amt,
+                          ),
+                          child: const Text('Pay via UPI',
+                              style: TextStyle(fontSize: 12)),
+                        ),
+                        OutlinedButton(
+                        style: _btnCompact,
+                          onPressed: () async {
+                            await Clipboard.setData(
+                              const ClipboardData(
+                                text: AppConfig.cloudUpiVpa,
+                              ),
+                            );
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('UPI ID copied'),
+                              ),
+                            );
+                          },
+                          child: const Text('Copy UPI ID',
+                              style: TextStyle(fontSize: 12)),
+                        ),
+                        OutlinedButton(
+                        style: _btnCompact,
+                          onPressed: () => _showQr(
+                            context,
+                            amountInr: amt,
+                          ),
+                          child: const Text('Show QR',
+                              style: TextStyle(fontSize: 12)),
+                        ),
+                      ],
                       FilledButton(
-                        onPressed: () => _pay(context, ref),
-                        child: const Text('Mark paid'),
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          minimumSize: const Size(0, 32),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: () => unawaited(
+                          _confirmMarkPaid(context, ref),
+                        ),
+                        child: const Text('Mark as paid',
+                            style: TextStyle(fontSize: 12)),
                       ),
-                  ],
-                ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
