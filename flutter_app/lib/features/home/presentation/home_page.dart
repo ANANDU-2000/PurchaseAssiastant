@@ -22,7 +22,9 @@ import '../../../shared/widgets/shell_quick_ref_actions.dart';
 import '../../purchase/presentation/widgets/purchase_saved_sheet.dart';
 import '../../../core/providers/home_breakdown_tab_providers.dart';
 import '../../../core/providers/home_dashboard_provider.dart';
+import '../../../core/providers/maintenance_payment_provider.dart';
 import 'spend_ring_chart.dart';
+import 'maintenance_home_card.dart';
 
 String _inr(num n) =>
     NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
@@ -93,6 +95,7 @@ class _HomePageState extends ConsumerState<HomePage>
       if (!mounted) return;
       ref.invalidate(homeDashboardDataProvider);
       ref.invalidate(homeShellReportsProvider);
+      ref.invalidate(maintenancePaymentControllerProvider);
       invalidateTradePurchaseCaches(ref);
     });
   }
@@ -339,6 +342,10 @@ class _HomePageState extends ConsumerState<HomePage>
                   );
                 },
               ),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 4, 16, 0),
+              child: MaintenanceHomeCard(),
             ),
             Expanded(
               child: async.when(

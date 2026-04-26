@@ -2,6 +2,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../config/app_config.dart';
 import '../models/trade_purchase_models.dart';
+import 'package:hexa_purchase_assistant/core/maintenance/maintenance_month_record.dart';
+import 'package:hexa_purchase_assistant/core/maintenance/maintenance_ui_status.dart';
+import 'package:hexa_purchase_assistant/core/providers/maintenance_payment_provider.dart';
+
 import 'cloud_expense_provider.dart';
 import 'trade_purchases_provider.dart';
 
@@ -14,6 +18,7 @@ enum NotificationType {
   purchaseDue,
   purchaseOverdue,
   cloudCost,
+  maintenance,
 }
 
 class NotificationItem {
@@ -101,7 +106,8 @@ final notificationsUnreadCountProvider = Provider<int>((ref) {
   final manual = ref.watch(notificationsProvider).where((e) => !e.isRead).length;
   final tradeN = ref.watch(purchaseActionAlertCountProvider);
   final cloudN = ref.watch(cloudCostAlertCountProvider);
-  return manual + tradeN + cloudN;
+  final maintN = ref.watch(maintenanceAlertCountProvider);
+  return manual + tradeN + cloudN + maintN;
 });
 
 /// PUR bills that need attention (unpaid with due date approaching or past).
@@ -267,4 +273,71 @@ final cloudCostNotificationItemsProvider = Provider<List<NotificationItem>>((ref
     },
     orElse: () => const [],
   );
+});
+
+String _mtSubtitle({
+  required MaintenanceMonthRecord? cur,
+  required MaintenanceUiStatus st,
+  required int amount,
+}) {
+  final amt = '₹$amount';
+  switch (st) {
+    case MaintenanceUiStatus.paid:
+      final p = cur?.paidAt;
+      if (p == null) return '$amt · Paid';
+      return '$amt · Paid on ${p.year}-${p.month.toString().padLeft(2, "0")}-${p.day.toString().padLeft(2, "0")}';
+    case MaintenanceUiStatus.upcoming:
+      return '$amt · Due on last day of this month';
+    case MaintenanceUiStatus.dueToday:
+      return '$amt · Due by 9:00 today';
+    case MaintenanceUiStatus.overdue:
+      return '$amt · Past due time — pay or mark as paid';
+  }
+}
+
+/// In-app row(s) for Alerts — same state as the Home maintenance card.
+final maintenanceNotificationItemsProvider =
+    Provider<List<NotificationItem>>((ref) {
+  final async = ref.watch(maintenancePaymentControllerProvider);
+  return async.maybeWhen(
+    data: (v) {
+      if (v?.userVisibleError != null) return const [];
+      final cur = v?.current;
+      final st = v?.status;
+      if (cur == null || st == null) return const [];
+      if (st == MaintenanceUiStatus.upcoming) return const [];
+      final amount = cur.amount;
+      String title;
+      switch (st) {
+        case MaintenanceUiStatus.paid:
+          title = 'Maintenance paid';
+        case MaintenanceUiStatus.dueToday:
+          title = 'Maintenance due today';
+        case MaintenanceUiStatus.overdue:
+          title = 'Maintenance overdue';
+        case MaintenanceUiStatus.upcoming:
+          return const [];
+      }
+      return [
+        NotificationItem(
+          id: 'maintenance_${cur.month}',
+          type: NotificationType.maintenance,
+          title: title,
+          subtitle: _mtSubtitle(
+            cur: cur,
+            st: st,
+            amount: amount,
+          ),
+          createdAt: cur.paidAt ?? DateTime.now(),
+          isRead: false,
+          actionRoute: '/home',
+        ),
+      ];
+    },
+    orElse: () => const [],
+  );
+});
+
+final maintenanceAlertCountProvider = Provider<int>((ref) {
+  return ref.watch(maintenanceNotificationItemsProvider).length;
 });

@@ -14,6 +14,7 @@ import 'core/notifications/local_notifications_service.dart';
 import 'core/platform/remove_boot_overlay.dart';
 import 'core/providers/prefs_provider.dart'
     show kNotificationsOptInKey, sharedPreferencesProvider;
+import 'core/maintenance/maintenance_payment_repository.dart';
 import 'core/services/offline_store.dart';
 
 Future<void> main() async {
@@ -56,6 +57,18 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
       await LocalNotificationsService.instance.init();
       final notifOptIn = prefs.getBool(kNotificationsOptInKey) ?? false;
       await LocalNotificationsService.instance.setOptIn(notifOptIn);
+
+      final maintRepo = MaintenancePaymentRepository(prefs);
+      final now = DateTime.now();
+      maintRepo.ensureOnAppOpen(now);
+      if (!kIsWeb) {
+        await LocalNotificationsService.instance
+            .scheduleMaintenanceRemindersIfNeeded(
+          enabled: maintRepo.remindersEnabled,
+          isPaid: maintRepo.currentFor(now)?.isPaid ?? false,
+          now: now,
+        );
+      }
 
       final container = ProviderContainer(
         overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],

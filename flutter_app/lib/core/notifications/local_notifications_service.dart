@@ -13,6 +13,9 @@ class LocalNotificationsService {
       LocalNotificationsService._();
 
   static const _dailyId = 91001;
+  static const int _maintId0 = 92101;
+  static const int _maintId1 = 92102;
+  static const int _maintId2 = 92103;
   static int _purchaseDueId(String purchaseId) =>
       purchaseId.hashCode & 0x3fffffff;
 
@@ -155,5 +158,115 @@ class LocalNotificationsService {
     final p = DateTime.tryParse(s);
     if (p == null) return null;
     return (p.year, p.month, p.day);
+  }
+
+  /// Fixed ids for maintenance — always cancel all three before rescheduling.
+  Future<void> cancelMaintenanceReminders() async {
+    if (kIsWeb) return;
+    await _p.cancel(id: _maintId0);
+    await _p.cancel(id: _maintId1);
+    await _p.cancel(id: _maintId2);
+  }
+
+  /// Up to 3 notifications, 24h apart: last day 09:00, +24h, +24h. If t0 is past,
+  /// roll to [now+10s, +24h, +48h] so nothing stacks in the past.
+  Future<void> scheduleMaintenanceRemindersIfNeeded({
+    required bool enabled,
+    required bool isPaid,
+    required DateTime now,
+  }) async {
+    if (kIsWeb || !_inited) {
+      if (!kIsWeb) {
+        await cancelMaintenanceReminders();
+      }
+      return;
+    }
+    await cancelMaintenanceReminders();
+    if (!enabled || isPaid) return;
+
+    final loc = tz.local;
+    final nowTz = tz.TZDateTime.from(now, loc);
+    final y = nowTz.year;
+    final m = nowTz.month;
+    final lastD = DateTime(y, m + 1, 0).day;
+    var t0 = tz.TZDateTime(loc, y, m, lastD, 9, 0);
+    const spacing = Duration(hours: 24);
+    const catchUpStart = Duration(seconds: 10);
+
+    tz.TZDateTime t1;
+    tz.TZDateTime t2;
+    if (!t0.isAfter(nowTz)) {
+      // First slot in the past: roll all three to future with 24h spacing.
+      final s0 = nowTz.add(catchUpStart);
+      t1 = s0.add(spacing);
+      t2 = t1.add(spacing);
+      await _zonedScheduleMaintenance(
+        _maintId0,
+        s0,
+        'Monthly maintenance',
+        '₹2500 due — last day of month. Pay via UPI from Home.',
+      );
+      await _zonedScheduleMaintenance(
+        _maintId1,
+        t1,
+        'Maintenance reminder',
+        '₹2500 still due this month. Open the app to pay or mark paid.',
+      );
+      await _zonedScheduleMaintenance(
+        _maintId2,
+        t2,
+        'Final maintenance reminder',
+        '₹2500 before month ends. Check Home to complete payment.',
+      );
+    } else {
+      t1 = t0.add(spacing);
+      t2 = t1.add(spacing);
+      await _zonedScheduleMaintenance(
+        _maintId0,
+        t0,
+        'Monthly maintenance',
+        '₹2500 due — last day of month 9:00. Pay via UPI from Home.',
+      );
+      await _zonedScheduleMaintenance(
+        _maintId1,
+        t1,
+        'Maintenance reminder',
+        '₹2500 still due this month. Open the app to pay or mark paid.',
+      );
+      await _zonedScheduleMaintenance(
+        _maintId2,
+        t2,
+        'Final maintenance reminder',
+        '₹2500 before month ends. Check Home to complete payment.',
+      );
+    }
+  }
+
+  static const _maintDetails = NotificationDetails(
+    android: AndroidNotificationDetails(
+      'maintenance_payment',
+      'Maintenance payment',
+      channelDescription: 'Reminders for monthly app maintenance (₹2500).',
+      importance: Importance.defaultImportance,
+      priority: Priority.defaultPriority,
+    ),
+    iOS: DarwinNotificationDetails(),
+    windows: WindowsNotificationDetails(),
+  );
+
+  Future<void> _zonedScheduleMaintenance(
+    int id,
+    tz.TZDateTime when,
+    String title,
+    String body,
+  ) async {
+    await _p.zonedSchedule(
+      id: id,
+      scheduledDate: when,
+      notificationDetails: _maintDetails,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      title: title,
+      body: body,
+    );
   }
 }

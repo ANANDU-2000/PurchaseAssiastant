@@ -34,6 +34,7 @@ import '../../features/purchase/presentation/purchase_entry_wizard_v2.dart';
 import '../../features/purchase/presentation/scan_bill_page.dart';
 import '../../features/notifications/presentation/notifications_page.dart';
 import '../../features/settings/presentation/business_profile_page.dart';
+import '../../features/settings/presentation/maintenance_history_page.dart';
 import '../../features/settings/presentation/settings_page.dart';
 import '../../features/search/presentation/search_page.dart';
 import '../../features/shell/shell_screen.dart';
@@ -322,6 +323,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
           child: const BusinessProfilePage(),
+        ),
+      ),
+      GoRoute(
+        path: '/settings/maintenance/history',
+        name: 'settings_maintenance_history',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const MaintenanceHistoryPage(),
         ),
       ),
       GoRoute(

@@ -15,7 +15,9 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/models/session.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
+import '../../../core/maintenance/maintenance_payment_constants.dart';
 import '../../../core/providers/cloud_expense_provider.dart';
+import '../../../core/providers/maintenance_payment_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/theme/theme_context_ext.dart';
 import '../../../shared/widgets/search_picker_sheet.dart';
@@ -520,6 +522,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           const SizedBox(height: 8),
           if (session != null) _CloudSettingsCard(businessId: session.primaryBusiness.id),
           const SizedBox(height: 20),
+          Text('Maintenance payment',
+              style: tt.titleSmall?.copyWith(
+                  color: cs.onSurfaceVariant, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          const _MaintenanceSettingsCard(),
+          const SizedBox(height: 20),
           Text('Troubleshooting',
               style: tt.titleSmall?.copyWith(
                   color: cs.onSurfaceVariant,
@@ -710,6 +718,100 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             label: const Text('Sign out'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _MaintenanceSettingsCard extends ConsumerWidget {
+  const _MaintenanceSettingsCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(maintenancePaymentControllerProvider);
+    final cs = Theme.of(context).colorScheme;
+    return async.when(
+      data: (v) {
+        if (v?.userVisibleError != null) {
+          return Card(
+            color: context.adaptiveCard,
+            child: ListTile(
+              title: Text(
+                v!.userVisibleError!,
+                style: const TextStyle(color: HexaColors.textSecondary),
+              ),
+              trailing: TextButton(
+                onPressed: () => ref
+                    .read(maintenancePaymentControllerProvider.notifier)
+                    .load(),
+                child: const Text('Retry'),
+              ),
+            ),
+          );
+        }
+        return Card(
+          color: context.adaptiveCard,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ListTile(
+                leading: Icon(Icons.account_balance_outlined, color: cs.primary),
+                title: const Text('UPI ID (fixed)'),
+                subtitle: const SelectableText(
+                  MaintenancePaymentConstants.upiId,
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: Icon(Icons.payments_outlined, color: cs.primary),
+                title: const Text('Amount'),
+                subtitle: Text(
+                  '₹${MaintenancePaymentConstants.amountInr} / month — not editable in the app',
+                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+                ),
+              ),
+              const Divider(height: 1),
+              SwitchListTile(
+                secondary: Icon(Icons.notifications_active_outlined,
+                    color: cs.primary),
+                value: v?.remindersEnabled ?? true,
+                onChanged: (b) {
+                  unawaited(ref
+                      .read(maintenancePaymentControllerProvider.notifier)
+                      .setRemindersEnabled(b));
+                },
+                title: const Text('Local reminders'),
+                subtitle: const Text(
+                  'Up to three reminders, 24 hours apart, for this month when unpaid',
+                ),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: Icon(Icons.history_rounded, color: cs.primary),
+                title: const Text('View payment history'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => context.push('/settings/maintenance/history'),
+              ),
+            ],
+          ),
+        );
+      },
+      loading: () => const Card(
+        child: ListTile(
+          title: Text('Loading…'),
+        ),
+      ),
+      error: (_, __) => Card(
+        child: ListTile(
+          title: const Text('Could not load maintenance'),
+          trailing: TextButton(
+            onPressed: () => ref
+                .read(maintenancePaymentControllerProvider.notifier)
+                .load(),
+            child: const Text('Retry'),
+          ),
+        ),
       ),
     );
   }

@@ -11,6 +11,7 @@ import '../../../core/providers/notifications_provider.dart'
         NotificationType,
         cloudCostNotificationItemsProvider,
         dismissedPurchaseAlertIdsProvider,
+        maintenanceNotificationItemsProvider,
         notificationsProvider,
         purchaseDueAlertItemsProvider;
 import '../../../core/theme/hexa_colors.dart';
@@ -42,7 +43,8 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
         return n.type == NotificationType.reminder ||
             n.type == NotificationType.purchaseDue ||
             n.type == NotificationType.purchaseOverdue ||
-            n.type == NotificationType.cloudCost;
+            n.type == NotificationType.cloudCost ||
+            n.type == NotificationType.maintenance;
       case 'system':
         return n.type == NotificationType.system ||
             n.type == NotificationType.whatsapp;
@@ -61,7 +63,8 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
         .where((n) => !dismissed.contains(n.id))
         .toList();
     final cloudItems = ref.watch(cloudCostNotificationItemsProvider);
-    final items = [...cloudItems, ...tradeAlerts, ...manual];
+    final maintItems = ref.watch(maintenanceNotificationItemsProvider);
+    final items = [...cloudItems, ...maintItems, ...tradeAlerts, ...manual];
     final filtered = items.where(_matchesFilter).toList();
     final q = _textSearch.text.trim().toLowerCase();
     final visible = q.isEmpty
@@ -240,6 +243,8 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                         NotificationType.purchaseDue => const Color(0xFFF59E0B),
                         NotificationType.purchaseOverdue => HexaColors.loss,
                         NotificationType.cloudCost => const Color(0xFF17A8A7),
+                        NotificationType.maintenance =>
+                            const Color(0xFF6366F1),
                         NotificationType.system => Theme.of(context)
                             .colorScheme
                             .onSurfaceVariant,
@@ -255,6 +260,8 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                         NotificationType.purchaseOverdue =>
                             Icons.gavel_rounded,
                         NotificationType.cloudCost => Icons.cloud_outlined,
+                        NotificationType.maintenance =>
+                            Icons.build_circle_outlined,
                         NotificationType.system => Icons.info_outline_rounded,
                       };
                       return Padding(
