@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/hexa_colors.dart';
 
-/// Ring chart: round stroke, grey track, colored segments. Center shows label + value only.
+/// Ring chart: round stroke, grey track, colored segments. Center: three text lines.
 class SpendRingChart extends StatelessWidget {
   const SpendRingChart({
     super.key,
@@ -13,9 +13,10 @@ class SpendRingChart extends StatelessWidget {
     required this.values,
     required this.colors,
     this.trackColor = const Color(0xFFE2E8F0),
-    this.strokeWidth = 18,
-    required this.centerLabel,
-    required this.centerValue,
+    this.strokeWidth = 17,
+    required this.centerLine1,
+    required this.centerLine2,
+    this.centerLine3,
     this.onSectionTap,
   });
 
@@ -24,8 +25,12 @@ class SpendRingChart extends StatelessWidget {
   final List<Color> colors;
   final Color trackColor;
   final double strokeWidth;
-  final String centerLabel;
-  final String centerValue;
+  /// e.g. formatted ₹ spend
+  final String centerLine1;
+  /// e.g. "128 units"
+  final String centerLine2;
+  /// e.g. unit breakdown; omit for two-line center
+  final String? centerLine3;
   final void Function(int index)? onSectionTap;
 
   @override
@@ -84,18 +89,10 @@ class SpendRingChart extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        centerLabel,
+                        centerLine1,
                         textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                              color: const Color(0xFF64748B),
-                              fontWeight: FontWeight.w600,
-                              fontSize: 11,
-                            ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        centerValue,
-                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
                               fontWeight: FontWeight.w900,
                               color: HexaColors.brandPrimary,
@@ -103,6 +100,33 @@ class SpendRingChart extends StatelessWidget {
                               height: 1.05,
                             ),
                       ),
+                      const SizedBox(height: 4),
+                      Text(
+                        centerLine2,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                              color: const Color(0xFF64748B),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
+                      ),
+                      if (centerLine3 != null && centerLine3!.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          centerLine3!,
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                color: const Color(0xFF94A3B8),
+                                fontWeight: FontWeight.w600,
+                                fontSize: 9,
+                                height: 1.2,
+                              ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

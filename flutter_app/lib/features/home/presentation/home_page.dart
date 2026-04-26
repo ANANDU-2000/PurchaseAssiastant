@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -144,226 +145,225 @@ class _HomePageState extends ConsumerState<HomePage>
     final period = ref.watch(homePeriodProvider);
     final custom = ref.watch(homeCustomDateRangeProvider);
     final async = ref.watch(homeDashboardDataProvider);
+    final viewBottom = MediaQuery.viewPaddingOf(context).bottom;
 
     return Scaffold(
       backgroundColor: HexaColors.brandBackground,
       appBar: _buildAppBar(),
       body: SafeArea(
         bottom: false,
-        child: RefreshIndicator(
-          onRefresh: _refresh,
-          color: HexaColors.brandPrimary,
-          edgeOffset: 72,
-          child: CustomScrollView(
-            physics: const BouncingScrollPhysics(
-              parent: AlwaysScrollableScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: _PeriodStrip(
+                selected: period,
+                custom: custom,
+                onSelect: _selectPeriod,
+                onPickCustom: _pickCustomRange,
+              ),
             ),
-            slivers: [
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                  child: _PeriodStrip(
-                    selected: period,
-                    custom: custom,
-                    onSelect: _selectPeriod,
-                    onPickCustom: _pickCustomRange,
-                  ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: async.when(
+                skipLoadingOnReload: true,
+                loading: () => const LinearProgressIndicator(minHeight: 3),
+                error: (_, __) => FriendlyLoadError(
+                  message: 'Unable to load cloud data',
+                  onRetry: () => unawaited(_refresh()),
                 ),
+                data: (_) => const SizedBox.shrink(),
               ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                  child: async.when(
-                    skipLoadingOnReload: true,
-                    loading: () => const LinearProgressIndicator(minHeight: 3),
-                    error: (_, __) => FriendlyLoadError(
-                      message: 'Unable to load cloud data',
-                      onRetry: () => unawaited(_refresh()),
-                    ),
-                    data: (_) => const SizedBox.shrink(),
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-                  child: Consumer(
-                    builder: (context, ref, _) {
-                      final cc = ref.watch(cloudCostProvider);
-                      return cc.when(
-                        loading: () => const SizedBox.shrink(),
-                        error: (_, __) => const SizedBox.shrink(),
-                        data: (m) {
-                          if (m.isEmpty) {
-                            return const SizedBox.shrink();
-                          }
-                          final showCard = m['show_home_card'] != false;
-                          if (!showCard) {
-                            return const SizedBox.shrink();
-                          }
-                          final name = m['name']?.toString() ?? 'Cloud Cost';
-                          final amt = (m['amount_inr'] as num?)?.toDouble() ?? 0;
-                          final next = m['next_due_date']?.toString() ?? '—';
-                          final needPay = m['show_alert'] == true;
-                          final inPre = m['in_pre_due_window'] == true;
-                          final iconColor = needPay
-                              ? const Color(0xFFDC2626)
-                              : (inPre
-                                  ? const Color(0xFFF59E0B)
-                                  : const Color(0xFF16A34A));
-                          Future<void> markPaid() async {
-                            final s = ref.read(sessionProvider);
-                            if (s == null) return;
-                            try {
-                              await ref.read(hexaApiProvider).postCloudCostPay(
-                                    businessId: s.primaryBusiness.id,
-                                    provider: 'manual',
-                                  );
-                              if (!context.mounted) return;
-                              ref.invalidate(cloudCostProvider);
-                              invalidateBusinessAggregates(ref);
-                            } catch (e) {
-                              if (!context.mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                    content: Text(friendlyApiError(e))),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+              child: Consumer(
+                builder: (context, ref, _) {
+                  final cc = ref.watch(cloudCostProvider);
+                  return cc.when(
+                    loading: () => const SizedBox.shrink(),
+                    error: (_, __) => const SizedBox.shrink(),
+                    data: (m) {
+                      if (m.isEmpty) {
+                        return const SizedBox.shrink();
+                      }
+                      final showCard = m['show_home_card'] != false;
+                      if (!showCard) {
+                        return const SizedBox.shrink();
+                      }
+                      final name = m['name']?.toString() ?? 'Cloud Cost';
+                      final amt = (m['amount_inr'] as num?)?.toDouble() ?? 0;
+                      final next = m['next_due_date']?.toString() ?? '—';
+                      final needPay = m['show_alert'] == true;
+                      final inPre = m['in_pre_due_window'] == true;
+                      final iconColor = needPay
+                          ? const Color(0xFFDC2626)
+                          : (inPre
+                              ? const Color(0xFFF59E0B)
+                              : const Color(0xFF16A34A));
+                      Future<void> markPaid() async {
+                        final s = ref.read(sessionProvider);
+                        if (s == null) return;
+                        try {
+                          await ref.read(hexaApiProvider).postCloudCostPay(
+                                businessId: s.primaryBusiness.id,
+                                provider: 'manual',
                               );
-                            }
-                          }
+                          if (!context.mounted) return;
+                          ref.invalidate(cloudCostProvider);
+                          invalidateBusinessAggregates(ref);
+                        } catch (e) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                                content: Text(friendlyApiError(e))),
+                          );
+                        }
+                      }
 
-                          Future<void> openUpi() async {
-                            if (AppConfig.cloudUpiVpa.isEmpty) return;
-                            final uri = Uri.parse(
-                              'upi://pay?pa=${Uri.encodeComponent(AppConfig.cloudUpiVpa)}'
-                              '&pn=${Uri.encodeComponent(AppConfig.cloudUpiPayeeName)}'
-                              '&am=${amt.toStringAsFixed(0)}'
-                              '&cu=INR',
-                            );
-                            if (!await launchUrl(
-                              uri,
-                              mode: LaunchMode.externalApplication,
-                            )) {
-                              if (!context.mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                    content: Text(
-                                        'Could not open a UPI app. Try again or pay manually.')),
-                              );
-                            }
-                          }
+                      Future<void> openUpi() async {
+                        if (AppConfig.cloudUpiVpa.isEmpty) return;
+                        final uri = Uri.parse(
+                          'upi://pay?pa=${Uri.encodeComponent(AppConfig.cloudUpiVpa)}'
+                          '&pn=${Uri.encodeComponent(AppConfig.cloudUpiPayeeName)}'
+                          '&am=${amt.toStringAsFixed(0)}'
+                          '&cu=INR',
+                        );
+                        if (!await launchUrl(
+                          uri,
+                          mode: LaunchMode.externalApplication,
+                        )) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text(
+                                    'Could not open a UPI app. Try again or pay manually.')),
+                          );
+                        }
+                      }
 
-                          return Card(
-                            margin: EdgeInsets.zero,
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 10),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                      return Card(
+                        margin: EdgeInsets.zero,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Row(
                                 children: [
-                                  Row(
-                                    children: [
-                                      Icon(
-                                        Icons.cloud_outlined,
-                                        size: 20,
-                                        color: iconColor,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              name,
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.w700,
-                                                fontSize: 13,
-                                              ),
-                                            ),
-                                            Text(
-                                              needPay
-                                                  ? 'Overdue · due $next'
-                                                  : (inPre
-                                                      ? 'Due soon · $next'
-                                                      : 'Due $next'),
-                                              style: const TextStyle(
-                                                fontSize: 11,
-                                                color: HexaColors.textSecondary,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      Text(
-                                        'Rs. ${amt.round()}',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w800,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                    ],
+                                  Icon(
+                                    Icons.cloud_outlined,
+                                    size: 18,
+                                    color: iconColor,
                                   ),
-                                  const SizedBox(height: 8),
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
-                                    alignment: WrapAlignment.end,
-                                    children: [
-                                      if (AppConfig.cloudUpiVpa.isNotEmpty)
-                                        OutlinedButton.icon(
-                                          icon: const Icon(
-                                              Icons.payment_rounded,
-                                              size: 18),
-                                          label: const Text('Pay via UPI'),
-                                          onPressed: openUpi,
-                                        ),
-                                      if (needPay || inPre)
-                                        FilledButton(
-                                          onPressed: markPaid,
-                                          child: const Text('Mark paid'),
-                                        )
-                                      else
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
                                         Text(
-                                          'Paid up',
-                                          style: TextStyle(
-                                            color: Colors.green[700],
+                                          name,
+                                          style: const TextStyle(
                                             fontWeight: FontWeight.w700,
                                             fontSize: 12,
                                           ),
                                         ),
-                                    ],
+                                        Text(
+                                          needPay
+                                              ? 'Overdue · due $next'
+                                              : (inPre
+                                                  ? 'Due soon · $next'
+                                                  : 'Due $next'),
+                                          style: const TextStyle(
+                                            fontSize: 10,
+                                            color: HexaColors.textSecondary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Text(
+                                    'Rs. ${amt.round()}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 13,
+                                    ),
                                   ),
                                 ],
                               ),
-                            ),
-                          );
-                        },
+                              const SizedBox(height: 6),
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 4,
+                                alignment: WrapAlignment.end,
+                                children: [
+                                  if (AppConfig.cloudUpiVpa.isNotEmpty)
+                                    TextButton(
+                                      style: TextButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8),
+                                        minimumSize: Size.zero,
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
+                                      ),
+                                      onPressed: openUpi,
+                                      child: const Text('UPI',
+                                          style: TextStyle(fontSize: 12)),
+                                    ),
+                                  if (needPay || inPre)
+                                    TextButton(
+                                      style: TextButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8),
+                                        minimumSize: Size.zero,
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
+                                      ),
+                                      onPressed: markPaid,
+                                      child: const Text('Mark paid',
+                                          style: TextStyle(fontSize: 12)),
+                                    )
+                                  else
+                                    Text(
+                                      'Paid up',
+                                      style: TextStyle(
+                                        color: Colors.green[700],
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
                       );
                     },
-                  ),
+                  );
+                },
+              ),
+            ),
+            Expanded(
+              child: async.when(
+                skipLoadingOnReload: true,
+                loading: () => const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 10, 16, 0),
+                  child: _LoadingPlaceholder(),
+                ),
+                error: (_, __) => const SizedBox.shrink(),
+                data: (d) => _HomeFixedHeaderBody(
+                  data: d,
+                  period: period,
+                  categoryColors: _donutColors,
+                  listBottomPadding: 8 + viewBottom,
+                  onRefresh: _refresh,
                 ),
               ),
-              SliverPadding(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  10,
-                  16,
-                  96 + MediaQuery.of(context).padding.bottom,
-                ),
-                sliver: SliverToBoxAdapter(
-                  child: async.when(
-                    skipLoadingOnReload: true,
-                    loading: () => const _LoadingPlaceholder(),
-                    error: (_, __) => const SizedBox.shrink(),
-                    data: (d) => _DashboardBody(
-                      data: d,
-                      donutColors: _donutColors,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -557,71 +557,158 @@ class _LoadingPlaceholder extends StatelessWidget {
   }
 }
 
-class _DashboardBody extends ConsumerStatefulWidget {
-  const _DashboardBody({
-    required this.data,
-    required this.donutColors,
-  });
-
-  final HomeDashboardData data;
-  final List<Color> donutColors;
-
-  @override
-  ConsumerState<_DashboardBody> createState() => _DashboardBodyState();
-}
-
-enum _DonutView { category, subcategory, item }
-
-class _DashboardBodyState extends ConsumerState<_DashboardBody> {
-  _DonutView _view = _DonutView.category;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _HomeKpiCard(data: widget.data),
-        const SizedBox(height: 14),
-        _DonutSection(
-          data: widget.data,
-          colors: widget.donutColors,
-          view: _view,
-          onViewChanged: (v) => setState(() => _view = v),
-        ),
-        const SizedBox(height: 14),
-        _BreakdownListSection(data: widget.data, view: _view),
-      ],
-    );
-  }
-}
-
 String _kpiUnitsLine(HomeDashboardData data) {
   final parts = <String>[];
   if (data.totalBags > 0) parts.add('${_fmtQty(data.totalBags)} bag');
   if (data.totalBoxes > 0) parts.add('${_fmtQty(data.totalBoxes)} box');
   if (data.totalTins > 0) parts.add('${_fmtQty(data.totalTins)} tin');
   if (data.totalKg > 0) parts.add('${_fmtQty(data.totalKg)} kg');
-  return parts.join(' | ');
+  return parts.join(' · ');
 }
 
-class _HomeKpiCard extends StatelessWidget {
-  const _HomeKpiCard({required this.data});
+class _HomeFixedHeaderBody extends ConsumerWidget {
+  const _HomeFixedHeaderBody({
+    required this.data,
+    required this.period,
+    required this.categoryColors,
+    required this.listBottomPadding,
+    required this.onRefresh,
+  });
+
   final HomeDashboardData data;
+  final HomePeriod period;
+  final List<Color> categoryColors;
+  final double listBottomPadding;
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final slice = data.categories.where((e) => e.totalAmount > 0).toList();
+    final amts = List<double>.generate(slice.length, (i) => slice[i].totalAmount);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          child: _HomeKpiBlock(data: data, period: period),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: LayoutBuilder(
+            builder: (context, c) {
+              final side = math.min(300.0, c.maxWidth);
+              if (slice.isEmpty || amts.every((a) => a <= 0)) {
+                return Center(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: side, maxHeight: side),
+                    child: AspectRatio(
+                      aspectRatio: 1,
+                      child: Center(
+                        child: Text(
+                          'No category spend in this period',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: const Color(0xFF64748B),
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }
+              return Center(
+                child: RepaintBoundary(
+                  child: SpendRingChart(
+                    diameter: side,
+                    strokeWidth: 17,
+                    values: amts,
+                    colors: categoryColors,
+                    centerLine1: _inr(data.totalPurchase),
+                    centerLine2: '${data.totalQtyAllLines.round()} units',
+                    centerLine3: _kpiUnitsLine(data).isNotEmpty
+                        ? _kpiUnitsLine(data)
+                        : null,
+                    onSectionTap: (i) {
+                      if (i < 0 || i >= slice.length) return;
+                      final cat = slice[i];
+                      if (cat.categoryId == '_uncat') {
+                        context.go('/catalog');
+                      } else {
+                        context.go('/catalog/category/${cat.categoryId}');
+                      }
+                    },
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: _ProfitBlock(data: data),
+        ),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: onRefresh,
+            color: HexaColors.brandPrimary,
+            child: ListView.builder(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, listBottomPadding),
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
+              itemCount: data.categories.isEmpty ? 1 : data.categories.length,
+              itemBuilder: (context, index) {
+                if (data.categories.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 32),
+                    child: Center(
+                      child: Text(
+                        'No purchases in this period',
+                        style: TextStyle(
+                          color: Color(0xFF64748B),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  );
+                }
+                final stat = data.categories[index];
+                return _CategoryRow(
+                  stat: stat,
+                  dotColor: categoryColors[index % categoryColors.length],
+                );
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HomeKpiBlock extends StatelessWidget {
+  const _HomeKpiBlock({required this.data, required this.period});
+  final HomeDashboardData data;
+  final HomePeriod period;
 
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
     final q = data.totalQtyAllLines;
-    final avg = q > 1e-9 ? data.totalPurchase / q : null;
-    return Card(
-      elevation: 0,
+    final sub = period == HomePeriod.month
+        ? 'This month'
+        : _periodCenterLabel(period);
+    return Material(
       color: Colors.white,
+      elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: const BorderSide(color: HexaColors.brandBorder),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -632,61 +719,37 @@ class _HomeKpiCard extends StatelessWidget {
             const SizedBox(height: 2),
             Text(
               _inr(data.totalPurchase),
-              textAlign: TextAlign.left,
               style: HexaDsType.purchaseLineMoney.copyWith(
                 fontSize: 28,
                 height: 1.12,
               ),
             ),
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 10),
-              child: Divider(height: 1),
+            const SizedBox(height: 4),
+            Text(
+              sub,
+              style: tt.labelSmall?.copyWith(
+                color: const Color(0xFF64748B),
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+              ),
             ),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Deals\n${data.purchaseCount}',
-                    textAlign: TextAlign.center,
-                    style: tt.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF0F172A),
-                      height: 1.25,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: Text(
-                    'Qty\n${_fmtQty(q)}',
-                    textAlign: TextAlign.center,
-                    style: tt.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF0F172A),
-                      height: 1.25,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: Text(
-                    avg != null ? 'Avg ₹\n${_inr(avg.round())}' : 'Avg ₹\n—',
-                    textAlign: TextAlign.center,
-                    style: tt.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF0F172A),
-                      height: 1.25,
-                    ),
-                  ),
-                ),
-              ],
+            const SizedBox(height: 6),
+            Text(
+              '${_fmtQty(q)} units',
+              style: tt.titleSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF0F172A),
+              ),
             ),
             if (_kpiUnitsLine(data).isNotEmpty) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               Text(
                 _kpiUnitsLine(data),
                 style: tt.labelSmall?.copyWith(
                   color: const Color(0xFF64748B),
                   fontWeight: FontWeight.w600,
                   height: 1.3,
+                  fontSize: 11,
                 ),
               ),
             ],
@@ -697,616 +760,163 @@ class _HomeKpiCard extends StatelessWidget {
   }
 }
 
-class _DonutSection extends StatelessWidget {
-  const _DonutSection({
-    required this.data,
-    required this.colors,
-    required this.view,
-    required this.onViewChanged,
-  });
-
+class _ProfitBlock extends StatelessWidget {
+  const _ProfitBlock({required this.data});
   final HomeDashboardData data;
-  final List<Color> colors;
-  final _DonutView view;
-  final ValueChanged<_DonutView> onViewChanged;
-
-  String get _title => switch (view) {
-        _DonutView.category => 'Spend by category',
-        _DonutView.subcategory => 'Spend by subcategory',
-        _DonutView.item => 'Spend by item',
-      };
 
   @override
   Widget build(BuildContext context) {
-    return _sectionCard(
-      context,
-      title: 'Distribution',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                for (final v in _DonutView.values) ...[
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: FilterChip(
-                      showCheckmark: false,
-                      label: Text(
-                        switch (v) {
-                          _DonutView.category => 'Category',
-                          _DonutView.subcategory => 'Subcategory',
-                          _DonutView.item => 'Items',
-                        },
-                        style: TextStyle(
-                          fontWeight: view == v ? FontWeight.w800 : FontWeight.w600,
-                          color: view == v ? HexaColors.brandPrimary : const Color(0xFF334155),
-                        ),
-                      ),
-                      selected: view == v,
-                      selectedColor: HexaColors.brandPrimary.withValues(alpha: 0.18),
-                      checkmarkColor: HexaColors.brandPrimary,
-                      side: BorderSide(
-                        color: view == v
-                            ? HexaColors.brandPrimary
-                            : const Color(0xFFCBD5E1),
-                        width: view == v ? 1.5 : 1,
-                      ),
-                      onSelected: (_) => onViewChanged(v),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            _title,
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: const Color(0xFF64748B),
-                  fontWeight: FontWeight.w700,
-                ),
-          ),
-          const SizedBox(height: 8),
-          LayoutBuilder(
-            builder: (context, c) {
-              return switch (view) {
-                _DonutView.category => _donutForCategories(context, c),
-                _DonutView.subcategory => _donutForSubcategories(context, c),
-                _DonutView.item => _donutForItems(context, c),
-              };
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _donutForCategories(
-      BuildContext context, BoxConstraints constraints) {
-    final slice = data.categories.where((e) => e.totalAmount > 0).toList();
-    return _buildDonut(
-      context,
-      constraints,
-      slice.isEmpty,
-      'No category spend in this period',
-      (i) {
-        if (i < 0 || i >= slice.length) return;
-        final cat = slice[i];
-        if (cat.categoryId == '_uncat') {
-          context.go('/catalog');
-        } else {
-          context.go('/catalog/category/${cat.categoryId}');
-        }
-      },
-      List.generate(slice.length, (i) => slice[i].totalAmount),
-      _legendCategory(context, slice),
-    );
-  }
-
-  Widget _donutForSubcategories(
-      BuildContext context, BoxConstraints constraints) {
-    final slice = data.subcategories.where((e) => e.totalAmount > 0).toList();
-    return _buildDonut(
-      context,
-      constraints,
-      slice.isEmpty,
-      'No subcategory spend in this period',
-      (i) {
-        if (i < 0 || i >= slice.length) return;
-        final s = slice[i];
-        final parts = s.id.split('|');
-        if (parts.isNotEmpty && parts[0] != '_uncat' && parts[0].isNotEmpty) {
-          context.go('/catalog/category/${parts[0]}');
-        } else {
-          context.go('/catalog');
-        }
-      },
-      List.generate(slice.length, (i) => slice[i].totalAmount),
-      _legendSubcategory(context, slice),
-    );
-  }
-
-  Widget _donutForItems(
-      BuildContext context, BoxConstraints constraints) {
-    final slice = data.itemSlices.where((e) => e.totalAmount > 0).toList();
-    return _buildDonut(
-      context,
-      constraints,
-      slice.isEmpty,
-      'No item spend in this period',
-      (i) {
-        if (i < 0 || i >= slice.length) return;
-        final it = slice[i];
-        final id = it.catalogItemId;
-        if (id != null && id.isNotEmpty) {
-          context.push('/catalog/item/$id');
-        } else {
-          final enc = Uri.encodeComponent(it.name);
-          context.push('/item-analytics/$enc');
-        }
-      },
-      List.generate(slice.length, (i) => slice[i].totalAmount),
-      _legendItem(context, slice),
-    );
-  }
-
-  Widget _buildDonut(
-    BuildContext context,
-    BoxConstraints constraints,
-    bool isEmpty,
-    String emptyText,
-    void Function(int) onSectionTap,
-    List<double> segmentAmounts,
-    Widget legend,
-  ) {
-    if (isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Center(
-          child: Text(
-            emptyText,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Color(0xFF64748B),
+    final s = data.totalSelling;
+    final l = data.totalLanding > 0 ? data.totalLanding : data.totalPurchase;
+    final p = data.totalProfit;
+    final pp = data.profitPercent;
+    if (s < 1e-6) {
+      return Text(
+        'Add selling on lines to see profit',
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: const Color(0xFF94A3B8),
               fontWeight: FontWeight.w600,
             ),
-          ),
-        ),
       );
     }
-    final maxW = constraints.maxWidth;
-    final side = (maxW * 0.85).clamp(200.0, 320.0);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Center(
-          child: RepaintBoundary(
-            child: SpendRingChart(
-              diameter: side,
-              values: segmentAmounts,
-              colors: colors,
-              centerLabel: _periodCenterLabel(data.period),
-              centerValue: _inr(data.totalPurchase),
-              onSectionTap: onSectionTap,
-            ),
-          ),
+        _profitRow('Landing', _inr(l)),
+        const SizedBox(height: 2),
+        _profitRow('Selling', _inr(s)),
+        const SizedBox(height: 2),
+        _profitRow(
+          'Profit',
+          '${p >= 0 ? '' : '−'}${_inr(p.abs())}${pp != null ? '  (${p >= 0 ? '+' : ''}${pp.toStringAsFixed(1)}%)' : ''}',
         ),
-        const SizedBox(height: 8),
-        legend,
       ],
     );
   }
 
-  Widget _legendCategory(
-      BuildContext context, List<CategoryStat> slice) {
-    return _legendRows(
-      List.generate(
-        slice.length,
-        (i) => _LegendEntry(
-          color: colors[i % colors.length],
-          title: slice[i].categoryName,
-          sub: _inr(slice[i].totalAmount),
-        ),
-      ),
-    );
-  }
-
-  Widget _legendSubcategory(
-      BuildContext context, List<SubcategoryStat> slice) {
-    return _legendRows(
-      List.generate(
-        slice.length,
-        (i) => _LegendEntry(
-          color: colors[i % colors.length],
-          title: slice[i].label,
-          sub: _inr(slice[i].totalAmount),
-        ),
-      ),
-    );
-  }
-
-  Widget _legendItem(BuildContext context, List<ItemSliceStat> slice) {
-    return _legendRows(
-      List.generate(
-        slice.length,
-        (i) => _LegendEntry(
-          color: colors[i % colors.length],
-          title: slice[i].name,
-          sub: _inr(slice[i].totalAmount),
-        ),
-      ),
-    );
-  }
-
-  Widget _legendRows(List<_LegendEntry> items) {
-    if (items.isEmpty) return const SizedBox.shrink();
-    return Column(
+  Widget _profitRow(String k, String v) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        for (var i = 0; i < items.length; i++) ...[
-          if (i > 0) const SizedBox(height: 4),
-          Row(
-            children: [
-              Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  color: items[i].color,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  items[i].title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF0F172A),
-                  ),
-                ),
-              ),
-              Text(
-                items[i].sub,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF0F172A),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _LegendEntry {
-  const _LegendEntry({
-    required this.color,
-    required this.title,
-    required this.sub,
-  });
-  final Color color;
-  final String title;
-  final String sub;
-}
-
-Widget _sectionCard(
-  BuildContext context, {
-  required String title,
-  required Widget child,
-}) {
-  return Card(
-    elevation: 0,
-    color: Colors.white,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(12),
-      side: const BorderSide(color: HexaColors.brandBorder),
-    ),
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            title,
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: const Color(0xFF0F172A),
-                ),
-          ),
-          const SizedBox(height: 8),
-          child,
-        ],
-      ),
-    ),
-  );
-}
-
-class _BreakdownListSection extends StatelessWidget {
-  const _BreakdownListSection({
-    required this.data,
-    required this.view,
-  });
-
-  final HomeDashboardData data;
-  final _DonutView view;
-
-  @override
-  Widget build(BuildContext context) {
-    return switch (view) {
-      _DonutView.category => _categoryList(context),
-      _DonutView.subcategory => _subcategoryList(context),
-      _DonutView.item => _itemList(context),
-    };
-  }
-
-  Widget _categoryList(BuildContext context) {
-    if (data.categories.isEmpty) {
-      return _sectionCard(
-        context,
-        title: 'Details',
-        child: const Text(
-          'No purchases in this period',
-          style: TextStyle(
-            color: Color(0xFF64748B),
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      );
-    }
-    return _sectionCard(
-      context,
-      title: 'By category',
-      child: Column(
-        children: [
-          for (var i = 0; i < data.categories.length; i++) ...[
-            if (i > 0) const Divider(height: 1),
-            _CategoryExpansionTile(stat: data.categories[i]),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _subcategoryList(BuildContext context) {
-    final rows = data.subcategories.where((e) => e.totalAmount > 0).toList();
-    if (rows.isEmpty) {
-      return _sectionCard(
-        context,
-        title: 'By subcategory',
-        child: const Text(
-          'No subcategory data in this period',
-          style: TextStyle(
-            color: Color(0xFF64748B),
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      );
-    }
-    return _sectionCard(
-      context,
-      title: 'By subcategory',
-      child: Column(
-        children: [
-          for (var i = 0; i < rows.length; i++) ...[
-            if (i > 0) const Divider(height: 1),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(
-                rows[i].label,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                  color: Color(0xFF0F172A),
-                ),
-              ),
-              subtitle: Text(
-                '${_fmtQty(rows[i].totalQty)} qty',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF64748B),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              trailing: Text(
-                _inr(rows[i].totalAmount),
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 14,
-                  color: HexaColors.brandPrimary,
-                ),
-              ),
-              onTap: () {
-                final parts = rows[i].id.split('|');
-                if (parts.isNotEmpty &&
-                    parts[0] != '_uncat' &&
-                    parts[0].isNotEmpty) {
-                  context.go('/catalog/category/${parts[0]}');
-                } else {
-                  context.go('/catalog');
-                }
-              },
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _itemList(BuildContext context) {
-    final rows = data.itemSlices.where((e) => e.totalAmount > 0).toList();
-    if (rows.isEmpty) {
-      return _sectionCard(
-        context,
-        title: 'By item',
-        child: const Text(
-          'No item data in this period',
-          style: TextStyle(
-            color: Color(0xFF64748B),
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      );
-    }
-    return _sectionCard(
-      context,
-      title: 'By item',
-      child: Column(
-        children: [
-          for (var i = 0; i < rows.length; i++) ...[
-            if (i > 0) const Divider(height: 1),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(
-                rows[i].name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                  color: Color(0xFF0F172A),
-                ),
-              ),
-              subtitle: Text(
-                rows[i].unit.isEmpty
-                    ? '${_fmtQty(rows[i].totalQty)} qty'
-                    : '${_fmtQty(rows[i].totalQty)} ${rows[i].unit}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF64748B),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              trailing: Text(
-                _inr(rows[i].totalAmount),
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 14,
-                  color: HexaColors.brandPrimary,
-                ),
-              ),
-              onTap: () {
-                final id = rows[i].catalogItemId;
-                if (id != null && id.isNotEmpty) {
-                  context.push('/catalog/item/$id');
-                } else {
-                  final enc = Uri.encodeComponent(rows[i].name);
-                  context.push('/item-analytics/$enc');
-                }
-              },
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _CategoryExpansionTile extends StatelessWidget {
-  const _CategoryExpansionTile({required this.stat});
-  final CategoryStat stat;
-
-  @override
-  Widget build(BuildContext context) {
-    final top = stat.items.isNotEmpty ? stat.items.first : null;
-    return Theme(
-      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-      child: ExpansionTile(
-        tilePadding: EdgeInsets.zero,
-        childrenPadding: const EdgeInsets.only(left: 8, right: 0, bottom: 8),
-        title: Text(
-          stat.categoryName,
+        Text(
+          k,
           style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF64748B),
+          ),
+        ),
+        Text(
+          v,
+          style: const TextStyle(
+            fontSize: 12,
             fontWeight: FontWeight.w800,
-            fontSize: 14,
             color: Color(0xFF0F172A),
           ),
         ),
-        subtitle: top != null
-            ? Text(
-                'Top: ${top.name}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF64748B),
-                  fontWeight: FontWeight.w700,
-                ),
-              )
-            : null,
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              _inr(stat.totalAmount),
-              style: const TextStyle(
-                fontWeight: FontWeight.w800,
-                fontSize: 14,
-                color: HexaColors.brandPrimary,
-              ),
-            ),
-            Text(
-              '${_fmtQty(stat.totalQty)} qty',
-              style: const TextStyle(
-                fontSize: 12,
-                color: Color(0xFF334155),
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ],
-        ),
-        children: [
-          for (final it in stat.items)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
+      ],
+    );
+  }
+}
+
+String _categoryQtyLabel(CategoryStat c) {
+  if (c.items.isNotEmpty) {
+    final u = c.items.first.unit.trim();
+    if (u.isNotEmpty && u != '—') {
+      return '${_fmtQty(c.totalQty)} $u';
+    }
+  }
+  return '${_fmtQty(c.totalQty)} units';
+}
+
+class _CategoryRow extends StatelessWidget {
+  const _CategoryRow({required this.stat, required this.dotColor});
+  final CategoryStat stat;
+  final Color dotColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final sup = (stat.subtitleSupplier == null || stat.subtitleSupplier!.isEmpty)
+        ? '—'
+        : stat.subtitleSupplier!;
+    final bro = (stat.subtitleBroker == null || stat.subtitleBroker!.isEmpty)
+        ? '—'
+        : stat.subtitleBroker!;
+    final sub = '${_categoryQtyLabel(stat)} · $sup · $bro';
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          if (stat.categoryId == '_uncat') {
+            context.go('/catalog');
+          } else {
+            context.go('/catalog/category/${stat.categoryId}');
+          }
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: dotColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      it.name,
-                      maxLines: 1,
+                      stat.categoryName,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 13,
                         fontWeight: FontWeight.w800,
+                        fontSize: 15,
                         color: Color(0xFF0F172A),
+                        height: 1.2,
                       ),
                     ),
                   ),
                   Text(
-                    it.unit.isEmpty
-                        ? _fmtQty(it.qty)
-                        : '${_fmtQty(it.qty)} ${it.unit}',
+                    _inr(stat.totalAmount),
                     style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF64748B),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    _inr(it.amount),
-                    textAlign: TextAlign.right,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF0F172A),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                      color: HexaColors.brandPrimary,
                     ),
                   ),
                 ],
               ),
-            ),
-        ],
+              const SizedBox(height: 4),
+              Padding(
+                padding: const EdgeInsets.only(left: 18),
+                child: Text(
+                  sub,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
+                    height: 1.25,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 }
+

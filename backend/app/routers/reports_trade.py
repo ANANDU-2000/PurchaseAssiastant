@@ -138,15 +138,28 @@ async def trade_dashboard_snapshot(
     )
     roll_row = (await db.execute(roll)).mappings().one()
 
+    sell_line = case(
+        (TradePurchaseLine.selling_cost.isnot(None), TradePurchaseLine.qty * TradePurchaseLine.selling_cost),
+        else_=0.0,
+    )
     sum_q = select(
         func.count(func.distinct(TradePurchase.id)).label("deals"),
         func.coalesce(func.sum(amt), 0.0).label("total_purchase"),
         func.coalesce(func.sum(TradePurchaseLine.qty), 0.0).label("total_qty"),
+        func.coalesce(func.sum(sell_line), 0.0).label("total_selling"),
     ).select_from(TradePurchaseLine).join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id).where(bf)
     srow = (await db.execute(sum_q)).mappings().one()
     total_purchase = float(srow["total_purchase"] or 0)
+    total_selling = float(srow["total_selling"] or 0)
     total_qty = float(srow["total_qty"] or 0)
     deals = int(srow["deals"] or 0)
+    total_landing = total_purchase
+    total_profit = total_selling - total_landing
+    profit_percent: float | None
+    if total_landing > 1e-12:
+        profit_percent = (total_profit / total_landing) * 100.0
+    else:
+        profit_percent = None
 
     items = await trade_items_breakdown(business_id, _m, db, date_from, date_to)
     types = await trade_types_breakdown(business_id, _m, db, date_from, date_to)
@@ -214,6 +227,37 @@ async def trade_dashboard_snapshot(
         c["items"].sort(key=lambda x: x["amount"], reverse=True)
 
     detail, recs = await trade_map.item_supplier_broker_rows(db, business_id, date_from, date_to)
+    by_cid: dict[str, list[dict[str, Any]]] = {}
+    for d in detail:
+        iid = d.get("catalog_item_id")
+        if not iid:
+            continue
+        sid = str(iid)
+        if sid not in by_cid:
+            by_cid[sid] = []
+        by_cid[sid].append(d)
+    for c in cat_map.values():
+        its = c.get("items") or []
+        sup = "—"
+        bro: str = "—"
+        for it in its:
+            iid = it.get("catalog_item_id")
+            if not iid:
+                continue
+            group = by_cid.get(str(iid))
+            if not group:
+                continue
+            best = max(
+                group,
+                key=lambda g: (float(g.get("total_purchase") or 0.0), str(g.get("supplier_id") or "")),
+            )
+            sname = str(best.get("supplier_name") or "").strip()
+            bname = best.get("broker_name")
+            sup = sname or "—"
+            bro = str(bname).strip() if bname is not None and str(bname).strip() else "—"
+            break
+        c["subtitle_supplier"] = sup
+        c["subtitle_broker"] = bro
     suppliers = await _trade_suppliers_rows(db, business_id, date_from, date_to)
     cids = {d["catalog_item_id"] for d in detail if d.get("catalog_item_id")}
     scores: list[float] = []
@@ -230,6 +274,10 @@ async def trade_dashboard_snapshot(
         "summary": {
             "deals": deals,
             "total_purchase": total_purchase,
+            "total_landing": total_landing,
+            "total_selling": total_selling,
+            "total_profit": total_profit,
+            "profit_percent": round(profit_percent, 2) if profit_percent is not None else None,
             "total_qty": total_qty,
         },
         "unit_totals": {

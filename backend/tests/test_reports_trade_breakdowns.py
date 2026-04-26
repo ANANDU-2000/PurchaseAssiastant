@@ -122,8 +122,18 @@ def test_trade_items_suppliers_categories_endpoints():
     )
     assert snap.status_code == 200, snap.text
     sd = snap.json()
-    assert float(sd.get("summary", {}).get("total_purchase", 0)) > 0
+    su = sd.get("summary", {})
+    assert float(su.get("total_purchase", 0)) > 0
+    assert "total_selling" in su
+    assert "total_landing" in su
+    assert "total_profit" in su
+    assert "profit_percent" in su
     assert "categories" in sd and isinstance(sd["categories"], list)
+    for c in sd["categories"]:
+        assert "subtitle_supplier" in c
+        assert "subtitle_broker" in c
+        for it in c.get("items") or []:
+            assert "catalog_item_id" in it
     assert "recommendations" in sd
 
     mpr = client.get(

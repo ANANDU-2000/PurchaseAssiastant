@@ -40,7 +40,7 @@ class ShellScreen extends ConsumerWidget {
 
     final bottomFabClearance = hideShellChrome
         ? 0.0
-        : 56.0 + MediaQuery.viewPaddingOf(context).bottom;
+        : 70.0 + MediaQuery.viewPaddingOf(context).bottom;
 
     // Stable key: tab switches must NOT rebuild the entire shell (would drop branch state).
     return Scaffold(

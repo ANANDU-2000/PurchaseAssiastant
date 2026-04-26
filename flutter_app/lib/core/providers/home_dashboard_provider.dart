@@ -81,12 +81,14 @@ class CategoryItemStat {
     required this.qty,
     required this.unit,
     required this.amount,
+    this.catalogItemId,
   });
 
   final String name;
   final double qty;
   final String unit;
   final double amount;
+  final String? catalogItemId;
 }
 
 class CategoryStat {
@@ -97,6 +99,8 @@ class CategoryStat {
     required this.totalQty,
     required this.units,
     required this.items,
+    this.subtitleSupplier,
+    this.subtitleBroker,
   });
 
   final String categoryId;
@@ -106,6 +110,8 @@ class CategoryStat {
   final CategoryUnitTotals units;
   /// Sorted by amount (desc) — first is the category top item.
   final List<CategoryItemStat> items;
+  final String? subtitleSupplier;
+  final String? subtitleBroker;
 }
 
 /// One row in the “Subcategory” (CategoryType) view — `label` is e.g. "Rice — Biriyani".
@@ -153,10 +159,19 @@ class HomeDashboardData {
     required this.categories,
     required this.subcategories,
     required this.itemSlices,
+    this.totalLanding = 0,
+    this.totalSelling = 0,
+    this.totalProfit = 0,
+    this.profitPercent,
   });
 
   final HomePeriod period;
   final double totalPurchase;
+  /// Landing (purchase) side total; matches [totalLanding] when the API sends it.
+  final double totalLanding;
+  final double totalSelling;
+  final double totalProfit;
+  final double? profitPercent;
   /// Sum of line `qty` in range (for display next to purchase count).
   final double totalQtyAllLines;
   final double totalKg;
@@ -173,6 +188,10 @@ class HomeDashboardData {
   static const empty = HomeDashboardData(
     period: HomePeriod.month,
     totalPurchase: 0,
+    totalLanding: 0,
+    totalSelling: 0,
+    totalProfit: 0,
+    profitPercent: null,
     totalQtyAllLines: 0,
     totalKg: 0,
     totalBags: 0,
@@ -201,6 +220,11 @@ HomeDashboardData homeDashboardDataFromApiSnapshot(
       (snap['unit_totals'] is Map) ? snap['unit_totals']! as Map : const {};
   final deals = (summary['deals'] as num?)?.toInt() ?? 0;
   final totalPurchase = (summary['total_purchase'] as num?)?.toDouble() ?? 0.0;
+  final totalLanding = (summary['total_landing'] as num?)?.toDouble() ?? totalPurchase;
+  final totalSelling = (summary['total_selling'] as num?)?.toDouble() ?? 0.0;
+  final totalProfit = (summary['total_profit'] as num?)?.toDouble() ??
+      (totalSelling - totalLanding);
+  final profitPercent = (summary['profit_percent'] as num?)?.toDouble();
   final totalQtyAllLines = (summary['total_qty'] as num?)?.toDouble() ?? 0.0;
   final totalKg = (unitTotals['total_kg'] as num?)?.toDouble() ?? 0.0;
   final totalBags = (unitTotals['total_bags'] as num?)?.toDouble() ?? 0.0;
@@ -221,12 +245,14 @@ HomeDashboardData homeDashboardDataFromApiSnapshot(
         for (final it in items) {
           if (it is! Map) continue;
           final im = Map<String, dynamic>.from(it);
+          final cid = im['catalog_item_id']?.toString();
           itemRows.add(
             CategoryItemStat(
               name: im['name']?.toString() ?? '—',
               qty: (im['qty'] as num?)?.toDouble() ?? 0.0,
               unit: im['unit']?.toString() ?? '—',
               amount: (im['amount'] as num?)?.toDouble() ?? 0.0,
+              catalogItemId: (cid != null && cid.isNotEmpty) ? cid : null,
             ),
           );
         }
@@ -244,6 +270,8 @@ HomeDashboardData homeDashboardDataFromApiSnapshot(
             tins: (umap['tins'] as num?)?.toDouble() ?? 0.0,
           ),
           items: itemRows,
+          subtitleSupplier: m['subtitle_supplier']?.toString(),
+          subtitleBroker: m['subtitle_broker']?.toString(),
         ),
       );
     }
@@ -294,6 +322,10 @@ HomeDashboardData homeDashboardDataFromApiSnapshot(
   return HomeDashboardData(
     period: period,
     totalPurchase: totalPurchase,
+    totalLanding: totalLanding,
+    totalSelling: totalSelling,
+    totalProfit: totalProfit,
+    profitPercent: profitPercent,
     totalQtyAllLines: totalQtyAllLines,
     totalKg: totalKg,
     totalBags: totalBags,
@@ -396,6 +428,7 @@ HomeDashboardData _aggregate({
   };
 
   var totalPurchase = 0.0;
+  var totalSelling = 0.0;
   var totalQtyAllLines = 0.0;
   var totalKg = 0.0;
   var totalBags = 0.0;
@@ -418,6 +451,10 @@ HomeDashboardData _aggregate({
 
     for (final ln in p.lines) {
       final amt = _lineTradeAmount(ln);
+      final sc = ln.sellingCost;
+      if (sc != null) {
+        totalSelling += ln.qty * sc;
+      }
       totalQtyAllLines += ln.qty;
       totalKg += _lineKg(ln);
 
@@ -492,6 +529,7 @@ HomeDashboardData _aggregate({
         qty: it.qty,
         unit: it.unit,
         amount: it.amount,
+        catalogItemId: it.catalogItemId,
       ));
     }
     itemRows.sort((x, y) => y.amount.compareTo(x.amount));
@@ -523,6 +561,7 @@ HomeDashboardData _aggregate({
     if (it.qty <= 0 && it.amount <= 0) continue;
     itemRows.add(ItemSliceStat(
       name: it.name,
+      catalogItemId: it.catalogItemId,
       totalAmount: it.amount,
       totalQty: it.qty,
       unit: it.unit,
@@ -530,9 +569,17 @@ HomeDashboardData _aggregate({
   }
   itemRows.sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
 
+  final totalLanding = totalPurchase;
+  final totalProfit = totalSelling - totalLanding;
+  final profitPercent =
+      totalLanding > 1e-9 ? (totalProfit / totalLanding) * 100.0 : null;
   return HomeDashboardData(
     period: period,
     totalPurchase: totalPurchase,
+    totalLanding: totalLanding,
+    totalSelling: totalSelling,
+    totalProfit: totalProfit,
+    profitPercent: profitPercent,
     totalQtyAllLines: totalQtyAllLines,
     totalKg: totalKg,
     totalBags: totalBags,
