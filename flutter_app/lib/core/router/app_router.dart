@@ -222,6 +222,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         },
       ),
       GoRoute(
+        path: '/catalog/item/:itemId/ledger',
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['itemId']!;
+          return iosPushPage(
+            key: state.pageKey,
+            child: TradeLedgerPage(
+              kind: TradeLedgerKind.catalogItem,
+              entityId: id,
+            ),
+          );
+        },
+      ),
+      GoRoute(
         path: '/catalog/category/:categoryId',
         pageBuilder: (context, state) {
           final id = state.pathParameters['categoryId']!;

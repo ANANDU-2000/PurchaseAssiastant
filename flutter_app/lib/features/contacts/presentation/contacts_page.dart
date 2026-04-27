@@ -22,6 +22,12 @@ import '../../../shared/widgets/app_settings_action.dart';
 import 'broker_wizard_page.dart';
 import 'supplier_create_wizard_page.dart';
 
+String _fmtBrokerCommissionPct(double v) =>
+    v == v.roundToDouble() ? v.round().toString() : v.toStringAsFixed(1);
+
+String _fmtBrokerCommissionInr(double v) =>
+    v == v.roundToDouble() ? v.round().toString() : v.toStringAsFixed(0);
+
 Color _avatarColor(String seed) {
   const palette = <Color>[
     Color(0xFF1A6B8A),
@@ -263,6 +269,7 @@ class _BrokerCard extends StatelessWidget {
     final ct = data['commission_type']?.toString().toLowerCase() ?? '';
     final cv = data['commission_value'];
     final isPct = ct == 'percent';
+    final cvNum = (cv is num) ? cv.toDouble() : double.tryParse(cv?.toString() ?? '');
     final nm = data['name']?.toString() ?? '—';
     final titleBase =
         tt.titleMedium?.copyWith(fontWeight: FontWeight.w800) ?? const TextStyle(fontWeight: FontWeight.w800);
@@ -314,15 +321,15 @@ class _BrokerCard extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           isPct
-                              ? 'Commission: Per cent'
-                              : 'Commission: Fixed ₹',
+                              ? (cvNum == null
+                                  ? 'Commission: —'
+                                  : 'Commission: ${_fmtBrokerCommissionPct(cvNum)}%')
+                              : (cvNum == null
+                                  ? 'Commission: —'
+                                  : 'Commission: Fixed ₹${_fmtBrokerCommissionInr(cvNum)}'),
                           style: tt.bodySmall
                               ?.copyWith(color: HexaColors.textSecondary),
                         ),
-                        if (cv != null)
-                          Text('$cv',
-                              style: tt.labelLarge
-                                  ?.copyWith(fontWeight: FontWeight.w600)),
                       ],
                     ),
                   ),

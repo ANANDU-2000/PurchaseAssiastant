@@ -477,6 +477,9 @@ class _PeriodChip extends StatelessWidget {
     required this.onTap,
   });
 
+  static const _activeBg = Color(0xFF17A8A7);
+  static const _inactiveText = Color(0xFF374151);
+
   final String label;
   final bool selected;
   final VoidCallback onTap;
@@ -484,7 +487,7 @@ class _PeriodChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? HexaColors.brandPrimary : const Color(0xFFE8EEEC),
+      color: selected ? _activeBg : const Color(0xFFE8EEEC),
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         onTap: onTap,
@@ -494,7 +497,7 @@ class _PeriodChip extends StatelessWidget {
           child: Text(
             label,
             style: TextStyle(
-              color: selected ? Colors.white : const Color(0xFF475569),
+              color: selected ? Colors.white : _inactiveText,
               fontWeight: FontWeight.w700,
               fontSize: 13,
             ),
@@ -556,12 +559,17 @@ class _LoadingPlaceholder extends StatelessWidget {
 }
 
 String _kpiUnitsLineUpper(HomeDashboardData data) {
-  final a =
-      '${_fmtQty(data.totalBags)} BAG • ${_fmtQty(data.totalBoxes)} BOX • ${_fmtQty(data.totalTins)} TIN';
-  if (data.totalKg > 1e-9) {
-    return '$a • ${_fmtQty(data.totalKg)} KG';
-  }
-  return a;
+  final tb = data.totalBags;
+  final txb = data.totalBoxes;
+  final ttn = data.totalTins;
+  final tkg = data.totalKg;
+  final parts = <String>[];
+  if (tb > 1e-9) parts.add('${_fmtQty(tb)} BAG');
+  if (tkg > 1e-9) parts.add('${_fmtQty(tkg)} KG');
+  if (txb > 1e-9) parts.add('${_fmtQty(txb)} BOX');
+  if (ttn > 1e-9) parts.add('${_fmtQty(ttn)} TIN');
+  if (parts.isNotEmpty) return parts.join(' • ');
+  return '0 UNITS';
 }
 
 /// Profit, percent, units, and matching breakdown (for ring + KPI).
@@ -1113,8 +1121,11 @@ List<_BreakdownRowSlice> _topSlice(
       return [
         for (final r in rows.take(maxN))
           _BreakdownRowSlice(
-            title:
-                '${r['category_name'] ?? '—'} — ${r['type_name'] ?? '—'}',
+            title: () {
+              final tn = r['type_name']?.toString().trim() ?? '';
+              if (tn.isNotEmpty) return tn;
+              return r['category_name']?.toString() ?? '—';
+            }(),
             ringAmount: (r['total_purchase'] as num?)?.toDouble() ?? 0,
             line2:
                 '${_fmtQty((r['total_qty'] as num?)?.toDouble() ?? 0)} UNITS',

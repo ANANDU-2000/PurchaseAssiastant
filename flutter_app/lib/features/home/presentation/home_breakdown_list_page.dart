@@ -156,9 +156,10 @@ class HomeBreakdownListPage extends ConsumerWidget {
   }
 
   Widget _rowSub(BuildContext context, Map<String, dynamic> r, int index) {
-    final cat = r['category_name']?.toString() ?? '—';
-    final typ = r['type_name']?.toString() ?? '—';
-    final title = '$cat — $typ';
+    final typ = r['type_name']?.toString().trim() ?? '';
+    final title = typ.isNotEmpty
+        ? typ
+        : (r['category_name']?.toString() ?? '—');
     final amt = (r['total_purchase'] as num?)?.toDouble() ?? 0;
     final q = (r['total_qty'] as num?)?.toDouble() ?? 0;
     final dot = _dotColors[index % _dotColors.length];

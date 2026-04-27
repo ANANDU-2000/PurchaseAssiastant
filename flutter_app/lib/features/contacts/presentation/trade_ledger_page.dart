@@ -1,19 +1,30 @@
+import 'dart:async';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
-import '../../../core/router/navigation_ext.dart';
 import '../../../core/models/trade_purchase_models.dart';
+import '../../../core/providers/business_aggregates_invalidation.dart';
+import '../../../core/providers/business_profile_provider.dart';
 import '../../../core/providers/business_write_revision.dart';
+import '../../../core/providers/catalog_providers.dart';
+import '../../../core/router/navigation_ext.dart';
+import '../../../core/services/item_statement_pdf.dart';
+import '../../../core/services/supplier_statement_pdf.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/utils/trade_purchase_commission.dart';
 import '../../../shared/widgets/hexa_empty_state.dart';
 
-enum TradeLedgerKind { supplier, broker }
+enum TradeLedgerKind { supplier, broker, catalogItem }
 
-/// PUR ledger for one supplier or one broker (trade purchases only).
+DateTime _dOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+/// PUR ledger for a supplier, broker, or catalog item (trade purchases only).
 class TradeLedgerPage extends ConsumerStatefulWidget {
   const TradeLedgerPage({
     super.key,
@@ -34,13 +45,16 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
   List<TradePurchase> _rows = const [];
   final _searchCtrl = TextEditingController();
 
-  String get _title => widget.kind == TradeLedgerKind.supplier
-      ? 'Supplier ledger'
-      : 'Broker ledger';
+  late DateTime _to;
+  late DateTime _from;
+  String _dateChip = 'All';
 
   @override
   void initState() {
     super.initState();
+    final n = _dOnly(DateTime.now());
+    _to = n;
+    _from = _dOnly(DateTime(2020));
     _searchCtrl.addListener(() => setState(() {}));
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
@@ -51,15 +65,80 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
     super.dispose();
   }
 
+  String get _title => switch (widget.kind) {
+        TradeLedgerKind.supplier => 'Supplier ledger',
+        TradeLedgerKind.broker => 'Broker ledger',
+        TradeLedgerKind.catalogItem => 'Item ledger',
+      };
+
+  List<TradePurchase> get _inDateRange {
+    return [
+      for (final p in _rows)
+        if (!_dOnly(p.purchaseDate).isBefore(_from) &&
+            !_dOnly(p.purchaseDate).isAfter(_to))
+          p,
+    ];
+  }
+
   List<TradePurchase> get _visibleRows {
+    final base = _inDateRange;
     final q = _searchCtrl.text.trim().toLowerCase();
-    if (q.isEmpty) return _rows;
-    return _rows.where((p) {
+    if (q.isEmpty) return base;
+    return base.where((p) {
+      if (p.humanId.toLowerCase().contains(q)) return true;
+      final inv = p.invoiceNumber?.toLowerCase() ?? '';
+      if (inv.contains(q)) return true;
+      final ds = DateFormat('dd MMM yyyy').format(p.purchaseDate).toLowerCase();
+      if (ds.contains(q)) return true;
+      final ds2 = DateFormat('MMMM').format(p.purchaseDate).toLowerCase();
+      if (ds2.contains(q)) return true;
+      final sup = p.supplierName?.toLowerCase() ?? '';
+      if (sup.contains(q)) return true;
       for (final l in p.lines) {
         if (l.itemName.toLowerCase().contains(q)) return true;
       }
       return p.itemsSummary.toLowerCase().contains(q);
     }).toList();
+  }
+
+  void _applyDateChip(String label) {
+    final n = _dOnly(DateTime.now());
+    setState(() {
+      _dateChip = label;
+      _to = n;
+      switch (label) {
+        case 'This Month':
+          _from = DateTime(n.year, n.month, 1);
+        case '3 Months':
+          _from = n.subtract(const Duration(days: 89));
+        case '6 Months':
+          _from = n.subtract(const Duration(days: 179));
+        case 'All':
+          _from = _dOnly(DateTime(2020));
+        default:
+          break;
+      }
+    });
+  }
+
+  Future<void> _pickCustomRange() async {
+    final now = DateTime.now();
+    final initial = DateTimeRange(
+      start: _from.isAfter(_to) ? _to : _from,
+      end: _to,
+    );
+    final r = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(now.year + 1, 12, 31),
+      initialDateRange: initial,
+    );
+    if (!mounted || r == null) return;
+    setState(() {
+      _dateChip = 'Custom';
+      _from = _dOnly(r.start);
+      _to = _dOnly(r.end);
+    });
   }
 
   Future<void> _load() async {
@@ -77,10 +156,14 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
             businessId: session.primaryBusiness.id,
             limit: 200,
             status: 'all',
-            supplierId:
-                widget.kind == TradeLedgerKind.supplier ? widget.entityId : null,
+            supplierId: widget.kind == TradeLedgerKind.supplier
+                ? widget.entityId
+                : null,
             brokerId:
                 widget.kind == TradeLedgerKind.broker ? widget.entityId : null,
+            catalogItemId: widget.kind == TradeLedgerKind.catalogItem
+                ? widget.entityId
+                : null,
           );
       if (!mounted) return;
       final parsed = <TradePurchase>[];
@@ -105,6 +188,93 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
     }
   }
 
+  Future<void> _confirmDelete(TradePurchase p) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete purchase?'),
+        content: Text('Remove ${p.humanId}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    try {
+      await ref.read(hexaApiProvider).deleteTradePurchase(
+            businessId: session.primaryBusiness.id,
+            purchaseId: p.id,
+          );
+      invalidatePurchaseWorkspace(ref);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Deleted')),
+        );
+      }
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e is DioException
+                ? friendlyApiError(e)
+                : 'Could not delete. Try again.',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _shareStatementPdf(List<TradePurchase> data) async {
+    final session = ref.read(sessionProvider);
+    if (session == null || data.isEmpty) return;
+    final biz = ref.read(invoiceBusinessProfileProvider);
+    try {
+      if (widget.kind == TradeLedgerKind.supplier) {
+        final first = data.first;
+        await shareSupplierStatementPdf(
+          business: biz,
+          supplierName: first.supplierName ?? 'Supplier',
+          supplierAddress: first.supplierAddress,
+          supplierGst: first.supplierGst,
+          supplierPhone: first.supplierPhone ?? first.supplierWhatsapp,
+          purchases: data,
+          fromDate: _from,
+          toDate: _to,
+        );
+      } else if (widget.kind == TradeLedgerKind.catalogItem) {
+        final itemAsync = ref.read(catalogItemDetailProvider(widget.entityId));
+        final name = itemAsync.maybeWhen(
+          data: (m) => m['name']?.toString() ?? 'Item',
+          orElse: () => 'Item',
+        );
+        await shareItemStatementPdf(
+          business: biz,
+          itemName: name,
+          purchases: data,
+          fromDate: _from,
+          toDate: _to,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('PDF failed: $e')),
+        );
+      }
+    }
+  }
+
   static String _inr(num n) =>
       NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
           .format(n);
@@ -117,35 +287,54 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
       }
     });
 
+    final itemAsync = widget.kind == TradeLedgerKind.catalogItem
+        ? ref.watch(catalogItemDetailProvider(widget.entityId))
+        : null;
+
     final data = _visibleRows;
     final sumTotal = data.fold<double>(0, (s, p) => s + p.totalAmount);
     final sumDue = data.fold<double>(0, (s, p) => s + p.remaining);
-    var lineSum = 0.0;
-    for (final p in data) {
-      for (final l in p.lines) {
-        lineSum += tradePurchaseLineSumForLine(l);
-      }
-    }
     var commSum = 0.0;
     if (widget.kind == TradeLedgerKind.broker) {
       for (final p in data) {
         commSum += tradePurchaseCommissionInr(p);
       }
     }
-    final first = _rows.isNotEmpty ? _rows.first : null;
-    final entityTitle = widget.kind == TradeLedgerKind.supplier
-        ? (first?.supplierName?.trim().isNotEmpty == true
-            ? first!.supplierName!
-            : 'Supplier')
-        : (first?.brokerName?.trim().isNotEmpty == true
-            ? first!.brokerName!
-            : 'Broker');
+
+    final firstInAll = _rows.isNotEmpty ? _rows.first : null;
+    final entityTitle = switch (widget.kind) {
+      TradeLedgerKind.supplier => (firstInAll?.supplierName
+                  ?.trim()
+                  .isNotEmpty ==
+              true)
+          ? firstInAll!.supplierName!
+          : 'Supplier',
+      TradeLedgerKind.broker => (firstInAll?.brokerName?.trim().isNotEmpty ==
+              true)
+          ? firstInAll!.brokerName!
+          : 'Broker',
+      TradeLedgerKind.catalogItem => itemAsync?.maybeWhen(
+            data: (m) => m['name']?.toString() ?? 'Item',
+            orElse: () => 'Item',
+          ) ??
+          'Item',
+    };
+
     final phone = widget.kind == TradeLedgerKind.supplier
-        ? (first?.supplierPhone ?? first?.supplierWhatsapp)
-        : first?.brokerPhone;
+        ? (firstInAll?.supplierPhone ?? firstInAll?.supplierWhatsapp)
+        : firstInAll?.brokerPhone;
+    final addr = widget.kind == TradeLedgerKind.supplier
+        ? firstInAll?.supplierAddress
+        : null;
+    final gst = widget.kind == TradeLedgerKind.supplier
+        ? firstInAll?.supplierGst
+        : null;
 
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    const chipTeal = Color(0xFF17A8A7);
+    const chipText = Color(0xFF374151);
+    final fmt = DateFormat.yMMMd();
 
     return Scaffold(
       appBar: AppBar(
@@ -155,6 +344,15 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
         ),
         title: Text(_title),
         actions: [
+          if (widget.kind == TradeLedgerKind.supplier ||
+              widget.kind == TradeLedgerKind.catalogItem)
+            IconButton(
+              tooltip: 'Share statement PDF',
+              onPressed: (_loading || data.isEmpty)
+                  ? null
+                  : () => _shareStatementPdf(data),
+              icon: const Icon(Icons.picture_as_pdf_outlined),
+            ),
           IconButton(
             tooltip: 'Refresh',
             onPressed: _loading ? null : _load,
@@ -195,6 +393,27 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
                                   fontWeight: FontWeight.w900,
                                 ),
                               ),
+                              if (widget.kind == TradeLedgerKind.catalogItem &&
+                                  itemAsync != null)
+                                itemAsync.when(
+                                  data: (m) {
+                                    final h = m['hsn_code']?.toString();
+                                    if (h == null || h.isEmpty) {
+                                      return const SizedBox.shrink();
+                                    }
+                                    return Padding(
+                                      padding: const EdgeInsets.only(top: 4),
+                                      child: Text(
+                                        'HSN: $h',
+                                        style: tt.bodySmall?.copyWith(
+                                          color: cs.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  loading: () => const SizedBox.shrink(),
+                                  error: (_, __) => const SizedBox.shrink(),
+                                ),
                               if (phone != null && phone.trim().isNotEmpty) ...[
                                 const SizedBox(height: 4),
                                 Text(
@@ -205,6 +424,33 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
                                   ),
                                 ),
                               ],
+                              if (addr != null && addr.trim().isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  addr,
+                                  style: tt.bodySmall?.copyWith(
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                              if (gst != null && gst.trim().isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  'GSTIN: $gst',
+                                  style: tt.labelSmall?.copyWith(
+                                    color: cs.onSurfaceVariant,
+                                    fontFamily: 'monospace',
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: 8),
+                              Text(
+                                'Period: ${fmt.format(_from)} – ${fmt.format(_to)}',
+                                style: tt.labelMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: chipTeal,
+                                ),
+                              ),
                               const SizedBox(height: 10),
                               Text(
                                 'Summary',
@@ -214,17 +460,9 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                '${data.length} purchase(s) · Bill total ${_inr(sumTotal.round())}',
+                                '${data.length} purchase(s) in view · Bill total ${_inr(sumTotal.round())}',
                                 style: tt.bodyMedium?.copyWith(
                                   fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Line subtotal (catalog math) ${_inr(lineSum.round())}',
-                                style: tt.bodySmall?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  color: cs.onSurfaceVariant,
                                 ),
                               ),
                               if (widget.kind == TradeLedgerKind.broker) ...[
@@ -252,10 +490,55 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
                         ),
                       ),
                       const SizedBox(height: 8),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            for (final label in <String>[
+                              'This Month',
+                              '3 Months',
+                              '6 Months',
+                              'All',
+                              'Custom',
+                            ])
+                              Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: ChoiceChip(
+                                  label: Text(
+                                    label,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: _dateChip == label
+                                          ? FontWeight.w800
+                                          : FontWeight.w600,
+                                      color: _dateChip == label
+                                          ? Colors.white
+                                          : chipText,
+                                    ),
+                                  ),
+                                  selected: _dateChip == label,
+                                  onSelected: (_) {
+                                    if (label == 'Custom') {
+                                      unawaited(_pickCustomRange());
+                                    } else {
+                                      _applyDateChip(label);
+                                    }
+                                  },
+                                  selectedColor: chipTeal,
+                                  backgroundColor: cs.surfaceContainerHighest
+                                      .withValues(alpha: 0.6),
+                                  side: BorderSide.none,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
                       TextField(
                         controller: _searchCtrl,
                         decoration: const InputDecoration(
-                          hintText: 'Search by item on line…',
+                          hintText:
+                              'Search invoice, item, supplier, date (e.g. Apr)…',
                           filled: true,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.all(Radius.circular(12)),
@@ -272,72 +555,186 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
                               ? 'No trade purchases yet'
                               : 'No matches',
                           subtitle: _rows.isEmpty
-                              ? (widget.kind == TradeLedgerKind.supplier
-                                  ? 'Record a purchase with this supplier as the party to see it here.'
-                                  : 'Record a purchase with this broker attached to see it here.')
-                              : 'Try a different item name.',
+                              ? switch (widget.kind) {
+                                  TradeLedgerKind.supplier =>
+                                    'Record a purchase with this supplier as the party to see it here.',
+                                  TradeLedgerKind.broker =>
+                                    'Record a purchase with this broker attached to see it here.',
+                                  TradeLedgerKind.catalogItem =>
+                                    'No saved lines linked this catalog item in recent bills.',
+                                }
+                              : 'Try different words or widen the period.',
                           primaryActionLabel: 'New purchase',
                           onPrimaryAction: () => context.push('/purchase/new'),
                         )
                       else
-                        ...data.map((p) {
-                          final st = p.statusEnum;
-                          final comm = tradePurchaseCommissionInr(p);
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 6),
-                            child: ListTile(
-                              dense: true,
-                              title: Text(
-                                p.humanId,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              subtitle: Text(
-                                '${DateFormat.yMMMd().format(p.purchaseDate)} · ${p.itemsSummary.isEmpty ? '${p.lines.length} line(s)' : p.itemsSummary}',
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              trailing: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    _inr(p.totalAmount.round()),
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                  if (widget.kind == TradeLedgerKind.broker &&
-                                      p.commissionPercent != null &&
-                                      p.commissionPercent! > 0)
-                                    Text(
-                                      'Comm ${_inr(comm.round())}',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w700,
-                                        color: cs.primary,
-                                      ),
-                                    ),
-                                  Text(
-                                    st.label,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700,
-                                      color: st.color,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              onTap: () =>
+                        ...data.map((p) => _LedgerPurchaseCard(
+                              p: p,
+                              cs: cs,
+                              tt: tt,
+                              kind: widget.kind,
+                              onOpen: () =>
                                   context.push('/purchase/detail/${p.id}'),
-                            ),
-                          );
-                        }),
+                              onDelete: () => _confirmDelete(p),
+                            )),
                     ],
                   ),
                 ),
+    );
+  }
+}
+
+class _LedgerPurchaseCard extends StatelessWidget {
+  const _LedgerPurchaseCard({
+    required this.p,
+    required this.cs,
+    required this.tt,
+    required this.kind,
+    required this.onOpen,
+    required this.onDelete,
+  });
+
+  final TradePurchase p;
+  final ColorScheme cs;
+  final TextTheme tt;
+  final TradeLedgerKind kind;
+  final VoidCallback onOpen;
+  final VoidCallback onDelete;
+
+  static String _inr(num n) =>
+      NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
+          .format(n);
+
+  @override
+  Widget build(BuildContext context) {
+    final st = p.statusEnum;
+    final comm = tradePurchaseCommissionInr(p);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        onTap: onOpen,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          p.humanId,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            color: cs.primary,
+                            fontSize: 13,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          DateFormat.yMMMd().format(p.purchaseDate),
+                          style: tt.bodySmall?.copyWith(
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Flexible(
+                    child: Text(
+                      _inr(p.totalAmount.round()),
+                      textAlign: TextAlign.end,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                ],
+              ),
+              if (kind == TradeLedgerKind.catalogItem &&
+                  (p.supplierName ?? '').trim().isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  p.supplierName!,
+                  style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
+                ),
+              ],
+              const SizedBox(height: 6),
+              for (final ln in p.lines)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: Text(
+                          ln.itemName,
+                          style: tt.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Text(
+                        '${ln.qty % 1 == 0 ? ln.qty.toInt() : ln.qty.toStringAsFixed(1)} ${ln.unit}',
+                        style: tt.labelSmall,
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: st.color.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      st.label,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: st.color,
+                      ),
+                    ),
+                  ),
+                  if (kind == TradeLedgerKind.broker &&
+                      p.commissionPercent != null &&
+                      p.commissionPercent! > 0)
+                    Text(
+                      'Comm ${_inr(comm.round())}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: cs.primary,
+                      ),
+                    ),
+                  TextButton(
+                    onPressed: onOpen,
+                    child: const Text('Edit / View'),
+                  ),
+                  TextButton(
+                    onPressed: onDelete,
+                    style: TextButton.styleFrom(foregroundColor: cs.error),
+                    child: const Text('Delete'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

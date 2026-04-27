@@ -409,24 +409,18 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
 
   List<String>? _itemFooterRow(List<Map<String, dynamic>> full) {
     if (full.isEmpty) return null;
-    var bags = 0.0, boxes = 0.0, tins = 0.0, kg = 0.0, sell = 0.0, tot = 0.0;
+    var bags = 0.0, kg = 0.0, tot = 0.0;
     for (final r in full) {
       bags += (r['total_bags'] as num?)?.toDouble() ?? 0;
-      boxes += (r['total_boxes'] as num?)?.toDouble() ?? 0;
-      tins += (r['total_tins'] as num?)?.toDouble() ?? 0;
       kg += (r['total_kg'] as num?)?.toDouble() ?? 0;
-      sell += (r['total_selling'] as num?)?.toDouble() ?? 0;
       tot += (r['total_purchase'] as num?)?.toDouble() ?? 0;
     }
     String u(double v) => v == v.roundToDouble() ? v.round().toString() : v.toStringAsFixed(1);
     return [
       'Total',
       u(bags),
-      u(boxes),
-      u(tins),
       u(kg),
       '—',
-      sell > 1e-9 ? _inr(sell.round()) : '—',
       _inr(tot.round()),
     ];
   }
@@ -443,13 +437,15 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
 
   List<String>? _categoryFooterRow(List<Map<String, dynamic>> full) {
     if (full.isEmpty) return null;
-    var qty = 0.0, tot = 0.0;
+    var bags = 0.0, tot = 0.0;
     for (final r in full) {
-      qty += (r['total_qty'] as num?)?.toDouble() ?? 0;
+      bags += (r['total_bags'] as num?)?.toDouble() ?? 0;
       tot += (r['total_purchase'] as num?)?.toDouble() ?? 0;
     }
-    final qs = qty == qty.roundToDouble() ? qty.round().toString() : qty.toStringAsFixed(1);
-    return ['Total', qs, _inr(tot.round())];
+    final bs = bags == bags.roundToDouble()
+        ? bags.round().toString()
+        : bags.toStringAsFixed(1);
+    return ['Total', bs, _inr(tot.round())];
   }
 
   /// Filter/sort/cap for snapshot-backed tables; [rows.length] drives “View more”.
@@ -518,32 +514,23 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
       header: const [
         'Item',
         'Bags',
-        'Box',
-        'Tin',
         'Kg',
-        'Avg ₹',
-        'Sell ₹',
-        'Total ₹',
+        'Avg rate',
+        'Total spend',
       ],
-      flexes: const [3, 1, 1, 1, 1, 1, 1, 2],
+      flexes: const [3, 1, 1, 1, 2],
       rows: rows.map((r) {
         final name = r['item_name']?.toString() ?? '—';
         final total = (r['total_purchase'] as num?)?.toDouble() ?? 0;
         final qty = (r['total_qty'] as num?)?.toDouble() ?? 0;
         final avg = (r['avg_landing'] as num?)?.toDouble() ?? 0;
         final bags = (r['total_bags'] as num?)?.toDouble() ?? 0;
-        final boxes = (r['total_boxes'] as num?)?.toDouble() ?? 0;
-        final tins = (r['total_tins'] as num?)?.toDouble() ?? 0;
         final kg = (r['total_kg'] as num?)?.toDouble() ?? 0;
-        final sell = (r['total_selling'] as num?)?.toDouble() ?? 0;
         return [
           name,
           uq(bags),
-          uq(boxes),
-          uq(tins),
           uq(kg),
           qty > 1e-9 ? _inr(avg.round()) : '—',
-          sell > 1e-9 ? _inr(sell.round()) : '—',
           _inr(total.round()),
         ];
       }).toList(),
@@ -559,7 +546,7 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
     if (rows.isEmpty) return _noItemsRowsCard(context);
     return _reportTable(
       context,
-      header: const ['Supplier', 'Deals', 'Total ₹'],
+      header: const ['Supplier', 'Deals', 'Spend'],
       flexes: const [3, 1, 2],
       rows: rows.map((r) {
         final name = r['supplier_name']?.toString() ?? '—';
@@ -579,16 +566,16 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
     if (rows.isEmpty) return _noItemsRowsCard(context);
     return _reportTable(
       context,
-      header: const ['Category', 'Total qty', 'Total ₹'],
+      header: const ['Category', 'Bags', 'Spend'],
       flexes: const [3, 1, 2],
       rows: rows.map((r) {
         final name = r['category_name']?.toString() ?? '—';
-        final qty = (r['total_qty'] as num?)?.toDouble() ?? 0;
         final total = (r['total_purchase'] as num?)?.toDouble() ?? 0;
-        final qtyStr = qty == qty.roundToDouble()
-            ? qty.toInt().toString()
-            : qty.toStringAsFixed(1);
-        return [name, qtyStr, _inr(total.round())];
+        final bags = (r['total_bags'] as num?)?.toDouble() ?? 0;
+        final bagsStr = bags == bags.roundToDouble()
+            ? bags.toInt().toString()
+            : bags.toStringAsFixed(1);
+        return [name, bagsStr, _inr(total.round())];
       }).toList(),
       footerRow: footer,
     );
@@ -609,7 +596,9 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
     );
     bool colRight(int i, int len) {
       if (i == len - 1) return true;
-      return header.length == 8 && i >= 5;
+      if (len == 5) return i == 3 || i == 4; // Avg + Total
+      if (len == 3) return i == 2; // third column
+      return false;
     }
     Widget cell(
       String v, {
@@ -656,12 +645,9 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
     }
     return LayoutBuilder(
       builder: (context, c) {
-        final minW = c.maxWidth < 600 ? 600.0 : c.maxWidth;
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: SizedBox(
-            width: minW,
-            child: Card(
+        return SizedBox(
+          width: c.maxWidth,
+          child: Card(
               margin: EdgeInsets.zero,
               child: Column(
                 children: [
@@ -703,7 +689,8 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                                 rightAlign: colRight(i, rows[ri].length),
                                 isLastCol: i == rows[ri].length - 1,
                                 isFirstCol: i == 0,
-                                isMoneyCol: header.length == 8 && i >= 5,
+                                isMoneyCol: (header.length == 5 && i >= 3) ||
+                                    (header.length == 3 && i == 2),
                               ),
                             ),
                         ],
@@ -738,7 +725,6 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
                 ],
               ),
             ),
-          ),
         );
       },
     );

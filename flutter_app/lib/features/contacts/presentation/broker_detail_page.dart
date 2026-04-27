@@ -198,6 +198,8 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
                 widget.brokerId;
             context.pushNamed('purchase_new');
           },
+          backgroundColor: const Color(0xFF17A8A7),
+          foregroundColor: Colors.white,
           icon: const Icon(Icons.add_shopping_cart_rounded),
           label: const Text('New purchase'),
         ),

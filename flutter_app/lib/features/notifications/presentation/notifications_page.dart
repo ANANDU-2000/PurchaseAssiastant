@@ -186,29 +186,27 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
-                            Icons.notifications_none_rounded,
-                            size: 56,
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant
-                                .withValues(alpha: 0.55),
+                            Icons.notifications_none_outlined,
+                            size: 64,
+                            color: Colors.grey.shade300,
                           ),
                           const SizedBox(height: 12),
                           Text(
-                            filtered.isEmpty
-                                ? 'No reminders yet'
-                                : 'No matches',
+                            q.isNotEmpty
+                                ? 'No matches'
+                                : 'No alerts yet',
                             textAlign: TextAlign.center,
-                            style: tt.titleSmall?.copyWith(
+                            style: tt.titleMedium?.copyWith(
                               fontWeight: FontWeight.w800,
+                              fontSize: 16,
                               color: onSurf,
                             ),
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            filtered.isEmpty
-                                ? 'Price alerts, due purchases, and cloud billing will show up here.'
-                                : 'Try a different search or filter.',
+                            q.isNotEmpty
+                                ? 'Try a different search or filter.'
+                                : 'Payment due alerts and reminders will appear here.',
                             textAlign: TextAlign.center,
                             style: tt.bodySmall?.copyWith(
                               color: Theme.of(context)

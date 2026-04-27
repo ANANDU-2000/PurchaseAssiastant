@@ -5,8 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
-
 import '../../../core/models/trade_purchase_models.dart' show TradePurchaseLine;
 import '../../../core/router/navigation_ext.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
@@ -20,7 +18,6 @@ import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
 import '../../../core/services/reports_pdf.dart';
-import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../core/widgets/list_skeleton.dart';
 import '../../../shared/widgets/bag_default_unit_hint.dart';
@@ -39,6 +36,7 @@ class CatalogItemDetailPage extends ConsumerStatefulWidget {
 class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
   int _historyRangeDays = kDefaultItemHistoryRangeDays;
   static const int _kMaxHistoryRows = 200;
+  final _histSearchCtrl = TextEditingController();
 
   String _inr(num? n) {
     if (n == null) return '—';
@@ -155,6 +153,12 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
     }
   }
 
+  @override
+  void dispose() {
+    _histSearchCtrl.dispose();
+    super.dispose();
+  }
+
   Future<void> _refresh() async {
     ref.invalidate(catalogItemDetailProvider(widget.itemId));
     ref.invalidate(tradePurchasesCatalogIntelProvider);
@@ -243,6 +247,12 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _histSearchCtrl.addListener(() => setState(() {}));
+  }
+
+  @override
   Widget build(BuildContext context) {
     ref.listen<int>(businessDataWriteRevisionProvider, (prev, next) {
       if (prev != null && next > prev) {
@@ -274,6 +284,12 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
         ),
         actions: [
           IconButton(
+            tooltip: 'Item ledger & statement',
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            onPressed: () =>
+                context.push('/catalog/item/${widget.itemId}/ledger'),
+          ),
+          IconButton(
             tooltip: 'Purchase history',
             icon: const Icon(Icons.receipt_long_outlined),
             onPressed: () => context.push(
@@ -285,6 +301,8 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
       floatingActionButton: itemAsync.hasValue
           ? FloatingActionButton.extended(
               onPressed: _openPurchasesForThisItem,
+              backgroundColor: const Color(0xFF17A8A7),
+              foregroundColor: Colors.white,
               icon: const Icon(Icons.add_shopping_cart_rounded),
               label: const Text('Add purchase'),
             )
@@ -375,125 +393,30 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                     );
                     final rangeHist =
                         itemTradeHistoryRowsInRange(hist, _historyRangeDays);
-                    final intel = itemSupplierIntel(rangeHist);
-                    final recent =
+                    final baseRecent =
                         rangeHist.take(_kMaxHistoryRows).toList();
-                    final last = rangeHist.isNotEmpty ? rangeHist.first : null;
-                    var qtySum = 0.0;
-                    for (final r in rangeHist) {
-                      qtySum += r.line.qty;
-                    }
+                    final q = _histSearchCtrl.text.trim().toLowerCase();
+                    final recent = q.isEmpty
+                        ? baseRecent
+                        : baseRecent.where((r) {
+                            if (r.humanId.toLowerCase().contains(q)) {
+                              return true;
+                            }
+                            if (r.supplierName.toLowerCase().contains(q)) {
+                              return true;
+                            }
+                            if (r.line.itemName.toLowerCase().contains(q)) {
+                              return true;
+                            }
+                            return DateFormat('dd MMM yyyy')
+                                .format(r.purchaseDate)
+                                .toLowerCase()
+                                .contains(q);
+                          }).toList();
 
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        if (last != null) ...[
-                          const _ItemSectionLabel(label: 'Last purchase'),
-                          const SizedBox(height: 6),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      last.supplierName,
-                                      style: HexaDsType.purchaseQtyUnit
-                                          .copyWith(fontSize: 16, fontWeight: FontWeight.w800),
-                                    ),
-                                    if (last.supplierPhone != null &&
-                                        last.supplierPhone!.trim().isNotEmpty)
-                                      TextButton.icon(
-                                        style: TextButton.styleFrom(
-                                          padding: EdgeInsets.zero,
-                                          visualDensity: VisualDensity.compact,
-                                          alignment: Alignment.centerLeft,
-                                        ),
-                                        onPressed: () async {
-                                          final raw =
-                                              last.supplierPhone!.trim();
-                                          final cleaned = raw.replaceAll(
-                                              RegExp(r'[^\d+]'), '');
-                                          final uri = Uri(
-                                            scheme: 'tel',
-                                            path: cleaned,
-                                          );
-                                          if (await canLaunchUrl(uri)) {
-                                            await launchUrl(uri);
-                                          }
-                                        },
-                                        icon: const Icon(Icons.call_rounded,
-                                            size: 18),
-                                        label: Text(last.supplierPhone!),
-                                      ),
-                                    if (last.brokerName != null &&
-                                        last.brokerName!.trim().isNotEmpty) ...[
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        'Broker: ${last.brokerName}',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                      if (last.brokerPhone != null &&
-                                          last.brokerPhone!.trim().isNotEmpty)
-                                        TextButton.icon(
-                                          style: TextButton.styleFrom(
-                                            padding: EdgeInsets.zero,
-                                            visualDensity: VisualDensity.compact,
-                                            alignment: Alignment.centerLeft,
-                                          ),
-                                          onPressed: () async {
-                                            final raw =
-                                                last.brokerPhone!.trim();
-                                            final cleaned = raw.replaceAll(
-                                                RegExp(r'[^\d+]'), '');
-                                            final uri = Uri(
-                                              scheme: 'tel',
-                                              path: cleaned,
-                                            );
-                                            if (await canLaunchUrl(uri)) {
-                                              await launchUrl(uri);
-                                            }
-                                          },
-                                          icon: const Icon(
-                                              Icons.call_rounded,
-                                              size: 18),
-                                          label: Text(last.brokerPhone!),
-                                        ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Last: ${last.rateLabel()} · ${_inr(last.lineTotal)} · ${_fmtDate(last.purchaseDate.toIso8601String())}',
-                            style: HexaDsType.purchaseQtyUnit
-                                .copyWith(fontSize: 13, color: Theme.of(context).colorScheme.onSurface),
-                          ),
-                          const SizedBox(height: 14),
-                        ],
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _StatChip(
-                                label: 'Qty purchased',
-                                value: _fmtNum(qtySum),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _StatChip(
-                                label: 'Purchase lines',
-                                value: '${rangeHist.length}',
-                              ),
-                            ),
-                          ],
-                        ),
                         if (hist.isEmpty) ...[
                           const SizedBox(height: 8),
                           Text(
@@ -506,12 +429,30 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                             ),
                           ),
                         ],
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 8),
                         _ItemSectionLabel(
                           label:
                               'Recent history · last $_historyRangeDays days (trade)',
                         ),
                         const SizedBox(height: 6),
+                        TextField(
+                          controller: _histSearchCtrl,
+                          decoration: InputDecoration(
+                            hintText: 'Search invoice, supplier, item…',
+                            filled: true,
+                            isDense: true,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide.none,
+                            ),
+                            fillColor: Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHighest
+                                .withValues(alpha: 0.5),
+                            prefixIcon: const Icon(Icons.search, size: 20),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
                         Wrap(
                           spacing: 6,
                           runSpacing: 6,
@@ -560,75 +501,14 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                             fmtNum: _fmtNum,
                             inr: _inr,
                           ),
-                        const SizedBox(height: 16),
-                        const _ItemSectionLabel(label: 'Supplier comparison'),
-                        const SizedBox(height: 6),
-                        if (intel.isEmpty)
-                          Text(
-                            'No supplier mix yet.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                            ),
-                          )
-                        else ...[
-                          _SupplierIntelHeaderRow(
-                              cs: Theme.of(context).colorScheme),
-                          for (final s in intel)
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 4),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    flex: 2,
-                                    child: Text(
-                                      s.supplierName,
-                                      style: TextStyle(
-                                        fontWeight:
-                                            supplierIntelIsBest(s, intel)
-                                                ? FontWeight.w900
-                                                : FontWeight.w600,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(
-                                    width: 40,
-                                    child: Text(
-                                      '${s.deals}',
-                                      textAlign: TextAlign.end,
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.w700),
-                                    ),
-                                  ),
-                                  Expanded(
-                                    flex: 2,
-                                    child: Text(
-                                      s.avgLabel(),
-                                      textAlign: TextAlign.end,
-                                      style: const TextStyle(fontSize: 12),
-                                    ),
-                                  ),
-                                  if (supplierIntelIsBest(s, intel))
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 6),
-                                      child: Text(
-                                        'Best price',
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w900,
-                                          color: HexaColors.profit,
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                        ],
                         const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: () =>
+                              context.push('/catalog/item/${widget.itemId}/ledger'),
+                          icon: const Icon(Icons.receipt_long_outlined),
+                          label: const Text('View full statement & ledger'),
+                        ),
+                        const SizedBox(height: 8),
                         OutlinedButton.icon(
                           onPressed: () =>
                               _exportItemPdf(itemName, rangeHist),
@@ -710,40 +590,6 @@ class _ItemSectionLabel extends StatelessWidget {
     return Text(
       label,
       style: HexaDsType.formSectionLabel,
-    );
-  }
-}
-
-class _StatChip extends StatelessWidget {
-  const _StatChip({required this.label, required this.value});
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: cs.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: cs.onSurfaceVariant,
-                ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            value,
-            style: HexaDsType.statChipValue,
-          ),
-        ],
-      ),
     );
   }
 }
@@ -998,29 +844,6 @@ class _DefaultPartyLine extends StatelessWidget {
               phone!,
               style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
             ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SupplierIntelHeaderRow extends StatelessWidget {
-  const _SupplierIntelHeaderRow({required this.cs});
-  final ColorScheme cs;
-
-  @override
-  Widget build(BuildContext context) {
-    final st = Theme.of(context).textTheme.labelSmall!.copyWith(
-          fontWeight: FontWeight.w800,
-          color: cs.onSurfaceVariant,
-        );
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        children: [
-          Expanded(flex: 2, child: Text('Supplier', style: st)),
-          SizedBox(width: 44, child: Text('Deals', style: st, textAlign: TextAlign.end)),
-          Expanded(flex: 2, child: Text('Avg', style: st, textAlign: TextAlign.end)),
         ],
       ),
     );

@@ -1022,47 +1022,72 @@ class _CloudSettingsCard extends ConsumerWidget {
     }
   }
 
+  /// When the server row cannot be loaded, show the same card layout using
+  /// local [cloudPaymentLocalProvider] only — no error banner (BUG-R5).
+  static Map<String, dynamic> _offlineCloudCostPlaceholder() => {
+        'name': 'Cloud hosting',
+        'amount_inr': 0,
+        'next_due_date': '—',
+        'show_alert': false,
+        'in_pre_due_window': false,
+      };
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final cs = Theme.of(context).colorScheme;
     final local = ref.watch(cloudPaymentLocalProvider);
     final async = ref.watch(cloudCostProvider);
     return async.when(
-      loading: () => Card(
-        color: context.adaptiveCard,
-        child: const ListTile(
-          leading: SizedBox(
-            width: 22,
-            height: 22,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-          title: Text('Cloud hosting'),
-        ),
+      loading: () => _buildCloudCard(
+        context,
+        ref,
+        m: _offlineCloudCostPlaceholder(),
+        local: local,
+        serverUnavailable: true,
+        loading: true,
       ),
-      error: (_, __) => Card(
-        color: context.adaptiveCard,
-        child: ListTile(
-          title: const Text('Unable to load cloud payment details'),
-          trailing: TextButton(
-            onPressed: () => ref.invalidate(cloudCostProvider),
-            child: const Text('Retry'),
-          ),
-        ),
+      error: (_, __) => _buildCloudCard(
+        context,
+        ref,
+        m: _offlineCloudCostPlaceholder(),
+        local: local,
+        serverUnavailable: true,
+        loading: false,
       ),
       data: (m) {
         if (m.isEmpty) return const SizedBox.shrink();
-        final amt = (m['amount_inr'] as num?)?.toDouble() ?? 0;
-        final next = m['next_due_date']?.toString() ?? '—';
-        final need = m['show_alert'] == true;
-        final inPre = m['in_pre_due_window'] == true;
-        final paidLocal = local.isPaid;
-        final iconColor = paidLocal
-            ? const Color(0xFF16A34A)
-            : (need
-                ? Colors.redAccent
-                : (inPre ? Colors.orange : cs.primary));
+        return _buildCloudCard(
+          context,
+          ref,
+          m: m,
+          local: local,
+          serverUnavailable: false,
+          loading: false,
+        );
+      },
+    );
+  }
 
-        return Card(
+  Widget _buildCloudCard(
+    BuildContext context,
+    WidgetRef ref, {
+    required Map<String, dynamic> m,
+    required CloudPaymentLocalView local,
+    required bool serverUnavailable,
+    required bool loading,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    final amt = (m['amount_inr'] as num?)?.toDouble() ?? 0;
+    final next = m['next_due_date']?.toString() ?? '—';
+    final need = m['show_alert'] == true;
+    final inPre = m['in_pre_due_window'] == true;
+    final paidLocal = local.isPaid;
+    final iconColor = paidLocal
+        ? const Color(0xFF16A34A)
+        : (need
+            ? Colors.redAccent
+            : (inPre ? Colors.orange : cs.primary));
+
+    return Card(
           color: context.adaptiveCard,
           child: Padding(
             padding: const EdgeInsets.all(12),
@@ -1087,7 +1112,7 @@ class _CloudSettingsCard extends ConsumerWidget {
                       ),
                     ),
                     Text(
-                      '₹${amt.round()}',
+                      (serverUnavailable && amt <= 0) ? '—' : '₹${amt.round()}',
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 15,
@@ -1095,6 +1120,25 @@ class _CloudSettingsCard extends ConsumerWidget {
                     ),
                   ],
                 ),
+                if (loading) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Loading billing details…',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ] else if (serverUnavailable) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Payment status is kept on this device. Monthly amount syncs when the server is available.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ],
                 if (paidLocal && local.paidAt != null) ...[
                   const SizedBox(height: 8),
                   Text(
@@ -1130,26 +1174,29 @@ class _CloudSettingsCard extends ConsumerWidget {
                     spacing: 6,
                     runSpacing: 6,
                     children: [
-                      OutlinedButton(
-                        style: _btnCompact,
-                        onPressed: () => _edit(context, ref, m),
-                        child: const Text('Edit', style: TextStyle(fontSize: 12)),
-                      ),
-                      if (AppConfig.cloudUpiVpa.isNotEmpty) ...[
-                        FilledButton.tonal(
-                          style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 4),
-                            minimumSize: const Size(0, 32),
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                          onPressed: () => _openUpiExternal(
-                            context,
-                            amountInr: amt,
-                          ),
-                          child: const Text('Pay via UPI',
-                              style: TextStyle(fontSize: 12)),
+                      if (!serverUnavailable)
+                        OutlinedButton(
+                          style: _btnCompact,
+                          onPressed: () => _edit(context, ref, m),
+                          child:
+                              const Text('Edit', style: TextStyle(fontSize: 12)),
                         ),
+                      if (AppConfig.cloudUpiVpa.isNotEmpty) ...[
+                        if (!serverUnavailable && amt > 0)
+                          FilledButton.tonal(
+                            style: FilledButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 4),
+                              minimumSize: const Size(0, 32),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            onPressed: () => _openUpiExternal(
+                              context,
+                              amountInr: amt,
+                            ),
+                            child: const Text('Pay via UPI',
+                                style: TextStyle(fontSize: 12)),
+                          ),
                         OutlinedButton(
                         style: _btnCompact,
                           onPressed: () async {
@@ -1168,15 +1215,16 @@ class _CloudSettingsCard extends ConsumerWidget {
                           child: const Text('Copy UPI ID',
                               style: TextStyle(fontSize: 12)),
                         ),
-                        OutlinedButton(
-                        style: _btnCompact,
-                          onPressed: () => _showQr(
-                            context,
-                            amountInr: amt,
+                        if (!serverUnavailable && amt > 0)
+                          OutlinedButton(
+                            style: _btnCompact,
+                            onPressed: () => _showQr(
+                              context,
+                              amountInr: amt,
+                            ),
+                            child: const Text('Show QR',
+                                style: TextStyle(fontSize: 12)),
                           ),
-                          child: const Text('Show QR',
-                              style: TextStyle(fontSize: 12)),
-                        ),
                       ],
                       FilledButton(
                         style: FilledButton.styleFrom(
@@ -1198,8 +1246,6 @@ class _CloudSettingsCard extends ConsumerWidget {
             ),
           ),
         );
-      },
-    );
   }
 }
 

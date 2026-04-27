@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -25,7 +24,7 @@ import '../../../core/notifications/local_notifications_service.dart';
 import '../../purchase/domain/purchase_draft.dart';
 import '../../purchase/state/purchase_draft_provider.dart';
 import '../../../shared/widgets/inline_search_field.dart';
-import 'widgets/purchase_item_entry_sheet.dart';
+import 'widgets/add_item_entry_page.dart';
 import 'widgets/purchase_saved_sheet.dart';
 
 class PurchaseEntryWizardV2 extends ConsumerStatefulWidget {
@@ -43,8 +42,7 @@ class PurchaseEntryWizardV2 extends ConsumerStatefulWidget {
       _PurchaseEntryWizardV2State();
 }
 
-class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
-    with SingleTickerProviderStateMixin {
+class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
   int _currentStep = 0;
   bool _isBootstrapping = false;
   bool _isSaving = false;
@@ -79,10 +77,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
   final _billtyRateCtrl = TextEditingController();
   final _freightCtrl = TextEditingController();
   String _freightType = 'separate';
-
-  /// Zero-duration open for the item line sheet (no slide lag).
-  late final AnimationController _itemSheetOpenAnim =
-      AnimationController(vsync: this, duration: Duration.zero);
 
   @override
   void initState() {
@@ -310,7 +304,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     _deliveredRateCtrl.dispose();
     _billtyRateCtrl.dispose();
     _freightCtrl.dispose();
-    _itemSheetOpenAnim.dispose();
     super.dispose();
   }
 
@@ -586,49 +579,33 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
       }
     }
     if (!mounted) return;
-    final mq = MediaQuery.of(context);
-    final sheetMax = math.min(
-      mq.size.height * 0.88,
-      mq.size.height - mq.padding.top - 16,
-    );
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      useSafeArea: true,
-      transitionAnimationController: _itemSheetOpenAnim,
-      // Use most of the viewport so compact line sheet doesn’t feel clipped (old 720 cap caused extra scroll).
-      constraints: BoxConstraints(maxHeight: math.max(320.0, sheetMax)),
-      builder: (ctx) {
-        final viewBottom = MediaQuery.viewInsetsOf(ctx).bottom;
-        return Padding(
-          padding: EdgeInsets.only(bottom: viewBottom),
-          child: PurchaseItemEntrySheet(
-            catalog: catalogForSheet,
-            initial: initial,
-            isEdit: editIndex != null,
-            resolveCatalogItem: session == null
-                ? null
-                : (String catalogItemId) => ref.read(hexaApiProvider).getCatalogItem(
-                      businessId: session.primaryBusiness.id,
-                      itemId: catalogItemId,
-                    ),
-            onCommitted: (line) {
-              final p = PurchaseLineDraft.fromLineMap(
-                Map<String, dynamic>.from(line),
-              );
-              ref.read(purchaseDraftProvider.notifier).addOrReplaceLine(
-                    p,
-                    editIndex: editIndex,
-                  );
-              setState(() {
-                _inlineSaveError = null;
-              });
-              _onDraftChanged();
-            },
-          ),
-        );
-      },
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (ctx) => AddItemEntryPage(
+          catalog: catalogForSheet,
+          initial: initial,
+          isEdit: editIndex != null,
+          resolveCatalogItem: session == null
+              ? null
+              : (String catalogItemId) => ref.read(hexaApiProvider).getCatalogItem(
+                    businessId: session.primaryBusiness.id,
+                    itemId: catalogItemId,
+                  ),
+          onCommitted: (line) {
+            final p = PurchaseLineDraft.fromLineMap(
+              Map<String, dynamic>.from(line),
+            );
+            ref.read(purchaseDraftProvider.notifier).addOrReplaceLine(
+                  p,
+                  editIndex: editIndex,
+                );
+            setState(() {
+              _inlineSaveError = null;
+            });
+            _onDraftChanged();
+          },
+        ),
+      ),
     );
     if (!mounted) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {

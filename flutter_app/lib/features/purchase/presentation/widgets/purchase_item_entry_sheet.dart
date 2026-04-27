@@ -18,6 +18,8 @@ class PurchaseItemEntrySheet extends StatefulWidget {
     /// When set, each catalog pick refetches the item so HSN/tax/kg match the server
     /// (list payloads may be incomplete). Failures keep list-row data only.
     this.resolveCatalogItem,
+    /// Full-screen [Scaffold] (ENTRY Prompt 1) instead of a bottom sheet.
+    this.fullPage = false,
   });
 
   final List<Map<String, dynamic>> catalog;
@@ -26,6 +28,7 @@ class PurchaseItemEntrySheet extends StatefulWidget {
   final void Function(Map<String, dynamic> line) onCommitted;
   final Future<Map<String, dynamic>> Function(String catalogItemId)?
       resolveCatalogItem;
+  final bool fullPage;
 
   @override
   State<PurchaseItemEntrySheet> createState() => _PurchaseItemEntrySheetState();
@@ -515,10 +518,26 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     if (line == null) return;
     widget.onCommitted(line);
     if (closeSheet) {
-      Navigator.of(context).pop();
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
     } else {
       _resetAfterAdd();
     }
+  }
+
+  String _purchaseRateLabel(bool showPerKg) {
+    if (widget.fullPage) {
+      return showPerKg ? 'Purchase Rate (₹/kg) *' : 'Purchase Rate (₹/unit) *';
+    }
+    return showPerKg ? 'Landing cost (₹/kg) *' : 'Landing cost *';
+  }
+
+  String _sellingRateLabel(bool showPerKg) {
+    if (widget.fullPage) {
+      return showPerKg ? 'Selling Rate (₹/kg)' : 'Selling Rate (₹/unit)';
+    }
+    return showPerKg ? 'Selling price (₹/kg)' : 'Selling price';
   }
 
   /// Picks line unit: when the item has a bag weight but purchase unit is
@@ -735,9 +754,15 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.blueGrey[50],
+        color: widget.fullPage
+            ? const Color(0xFFF0FDFD)
+            : Colors.blueGrey[50],
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: Colors.blueGrey[100]!),
+        border: Border.all(
+          color: widget.fullPage
+              ? const Color(0xFF17A8A7).withValues(alpha: 0.35)
+              : Colors.blueGrey[100]!,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -763,47 +788,50 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     // Compact, stable fields — Tally-style density.
     final sheetTheme = theme.copyWith(visualDensity: VisualDensity.compact);
 
-    return Theme(
-      data: sheetTheme,
-      child: Material(
-        color: theme.colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
-        child: SingleChildScrollView(
-          controller: _scrollController,
-          physics: const ClampingScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(10, 4, 10, 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 3,
-                  margin: const EdgeInsets.only(bottom: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[400],
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              Text(
-                widget.isEdit ? 'Edit line' : 'Add item',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Catalog, qty, rate first. Use Discount / Tax for HSN and bag/sack rules.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: Colors.blueGrey[700],
-                  fontSize: 12,
-                  height: 1.25,
-                ),
-              ),
-              const SizedBox(height: 8),
+    const teal = Color(0xFF17A8A7);
+    const ink = Color(0xFF0F172A);
+
+    final formChildren = <Widget>[
+      if (!widget.fullPage) ...[
+        Center(
+          child: Container(
+            width: 36,
+            height: 3,
+            margin: const EdgeInsets.only(bottom: 8),
+            decoration: BoxDecoration(
+              color: Colors.grey[400],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ),
+        Text(
+          widget.isEdit ? 'Edit line' : 'Add item',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+            fontSize: 16,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Catalog, qty, rate first. Use Discount / Tax for HSN and bag/sack rules.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: Colors.blueGrey[700],
+            fontSize: 12,
+            height: 1.25,
+          ),
+        ),
+        const SizedBox(height: 8),
+      ] else ...[
+        Text(
+          'Search an item, enter qty and rate. Use Discount / Tax for HSN and bag/sack lines.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: Colors.blueGrey[700],
+            fontSize: 12,
+            height: 1.25,
+          ),
+        ),
+        const SizedBox(height: 8),
+      ],
               KeyedSubtree(
                 key: _itemKey,
                 child: InlineSearchField(
@@ -893,7 +921,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                   controller: _landingCtrl,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   decoration: _deco(
-                    showPerKgFields ? 'Landing cost (₹/kg) *' : 'Landing cost *',
+                    _purchaseRateLabel(showPerKgFields),
                     prefixText: '₹ ',
                     errorText: _errLanding,
                   ),
@@ -910,7 +938,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                   controller: _sellingCtrl,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   decoration: _deco(
-                    showPerKgFields ? 'Selling price (₹/kg)' : 'Selling price',
+                    _sellingRateLabel(showPerKgFields),
                     prefixText: '₹ ',
                     errorText: _errSelling,
                   ),
@@ -1005,33 +1033,135 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
               ],
               const SizedBox(height: 4),
               _liveTotalsCard(theme),
-              const SizedBox(height: 8),
-              if (widget.isEdit)
-                FilledButton(
-                  onPressed: () => _commit(closeSheet: true),
-                  child: const Text('SAVE'),
-                )
-              else
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => _commit(closeSheet: false),
-                        child: const Text('ADD MORE'),
+              if (!widget.fullPage) const SizedBox(height: 8),
+              if (!widget.fullPage)
+                if (widget.isEdit)
+                  FilledButton(
+                    onPressed: () => _commit(closeSheet: true),
+                    child: const Text('SAVE'),
+                  )
+                else
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => _commit(closeSheet: false),
+                          child: const Text('ADD MORE'),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: () => _commit(closeSheet: true),
-                        child: const Text('SAVE'),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: () => _commit(closeSheet: true),
+                          child: const Text('SAVE'),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+            ];
+
+    final scroll = SingleChildScrollView(
+      controller: _scrollController,
+      physics: const ClampingScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(
+        widget.fullPage ? 16 : 10,
+        widget.fullPage ? 8 : 4,
+        widget.fullPage ? 16 : 10,
+        widget.fullPage
+            ? 24
+            : 10, // room above keyboard / bottom bar
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: formChildren,
+      ),
+    );
+
+    if (widget.fullPage) {
+      return Theme(
+        data: sheetTheme,
+        child: Scaffold(
+          backgroundColor: Colors.white,
+          appBar: AppBar(
+            backgroundColor: Colors.white,
+            foregroundColor: ink,
+            elevation: 0,
+            title: Text(widget.isEdit ? 'Edit item' : 'Add item'),
+            leading: IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () => Navigator.of(context).maybePop(),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => _commit(closeSheet: true),
+                child: const Text(
+                  'SAVE',
+                  style: TextStyle(
+                    color: teal,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                  ),
                 ),
+              ),
             ],
           ),
+          body: scroll,
+          bottomNavigationBar: widget.isEdit
+              ? null
+              : SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => _commit(closeSheet: false),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: teal,
+                              side: const BorderSide(color: teal),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: const Text('SAVE & ADD MORE'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: () => _commit(closeSheet: true),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: teal,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: const Text(
+                              'SAVE',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
         ),
+      );
+    }
+
+    return Theme(
+      data: sheetTheme,
+      child: Material(
+        color: theme.colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+        child: scroll,
       ),
     );
   }
