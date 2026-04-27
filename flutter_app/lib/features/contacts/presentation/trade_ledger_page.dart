@@ -279,6 +279,27 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
       NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
           .format(n);
 
+  static double _profitForPurchase(TradePurchase p) {
+    if (p.totalLineProfit != null) return p.totalLineProfit!;
+    var s = 0.0;
+    for (final l in p.lines) {
+      final lp = l.lineProfit;
+      if (lp != null) s += lp;
+    }
+    return s;
+  }
+
+  static void _addUnitQty(TradePurchaseLine l, Map<String, double> u) {
+    final up = l.unit.toUpperCase();
+    if (up.contains('BAG')) {
+      u['bag'] = (u['bag'] ?? 0) + l.qty;
+    } else if (up.contains('BOX')) {
+      u['box'] = (u['box'] ?? 0) + l.qty;
+    } else if (up.contains('TIN')) {
+      u['tin'] = (u['tin'] ?? 0) + l.qty;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen<int>(businessDataWriteRevisionProvider, (prev, next) {
@@ -294,6 +315,17 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
     final data = _visibleRows;
     final sumTotal = data.fold<double>(0, (s, p) => s + p.totalAmount);
     final sumDue = data.fold<double>(0, (s, p) => s + p.remaining);
+    final sumProfit = data.fold<double>(0, (s, p) => s + _profitForPurchase(p));
+    final units = <String, double>{};
+    for (final p in data) {
+      for (final l in p.lines) {
+        if (widget.kind == TradeLedgerKind.catalogItem) {
+          if (l.catalogItemId == widget.entityId) _addUnitQty(l, units);
+        } else {
+          _addUnitQty(l, units);
+        }
+      }
+    }
     var commSum = 0.0;
     if (widget.kind == TradeLedgerKind.broker) {
       for (final p in data) {
@@ -465,6 +497,34 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
+                              if (units.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Units: '
+                                  '${[
+                                    if ((units['bag'] ?? 0) > 0)
+                                      'Bags ${units['bag']!.toStringAsFixed(0)}',
+                                    if ((units['box'] ?? 0) > 0)
+                                      'Box ${units['box']!.toStringAsFixed(0)}',
+                                    if ((units['tin'] ?? 0) > 0)
+                                      'Tin ${units['tin']!.toStringAsFixed(0)}',
+                                  ].join(' · ')}',
+                                  style: tt.bodySmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                              if (sumProfit.abs() > 0.0001) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Line profit (est.) ${_inr(sumProfit.round())}',
+                                  style: tt.bodySmall?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: const Color(0xFF0F766E),
+                                  ),
+                                ),
+                              ],
                               if (widget.kind == TradeLedgerKind.broker) ...[
                                 const SizedBox(height: 4),
                                 Text(

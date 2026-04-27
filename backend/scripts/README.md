@@ -57,6 +57,20 @@ python -m scripts.op_supabase_stack
 python -m scripts.op_supabase_stack --list-businesses
 python -m scripts.op_supabase_stack --no-verify
 python -m scripts.op_supabase_stack --seed --business-id <uuid>
+python -m scripts.op_supabase_stack --seed-all-businesses --seed-all-dry-run
+python -m scripts.op_supabase_stack --seed-all-businesses
 ```
 
 Refuses to run if `HEXA_USE_SQLITE=1` or if `DATABASE_URL` is still SQLite. See [../docs/migrations_and_backfill.md](../docs/migrations_and_backfill.md) (Supabase / production section).
+
+## `seed_all_businesses.py`
+
+Runs idempotent JSON seed + mandatory defaults for every business.
+
+```powershell
+cd backend
+$env:HEXA_USE_SQLITE = ""
+$env:DATABASE_URL = "postgresql+asyncpg://..."
+python -m scripts.seed_all_businesses --dry-run
+python -m scripts.seed_all_businesses
+```

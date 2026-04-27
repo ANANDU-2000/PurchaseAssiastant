@@ -13,7 +13,15 @@
    .venv\Scripts\pip install -r requirements.txt
    ```
 
-3. Run (from `backend/`):
+3. **PostgreSQL:** apply migrations (the API no longer runs `create_all` on Postgres — schema is Alembic-only):
+
+   ```bash
+   .venv\Scripts\alembic upgrade head
+   ```
+
+   **SQLite / `HEXA_USE_SQLITE=1`:** tables are still created at startup from models (dev convenience).
+
+4. Run (from `backend/`):
 
    ```bash
    .venv\Scripts\python -m uvicorn app.main:app --reload

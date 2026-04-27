@@ -751,6 +751,20 @@ class _MaintenanceSettingsCard extends ConsumerWidget {
             ),
           );
         }
+        if (v?.current?.isPaid == true) {
+          return Card(
+            color: context.adaptiveCard,
+            child: ListTile(
+              leading: Icon(Icons.check_circle_rounded, color: cs.tertiary),
+              title: const Text('Maintenance'),
+              subtitle: const Text('Paid for this month'),
+              trailing: TextButton(
+                onPressed: () => context.push('/settings/maintenance/history'),
+                child: const Text('History'),
+              ),
+            ),
+          );
+        }
         return Card(
           color: context.adaptiveCard,
           child: Column(

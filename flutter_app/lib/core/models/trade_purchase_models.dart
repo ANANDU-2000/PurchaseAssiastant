@@ -134,6 +134,34 @@ class TradePurchaseLine {
       landingCostPerKg: (j['landing_cost_per_kg'] as num?)?.toDouble(),
     );
   }
+
+  /// Gross landing value for the line (matches backend / invoice math).
+  double get landingGross {
+    if (kgPerUnit != null &&
+        landingCostPerKg != null &&
+        kgPerUnit! > 0 &&
+        landingCostPerKg! > 0) {
+      return qty * kgPerUnit! * landingCostPerKg!;
+    }
+    return qty * landingCost;
+  }
+
+  /// Gross selling when [sellingCost] is set (per-kg when weight line).
+  double get sellingGross {
+    if (sellingCost == null) return 0;
+    if (kgPerUnit != null &&
+        landingCostPerKg != null &&
+        kgPerUnit! > 0) {
+      return qty * kgPerUnit! * sellingCost!;
+    }
+    return qty * sellingCost!;
+  }
+
+  /// Profit for this line when selling is recorded.
+  double? get lineProfit {
+    if (sellingCost == null) return null;
+    return sellingGross - landingGross;
+  }
 }
 
 class TradePurchase {
@@ -170,6 +198,9 @@ class TradePurchase {
     this.lines = const [],
     this.createdAt,
     this.updatedAt,
+    this.totalLandingSubtotal,
+    this.totalSellingSubtotal,
+    this.totalLineProfit,
   });
 
   final String id;
@@ -204,6 +235,9 @@ class TradePurchase {
   final List<TradePurchaseLine> lines;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+  final double? totalLandingSubtotal;
+  final double? totalSellingSubtotal;
+  final double? totalLineProfit;
 
   PurchaseStatus get statusEnum => parsePurchaseStatus(derivedStatus);
 
@@ -244,6 +278,9 @@ class TradePurchase {
       paidAmount: (j['paid_amount'] as num?)?.toDouble() ?? 0,
       paidAt: parseD('paid_at'),
       totalAmount: (j['total_amount'] as num?)?.toDouble() ?? 0,
+      totalLandingSubtotal: (j['total_landing_subtotal'] as num?)?.toDouble(),
+      totalSellingSubtotal: (j['total_selling_subtotal'] as num?)?.toDouble(),
+      totalLineProfit: (j['total_line_profit'] as num?)?.toDouble(),
       storedStatus: j['status']?.toString() ?? 'confirmed',
       derivedStatus:
           j['derived_status']?.toString() ?? j['status']?.toString() ?? 'confirmed',

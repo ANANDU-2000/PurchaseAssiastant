@@ -141,6 +141,10 @@ async def build_entry_create_request(
         raw.get("selling_price")
     )
 
+    # Reject explicit non-positive buy rate before aliasing to landing_cost.
+    if raw.get("buy_price") is not None and buy is not None and buy <= 0:
+        return None, ["buy_price"]
+
     # Single rate field: landing and "buy" are the same for trade/entry lines.
     if buy is not None and buy > 0 and (land is None or land <= 0):
         land = buy

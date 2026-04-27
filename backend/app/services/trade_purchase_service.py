@@ -115,6 +115,31 @@ def _line_money(li: TradePurchaseLineIn) -> Decimal:
     return after_disc * (Decimal("1") + min(tax, Decimal("1000")) / Decimal("100"))
 
 
+def _line_landing_gross_in(li: TradePurchaseLineIn) -> Decimal:
+    return _line_gross_base(li)
+
+
+def _line_selling_gross_in(li: TradePurchaseLineIn) -> Decimal:
+    if li.selling_cost is None:
+        return Decimal("0")
+    if li.kg_per_unit is not None and li.landing_cost_per_kg is not None:
+        return _dec(li.qty) * _dec(li.kg_per_unit) * _dec(li.selling_cost)
+    return _dec(li.qty) * _dec(li.selling_cost)
+
+
+def aggregate_landing_selling_profit(
+    req: TradePurchaseCreateRequest,
+) -> tuple[float, float | None, float | None]:
+    """SSOT line subtotals (matches DB backfill in migration 008)."""
+    land = sum(_line_landing_gross_in(li) for li in req.lines)
+    sell = sum(_line_selling_gross_in(li) for li in req.lines)
+    land_f = float(land)
+    if sell <= 0:
+        return land_f, None, None
+    sell_f = float(sell)
+    return land_f, sell_f, sell_f - land_f
+
+
 def compute_totals(req: TradePurchaseCreateRequest) -> tuple[Decimal, Decimal]:
     qty_sum = sum(_dec(li.qty) for li in req.lines)
     amt_sum = sum(_line_money(li) for li in req.lines)
@@ -358,6 +383,7 @@ async def create_trade_purchase(
                 raise ValueError(f"line {i + 1}: landing cost must be greater than 0")
     human_id = await next_human_id(db, business_id)
     qty_sum, amt_sum = compute_totals(body)
+    land_s, sell_s, prof = aggregate_landing_selling_profit(body)
     due = _due_date_from(body.purchase_date, body.payment_days)
     inv = (body.invoice_number.strip() if body.invoice_number else None) or None
     tp = TradePurchase(
@@ -382,6 +408,9 @@ async def create_trade_purchase(
         freight_type=body.freight_type,
         total_qty=float(qty_sum),
         total_amount=float(amt_sum),
+        total_landing_subtotal=land_s,
+        total_selling_subtotal=sell_s,
+        total_line_profit=prof,
         status=initial_status,
     )
     db.add(tp)
@@ -453,6 +482,7 @@ async def update_trade_purchase(
     if (tp.status or "").lower() == "cancelled":
         raise ValueError("Cannot edit a cancelled purchase")
     qty_sum, amt_sum = compute_totals(body)
+    land_s, sell_s, prof = aggregate_landing_selling_profit(body)
     tp.purchase_date = body.purchase_date
     tp.invoice_number = (body.invoice_number.strip() if body.invoice_number else None) or None
     tp.supplier_id = body.supplier_id
@@ -467,6 +497,9 @@ async def update_trade_purchase(
     tp.freight_type = body.freight_type
     tp.total_qty = float(qty_sum)
     tp.total_amount = float(amt_sum)
+    tp.total_landing_subtotal = land_s
+    tp.total_selling_subtotal = sell_s
+    tp.total_line_profit = prof
     if body.status in ("draft", "saved", "confirmed"):
         tp.status = body.status
     await db.execute(delete(TradePurchaseLine).where(TradePurchaseLine.trade_purchase_id == tp.id))
@@ -659,10 +692,35 @@ def _catalog_item_unit_hints(li: TradePurchaseLine) -> tuple[str | None, float |
     return du_s, kpb_f, dpu_s
 
 
+def _line_landing_gross_db(li: TradePurchaseLine) -> float:
+    kpu = getattr(li, "kg_per_unit", None)
+    lpk = getattr(li, "landing_cost_per_kg", None)
+    if kpu is not None and lpk is not None:
+        return float(li.qty) * float(kpu) * float(lpk)
+    return float(li.qty) * float(li.landing_cost)
+
+
+def _line_selling_gross_db(li: TradePurchaseLine) -> float:
+    if li.selling_cost is None:
+        return 0.0
+    kpu = getattr(li, "kg_per_unit", None)
+    lpk = getattr(li, "landing_cost_per_kg", None)
+    if kpu is not None and lpk is not None:
+        return float(li.qty) * float(kpu) * float(li.selling_cost)
+    return float(li.qty) * float(li.selling_cost)
+
+
 def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
     lines = []
+    sum_land = 0.0
+    sum_sell = 0.0
     for li in tp.lines:
         du_s, kpb_f, dpu_s = _catalog_item_unit_hints(li)
+        lg = _line_landing_gross_db(li)
+        sg = _line_selling_gross_db(li)
+        sum_land += lg
+        sum_sell += sg
+        lp = (sg - lg) if li.selling_cost is not None else None
         lines.append(
             TradePurchaseLineOut(
                 id=li.id,
@@ -685,6 +743,9 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
                 default_unit=du_s,
                 default_kg_per_bag=kpb_f,
                 default_purchase_unit=dpu_s,
+                line_landing_gross=lg,
+                line_selling_gross=sg,
+                line_profit=lp,
             )
         )
     total_dec = _dec(tp.total_amount)
@@ -719,6 +780,15 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
         broker_phone = getattr(br, "phone", None) or None
         broker_location = getattr(br, "location", None) or None
     items_count = len(tp.lines) if tp.lines is not None else 0
+    tls = getattr(tp, "total_landing_subtotal", None)
+    tss = getattr(tp, "total_selling_subtotal", None)
+    tlp = getattr(tp, "total_line_profit", None)
+    if tls is None:
+        tls = sum_land
+    if tss is None and sum_sell > 0:
+        tss = sum_sell
+    if tlp is None and tss is not None:
+        tlp = float(tss) - float(tls)
     return TradePurchaseOut(
         id=tp.id,
         human_id=tp.human_id,
@@ -738,6 +808,9 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
         freight_type=getattr(tp, "freight_type", None),
         total_qty=float(tp.total_qty) if tp.total_qty is not None else None,
         total_amount=float(tp.total_amount),
+        total_landing_subtotal=float(tls) if tls is not None else None,
+        total_selling_subtotal=float(tss) if tss is not None else None,
+        total_line_profit=tlp,
         status=stored,
         remaining=remaining,
         derived_status=derived,

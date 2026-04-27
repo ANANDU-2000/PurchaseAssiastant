@@ -84,7 +84,10 @@ def _clean_phone(p: str | None) -> str | None:
     if not p:
         return None
     t = " ".join(p.replace("\n", " ").replace("\r", " ").split()).strip()
-    return t or None
+    if not t:
+        return None
+    # Supplier.phone / whatsapp_number columns are VARCHAR(32) in model/schema.
+    return t[:32]
 
 
 def _opt_int(v: object) -> int | None:

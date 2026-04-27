@@ -448,15 +448,17 @@ async def trade_items_breakdown(
         0.0,
     )
     kg_sum = func.coalesce(func.sum(kg_line), 0.0)
-    sell_sum = func.coalesce(
-        func.sum(
-            case(
-                (TradePurchaseLine.selling_cost.isnot(None), TradePurchaseLine.qty * TradePurchaseLine.selling_cost),
-                else_=0.0,
-            )
-        ),
-        0.0,
+    land_gross = case(
+        (weight_ok, TradePurchaseLine.qty * kpu * lcpk),
+        else_=TradePurchaseLine.qty * TradePurchaseLine.landing_cost,
     )
+    sell_gross = case(
+        (TradePurchaseLine.selling_cost.is_(None), literal(0.0)),
+        (weight_ok, TradePurchaseLine.qty * kpu * TradePurchaseLine.selling_cost),
+        else_=TradePurchaseLine.qty * TradePurchaseLine.selling_cost,
+    )
+    land_sum = func.coalesce(func.sum(land_gross), 0.0)
+    sell_sum = func.coalesce(func.sum(sell_gross), 0.0)
     q = (
         select(
             TradePurchaseLine.item_name,
@@ -469,7 +471,8 @@ async def trade_items_breakdown(
             box_sum.label("total_boxes"),
             tin_sum.label("total_tins"),
             kg_sum.label("total_kg"),
-            sell_sum.label("total_selling"),
+            land_sum.label("total_landing_gross"),
+            sell_sum.label("total_selling_gross"),
         )
         .select_from(TradePurchaseLine)
         .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
@@ -486,22 +489,25 @@ async def trade_items_breakdown(
         txb = float(r["total_boxes"] or 0)
         ttn = float(r["total_tins"] or 0)
         tkg = float(r["total_kg"] or 0)
-        tsl = float(r["total_selling"] or 0)
+        tland = float(r["total_landing_gross"] or 0)
+        tsl = float(r["total_selling_gross"] or 0)
+        tprof = tsl - tland if tsl > 1e-12 or tland > 1e-12 else 0.0
         out.append(
             {
                 "item_name": (r["item_name"] or "Unknown").strip() or "Unknown",
                 "total_qty": qty,
                 "unit": (r["unit"] or "").strip() or "—",
                 "total_purchase": tp,
-                "total_profit": 0.0,
+                "total_profit": tprof,
                 "line_count": int(r["line_count"] or 0),
                 "purchase_count": int(r["deals"] or 0),
-                "avg_landing": (tp / qty) if qty > 1e-12 else 0.0,
+                "avg_landing": (tland / qty) if qty > 1e-12 else 0.0,
                 "total_bags": tb,
                 "total_boxes": txb,
                 "total_tins": ttn,
                 "total_kg": tkg,
                 "total_selling": tsl,
+                "total_landing_gross": tland,
             }
         )
     return out

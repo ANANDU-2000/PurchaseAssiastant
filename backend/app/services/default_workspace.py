@@ -16,6 +16,7 @@ from app.models import Business, Membership, User
 from app.models.catalog import ItemCategory
 from app.models.contacts import Supplier
 from app.services.catalog_suppliers_seed import run_catalog_suppliers_seed
+from app.services.mandatory_workspace_seed import run_mandatory_workspace_seed
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,18 @@ async def ensure_user_has_business(db: AsyncSession, user: User) -> tuple[Busine
     return biz, True
 
 
+def _run_mandatory_only_sync(business_id: uuid.UUID, database_url: str) -> dict[str, int]:
+    """When full JSON seed is missing, still insert broker + minimum catalog rows."""
+    from sqlalchemy import create_engine
+
+    engine = create_engine(database_url, future=True)
+    Session = sessionmaker(bind=engine, future=True, expire_on_commit=False)
+    with Session() as s:
+        stats = run_mandatory_workspace_seed(s, business_id)
+        s.commit()
+        return stats
+
+
 def _run_seed_sync(
     business_id: uuid.UUID,
     database_url: str,
@@ -97,6 +110,9 @@ def _run_seed_sync(
     override = Path(seed_data_dir).expanduser() if (seed_data_dir and seed_data_dir.strip()) else None
     with Session() as s:
         stats = run_catalog_suppliers_seed(s, business_id, seed_data_dir=override)
+        mandatory = run_mandatory_workspace_seed(s, business_id)
+        for k, v in mandatory.items():
+            stats[f"mandatory_{k}"] = v
         s.commit()
         return stats
 
@@ -126,12 +142,22 @@ async def bootstrap_user_workspace(
     try:
         stats = await asyncio.to_thread(_run_seed_sync, bid, url, sd)
     except FileNotFoundError as e:
-        logger.warning("bootstrap: seed data files missing: %s", e)
+        logger.warning("bootstrap: full JSON seed missing (%s) — applying mandatory minimum only", e)
+        try:
+            stats = await asyncio.to_thread(_run_mandatory_only_sync, bid, url)
+        except Exception:
+            logger.exception("bootstrap: mandatory seed failed for business_id=%s", bid)
+            return {
+                "business_id": bid,
+                "created_business": created_biz,
+                "seeded": False,
+                "seed_stats": None,
+            }
         return {
             "business_id": bid,
             "created_business": created_biz,
-            "seeded": False,
-            "seed_stats": None,
+            "seeded": True,
+            "seed_stats": stats,
         }
     except Exception:
         logger.exception("bootstrap: seed failed for business_id=%s", bid)

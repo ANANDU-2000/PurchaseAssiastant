@@ -11,6 +11,7 @@ import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/catalog/item_trade_history.dart';
+import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/business_profile_provider.dart';
 import '../../../core/providers/business_write_revision.dart';
 import '../../../core/providers/catalog_providers.dart';
@@ -49,21 +50,67 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
 
   Future<void> _editItemDefaults(Map<String, dynamic> item) async {
     var unit = item['default_unit']?.toString();
+    final nameCtrl =
+        TextEditingController(text: item['name']?.toString() ?? '');
+    final hsnCtrl =
+        TextEditingController(text: item['hsn_code']?.toString() ?? '');
+    final taxCtrl = TextEditingController(
+        text: item['tax_percent'] != null ? item['tax_percent'].toString() : '');
     final kgCtrl = TextEditingController(
       text: item['default_kg_per_bag'] != null
           ? item['default_kg_per_bag'].toString()
+          : '',
+    );
+    final ipbCtrl = TextEditingController(
+      text: item['default_items_per_box'] != null
+          ? item['default_items_per_box'].toString()
+          : '',
+    );
+    final wptCtrl = TextEditingController(
+      text: item['default_weight_per_tin'] != null
+          ? item['default_weight_per_tin'].toString()
+          : '',
+    );
+    final landCtrl = TextEditingController(
+      text: item['default_landing_cost'] != null
+          ? item['default_landing_cost'].toString()
+          : '',
+    );
+    final sellCtrl = TextEditingController(
+      text: item['default_selling_cost'] != null
+          ? item['default_selling_cost'].toString()
           : '',
     );
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSt) => AlertDialog(
-          title: const Text('Default purchase unit'),
+          title: const Text('Edit item'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(labelText: 'Name'),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: hsnCtrl,
+                  decoration: const InputDecoration(labelText: 'HSN code'),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: taxCtrl,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Tax %',
+                    hintText: 'e.g. 5',
+                  ),
+                ),
+                const SizedBox(height: 12),
                 Text(
                   'Default unit (optional)',
                   style: Theme.of(ctx)
@@ -109,6 +156,47 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                   const SizedBox(height: 8),
                   const BagDefaultUnitHint(),
                 ],
+                if (unit == 'box') ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: ipbCtrl,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Items per box',
+                      hintText: 'How many pieces per box',
+                    ),
+                  ),
+                ],
+                if (unit == 'tin') ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: wptCtrl,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Liters / weight per tin',
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                TextField(
+                  controller: landCtrl,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Default landing (₹)',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: sellCtrl,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Default selling (₹)',
+                  ),
+                ),
               ],
             ),
           ),
@@ -129,16 +217,33 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
       if (session == null) return;
       final kgParsed =
           unit == 'bag' ? parseOptionalKgPerBag(kgCtrl.text) : null;
+      final tax = double.tryParse(taxCtrl.text.trim());
+      final ipb = double.tryParse(ipbCtrl.text.trim());
+      final wpt = double.tryParse(wptCtrl.text.trim());
+      final land = double.tryParse(landCtrl.text.trim());
+      final sell = double.tryParse(sellCtrl.text.trim());
       await ref.read(hexaApiProvider).updateCatalogItem(
             businessId: session.primaryBusiness.id,
             itemId: widget.itemId,
+            name: nameCtrl.text.trim().isEmpty
+                ? null
+                : nameCtrl.text.trim(),
+            hsnCode: hsnCtrl.text.trim().isEmpty ? null : hsnCtrl.text.trim(),
+            taxPercent: tax,
+            defaultLandingCost: land,
+            defaultSellingCost: sell,
             includeDefaultUnit: true,
             defaultUnit: unit,
             patchDefaultKgPerBag: unit == 'bag',
             defaultKgPerBag: kgParsed,
+            patchDefaultItemsPerBox: unit == 'box',
+            defaultItemsPerBox: ipb,
+            patchDefaultWeightPerTin: unit == 'tin',
+            defaultWeightPerTin: wpt,
           );
       ref.invalidate(catalogItemDetailProvider(widget.itemId));
       ref.invalidate(tradePurchasesCatalogIntelProvider);
+      invalidatePurchaseWorkspace(ref);
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('Saved')));
@@ -149,7 +254,14 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
             .showSnackBar(SnackBar(content: Text(friendlyApiError(e))));
       }
     } finally {
+      nameCtrl.dispose();
+      hsnCtrl.dispose();
+      taxCtrl.dispose();
       kgCtrl.dispose();
+      ipbCtrl.dispose();
+      wptCtrl.dispose();
+      landCtrl.dispose();
+      sellCtrl.dispose();
     }
   }
 

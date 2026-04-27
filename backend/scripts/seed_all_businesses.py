@@ -1,5 +1,7 @@
 """
-Idempotent Harisree catalog + suppliers seed for every business row.
+Idempotent Harisree seed for every business row:
+- JSON catalog/categories/subcategories/items/suppliers
+- mandatory defaults (broker kim + required named entities)
 
   cd backend
   set DATABASE_URL=...   (or use pooler vars like the API)
@@ -15,13 +17,14 @@ import os
 import sys
 from pathlib import Path
 
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import create_engine, select, text
+from sqlalchemy.orm import sessionmaker
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.models import Business  # noqa: E402
 from app.services.catalog_suppliers_seed import run_catalog_suppliers_seed  # noqa: E402
+from app.services.mandatory_workspace_seed import run_mandatory_workspace_seed  # noqa: E402
 
 
 def _sync_database_url() -> str:
@@ -44,7 +47,7 @@ def _sync_database_url() -> str:
 
 def main() -> None:
     ap = argparse.ArgumentParser(
-        description="Run catalog+supplier seed for all businesses (idempotent per business).",
+        description="Run JSON + mandatory seed for all businesses (idempotent per business).",
     )
     ap.add_argument(
         "--dry-run",
@@ -64,6 +67,8 @@ def main() -> None:
     seed_dir: Path | None = args.seed_dir
 
     with SessionLocal() as db:
+        # Supabase pooler defaults can kill long seed transactions; disable timeout for this session.
+        db.execute(text("SET statement_timeout = 0"))
         bids = list(db.execute(select(Business.id)).scalars().all())
         if not bids:
             print("No businesses found.")
@@ -72,6 +77,9 @@ def main() -> None:
         for bid in bids:
             try:
                 stats = run_catalog_suppliers_seed(db, bid, seed_data_dir=seed_dir)
+                mandatory = run_mandatory_workspace_seed(db, bid)
+                for k, v in mandatory.items():
+                    stats[f"mandatory_{k}"] = v
                 print(f"business {bid}: {stats}")
                 if not args.dry_run:
                     db.commit()

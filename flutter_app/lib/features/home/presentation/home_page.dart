@@ -815,7 +815,7 @@ class _HomeFixedHeaderBody extends ConsumerWidget {
         padding: EdgeInsets.symmetric(vertical: 8),
         child: Center(
           child: Text(
-            'No data',
+            'No purchases yet',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(

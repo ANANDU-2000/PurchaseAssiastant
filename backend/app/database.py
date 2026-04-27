@@ -155,6 +155,11 @@ try:
 except Exception:  # noqa: BLE001
     pass
 
+def is_sqlite_runtime() -> bool:
+    """True when the API uses local SQLite (HEXA_USE_SQLITE or sqlite DATABASE_URL)."""
+    return _sqlite
+
+
 if not _sqlite:
     try:
         _eu = make_url(_effective_url)

@@ -409,18 +409,23 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
 
   List<String>? _itemFooterRow(List<Map<String, dynamic>> full) {
     if (full.isEmpty) return null;
-    var bags = 0.0, kg = 0.0, tot = 0.0;
+    var bags = 0.0, box = 0.0, tin = 0.0, kg = 0.0, prof = 0.0, tot = 0.0;
     for (final r in full) {
       bags += (r['total_bags'] as num?)?.toDouble() ?? 0;
+      box += (r['total_boxes'] as num?)?.toDouble() ?? 0;
+      tin += (r['total_tins'] as num?)?.toDouble() ?? 0;
       kg += (r['total_kg'] as num?)?.toDouble() ?? 0;
+      prof += (r['total_profit'] as num?)?.toDouble() ?? 0;
       tot += (r['total_purchase'] as num?)?.toDouble() ?? 0;
     }
     String u(double v) => v == v.roundToDouble() ? v.round().toString() : v.toStringAsFixed(1);
     return [
       'Total',
       u(bags),
+      u(box),
+      u(tin),
       u(kg),
-      '—',
+      _inr(prof.round()),
       _inr(tot.round()),
     ];
   }
@@ -514,23 +519,28 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
       header: const [
         'Item',
         'Bags',
+        'Box',
+        'Tin',
         'Kg',
-        'Avg rate',
+        'Profit',
         'Total spend',
       ],
-      flexes: const [3, 1, 1, 1, 2],
+      flexes: const [3, 1, 1, 1, 1, 1, 2],
       rows: rows.map((r) {
         final name = r['item_name']?.toString() ?? '—';
         final total = (r['total_purchase'] as num?)?.toDouble() ?? 0;
-        final qty = (r['total_qty'] as num?)?.toDouble() ?? 0;
-        final avg = (r['avg_landing'] as num?)?.toDouble() ?? 0;
+        final prof = (r['total_profit'] as num?)?.toDouble() ?? 0;
         final bags = (r['total_bags'] as num?)?.toDouble() ?? 0;
+        final box = (r['total_boxes'] as num?)?.toDouble() ?? 0;
+        final tin = (r['total_tins'] as num?)?.toDouble() ?? 0;
         final kg = (r['total_kg'] as num?)?.toDouble() ?? 0;
         return [
           name,
           uq(bags),
+          uq(box),
+          uq(tin),
           uq(kg),
-          qty > 1e-9 ? _inr(avg.round()) : '—',
+          _inr(prof.round()),
           _inr(total.round()),
         ];
       }).toList(),
@@ -596,7 +606,8 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
     );
     bool colRight(int i, int len) {
       if (i == len - 1) return true;
-      if (len == 5) return i == 3 || i == 4; // Avg + Total
+      if (len == 7) return i == 5 || i == 6; // Profit + Total spend
+      if (len == 5) return i == 3 || i == 4;
       if (len == 3) return i == 2; // third column
       return false;
     }
@@ -611,11 +622,11 @@ class _FullReportsPageState extends ConsumerState<FullReportsPage> {
     }) {
       final TextStyle? style;
       if (isFooter) {
-        style = TextStyle(
+        style = const TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w900,
-          color: const Color(0xFF166534),
-          fontFeatures: const [FontFeature.tabularFigures()],
+          color: Color(0xFF166534),
+          fontFeatures: [FontFeature.tabularFigures()],
         );
       } else if (isHeader) {
         style = HexaDsType.label(12, color: cs.onSurface).copyWith(

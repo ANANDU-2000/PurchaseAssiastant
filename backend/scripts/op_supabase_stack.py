@@ -139,6 +139,21 @@ def _seed(business_id: str) -> None:
         sys.exit(code)
 
 
+def _seed_all_businesses(seed_dir: str | None = None, dry_run: bool = False) -> None:
+    cmd = [sys.executable, "-m", "scripts.seed_all_businesses"]
+    if seed_dir:
+        cmd.extend(["--seed-dir", seed_dir])
+    if dry_run:
+        cmd.append("--dry-run")
+    code = subprocess.run(
+        cmd,
+        cwd=str(_BACKEND_ROOT),
+        env={**os.environ, "HEXA_USE_SQLITE": ""},
+    ).returncode
+    if code != 0:
+        sys.exit(code)
+
+
 def main() -> None:
     _load_backend_dotenv()
     ap = argparse.ArgumentParser(description="Supabase/Postgres: verify, migrate, list businesses, optional seed")
@@ -147,6 +162,21 @@ def main() -> None:
     ap.add_argument("--list-businesses", action="store_true", help="Print businesses id/name after other steps")
     ap.add_argument("--seed", action="store_true", help="Run seed_catalog_and_suppliers after other steps")
     ap.add_argument("--business-id", default="", help="With --seed: businesses.id UUID")
+    ap.add_argument(
+        "--seed-all-businesses",
+        action="store_true",
+        help="Run seed_all_businesses (JSON + mandatory defaults) for every business.",
+    )
+    ap.add_argument(
+        "--seed-all-dry-run",
+        action="store_true",
+        help="With --seed-all-businesses: run rollback preview only.",
+    )
+    ap.add_argument(
+        "--seed-dir",
+        default="",
+        help="Optional seed JSON directory override for --seed-all-businesses.",
+    )
     args = ap.parse_args()
 
     _ = _require_postgres()
@@ -169,7 +199,14 @@ def main() -> None:
         print("--- seed catalog + suppliers ---\n")
         _seed(args.business_id)
         print()
-    if not args.list_businesses and not args.seed:
+    if args.seed_all_businesses:
+        print("--- seed all businesses (json + mandatory) ---\n")
+        _seed_all_businesses(
+            seed_dir=(args.seed_dir or "").strip() or None,
+            dry_run=bool(args.seed_all_dry_run),
+        )
+        print()
+    if not args.list_businesses and not args.seed and not args.seed_all_businesses:
         print("--- list businesses (hint: use --list-businesses to show UUIDs) ---\n")
         _list_businesses()
         print()

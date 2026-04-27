@@ -61,7 +61,7 @@ class TradePurchaseCreateRequest(BaseModel):
 
 class TradePurchaseLineOut(BaseModel):
     id: uuid.UUID
-    catalog_item_id: uuid.UUID | None
+    catalog_item_id: uuid.UUID
     item_name: str
     qty: float
     unit: str
@@ -79,6 +79,9 @@ class TradePurchaseLineOut(BaseModel):
     default_unit: str | None = None
     default_kg_per_bag: float | None = None
     default_purchase_unit: str | None = None
+    line_landing_gross: float = 0
+    line_selling_gross: float = 0
+    line_profit: float | None = None
 
 
 class TradePurchaseOut(BaseModel):
@@ -86,7 +89,7 @@ class TradePurchaseOut(BaseModel):
     human_id: str
     invoice_number: str | None = None
     purchase_date: date
-    supplier_id: uuid.UUID | None
+    supplier_id: uuid.UUID
     broker_id: uuid.UUID | None
     payment_days: int | None
     due_date: date | None = None
@@ -100,6 +103,9 @@ class TradePurchaseOut(BaseModel):
     freight_type: str | None = None
     total_qty: float | None
     total_amount: float
+    total_landing_subtotal: float | None = None
+    total_selling_subtotal: float | None = None
+    total_line_profit: float | None = None
     status: str
     remaining: float = 0
     derived_status: str = "confirmed"

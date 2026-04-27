@@ -38,8 +38,8 @@ class TradePurchase(Base):
     human_id: Mapped[str] = mapped_column(String(32), index=True)
     invoice_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
     purchase_date: Mapped[date] = mapped_column(Date, index=True)
-    supplier_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("suppliers.id"), nullable=True, index=True
+    supplier_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("suppliers.id"), index=True
     )
     broker_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("brokers.id"), nullable=True, index=True
@@ -56,6 +56,10 @@ class TradePurchase(Base):
     freight_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
     total_qty: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
     total_amount: Mapped[float] = mapped_column(Numeric(18, 4))
+    # Pre-header charges: subtotals from lines (gross base; excludes header freight/commission in total_amount)
+    total_landing_subtotal: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
+    total_selling_subtotal: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
+    total_line_profit: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
     status: Mapped[str] = mapped_column(String(24), default="confirmed")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -72,8 +76,8 @@ class TradePurchaseLine(Base):
     trade_purchase_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("trade_purchases.id", ondelete="CASCADE"), index=True
     )
-    catalog_item_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("catalog_items.id"), nullable=True, index=True
+    catalog_item_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("catalog_items.id"), index=True
     )
     item_name: Mapped[str] = mapped_column(String(512))
     qty: Mapped[float] = mapped_column(Numeric(18, 4))

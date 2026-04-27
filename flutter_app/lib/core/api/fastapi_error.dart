@@ -73,6 +73,16 @@ String? _friendlyFieldMessage(String? field, String rawMsg) {
       return 'please set a valid purchase date';
     case 'payment_days':
       return 'payment days must be between 0 and 3650';
+    case 'default_items_per_box':
+      return 'Enter items per box (how many pieces per box).';
+    case 'default_weight_per_tin':
+      return 'Enter liters or weight per tin.';
+    case 'default_kg_per_bag':
+      return 'Enter kg per bag (e.g. 50).';
+    case 'name':
+      return 'item name is required';
+    case 'hsn_code':
+      return 'enter a valid HSN code';
   }
   // Fallback for the paired kg_per_unit / landing_cost_per_kg root validator.
   if (m.contains('kg_per_unit') && m.contains('landing_cost_per_kg')) {
