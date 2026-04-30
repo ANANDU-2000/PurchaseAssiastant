@@ -30,8 +30,19 @@ String _inr(num n) =>
     NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
         .format(n);
 
+final NumberFormat _qtyIntFmt = NumberFormat.decimalPattern('en_IN');
+final NumberFormat _qtyDecFmt = NumberFormat('#,##,##0.#', 'en_IN');
+
 String _fmtQty(double q) =>
-    q == q.roundToDouble() ? q.round().toString() : q.toStringAsFixed(1);
+    q == q.roundToDouble() ? _qtyIntFmt.format(q.round()) : _qtyDecFmt.format(q);
+
+String _unitWord(String unit, double qty) {
+  final upper = unit.toUpperCase();
+  if ((upper == 'BAG' || upper == 'BOX' || upper == 'TIN') && qty != 1) {
+    return '${upper}S';
+  }
+  return upper;
+}
 
 String _fmtDate(DateTime d) =>
     DateFormat.MMMd().format(d); // e.g. Apr 23
@@ -564,12 +575,39 @@ String _kpiUnitsLineUpper(HomeDashboardData data) {
   final ttn = data.totalTins;
   final tkg = data.totalKg;
   final parts = <String>[];
-  if (tb > 1e-9) parts.add('${_fmtQty(tb)} BAG');
+  if (tb > 1e-9) parts.add('${_fmtQty(tb)} ${_unitWord('BAG', tb)}');
   if (tkg > 1e-9) parts.add('${_fmtQty(tkg)} KG');
-  if (txb > 1e-9) parts.add('${_fmtQty(txb)} BOX');
-  if (ttn > 1e-9) parts.add('${_fmtQty(ttn)} TIN');
+  if (txb > 1e-9) parts.add('${_fmtQty(txb)} ${_unitWord('BOX', txb)}');
+  if (ttn > 1e-9) parts.add('${_fmtQty(ttn)} ${_unitWord('TIN', ttn)}');
   if (parts.isNotEmpty) return parts.join(' • ');
-  return '0 UNITS';
+  return '0 KG';
+}
+
+String _primaryUnitsLineUpper(HomeDashboardData data) {
+  if (data.totalBags > 1e-9) {
+    return '${_fmtQty(data.totalBags)} ${_unitWord('BAG', data.totalBags)}';
+  }
+  if (data.totalBoxes > 1e-9) {
+    return '${_fmtQty(data.totalBoxes)} ${_unitWord('BOX', data.totalBoxes)}';
+  }
+  if (data.totalTins > 1e-9) {
+    return '${_fmtQty(data.totalTins)} ${_unitWord('TIN', data.totalTins)}';
+  }
+  if (data.totalKg > 1e-9) return '${_fmtQty(data.totalKg)} KG';
+  if (data.totalQtyAllLines > 1e-9) {
+    return '${_fmtQty(data.totalQtyAllLines)} UNITS';
+  }
+  return '0 KG';
+}
+
+String _secondaryUnitsLineUpper(HomeDashboardData data) {
+  final primary = _primaryUnitsLineUpper(data);
+  final all = _kpiUnitsLineUpper(data);
+  if (primary == all) return '';
+  if (data.totalKg > 1e-9 && !primary.endsWith('KG')) {
+    return '${_fmtQty(data.totalKg)} KG';
+  }
+  return all;
 }
 
 /// Profit, percent, units, and matching breakdown (for ring + KPI).
@@ -581,8 +619,8 @@ List<String> _ringCenterLines(HomeDashboardData d) {
   final l2 = pp == null
       ? '(—)'
       : '(${p >= 0 ? '+' : ''}${pp.toStringAsFixed(1)}%)';
-  final l3 = '${d.totalQtyAllLines.round()} UNITS';
-  final l4 = _kpiUnitsLineUpper(d);
+  final l3 = _primaryUnitsLineUpper(d);
+  final l4 = _secondaryUnitsLineUpper(d);
   return [l1, l2, l3, l4];
 }
 
@@ -631,7 +669,6 @@ class _HomeFixedHeaderBody extends ConsumerWidget {
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
       children: [
         const SizedBox(height: 2),
         Padding(
@@ -660,22 +697,32 @@ class _HomeFixedHeaderBody extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 2),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: _buildRowSection(context, tab, shell),
-        ),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton(
-            onPressed: () {
-              context.push(
-                '/home/breakdown-more?tab=${tab.name}',
-              );
-            },
-            child: const Text('View more'),
+        Expanded(
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: _buildRowSection(context, tab, shell),
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () {
+                      context.push(
+                        '/home/breakdown-more?tab=${tab.name}',
+                      );
+                    },
+                    child: const Text('View more'),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-        const SizedBox(height: 2),
       ],
     );
   }
@@ -852,7 +899,8 @@ class _KpiTightBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final u = data.totalQtyAllLines.round();
+    final primaryUnits = _primaryUnitsLineUpper(data);
+    final secondaryUnits = _secondaryUnitsLineUpper(data);
     return Material(
       color: Colors.white,
       elevation: 0,
@@ -880,7 +928,7 @@ class _KpiTightBlock extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '$u UNITS',
+                  primaryUnits,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -891,17 +939,19 @@ class _KpiTightBlock extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              _kpiUnitsLineUpper(data),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF0F172A),
+            if (secondaryUnits.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                secondaryUnits,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F172A),
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),

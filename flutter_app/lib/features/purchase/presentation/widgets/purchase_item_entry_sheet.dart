@@ -125,11 +125,11 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         _kgPerUnit = kpu;
         _kgPerBagCtrl.text = _fmtQty(kpu);
         if (lck != null && lck > 0) {
-          _landingCtrl.text = lck.toString();
+          _landingCtrl.text = lck.toStringAsFixed(2);
         } else {
           final lc = (init['landing_cost'] as num?)?.toDouble();
           if (lc != null && lc > 0) {
-            _landingCtrl.text = (lc / kpu).toString();
+            _landingCtrl.text = (lc / kpu).toStringAsFixed(2);
           } else {
             _landingCtrl.text = '';
           }
@@ -144,10 +144,10 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         _weightPricing = false;
         _kgPerUnit = null;
         final r = init['landing_cost'];
-        _landingCtrl.text = r is num && r > 0 ? r.toString() : '';
+        _landingCtrl.text = r is num && r > 0 ? r.toDouble().toStringAsFixed(2) : '';
         final s = init['selling_cost'];
         if (s is num) {
-          _sellingCtrl.text = s.toString();
+          _sellingCtrl.text = s.toDouble().toStringAsFixed(2);
         } else {
           _sellingCtrl.text = '';
         }
@@ -263,7 +263,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   double _qtyVal() => _parseD(_qtyCtrl.text) ?? 0;
 
   String _fmtQty(double q) =>
-      q == q.roundToDouble() ? q.round().toString() : q.toString();
+      q == q.roundToDouble() ? q.round().toString() : q.toStringAsFixed(2);
 
   /// kg/bag resolved to a number; single source of truth = `_kgPerUnit` (seeded
   /// from catalog row on pick OR from the manual "Kg per bag" input).
@@ -613,10 +613,10 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         if (lp is num && lp > 0) {
           perKg = lp.toDouble() / kpbD;
         }
-        _landingCtrl.text = perKg > 0 ? perKg.toString() : '';
+        _landingCtrl.text = perKg > 0 ? perKg.toStringAsFixed(2) : '';
         final sc = row['default_selling_cost'];
         if (sc is num) {
-          _sellingCtrl.text = (sc.toDouble() / kpbD).toString();
+          _sellingCtrl.text = (sc.toDouble() / kpbD).toStringAsFixed(2);
         } else {
           _sellingCtrl.clear();
         }
@@ -627,10 +627,10 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         var rate = 0.0;
         final lp = row['default_landing_cost'];
         if (lp is num && lp > 0) rate = lp.toDouble();
-        _landingCtrl.text = rate > 0 ? rate.toString() : '';
+        _landingCtrl.text = rate > 0 ? rate.toStringAsFixed(2) : '';
         final sc2 = row['default_selling_cost'];
         if (sc2 is num) {
-          _sellingCtrl.text = sc2.toString();
+          _sellingCtrl.text = sc2.toDouble().toStringAsFixed(2);
         } else {
           _sellingCtrl.clear();
         }
@@ -712,7 +712,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         ));
         lines.add(const SizedBox(height: 2));
         lines.add(Text(
-          '₹${per.toStringAsFixed(0)}/kg → ₹${total.toStringAsFixed(0)}',
+          '₹${per.toStringAsFixed(2)}/kg → ₹${total.toStringAsFixed(2)}',
           style: theme.textTheme.bodySmall?.copyWith(
             fontSize: 12,
             fontWeight: FontWeight.w800,
@@ -731,7 +731,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       }
     } else {
       lines.add(Text(
-        '${_fmtQty(q)} $unitLabel × ₹${per.toStringAsFixed(0)} = ₹${total.toStringAsFixed(0)}',
+        '${_fmtQty(q)} $unitLabel × ₹${per.toStringAsFixed(2)} = ₹${total.toStringAsFixed(2)}',
         style: theme.textTheme.bodySmall?.copyWith(
           fontSize: 12,
           fontWeight: FontWeight.w700,
@@ -742,7 +742,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
 
     lines.add(const SizedBox(height: 2));
     lines.add(Text(
-      sell == null ? 'Profit —' : 'Profit ₹${profit.toStringAsFixed(0)}',
+      sell == null ? 'Profit —' : 'Profit ₹${profit.toStringAsFixed(2)}',
       style: theme.textTheme.bodySmall?.copyWith(
         fontSize: 12,
         fontWeight: FontWeight.w600,
@@ -879,7 +879,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                           ? InputDecorator(
                               decoration: _deco('Unit *', errorText: _errUnit),
                               child: Text(
-                                '${_unitCtrl.text.trim()} (${(k ?? 0).toStringAsFixed(0)} kg)',
+                                '${_unitCtrl.text.trim()} (${_fmtQty(k ?? 0)} kg)',
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w600,
                                   fontSize: 13,
@@ -1060,16 +1060,16 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                   ),
             ];
 
+    final keyboardBottom = MediaQuery.viewInsetsOf(context).bottom;
     final scroll = SingleChildScrollView(
       controller: _scrollController,
       physics: const ClampingScrollPhysics(),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: EdgeInsets.fromLTRB(
         widget.fullPage ? 16 : 10,
         widget.fullPage ? 8 : 4,
         widget.fullPage ? 16 : 10,
-        widget.fullPage
-            ? 24
-            : 10, // room above keyboard / bottom bar
+        (widget.fullPage ? 24 : 10) + keyboardBottom,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1082,6 +1082,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       return Theme(
         data: sheetTheme,
         child: Scaffold(
+          resizeToAvoidBottomInset: true,
           backgroundColor: Colors.white,
           appBar: AppBar(
             backgroundColor: Colors.white,

@@ -363,7 +363,7 @@ class _DetailBodyState extends ConsumerState<_DetailBody> {
   }
 
   Future<void> _markPaidSheet(BuildContext context, WidgetRef ref, TradePurchase p) async {
-    final ctrl = TextEditingController(text: p.remaining.toStringAsFixed(0));
+    final ctrl = TextEditingController(text: p.remaining.toStringAsFixed(2));
     final ok = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,

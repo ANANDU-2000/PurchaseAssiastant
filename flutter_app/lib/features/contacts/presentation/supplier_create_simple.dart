@@ -40,13 +40,16 @@ class _SupplierCreateSimpleState extends ConsumerState<SupplierCreateSimple> {
 
   @override
   Widget build(BuildContext context) {
+    final keyboardBottom = MediaQuery.viewInsetsOf(context).bottom;
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         title: const Text('New Supplier'),
         elevation: 0,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: EdgeInsets.fromLTRB(16, 16, 16, keyboardBottom + 24),
         child: Form(
           key: _formKey,
           child: Column(

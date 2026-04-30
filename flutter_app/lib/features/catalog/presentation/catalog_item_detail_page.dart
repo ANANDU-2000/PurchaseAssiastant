@@ -532,7 +532,7 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                         if (hist.isEmpty) ...[
                           const SizedBox(height: 8),
                           Text(
-                            'No trade purchase lines linked to this item yet (each saved line needs a catalog item).',
+                            'No purchases recorded for this item yet',
                             style: TextStyle(
                               fontSize: 12,
                               color: Theme.of(context)

@@ -121,17 +121,17 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     _invoiceCtrl.text = d.invoiceNumber ?? '';
     _paymentDaysCtrl.text = d.paymentDays != null ? '${d.paymentDays}' : '';
     _headerDiscCtrl.text = d.headerDiscountPercent != null
-        ? d.headerDiscountPercent.toString()
+        ? d.headerDiscountPercent.toStringAsFixed(2)
         : '';
     _commissionCtrl.text = d.commissionPercent != null
-        ? d.commissionPercent.toString()
+        ? d.commissionPercent.toStringAsFixed(2)
         : '';
     _deliveredRateCtrl.text = d.deliveredRate != null
-        ? d.deliveredRate.toString()
+        ? d.deliveredRate.toStringAsFixed(2)
         : '';
-    _billtyRateCtrl.text = d.billtyRate != null ? d.billtyRate.toString() : '';
+    _billtyRateCtrl.text = d.billtyRate != null ? d.billtyRate.toStringAsFixed(2) : '';
     _freightCtrl.text =
-        d.freightAmount != null ? d.freightAmount.toString() : '';
+        d.freightAmount != null ? d.freightAmount.toStringAsFixed(2) : '';
   }
 
   Future<void> _ensureCatalogSeedIfEmpty() async {
@@ -893,6 +893,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         await _confirmDiscardIfNeeded();
       },
       child: Scaffold(
+        resizeToAvoidBottomInset: true,
         appBar: AppBar(
           title: Text(isEdit ? 'Edit purchase' : 'New purchase'),
           elevation: 0,
@@ -1006,6 +1007,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
   }
 
   Widget _buildBody(List<Map<String, dynamic>> catalog, bool isEdit) {
+    final keyboardBottom = MediaQuery.viewInsetsOf(context).bottom;
     return Column(
       children: [
         if (_inlineSaveError != null)
@@ -1030,7 +1032,9 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
               const SizedBox(height: 8),
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.only(bottom: 12),
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.only(bottom: keyboardBottom + 24),
                   child: _buildActiveStepPanel(catalog, isEdit),
                 ),
               ),
@@ -1107,7 +1111,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
           ],
           if (isEdit && _loadedDerivedStatus != null) ...[
             Text(
-              'Payment: $_loadedDerivedStatus · Bal ₹${(_loadedRemaining ?? 0).toStringAsFixed(0)}',
+              'Payment: $_loadedDerivedStatus · Bal ₹${(_loadedRemaining ?? 0).toStringAsFixed(2)}',
               style: const TextStyle(fontSize: 11),
             ),
             const SizedBox(height: 8),
@@ -1186,8 +1190,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
               _onDraftChanged();
             },
           ),
-          const SizedBox(height: 12),
-          _buildBrokerBlock(),
       ],
     );
   }
@@ -1476,6 +1478,8 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
                 ],
               ),
             ),
+          _buildBrokerBlock(),
+          const SizedBox(height: 8),
           TextField(
             controller: _paymentDaysCtrl,
             keyboardType: TextInputType.number,
@@ -1640,14 +1644,14 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
             final sub = (kpu != null &&
                     lck != null &&
                     kpu > 0)
-                ? '${it.qty} ${it.unit} · ₹${lck.toStringAsFixed(0)}/kg → line ₹${total.toStringAsFixed(0)}'
-                : '${it.qty} ${it.unit} · landing ₹${it.landingCost.toStringAsFixed(0)} → line ₹${total.toStringAsFixed(0)}';
+                ? '${it.qty} ${it.unit} · ₹${lck.toStringAsFixed(2)}/kg → line ₹${total.toStringAsFixed(2)}'
+                : '${it.qty} ${it.unit} · landing ₹${it.landingCost.toStringAsFixed(2)} → line ₹${total.toStringAsFixed(2)}';
             return Card(
               margin: const EdgeInsets.only(bottom: 6),
               child: ListTile(
                 title: Text(it.itemName, maxLines: 2, overflow: TextOverflow.ellipsis),
                 subtitle: Text(
-                  '$sub${profit != 0 ? ' · Profit ₹${profit.toStringAsFixed(0)}' : ''}',
+                  '$sub${profit != 0 ? ' · Profit ₹${profit.toStringAsFixed(2)}' : ''}',
                   style: const TextStyle(fontSize: 12),
                 ),
                 trailing: Row(
@@ -1744,7 +1748,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
                       ),
                     ),
                     Text(
-                      '₹${lineTotal.toStringAsFixed(0)}',
+                      '₹${lineTotal.toStringAsFixed(2)}',
                       style: HexaDsType.purchaseLineMoney,
                     ),
                   ],
@@ -1760,19 +1764,19 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         const SizedBox(height: 6),
         if (qtot.totalKg > 0)
           _summaryRow(
-              'Total mass', '${qtot.totalKg.toStringAsFixed(0)} kg'),
-        _summaryRow('Subtotal', '₹${b.subtotalGross.toStringAsFixed(0)}'),
+              'Total weight', '${qtot.totalKg.toStringAsFixed(2)} kg'),
+        _summaryRow('Subtotal', '₹${b.subtotalGross.toStringAsFixed(2)}'),
         if (b.taxTotal > 0)
-          _summaryRow('Tax', '₹${b.taxTotal.toStringAsFixed(0)}'),
+          _summaryRow('Tax', '₹${b.taxTotal.toStringAsFixed(2)}'),
         if (b.discountTotal > 0)
-          _summaryRow('Discount', '- ₹${b.discountTotal.toStringAsFixed(0)}',
+          _summaryRow('Discount', '- ₹${b.discountTotal.toStringAsFixed(2)}',
               valueColor: Colors.red[700]),
         if (b.freight > 0)
-          _summaryRow('Freight', '₹${b.freight.toStringAsFixed(0)}'),
+          _summaryRow('Freight', '₹${b.freight.toStringAsFixed(2)}'),
         if (b.commission > 0)
-          _summaryRow('Broker', '₹${b.commission.toStringAsFixed(0)}'),
+          _summaryRow('Broker', '₹${b.commission.toStringAsFixed(2)}'),
         const Divider(height: 16),
-        _summaryRow('Final', '₹${b.grand.toStringAsFixed(0)}',
+        _summaryRow('Final', '₹${b.grand.toStringAsFixed(2)}',
             emphasize: true),
         const SizedBox(height: 16),
 
