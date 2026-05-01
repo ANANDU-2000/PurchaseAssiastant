@@ -1339,6 +1339,8 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     final viewInsets = MediaQuery.viewInsetsOf(context).bottom;
     final safeBottom = MediaQuery.paddingOf(context).bottom;
     final scrollBottom = viewInsets + safeBottom;
+    const scrollTail = 16.0;
+    final scrollBottomPad = scrollBottom + scrollTail;
 
     Widget errorStrip() {
       if (_inlineSaveError == null) return const SizedBox.shrink();
@@ -1364,8 +1366,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
             child: SingleChildScrollView(
               keyboardDismissBehavior:
                   ScrollViewKeyboardDismissBehavior.onDrag,
-              padding:
-                  EdgeInsets.fromLTRB(16, 4, 16, scrollBottom + 12),
+              padding: EdgeInsets.fromLTRB(16, 12, 16, scrollBottomPad),
               child: PurchaseSummaryStep(
                 showEmbeddedSave: false,
                 onGoSupplier: () {
@@ -1416,29 +1417,16 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         errorStrip(),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-          child: Card(
-            margin: EdgeInsets.zero,
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: Colors.grey[300]!),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: _buildStepSupplier(catalog, isEdit),
-            ),
-          ),
-        ),
         Expanded(
           child: SingleChildScrollView(
             keyboardDismissBehavior:
                 ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: EdgeInsets.fromLTRB(16, 0, 16, scrollBottom),
+            padding: EdgeInsets.fromLTRB(16, 12, 16, scrollBottomPad),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                _buildStepSupplier(catalog, isEdit),
+                const Divider(height: 24),
                 Text(
                   'Items',
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
@@ -1463,18 +1451,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
                   children: [
                     Padding(
                       padding: const EdgeInsets.only(top: 8, bottom: 4),
-                      child: Card(
-                        margin: EdgeInsets.zero,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          side: BorderSide(color: Colors.grey[300]!),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(14),
-                          child: _buildStepTerms(catalog, isEdit),
-                        ),
-                      ),
+                      child: _buildStepTerms(catalog, isEdit),
                     ),
                   ],
                 ),
@@ -1510,7 +1487,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     return InputDecoration(
       labelText: label,
       prefixText: prefixText,
-      isDense: true,
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
@@ -1523,7 +1499,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       filled: true,
       fillColor: Colors.grey[50],
       contentPadding:
-          const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
     );
   }
 
@@ -1573,7 +1549,8 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
               }
             },
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
               decoration: BoxDecoration(
                 border: Border.all(color: Colors.grey[300]!),
                 borderRadius: BorderRadius.circular(8),
@@ -2102,26 +2079,35 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
                     kpu > 0)
                 ? '${it.qty} ${it.unit} · ₹${lck.toStringAsFixed(2)}/kg → line ₹${total.toStringAsFixed(2)}'
                 : '${it.qty} ${it.unit} · landing ₹${it.landingCost.toStringAsFixed(2)} → line ₹${total.toStringAsFixed(2)}';
-            return Card(
-              margin: const EdgeInsets.only(bottom: 6),
-              child: ListTile(
-                title: Text(it.itemName, maxLines: 2, overflow: TextOverflow.ellipsis),
-                subtitle: Text(
-                  '$sub${profit != 0 ? ' · Profit ₹${profit.toStringAsFixed(2)}' : ''}',
-                  style: const TextStyle(fontSize: 12),
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey[300]!),
                 ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextButton(
-                      onPressed: () => _openItemSheet(catalog, editIndex: i),
-                      child: const Text('Edit'),
-                    ),
-                    TextButton(
-                      onPressed: () => _removeLineAt(i),
-                      child: Text('Delete', style: TextStyle(color: Colors.red[800])),
-                    ),
-                  ],
+                child: ListTile(
+                  title: Text(it.itemName,
+                      maxLines: 2, overflow: TextOverflow.ellipsis),
+                  subtitle: Text(
+                    '$sub${profit != 0 ? ' · Profit ₹${profit.toStringAsFixed(2)}' : ''}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextButton(
+                        onPressed: () => _openItemSheet(catalog, editIndex: i),
+                        child: const Text('Edit'),
+                      ),
+                      TextButton(
+                        onPressed: () => _removeLineAt(i),
+                        child: Text('Delete',
+                            style: TextStyle(color: Colors.red[800])),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -2137,7 +2123,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       final saveVal = ref.watch(purchaseSaveValidationProvider);
       final canSave = saveVal.isOk;
       return SafeArea(
-        minimum: const EdgeInsets.only(bottom: 8),
         child: Material(
           elevation: 6,
           child: Column(
@@ -2156,28 +2141,39 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
                   ),
                 ),
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                padding: const EdgeInsets.all(12),
                 child: Row(
                   children: [
-                    OutlinedButton(
-                      onPressed: _isSaving ? null : _closeReview,
-                      child: const Text('Edit details'),
+                    Expanded(
+                      child: SizedBox(
+                        height: 50,
+                        child: OutlinedButton(
+                          onPressed: _isSaving ? null : _closeReview,
+                          child: const Text('Edit details'),
+                        ),
+                      ),
                     ),
-                    const Spacer(),
-                    FilledButton(
-                      onPressed: (!canSave || _isSaving) ? null : _validateAndSave,
-                      child: _isSaving
-                          ? const SizedBox(
-                              height: 22,
-                              width: 22,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : Text(
-                              isEdit ? 'Save changes' : 'Save purchase',
-                            ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: SizedBox(
+                        height: 50,
+                        child: FilledButton(
+                          onPressed: (!canSave || _isSaving)
+                              ? null
+                              : _validateAndSave,
+                          child: _isSaving
+                              ? const SizedBox(
+                                  height: 22,
+                                  width: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Text(
+                                  isEdit ? 'Save changes' : 'Save purchase',
+                                ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -2189,19 +2185,17 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     }
 
     return SafeArea(
-      minimum: const EdgeInsets.only(bottom: 8),
       child: Material(
         elevation: 6,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          child: Row(
-            children: [
-              const Spacer(),
-              FilledButton(
-                onPressed: (g.from0 && g.from1) ? _openReview : null,
-                child: const Text('Review'),
-              ),
-            ],
+          padding: const EdgeInsets.all(12),
+          child: SizedBox(
+            height: 50,
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: (g.from0 && g.from1) ? _openReview : null,
+              child: const Text('Review'),
+            ),
           ),
         ),
       ),
