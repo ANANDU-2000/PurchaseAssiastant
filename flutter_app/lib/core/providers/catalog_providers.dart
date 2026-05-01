@@ -24,7 +24,7 @@ final itemCategoriesListProvider =
 /// Kept alive so the purchase wizard never cold-loads catalog twice per session.
 final catalogItemsListProvider =
     FutureProvider<List<Map<String, dynamic>>>((ref) async {
-  // keepAlive: no autoDispose — survives navigation; invalidated only after add/edit.
+  ref.keepAlive();
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   return ref

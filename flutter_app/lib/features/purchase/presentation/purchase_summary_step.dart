@@ -20,6 +20,7 @@ class PurchaseSummaryStep extends ConsumerWidget {
     required this.canSave,
     this.isEditMode = false,
     this.paymentDerivedStatus,
+    this.showEmbeddedSave = true,
   });
 
   final VoidCallback onGoSupplier;
@@ -31,6 +32,8 @@ class PurchaseSummaryStep extends ConsumerWidget {
   final bool canSave;
   final bool isEditMode;
   final String? paymentDerivedStatus;
+  /// When false (e.g. wizard bottom bar owns Save), the large sheet CTA is hidden.
+  final bool showEmbeddedSave;
 
   static String _rs(double x) => 'Rs. ${x.toStringAsFixed(2)}';
 
@@ -295,41 +298,42 @@ class PurchaseSummaryStep extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton(
-            onPressed: (isSaving || !canSave)
-                ? null
-                : () {
-                    HapticFeedback.mediumImpact();
-                    onSave();
-                  },
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF0F4C3A),
-              foregroundColor: Colors.white,
-              minimumSize: const Size(double.infinity, 50),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
+        if (showEmbeddedSave)
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: (isSaving || !canSave)
+                  ? null
+                  : () {
+                      HapticFeedback.mediumImpact();
+                      onSave();
+                    },
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF0F4C3A),
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 50),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
               ),
+              child: isSaving
+                  ? const SizedBox(
+                      height: 22,
+                      width: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text(
+                      isEditMode ? 'Save changes' : 'Save purchase',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
             ),
-            child: isSaving
-                ? const SizedBox(
-                    height: 22,
-                    width: 22,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : Text(
-                    isEditMode ? 'Save changes' : 'Save purchase',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
           ),
-        ),
       ],
     );
   }

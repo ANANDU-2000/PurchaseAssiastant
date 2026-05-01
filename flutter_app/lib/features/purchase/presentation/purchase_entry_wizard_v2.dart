@@ -47,7 +47,11 @@ class PurchaseEntryWizardV2 extends ConsumerStatefulWidget {
 }
 
 class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
-  int _currentStep = 0;
+  /// Single-screen flow: details + items + collapsible charges; tap Review for summary.
+  bool _reviewMode = false;
+  /// Bumps [ExpansionTile] key so "Edit terms" from summary opens charges expanded.
+  int _chargesTileKey = 0;
+  bool _openChargesAfterSummaryJump = false;
   bool _isBootstrapping = false;
   bool _isSaving = false;
   bool _formDirty = false;
@@ -62,6 +66,9 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
   bool _catalogLinePrefillOpened = false;
   /// When catalog line defaults reduce suppliers to a single option, we auto-pick once per signature.
   String? _lastAutoSupplierFromCatalogSig;
+  /// Last good catalog snapshot for stale-while-revalidate UX.
+  List<Map<String, dynamic>>? _lastCatalogSnapshot;
+
   /// [tradeSupplierBrokerMap] top suppliers for current line catalog ids (hint only).
   String? _historyHintKey;
   Future<List<String>>? _historySupplierNamesFuture;
@@ -118,15 +125,23 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       if (!mounted) return;
       ref.read(purchaseDraftProvider.notifier).setInvoiceText('');
       _syncControllersFromDraft();
+      Future.microtask(() {
+        if (!mounted) return;
+        ref.invalidate(catalogItemsListProvider);
+      });
     }
     if (!mounted) return;
-    await _prefetchNextHumanId();
-    if (!mounted) return;
-    await _openCatalogLinePrefillIfNeeded();
-    if (!mounted) return;
-    await _ensureCatalogSeedIfEmpty();
-    if (!mounted) return;
-    await _prefetchSupplierLastPurchasesMap();
+    // Defer heavy I/O — first paint is sync path above only.
+    unawaited(Future<void>(() async {
+      if (!mounted) return;
+      await _prefetchNextHumanId();
+      if (!mounted) return;
+      await _openCatalogLinePrefillIfNeeded();
+      if (!mounted) return;
+      await _ensureCatalogSeedIfEmpty();
+      if (!mounted) return;
+      await _prefetchSupplierLastPurchasesMap();
+    }));
   }
 
   void _syncControllersFromDraft() {
@@ -895,65 +910,37 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
   bool _isEditMode() =>
       widget.editingId != null && widget.editingId!.isNotEmpty;
 
-  void _onContinue() {
+  void _openReview() {
     final g = ref.read(purchaseStepGatesProvider);
-    if (_currentStep == 0) {
-      if (!g.from0) {
-        setState(() {
-          _supplierFieldError =
-              'Pick a supplier from the suggestions list (typing alone is not enough).';
-          _inlineSaveError = null;
-        });
-        _scrollSupplierIntoView();
-        return;
-      }
+    if (!g.from0) {
       setState(() {
+        _supplierFieldError =
+            'Pick a supplier from the suggestions list (typing alone is not enough).';
+        _inlineSaveError = null;
+      });
+      _scrollSupplierIntoView();
+      return;
+    }
+    if (!g.from1) {
+      setState(() {
+        _inlineSaveError =
+            'Add at least one item with name, quantity > 0, and landing cost > 0.';
         _supplierFieldError = null;
-        _inlineSaveError = null;
-        _currentStep = 1;
       });
-      HapticFeedback.selectionClick();
+      _scrollItemsIntoView();
       return;
     }
-    if (_currentStep == 1) {
-      if (!g.from1) {
-        setState(() {
-          _inlineSaveError =
-              'Add at least one item with name, quantity > 0, and landing cost > 0.';
-          _supplierFieldError = null;
-        });
-        _scrollItemsIntoView();
-        return;
-      }
-      setState(() {
-        _inlineSaveError = null;
-        _currentStep = 2;
-      });
-      HapticFeedback.selectionClick();
-      return;
-    }
-    if (_currentStep == 2) {
-      if (!g.from2) {
-        setState(() {
-          _inlineSaveError =
-              'Add at least one item with name, quantity > 0, and landing cost > 0.';
-        });
-        _scrollItemsIntoView();
-        return;
-      }
-      setState(() {
-        _inlineSaveError = null;
-        _currentStep = 3;
-      });
-      HapticFeedback.selectionClick();
-    }
+    setState(() {
+      _inlineSaveError = null;
+      _supplierFieldError = null;
+      _reviewMode = true;
+    });
+    HapticFeedback.selectionClick();
   }
 
-  void _onBack() {
-    if (_currentStep > 0) {
-      setState(() => _currentStep--);
-      HapticFeedback.selectionClick();
-    }
+  void _closeReview() {
+    setState(() => _reviewMode = false);
+    HapticFeedback.selectionClick();
   }
 
   Future<void> _confirmDiscardIfNeeded() async {
@@ -1023,13 +1010,13 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         if (isSupplier) {
           setState(() {
             _supplierFieldError = v.errorMessage;
-            _currentStep = 0;
+            _reviewMode = false;
           });
           _scrollSupplierIntoView();
         } else {
           setState(() {
             _inlineSaveError = v.errorMessage;
-            _currentStep = 1;
+            _reviewMode = false;
           });
           _scrollItemsIntoView();
         }
@@ -1037,7 +1024,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         setState(() {
           _inlineSaveError =
               'Fix the highlighted lines in the summary before saving.';
-          _currentStep = 3;
+          _reviewMode = true;
         });
       }
       return;
@@ -1207,7 +1194,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       if (mounted) {
         final hint = fastApiPurchaseScrollHint(e.response?.data);
         if (hint != null && hint.supplierField) {
-          setState(() => _currentStep = 0);
+          setState(() => _reviewMode = false);
         }
         setState(() {
           _isSaving = false;
@@ -1226,6 +1213,13 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(catalogItemsListProvider, (_, next) {
+      next.whenData((d) {
+        _lastCatalogSnapshot = d
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList(growable: false);
+      });
+    });
     ref.listen<(String?, String?)>(
       purchaseDraftProvider.select((d) => (d.supplierId, d.supplierName)),
       (prev, next) {
@@ -1286,13 +1280,40 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
                 }
 
                 final catalogAsync = ref.watch(catalogItemsListProvider);
+                final catalog = catalogAsync.valueOrNull ??
+                    _lastCatalogSnapshot ??
+                    const <Map<String, dynamic>>[];
+                final emptyCache = catalog.isEmpty;
+                final showTopLoad =
+                    catalogAsync.isLoading && emptyCache;
+                final showCatalogErrorStrip =
+                    catalogAsync.hasError && emptyCache;
 
-                return catalogAsync.when(
-                  loading: () =>
-                      const Center(child: LinearProgressIndicator()),
-                  error: (_, __) =>
-                      const Center(child: Text('Could not load catalog')),
-                  data: (catalog) => _buildBody(catalog, isEdit),
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (showTopLoad)
+                      const SizedBox(
+                        height: 3,
+                        child: LinearProgressIndicator(minHeight: 3),
+                      ),
+                    if (showCatalogErrorStrip)
+                      Material(
+                        color: Colors.orange.shade50,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          child: Text(
+                            'Catalog could not refresh. ${catalogAsync.error}',
+                            style: TextStyle(
+                                color: Colors.orange.shade900, fontSize: 12),
+                          ),
+                        ),
+                      ),
+                    Expanded(
+                      child: _buildBody(catalog, isEdit),
+                    ),
+                  ],
                 );
               },
             ),
@@ -1304,163 +1325,161 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
               return const SizedBox.shrink();
             }
             final catalogAsync = ref.watch(catalogItemsListProvider);
-            final catalog =
-                catalogAsync.valueOrNull ?? const <Map<String, dynamic>>[];
-            return catalogAsync.maybeWhen(
-              data: (_) => _buildNavBar(catalog, isEdit),
-              orElse: () => const SizedBox.shrink(),
-            );
+            final catalog = catalogAsync.valueOrNull ??
+                _lastCatalogSnapshot ??
+                const <Map<String, dynamic>>[];
+            return _buildNavBar(catalog, isEdit);
           },
         ),
       ),
     );
   }
 
-  static const _stageLabels = ['Details', 'Items', 'Terms', 'Summary'];
+  Widget _buildBody(List<Map<String, dynamic>> catalog, bool isEdit) {
+    final viewInsets = MediaQuery.viewInsetsOf(context).bottom;
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
+    final scrollBottom = viewInsets + safeBottom;
 
-  Widget _buildStageHeader() {
-    return Semantics(
-      label: 'Purchase steps',
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2),
-        child: Row(
-          children: List.generate(_stageLabels.length, (i) {
-            final done = _currentStep > i;
-            final active = _currentStep == i;
-            final canJump = done || active;
-            return Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(10),
-                  onTap: canJump
-                      ? () {
-                          setState(() => _currentStep = i);
-                          HapticFeedback.selectionClick();
-                        }
-                      : null,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    child: Column(
-                      children: [
-                        CircleAvatar(
-                          radius: 12,
-                          backgroundColor: active
-                              ? HexaColors.brandPrimary
-                              : done
-                                  ? const Color(0xFF0D9488)
-                                  : Colors.grey[300],
-                          child: Text(
-                            '${i + 1}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                              color: active || done ? Colors.white : Colors.grey[700],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _stageLabels[i],
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: active ? FontWeight.w800 : FontWeight.w500,
-                            color: active ? Colors.black87 : Colors.black54,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            );
-          }),
+    Widget errorStrip() {
+      if (_inlineSaveError == null) return const SizedBox.shrink();
+      return Material(
+        color: Colors.red[50],
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+          child: Text(
+            _inlineSaveError!,
+            style: TextStyle(color: Colors.red[900], fontSize: 12),
+          ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildActiveStepPanel(List<Map<String, dynamic>> catalog, bool isEdit) {
-    if (_currentStep == 3) {
-      final canSave = ref.watch(purchaseSaveValidationProvider).isOk;
-      return PurchaseSummaryStep(
-        onGoSupplier: () {
-          setState(() => _currentStep = 0);
-          HapticFeedback.selectionClick();
-        },
-        onGoItems: () {
-          setState(() => _currentStep = 1);
-          HapticFeedback.selectionClick();
-        },
-        onGoTerms: () {
-          setState(() => _currentStep = 2);
-          HapticFeedback.selectionClick();
-        },
-        onEditTerms: () {
-          setState(() => _currentStep = 2);
-          HapticFeedback.selectionClick();
-        },
-        onSave: _validateAndSave,
-        isSaving: _isSaving,
-        canSave: canSave,
-        isEditMode: isEdit,
-        paymentDerivedStatus: _loadedDerivedStatus,
       );
     }
 
-    final Widget child = switch (_currentStep) {
-      0 => _buildStepSupplier(catalog, isEdit),
-      1 => _buildStepItems(catalog, isEdit),
-      2 => _buildStepTerms(catalog, isEdit),
-      _ => const SizedBox.shrink(),
-    };
-    return Card(
-      margin: EdgeInsets.zero,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey[300]!),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: child,
-      ),
-    );
-  }
-
-  Widget _buildBody(List<Map<String, dynamic>> catalog, bool isEdit) {
-    final keyboardBottom = MediaQuery.viewInsetsOf(context).bottom;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (_inlineSaveError != null)
-          Material(
-            color: Colors.red[50],
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-              child: Text(
-                _inlineSaveError!,
-                style: TextStyle(color: Colors.red[900], fontSize: 12),
+    if (_reviewMode) {
+      final canSave = ref.watch(purchaseSaveValidationProvider).isOk;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          errorStrip(),
+          Expanded(
+            child: SingleChildScrollView(
+              keyboardDismissBehavior:
+                  ScrollViewKeyboardDismissBehavior.onDrag,
+              padding:
+                  EdgeInsets.fromLTRB(16, 4, 16, scrollBottom + 12),
+              child: PurchaseSummaryStep(
+                showEmbeddedSave: false,
+                onGoSupplier: () {
+                  _closeReview();
+                  _scrollSupplierIntoView();
+                },
+                onGoItems: () {
+                  _closeReview();
+                  _scrollItemsIntoView();
+                },
+                onGoTerms: () {
+                  setState(() {
+                    _reviewMode = false;
+                    _chargesTileKey++;
+                    _openChargesAfterSummaryJump = true;
+                  });
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) {
+                      setState(() => _openChargesAfterSummaryJump = false);
+                    }
+                  });
+                },
+                onEditTerms: () {
+                  setState(() {
+                    _reviewMode = false;
+                    _chargesTileKey++;
+                    _openChargesAfterSummaryJump = true;
+                  });
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) {
+                      setState(() => _openChargesAfterSummaryJump = false);
+                    }
+                  });
+                },
+                onSave: _validateAndSave,
+                isSaving: _isSaving,
+                canSave: canSave,
+                isEditMode: isEdit,
+                paymentDerivedStatus: _loadedDerivedStatus,
               ),
             ),
           ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        errorStrip(),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: _buildStageHeader(),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+          child: Card(
+            margin: EdgeInsets.zero,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: Colors.grey[300]!),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: _buildStepSupplier(catalog, isEdit),
+            ),
+          ),
         ),
         Expanded(
           child: SingleChildScrollView(
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: EdgeInsets.only(
-              left: 16,
-              right: 16,
-              top: 8,
-              bottom: keyboardBottom + 80,
+            keyboardDismissBehavior:
+                ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.fromLTRB(16, 0, 16, scrollBottom),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Items',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: 6),
+                _buildStepItems(catalog, isEdit),
+                const SizedBox(height: 10),
+                ExpansionTile(
+                  key: ValueKey(_chargesTileKey),
+                  initiallyExpanded: _openChargesAfterSummaryJump,
+                  tilePadding: EdgeInsets.zero,
+                  title: Text(
+                    'Charges & terms',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                  shape: const Border(),
+                  collapsedShape: const Border(),
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8, bottom: 4),
+                      child: Card(
+                        margin: EdgeInsets.zero,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(color: Colors.grey[300]!),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: _buildStepTerms(catalog, isEdit),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            child: _buildActiveStepPanel(catalog, isEdit),
           ),
         ),
       ],
@@ -2038,14 +2057,14 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     List<Map<String, dynamic>> catalog,
     bool isEdit,
   ) {
-    final draft = ref.watch(purchaseDraftProvider);
-    final lines = draft.lines;
+    final supplierId = ref.watch(purchaseDraftProvider.select((d) => d.supplierId));
+    final lines = ref.watch(purchaseDraftProvider.select((d) => d.lines));
     return Column(
       key: _itemsSectionKey,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         FilledButton.icon(
-          onPressed: draft.supplierId == null
+          onPressed: supplierId == null
               ? null
               : () => _openItemSheet(catalog),
           icon: const Icon(Icons.add, size: 20),
@@ -2114,22 +2133,56 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
   Widget _buildNavBar(List<Map<String, dynamic>> catalog, bool isEdit) {
     final g = ref.watch(purchaseStepGatesProvider);
 
-    if (_currentStep == 3) {
+    if (_reviewMode) {
       final saveVal = ref.watch(purchaseSaveValidationProvider);
       final canSave = saveVal.isOk;
-      if (canSave) return const SizedBox.shrink();
       return SafeArea(
         minimum: const EdgeInsets.only(bottom: 8),
         child: Material(
-          elevation: 4,
-          color: Colors.red.shade50,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Text(
-              saveVal.errorMessage ??
-                  'Complete supplier and at least one valid line to save.',
-              style: TextStyle(color: Colors.red[800], fontSize: 12),
-            ),
+          elevation: 6,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (!canSave)
+                Container(
+                  color: Colors.red.shade50,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Text(
+                    saveVal.errorMessage ??
+                        'Complete supplier and at least one valid line to save.',
+                    style: TextStyle(color: Colors.red[800], fontSize: 12),
+                  ),
+                ),
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                child: Row(
+                  children: [
+                    OutlinedButton(
+                      onPressed: _isSaving ? null : _closeReview,
+                      child: const Text('Edit details'),
+                    ),
+                    const Spacer(),
+                    FilledButton(
+                      onPressed: (!canSave || _isSaving) ? null : _validateAndSave,
+                      child: _isSaving
+                          ? const SizedBox(
+                              height: 22,
+                              width: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : Text(
+                              isEdit ? 'Save changes' : 'Save purchase',
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       );
@@ -2143,34 +2196,15 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           child: Row(
             children: [
-              if (_currentStep > 0)
-                TextButton(
-                  onPressed: _onBack,
-                  child: const Text('Back'),
-                ),
               const Spacer(),
               FilledButton(
-                onPressed: _canContinueForStep(g) ? _onContinue : null,
-                child: const Text('Next'),
+                onPressed: (g.from0 && g.from1) ? _openReview : null,
+                child: const Text('Review'),
               ),
             ],
           ),
         ),
       ),
     );
-  }
-
-  bool _canContinueForStep(
-      ({bool from0, bool from1, bool from2, bool from3}) g) {
-    switch (_currentStep) {
-      case 0:
-        return g.from0;
-      case 1:
-        return g.from1;
-      case 2:
-        return g.from2;
-      default:
-        return false;
-    }
   }
 }

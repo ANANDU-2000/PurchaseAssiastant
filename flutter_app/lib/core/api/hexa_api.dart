@@ -38,15 +38,15 @@ class HexaApi {
         _dio = Dio(
           BaseOptions(
             baseUrl: baseUrl ?? AppConfig.resolvedApiBaseUrl,
-            connectTimeout: const Duration(seconds: 8),
-            receiveTimeout: const Duration(seconds: 8),
+            connectTimeout: const Duration(seconds: 5),
+            receiveTimeout: const Duration(seconds: 5),
           ),
         ),
         _plain = Dio(
           BaseOptions(
             baseUrl: baseUrl ?? AppConfig.resolvedApiBaseUrl,
-            connectTimeout: const Duration(seconds: 8),
-            receiveTimeout: const Duration(seconds: 8),
+            connectTimeout: const Duration(seconds: 5),
+            receiveTimeout: const Duration(seconds: 5),
           ),
         ) {
     _dio.interceptors.add(
@@ -128,7 +128,7 @@ class HexaApi {
         },
       ),
     );
-    _dio.interceptors.add(DioAutoRetryInterceptor(_dio));
+    _dio.interceptors.add(DioAutoRetryInterceptor(_dio, maxAttempts: 2));
   }
 
   final Dio _dio;

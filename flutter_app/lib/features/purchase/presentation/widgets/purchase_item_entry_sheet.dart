@@ -100,6 +100,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   /// Ignore stale default fetches when the user selects another catalog row mid-flight.
   int _catalogPickSeq = 0;
   Timer? _defaultsDebounceTimer;
+  Timer? _previewDebounceTimer;
 
   /// Short hint driven by [_activeClassification()] after catalog/name changes.
   String? _unitDetectHint;
@@ -142,6 +143,13 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       _kgPerUnit = (v != null && v > 0) ? v : null;
       _weightPricing = bagFamily && _kgPerUnit != null && _kgPerUnit! > 0;
       if (_errKgPerBag != null) _errKgPerBag = null;
+    });
+  }
+
+  void _schedulePreviewRebuild() {
+    _previewDebounceTimer?.cancel();
+    _previewDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+      if (mounted) setState(() {});
     });
   }
 
@@ -237,6 +245,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     _itemCtrl.removeListener(_onItemTextChanged);
     _kgPerBagCtrl.removeListener(_onKgPerBagChanged);
     _defaultsDebounceTimer?.cancel();
+    _previewDebounceTimer?.cancel();
     _scrollController.dispose();
     _itemCtrl.dispose();
     _itemFocus.dispose();
@@ -1190,7 +1199,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     _defaultsDebounceTimer?.cancel();
     final fetch = widget.resolveLastDefaults;
     if (fetch == null || widget.isEdit) return;
-    _defaultsDebounceTimer = Timer(const Duration(milliseconds: 380), () async {
+    _defaultsDebounceTimer = Timer(const Duration(milliseconds: 300), () async {
       if (!mounted || seq != _catalogPickSeq) return;
       try {
         final defaults = await fetch(catalogItemId);
@@ -1566,7 +1575,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                         decoration: _deco('Qty *', errorText: _errQty),
                         onChanged: (_) {
                           _clearFieldErrors();
-                          setState(() {});
+                          _schedulePreviewRebuild();
                         },
                         onSubmitted: (_) {
                           if (showManualKgField) {
@@ -1662,7 +1671,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                             'Items per box *',
                             errorText: _errKgPerBag,
                           ),
-                          onChanged: (_) => setState(() {}),
+                          onChanged: (_) => _schedulePreviewRebuild(),
                         ),
                       ),
                       const SizedBox(width: 6),
@@ -1676,7 +1685,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                             'Kg per item',
                             errorText: _errKgPerBag,
                           ),
-                          onChanged: (_) => setState(() {}),
+                          onChanged: (_) => _schedulePreviewRebuild(),
                         ),
                       ),
                     ],
@@ -1691,7 +1700,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                       'Kg per box',
                       errorText: _errKgPerBag,
                     ),
-                    onChanged: (_) => setState(() {}),
+                    onChanged: (_) => _schedulePreviewRebuild(),
                   )
                 else ...[
                   if (_boxFixedWeight)
@@ -1702,7 +1711,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                       inputFormatters: [_decimalFormatter(3)],
                       decoration:
                           _deco('Kg per box *', errorText: _errKgPerBag),
-                      onChanged: (_) => setState(() {}),
+                      onChanged: (_) => _schedulePreviewRebuild(),
                     )
                   else
                     Row(
@@ -1718,7 +1727,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                               'Items per box *',
                               errorText: _errKgPerBag,
                             ),
-                            onChanged: (_) => setState(() {}),
+                            onChanged: (_) => _schedulePreviewRebuild(),
                           ),
                         ),
                         const SizedBox(width: 6),
@@ -1733,7 +1742,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                               'Kg per item *',
                               errorText: _errKgPerBag,
                             ),
-                            onChanged: (_) => setState(() {}),
+                            onChanged: (_) => _schedulePreviewRebuild(),
                           ),
                         ),
                       ],
@@ -1747,7 +1756,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   inputFormatters: [_decimalFormatter(3)],
                   decoration: _deco('Weight per tin *', errorText: _errKgPerBag),
-                  onChanged: (_) => setState(() {}),
+                  onChanged: (_) => _schedulePreviewRebuild(),
                 ),
               ],
               const SizedBox(height: 6),
@@ -1766,7 +1775,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                   ),
                   onChanged: (_) {
                     _clearFieldErrors();
-                    setState(() {});
+                    _schedulePreviewRebuild();
                   },
                   onSubmitted: (_) {
                     FocusScope.of(context).requestFocus(_sellingFocus);
@@ -1789,7 +1798,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                   ),
                   onChanged: (_) {
                     _clearFieldErrors();
-                    setState(() {});
+                    _schedulePreviewRebuild();
                   },
                 ),
               ),
@@ -1966,6 +1975,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
             ];
 
     final keyboardBottom = MediaQuery.viewInsetsOf(context).bottom;
+    final homeBottomInset = MediaQuery.paddingOf(context).bottom;
     final scroll = SingleChildScrollView(
       controller: _scrollController,
       physics: const ClampingScrollPhysics(),
@@ -1974,7 +1984,8 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         left: widget.fullPage ? 16 : 10,
         top: widget.fullPage ? 8 : 4,
         right: widget.fullPage ? 16 : 10,
-        bottom: (widget.fullPage ? 0 : 10) + keyboardBottom + (widget.fullPage ? 20 : 0),
+        bottom: keyboardBottom +
+            (widget.fullPage ? homeBottomInset + 12 : 10),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

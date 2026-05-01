@@ -3,10 +3,10 @@ import 'package:dio/dio.dart';
 /// Retries safe, idempotent requests up to [maxAttempts] on transient failures.
 /// Register on the main [Dio] after other interceptors; [onError] order is last-registered first.
 class DioAutoRetryInterceptor extends Interceptor {
-  DioAutoRetryInterceptor(this._dio, {this.maxAttempts = 3});
+  DioAutoRetryInterceptor(this._dio, {this.maxAttempts = 2});
 
   final Dio _dio;
-  /// Retry rounds after the first failure (each round: 1s, 2s, 4s delay).
+  /// Counts automatic refetches after the first failure (bounded by [maxAttempts]).
   final int maxAttempts;
 
   bool _retryable(DioException err) {

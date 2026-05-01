@@ -85,7 +85,6 @@ class _HomePageState extends ConsumerState<HomePage>
       ref.invalidate(homeDashboardDataProvider);
       ref.invalidate(homeShellReportsProvider);
       invalidateTradePurchaseCaches(ref);
-      invalidateBusinessAggregates(ref);
     });
   }
 
