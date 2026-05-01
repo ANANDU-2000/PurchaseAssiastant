@@ -191,11 +191,11 @@ def _ensure_supplier_wholesale_columns(sync_conn):
     if "default_payment_days" not in cols:
         alters.append("ALTER TABLE suppliers ADD COLUMN default_payment_days INTEGER")
     if "default_discount" not in cols:
-        alters.append("ALTER TABLE suppliers ADD COLUMN default_discount NUMERIC(18, 4)")
+        alters.append("ALTER TABLE suppliers ADD COLUMN default_discount NUMERIC(5, 2)")
     if "default_delivered_rate" not in cols:
-        alters.append("ALTER TABLE suppliers ADD COLUMN default_delivered_rate NUMERIC(18, 4)")
+        alters.append("ALTER TABLE suppliers ADD COLUMN default_delivered_rate NUMERIC(12, 2)")
     if "default_billty_rate" not in cols:
-        alters.append("ALTER TABLE suppliers ADD COLUMN default_billty_rate NUMERIC(18, 4)")
+        alters.append("ALTER TABLE suppliers ADD COLUMN default_billty_rate NUMERIC(12, 2)")
     for sql in alters:
         try:
             sync_conn.exec_driver_sql(sql)
@@ -262,21 +262,21 @@ def _ensure_catalog_item_trade_columns(sync_conn):
     if "hsn_code" not in cols:
         alters.append("ALTER TABLE catalog_items ADD COLUMN hsn_code VARCHAR(32)")
     if "tax_percent" not in cols:
-        alters.append("ALTER TABLE catalog_items ADD COLUMN tax_percent NUMERIC(18, 4)")
+        alters.append("ALTER TABLE catalog_items ADD COLUMN tax_percent NUMERIC(5, 2)")
     if "default_landing_cost" not in cols:
-        alters.append("ALTER TABLE catalog_items ADD COLUMN default_landing_cost NUMERIC(18, 4)")
+        alters.append("ALTER TABLE catalog_items ADD COLUMN default_landing_cost NUMERIC(12, 2)")
     if "default_selling_cost" not in cols:
-        alters.append("ALTER TABLE catalog_items ADD COLUMN default_selling_cost NUMERIC(18, 4)")
+        alters.append("ALTER TABLE catalog_items ADD COLUMN default_selling_cost NUMERIC(12, 2)")
     if "default_purchase_unit" not in cols:
         alters.append("ALTER TABLE catalog_items ADD COLUMN default_purchase_unit VARCHAR(32)")
     if "default_sale_unit" not in cols:
         alters.append("ALTER TABLE catalog_items ADD COLUMN default_sale_unit VARCHAR(32)")
     if "last_purchase_price" not in cols:
-        alters.append("ALTER TABLE catalog_items ADD COLUMN last_purchase_price NUMERIC(18, 4)")
+        alters.append("ALTER TABLE catalog_items ADD COLUMN last_purchase_price NUMERIC(12, 2)")
     if "default_items_per_box" not in cols:
-        alters.append("ALTER TABLE catalog_items ADD COLUMN default_items_per_box NUMERIC(18, 4)")
+        alters.append("ALTER TABLE catalog_items ADD COLUMN default_items_per_box NUMERIC(12, 3)")
     if "default_weight_per_tin" not in cols:
-        alters.append("ALTER TABLE catalog_items ADD COLUMN default_weight_per_tin NUMERIC(18, 4)")
+        alters.append("ALTER TABLE catalog_items ADD COLUMN default_weight_per_tin NUMERIC(12, 3)")
     for sql in alters:
         try:
             sync_conn.exec_driver_sql(sql)
@@ -311,10 +311,10 @@ def _ensure_trade_purchases_lifecycle_columns(sync_conn):
     if "paid_amount" not in cols:
         if dialect == "postgresql":
             alters.append(
-                "ALTER TABLE trade_purchases ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(18,4) NOT NULL DEFAULT 0"
+                "ALTER TABLE trade_purchases ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(14,2) NOT NULL DEFAULT 0"
             )
         else:
-            alters.append("ALTER TABLE trade_purchases ADD COLUMN paid_amount NUMERIC(18,4) NOT NULL DEFAULT 0")
+            alters.append("ALTER TABLE trade_purchases ADD COLUMN paid_amount NUMERIC(14,2) NOT NULL DEFAULT 0")
     if "paid_at" not in cols:
         if dialect == "postgresql":
             alters.append("ALTER TABLE trade_purchases ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ NULL")
@@ -358,22 +358,53 @@ def _ensure_trade_purchase_line_columns(sync_conn):
     if "kg_per_unit" not in cols:
         if dialect == "postgresql":
             alters.append(
-                "ALTER TABLE trade_purchase_lines ADD COLUMN IF NOT EXISTS kg_per_unit NUMERIC(18,4) NULL"
+                "ALTER TABLE trade_purchase_lines ADD COLUMN IF NOT EXISTS kg_per_unit NUMERIC(12,3) NULL"
             )
         else:
-            alters.append("ALTER TABLE trade_purchase_lines ADD COLUMN kg_per_unit NUMERIC(18,4) NULL")
+            alters.append("ALTER TABLE trade_purchase_lines ADD COLUMN kg_per_unit NUMERIC(12,3) NULL")
     if "landing_cost_per_kg" not in cols:
         if dialect == "postgresql":
             alters.append(
-                "ALTER TABLE trade_purchase_lines ADD COLUMN IF NOT EXISTS landing_cost_per_kg NUMERIC(18,4) NULL"
+                "ALTER TABLE trade_purchase_lines ADD COLUMN IF NOT EXISTS landing_cost_per_kg NUMERIC(12,2) NULL"
             )
         else:
-            alters.append("ALTER TABLE trade_purchase_lines ADD COLUMN landing_cost_per_kg NUMERIC(18,4) NULL")
+            alters.append("ALTER TABLE trade_purchase_lines ADD COLUMN landing_cost_per_kg NUMERIC(12,2) NULL")
     if "item_code" not in cols:
         if dialect == "postgresql":
             alters.append("ALTER TABLE trade_purchase_lines ADD COLUMN IF NOT EXISTS item_code VARCHAR(64) NULL")
         else:
             alters.append("ALTER TABLE trade_purchase_lines ADD COLUMN item_code VARCHAR(64) NULL")
+    decimal_columns = {
+        "purchase_rate": "NUMERIC(12,2)",
+        "selling_rate": "NUMERIC(12,2)",
+        "freight_value": "NUMERIC(12,2)",
+        "delivered_rate": "NUMERIC(12,2)",
+        "billty_rate": "NUMERIC(12,2)",
+        "weight_per_unit": "NUMERIC(12,3)",
+        "total_weight": "NUMERIC(14,3)",
+        "line_total": "NUMERIC(14,2)",
+        "profit": "NUMERIC(14,2)",
+        "items_per_box": "NUMERIC(12,3)",
+        "weight_per_item": "NUMERIC(12,3)",
+        "kg_per_box": "NUMERIC(12,3)",
+        "weight_per_tin": "NUMERIC(12,3)",
+    }
+    for name, ddl in decimal_columns.items():
+        if name not in cols:
+            if dialect == "postgresql":
+                alters.append(f"ALTER TABLE trade_purchase_lines ADD COLUMN IF NOT EXISTS {name} {ddl} NULL")
+            else:
+                alters.append(f"ALTER TABLE trade_purchase_lines ADD COLUMN {name} {ddl} NULL")
+    if "freight_type" not in cols:
+        if dialect == "postgresql":
+            alters.append("ALTER TABLE trade_purchase_lines ADD COLUMN IF NOT EXISTS freight_type VARCHAR(16) NULL")
+        else:
+            alters.append("ALTER TABLE trade_purchase_lines ADD COLUMN freight_type VARCHAR(16) NULL")
+    if "box_mode" not in cols:
+        if dialect == "postgresql":
+            alters.append("ALTER TABLE trade_purchase_lines ADD COLUMN IF NOT EXISTS box_mode VARCHAR(24) NULL")
+        else:
+            alters.append("ALTER TABLE trade_purchase_lines ADD COLUMN box_mode VARCHAR(24) NULL")
     for sql in alters:
         try:
             sync_conn.exec_driver_sql(sql)

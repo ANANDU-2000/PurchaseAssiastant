@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -23,7 +24,7 @@ class Broker(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     preferences_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     commission_type: Mapped[str] = mapped_column(String(32), default="percent")
-    commission_value: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
+    commission_value: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     suppliers = relationship("Supplier", back_populates="broker")
@@ -38,9 +39,9 @@ class Supplier(Base):
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     gst_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
     default_payment_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    default_discount: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
-    default_delivered_rate: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
-    default_billty_rate: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
+    default_discount: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    default_delivered_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    default_billty_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     whatsapp_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
     location: Mapped[str | None] = mapped_column(Text, nullable=True)
     address: Mapped[str | None] = mapped_column(Text, nullable=True)

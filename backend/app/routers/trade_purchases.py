@@ -117,6 +117,26 @@ async def list_trade_purchases(
     )
 
 
+@router.get("/last-defaults")
+async def last_trade_purchase_defaults(
+    business_id: uuid.UUID,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+    catalog_item_id: uuid.UUID = Query(...),
+    supplier_id: uuid.UUID | None = Query(None),
+    broker_id: uuid.UUID | None = Query(None),
+):
+    del user, _m
+    return await tps.last_purchase_defaults(
+        db,
+        business_id,
+        catalog_item_id=catalog_item_id,
+        supplier_id=supplier_id,
+        broker_id=broker_id,
+    )
+
+
 @router.post("", response_model=TradePurchaseOut, status_code=status.HTTP_201_CREATED)
 async def create_trade_purchase(
     business_id: uuid.UUID,
@@ -127,6 +147,18 @@ async def create_trade_purchase(
 ):
     try:
         return await tps.create_trade_purchase(db, business_id, user.id, body)
+    except tps.TradePurchaseValidationError as e:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.details) from e
+    except tps.TradePurchaseDuplicateError as e:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={
+                "code": e.code,
+                "message": e.message,
+                "existing_id": str(e.existing_id),
+                "existing_human_id": e.existing_human_id,
+            },
+        ) from e
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
@@ -196,6 +228,18 @@ async def update_trade_purchase(
     del user
     try:
         out = await tps.update_trade_purchase(db, business_id, purchase_id, body)
+    except tps.TradePurchaseValidationError as e:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.details) from e
+    except tps.TradePurchaseDuplicateError as e:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={
+                "code": e.code,
+                "message": e.message,
+                "existing_id": str(e.existing_id),
+                "existing_human_id": e.existing_human_id,
+            },
+        ) from e
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     if not out:

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../api/hexa_api.dart';
 import '../auth/session_notifier.dart';
 import '../models/trade_purchase_models.dart';
 
@@ -338,7 +339,60 @@ HomeDashboardData homeDashboardDataFromApiSnapshot(
   );
 }
 
+bool _snapshotHasTradeActivity(HomeDashboardData d) =>
+    d.purchaseCount > 0 || d.totalPurchase.abs() > 1e-9;
+
+/// Inclusive local-day filter consistent with [_aggregate] purchase window `[start,end)`.
+bool _purchaseInInclusiveLocalRange(
+  DateTime purchaseDate,
+  DateTime from,
+  DateTime toInclusive,
+) {
+  final pd = DateTime(purchaseDate.year, purchaseDate.month, purchaseDate.day);
+  final a = DateTime(from.year, from.month, from.day);
+  final b = DateTime(toInclusive.year, toInclusive.month, toInclusive.day);
+  return !pd.isBefore(a) && !pd.isAfter(b);
+}
+
+Future<List<TradePurchase>> _fetchTradePurchasesForHomeRange({
+  required HexaApi api,
+  required String businessId,
+  required DateTime from,
+  required DateTime toInclusive,
+}) async {
+  const limit = 500;
+  final out = <TradePurchase>[];
+  final seen = <String>{};
+  for (var offset = 0; offset < 50000; offset += limit) {
+    final raw = await api.listTradePurchases(
+      businessId: businessId,
+      limit: limit,
+      offset: offset,
+      status: 'all',
+    );
+    if (raw.isEmpty) break;
+    for (final e in raw) {
+      try {
+        final p = TradePurchase.fromJson(Map<String, dynamic>.from(e as Map));
+        if (p.id.isEmpty) continue;
+        if (!_purchaseInInclusiveLocalRange(
+              p.purchaseDate,
+              from,
+              toInclusive,
+            )) {
+          continue;
+        }
+        if (seen.add(p.id)) out.add(p);
+      } catch (_) {}
+    }
+    if (raw.length < limit) break;
+  }
+  return out;
+}
+
 /// Aggregated snapshot: server [tradeDashboardSnapshot] — same numbers as report APIs.
+/// Uses **either** snapshot **or** client-side aggregate fallback — never both mixed.
+///
 /// To match Analytics KPI for a period, align calendar `from`/`to` with
 /// the analytics date range in `lib/core/providers/analytics_kpi_provider.dart`.
 final homeDashboardDataProvider =
@@ -350,17 +404,43 @@ final homeDashboardDataProvider =
   if (session == null) {
     return HomeDashboardData.empty;
   }
+  final api = ref.read(hexaApiProvider);
   final range = homePeriodRange(period, now: DateTime.now(), custom: custom);
   final lastInclusive =
       range.end.subtract(const Duration(milliseconds: 1));
   final from = _apiDate(range.start);
   final to = _apiDate(lastInclusive);
-  final snap = await ref.read(hexaApiProvider).tradeDashboardSnapshot(
-        businessId: session.primaryBusiness.id,
-        from: from,
-        to: to,
-      );
-  return homeDashboardDataFromApiSnapshot(period, snap);
+  final bid = session.primaryBusiness.id;
+  final snap = await api.tradeDashboardSnapshot(
+    businessId: bid,
+    from: from,
+    to: to,
+  );
+  final fromSnapshot = homeDashboardDataFromApiSnapshot(period, snap);
+  if (_snapshotHasTradeActivity(fromSnapshot)) {
+    return fromSnapshot;
+  }
+
+  final purchases = await _fetchTradePurchasesForHomeRange(
+    api: api,
+    businessId: bid,
+    from: range.start,
+    toInclusive: lastInclusive,
+  );
+  if (purchases.isEmpty) {
+    return fromSnapshot;
+  }
+
+  final items = await api.listCatalogItems(businessId: bid);
+  final categories = await api.listItemCategories(businessId: bid);
+  return aggregateHomeDashboard(
+    period: period,
+    purchases: purchases,
+    items: items,
+    categories: categories,
+    now: DateTime.now(),
+    custom: custom,
+  );
 });
 
 /// Pure function — safe to call from tests.

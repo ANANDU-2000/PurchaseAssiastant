@@ -1,3 +1,6 @@
+import 'strict_decimal.dart';
+import 'utils/unit_classifier.dart';
+
 /// One line of a trade purchase (API-aligned field names).
 /// Totals: use [computeTradeTotals] — mirrors backend `trade_purchase_service`.
 class TradeCalcLine {
@@ -57,70 +60,295 @@ class TradeCalcTotals {
   final double amountSum;
 }
 
-double _dec(double? x) => x ?? 0.0;
+StrictDecimal _dec(double? x) => StrictDecimal.fromObject(x);
+final _hundred = StrictDecimal.parse('100');
+final _thousand = StrictDecimal.parse('1000');
 
 /// Pre-discount base amount for one line (matches backend `_line_gross_base`).
-double lineGrossBase(TradeCalcLine li) {
+StrictDecimal lineGrossBaseDecimal(TradeCalcLine li) {
   final kpu = li.kgPerUnit;
   final pk = li.landingCostPerKg;
   if (kpu != null && pk != null && kpu > 0 && pk > 0) {
-    return _dec(li.qty) * kpu * pk;
+    return _dec(li.qty) * _dec(kpu) * _dec(pk);
   }
   return _dec(li.qty) * _dec(li.landingCost);
 }
 
+double lineGrossBase(TradeCalcLine li) => lineGrossBaseDecimal(li).toDouble();
+
 /// Taxable value after line discount, before GST multiplier (matches backend).
-double lineTaxableAfterLineDisc(TradeCalcLine li) {
-  final base = lineGrossBase(li);
-  final ld = li.discountPercent != null ? _dec(li.discountPercent) : 0.0;
-  return base * (1.0 - (ld > 100 ? 100 : ld) / 100.0);
+StrictDecimal lineTaxableAfterLineDiscDecimal(TradeCalcLine li) {
+  final base = lineGrossBaseDecimal(li);
+  final ld = li.discountPercent != null
+      ? _dec(li.discountPercent).clamp(max: _hundred)
+      : StrictDecimal.zero();
+  return base - base.percentOf(ld);
 }
 
+double lineTaxableAfterLineDisc(TradeCalcLine li) =>
+    lineTaxableAfterLineDiscDecimal(li).toDouble();
+
 /// Per-line amount after line discount and tax multiplier (matches backend).
-double lineMoney(TradeCalcLine li) {
-  final afterDisc = lineTaxableAfterLineDisc(li);
-  final tax = li.taxPercent != null ? _dec(li.taxPercent) : 0.0;
-  final t = tax > 1000 ? 1000.0 : tax;
-  return afterDisc * (1.0 + t / 100.0);
+StrictDecimal lineMoneyDecimal(TradeCalcLine li) {
+  final afterDisc = lineTaxableAfterLineDiscDecimal(li);
+  final tax = li.taxPercent != null
+      ? _dec(li.taxPercent).clamp(max: _thousand)
+      : StrictDecimal.zero();
+  return afterDisc + afterDisc.percentOf(tax);
+}
+
+double lineMoney(TradeCalcLine li) => lineMoneyDecimal(li).toDouble();
+
+/// Physical mass in kg for one line (display + rolled totals; not money).
+///
+/// Rules: [bag]/[sack] → qty × kgPerUnit when kg known; else 0.
+/// [box] fixed-weight → qty × max(kgPerBox, kgPerUnit); items_per_box uses items × weight/item.
+/// With no kg snapshot on fixed box → 0. [tin] → qty × (weightPerTin ?? kgPerUnit) when set.
+/// [kg] → qty.
+double linePhysicalWeightKg({
+  required String unit,
+  required double qty,
+  double? kgPerUnit,
+  String? boxMode,
+  double? itemsPerBox,
+  double? weightPerItem,
+  double? kgPerBox,
+  double? weightPerTin,
+}) {
+  if (qty <= 0) return 0;
+  final u = unit.trim().toLowerCase();
+  if (u == 'kg') {
+    return _dec(qty).toDouble();
+  }
+  if (u == 'bag' || u == 'sack') {
+    final kpu = kgPerUnit;
+    if (kpu == null || kpu <= 0) return 0;
+    return (_dec(qty) * _dec(kpu)).toDouble();
+  }
+  if (u == 'box') {
+    final mode = boxMode?.trim().toLowerCase();
+    if (mode == 'items_per_box') {
+      final ipb = itemsPerBox;
+      final wpi = weightPerItem;
+      if (ipb == null || wpi == null || ipb <= 0 || wpi <= 0) return 0;
+      return (_dec(qty) * _dec(ipb) * _dec(wpi)).toDouble();
+    }
+    // fixed_weight_box (or unspecified): needs kg per box or line kg snapshot.
+    final kBox = (kgPerBox != null && kgPerBox > 0)
+        ? kgPerBox
+        : ((kgPerUnit != null && kgPerUnit > 0) ? kgPerUnit : null);
+    if (kBox == null || kBox <= 0) return 0;
+    return (_dec(qty) * _dec(kBox)).toDouble();
+  }
+  if (u == 'tin') {
+    final wKg = (kgPerUnit != null && kgPerUnit > 0) ? kgPerUnit : null;
+    final wTin =
+        (weightPerTin != null && weightPerTin > 0) ? weightPerTin : null;
+    final w = wKg ?? wTin;
+    if (w == null) return 0;
+    return (_dec(qty) * _dec(w)).toDouble();
+  }
+  return 0;
+}
+
+/// Physical kg for one line driven by [UnitType] (sheet preview + aggregates).
+///
+/// [weightBag]: `qty * kgPerUnit` when kg/bag known, else `0`.
+/// [singlePack]: `qty * kgFromName` when set, else `qty` (count / nominal kg qty).
+/// [multiPackBox]: `qty * itemsPerBox * weightPerItem` when both set; else `0`.
+double classifierLineWeightKg({
+  required UnitType type,
+  required double qty,
+  double? kgPerUnit,
+  double? kgFromName,
+  double? itemsPerBox,
+  double? weightPerItem,
+}) {
+  if (qty <= 0) return 0;
+  switch (type) {
+    case UnitType.weightBag:
+      final k = kgPerUnit;
+      if (k == null || k <= 0) return 0;
+      return (_dec(qty) * _dec(k)).toDouble();
+    case UnitType.singlePack:
+      if (kgFromName != null && kgFromName > 0) {
+        return (_dec(qty) * _dec(kgFromName)).toDouble();
+      }
+      return _dec(qty).toDouble();
+    case UnitType.multiPackBox:
+      final ipb = itemsPerBox;
+      final wpi = weightPerItem;
+      if (ipb == null || ipb <= 0) return 0;
+      if (wpi != null && wpi > 0) {
+        return (_dec(qty) * _dec(ipb) * _dec(wpi)).toDouble();
+      }
+      return 0;
+  }
+}
+
+/// Total items packed in boxes (`qty * itemsPerBox`) when [multiPackBox];
+/// otherwise the line quantity unit count / bag count.
+double classifierTotalItems({
+  required UnitType type,
+  required double qty,
+  double? itemsPerBox,
+}) {
+  if (qty <= 0) return 0;
+  switch (type) {
+    case UnitType.weightBag:
+    case UnitType.singlePack:
+      return _dec(qty).toDouble();
+    case UnitType.multiPackBox:
+      final ipb = itemsPerBox;
+      if (ipb == null || ipb <= 0) return 0;
+      return (_dec(qty) * _dec(ipb)).toDouble();
+  }
 }
 
 /// Tax component of [lineMoney] (difference between inclusive and taxable).
-double lineTaxAmount(TradeCalcLine li) => lineMoney(li) - lineTaxableAfterLineDisc(li);
+StrictDecimal lineTaxAmountDecimal(TradeCalcLine li) =>
+    lineMoneyDecimal(li) - lineTaxableAfterLineDiscDecimal(li);
+
+double lineTaxAmount(TradeCalcLine li) => lineTaxAmountDecimal(li).toDouble();
 
 /// Returns total quantity sum and final amount (matches backend `compute_totals`).
 TradeCalcTotals computeTradeTotals(TradeCalcRequest req) {
-  var qtySum = 0.0;
-  var amtSum = 0.0;
+  var qtySum = StrictDecimal.zero();
+  var amtSum = StrictDecimal.zero();
   for (final li in req.lines) {
     qtySum += _dec(li.qty);
-    amtSum += lineMoney(li);
+    amtSum += lineMoneyDecimal(li);
   }
 
   final headerDisc =
-      req.headerDiscountPercent != null ? _dec(req.headerDiscountPercent) : 0.0;
+      req.headerDiscountPercent != null
+          ? _dec(req.headerDiscountPercent).clamp(max: _hundred)
+          : StrictDecimal.zero();
   var afterHeader = amtSum;
-  if (headerDisc > 0) {
-    final hd = headerDisc > 100 ? 100.0 : headerDisc;
-    afterHeader = amtSum * (1.0 - hd / 100.0);
+  if (headerDisc.isPositive) {
+    afterHeader = amtSum - amtSum.percentOf(headerDisc);
   }
   amtSum = afterHeader;
 
-  var freight = req.freightAmount != null ? _dec(req.freightAmount) : 0.0;
+  var freight = req.freightAmount != null ? _dec(req.freightAmount) : StrictDecimal.zero();
   if (req.freightType == 'included') {
-    freight = 0.0;
+    freight = StrictDecimal.zero();
   }
   amtSum += freight;
 
   final comm =
-      req.commissionPercent != null ? _dec(req.commissionPercent) : 0.0;
-  if (comm > 0) {
-    final c = comm > 100 ? 100.0 : comm;
-    amtSum += afterHeader * c / 100.0;
+      req.commissionPercent != null ? _dec(req.commissionPercent).clamp(max: _hundred) : StrictDecimal.zero();
+  if (comm.isPositive) {
+    amtSum += afterHeader.percentOf(comm);
   }
 
-  final billty = req.billtyRate != null ? _dec(req.billtyRate) : 0.0;
-  final delivered = req.deliveredRate != null ? _dec(req.deliveredRate) : 0.0;
+  final billty = req.billtyRate != null ? _dec(req.billtyRate) : StrictDecimal.zero();
+  final delivered =
+      req.deliveredRate != null ? _dec(req.deliveredRate) : StrictDecimal.zero();
   amtSum += billty + delivered;
 
-  return TradeCalcTotals(qtySum: qtySum, amountSum: amtSum);
+  return TradeCalcTotals(
+    qtySum: qtySum.toScale(3).toDouble(),
+    amountSum: amtSum.toScale(2).toDouble(),
+  );
+}
+
+/// Kg for a saved trade line in ledger/table views — matches purchase sheet:
+/// classifier first, then [linePhysicalWeightKg] fallback.
+double ledgerTradeLineWeightKg({
+  required String itemName,
+  required String unit,
+  required double qty,
+  String? catalogDefaultUnit,
+  double? catalogDefaultKgPerBag,
+  double? kgPerUnit,
+  String? boxMode,
+  double? itemsPerBox,
+  double? weightPerItem,
+  double? kgPerBox,
+  double? weightPerTin,
+}) {
+  if (qty <= 0) return 0;
+  final ul = unit.trim().toLowerCase();
+  final c = UnitClassifier.classify(
+    itemName: itemName,
+    lineUnit: unit,
+    catalogDefaultUnit: catalogDefaultUnit,
+    catalogDefaultKgPerBag: catalogDefaultKgPerBag,
+  );
+  double? kgName = c.kgFromName;
+  if (!(c.type == UnitType.singlePack &&
+      (ul == 'box' || ul == 'tin' || ul == 'kg'))) {
+    kgName = null;
+  }
+  var kg = classifierLineWeightKg(
+    type: c.type,
+    qty: qty,
+    kgPerUnit: kgPerUnit,
+    kgFromName: kgName,
+    itemsPerBox: itemsPerBox,
+    weightPerItem: weightPerItem,
+  );
+  if (kg <= 0) {
+    kg = linePhysicalWeightKg(
+      unit: unit,
+      qty: qty,
+      kgPerUnit: kgPerUnit,
+      boxMode: boxMode,
+      itemsPerBox: itemsPerBox,
+      weightPerItem: weightPerItem,
+      kgPerBox: kgPerBox,
+      weightPerTin: weightPerTin,
+    );
+  }
+  return kg;
+}
+
+/// Mirrors [TradePurchaseLine.landingGross] without importing app models here.
+double ledgerLineLandingGross({
+  required double qty,
+  required double landingCost,
+  double? purchaseRate,
+  double? kgPerUnit,
+  double? landingCostPerKg,
+  double? lineTotal,
+}) {
+  if (lineTotal != null) return _dec(lineTotal).toDouble();
+  if (kgPerUnit != null &&
+      landingCostPerKg != null &&
+      kgPerUnit > 0 &&
+      landingCostPerKg > 0) {
+    return (_dec(qty) * _dec(kgPerUnit) * _dec(landingCostPerKg)).toDouble();
+  }
+  return (_dec(qty) * _dec(purchaseRate ?? landingCost)).toDouble();
+}
+
+/// Ledger “rate”: landed gross / qty units, or / (qty × kg_per_unit) when the
+/// line is weight-priced ([kgPerUnit] + [landingCostPerKg]).
+double ledgerLineDisplayRate({
+  required double qty,
+  required double landingCost,
+  double? purchaseRate,
+  double? kgPerUnit,
+  double? landingCostPerKg,
+  double? lineTotal,
+}) {
+  final gross = ledgerLineLandingGross(
+    qty: qty,
+    landingCost: landingCost,
+    purchaseRate: purchaseRate,
+    kgPerUnit: kgPerUnit,
+    landingCostPerKg: landingCostPerKg,
+    lineTotal: lineTotal,
+  );
+  if (qty <= 0 || gross <= 0) return 0;
+  final weightPriced = kgPerUnit != null &&
+      landingCostPerKg != null &&
+      kgPerUnit > 0 &&
+      landingCostPerKg > 0;
+  if (weightPriced) {
+    final denom = qty * kgPerUnit;
+    return denom > 0 ? gross / denom : 0;
+  }
+  return gross / qty;
 }

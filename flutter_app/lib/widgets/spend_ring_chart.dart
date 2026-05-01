@@ -3,9 +3,10 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/hexa_colors.dart';
+import '../core/theme/hexa_colors.dart';
 
-/// Ring chart: thin stroke, grey track, colored segments. Center: up to 4 text lines (profit-first).
+/// Donut ring: optional center content. If [centerChild] and all [centerLine]s
+/// are absent/empty, the center shows an empty [SizedBox] (no crash, no fake text).
 class SpendRingChart extends StatelessWidget {
   const SpendRingChart({
     super.key,
@@ -14,9 +15,10 @@ class SpendRingChart extends StatelessWidget {
     required this.colors,
     this.trackColor = const Color(0xFFE2E8F0),
     this.strokeWidth = 17,
-    required this.centerLine1,
-    required this.centerLine2,
-    required this.centerLine3,
+    this.centerChild,
+    this.centerLine1,
+    this.centerLine2,
+    this.centerLine3,
     this.centerLine4,
     this.onSectionTap,
   });
@@ -26,15 +28,20 @@ class SpendRingChart extends StatelessWidget {
   final List<Color> colors;
   final Color trackColor;
   final double strokeWidth;
-  /// e.g. `Profit ₹12,345`
-  final String centerLine1;
-  /// e.g. `(+3.2%)`
-  final String centerLine2;
-  /// e.g. `113 units` (bold black)
-  final String centerLine3;
-  /// Unit breakdown (optional), single line
+  final Widget? centerChild;
+  final String? centerLine1;
+  final String? centerLine2;
+  final String? centerLine3;
   final String? centerLine4;
   final void Function(int index)? onSectionTap;
+
+  bool get _hasLineText {
+    bool ne(String? s) => s != null && s.trim().isNotEmpty;
+    return ne(centerLine1) ||
+        ne(centerLine2) ||
+        ne(centerLine3) ||
+        ne(centerLine4);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -84,69 +91,90 @@ class SpendRingChart extends StatelessWidget {
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: diameter * 0.6),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        centerLine1,
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w900,
-                              color: HexaColors.brandPrimary,
-                              fontSize: 20,
-                              height: 1.05,
-                            ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        centerLine2,
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF334155),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        centerLine3,
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w900,
-                          color: Color(0xFF0F172A),
-                        ),
-                      ),
-                      if (centerLine4 != null && centerLine4!.isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          centerLine4!,
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF64748B),
-                            height: 1.1,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
+              child: _buildCenter(context),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCenter(BuildContext context) {
+    if (centerChild != null) {
+      return FittedBox(
+        fit: BoxFit.scaleDown,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: diameter * 0.72),
+          child: centerChild!,
+        ),
+      );
+    }
+    if (!_hasLineText) {
+      return const SizedBox.shrink();
+    }
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: diameter * 0.62),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (centerLine1 != null && centerLine1!.trim().isNotEmpty) ...[
+              Text(
+                centerLine1!,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      color: HexaColors.brandPrimary,
+                      fontSize: 20,
+                      height: 1.05,
+                    ),
+              ),
+              const SizedBox(height: 3),
+            ],
+            if (centerLine2 != null && centerLine2!.trim().isNotEmpty) ...[
+              Text(
+                centerLine2!,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF334155),
                 ),
               ),
-            ),
+              const SizedBox(height: 4),
+            ],
+            if (centerLine3 != null && centerLine3!.trim().isNotEmpty)
+              Text(
+                centerLine3!,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+            if (centerLine4 != null && centerLine4!.trim().isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text(
+                centerLine4!,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF64748B),
+                  height: 1.1,
+                ),
+              ),
+            ],
           ],
         ),
       ),

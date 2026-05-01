@@ -60,6 +60,10 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
   FocusNode get _focus => widget.focusNode ?? _ownedFocus;
   bool get _disposeFocus => widget.focusNode == null;
 
+  final GlobalKey _targetKey = GlobalKey();
+  final LayerLink _layerLink = LayerLink();
+  OverlayEntry? _overlayEntry;
+
   Timer? _debounce;
   List<InlineSearchItem> _suggestions = const [];
   bool _showSuggestions = false;
@@ -77,6 +81,7 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _removeOverlay();
     _focus.removeListener(_onFocusChange);
     _ctrl.removeListener(_onControllerChanged);
     if (_disposeFocus) _ownedFocus.dispose();
@@ -93,8 +98,10 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
         _suggestions = const [];
         _showSuggestions = false;
       });
+      _syncOverlay();
     } else {
       setState(() {});
+      _syncOverlay();
     }
   }
 
@@ -127,6 +134,7 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
         _showSuggestions = false;
       });
     }
+    _syncOverlay();
   }
 
   void _runFilter(String raw, {bool showEvenIfEmptyQuery = false}) {
@@ -138,6 +146,7 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
         _suggestions = const [];
         _showSuggestions = showEvenIfEmptyQuery;
       });
+      _syncOverlay();
       return;
     }
     final out = <InlineSearchItem>[];
@@ -152,6 +161,7 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
       _suggestions = out;
       _showSuggestions = out.isNotEmpty && _focus.hasFocus;
     });
+    _syncOverlay();
   }
 
   void _onChangedDebounced(String v) {
@@ -194,6 +204,7 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
       _suggestions = const [];
       _showSuggestions = false;
     });
+    _syncOverlay();
     try {
       widget.onSelected(it);
     } finally {
@@ -209,6 +220,49 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
     }
   }
 
+  void _removeOverlay() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+  }
+
+  void _syncOverlay() {
+    if (!mounted) return;
+    if (!_showSuggestions || _suggestions.isEmpty || !_focus.hasFocus) {
+      _removeOverlay();
+      return;
+    }
+
+    final overlay = Overlay.of(context);
+
+    var showAbove = false;
+    try {
+      final ctx = _targetKey.currentContext;
+      final rb = ctx?.findRenderObject();
+      if (rb is RenderBox && rb.hasSize) {
+        final pos = rb.localToGlobal(Offset.zero);
+        final fieldBottom = pos.dy + rb.size.height;
+        final media = MediaQuery.of(context);
+        final keyboardTop = media.size.height - media.viewInsets.bottom;
+        final spaceBelow = keyboardTop - fieldBottom - 8;
+        showAbove = spaceBelow < 160;
+      }
+    } catch (_) {}
+
+    if (_overlayEntry == null) {
+      _overlayEntry = OverlayEntry(
+        builder: (ctx) => _InlineSearchOverlay(
+            link: _layerLink,
+            showAbove: showAbove,
+            suggestions: _suggestions,
+            onPick: (it) => _pick(it),
+          ),
+      );
+      overlay.insert(_overlayEntry!);
+    } else {
+      _overlayEntry!.markNeedsBuild();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -218,130 +272,157 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
       children: [
         Focus(
           onKeyEvent: _onKey,
-          child: TextField(
-            controller: _ctrl,
-            focusNode: _focus,
-            textInputAction: widget.textInputAction ?? TextInputAction.search,
-            onChanged: _onChangedDebounced,
-            onTap: _onFieldTap,
-            decoration: InputDecoration(
-              hintText: widget.placeholder,
-              prefixIcon: widget.prefixIcon,
-              suffixIcon: _ctrl.text.isEmpty
-                  ? const Icon(Icons.search_rounded, size: 22)
-                  : IconButton(
-                      tooltip: 'Clear',
-                      icon: const Icon(Icons.close_rounded, size: 20),
-                      onPressed: () {
-                        _ctrl.clear();
-                        setState(() {
-                          _suggestions = const [];
-                          _showSuggestions = false;
-                        });
-                      },
-                    ),
-              isDense: true,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.grey[300]!),
+          child: CompositedTransformTarget(
+            link: _layerLink,
+            child: KeyedSubtree(
+              key: _targetKey,
+              child: TextField(
+                controller: _ctrl,
+                focusNode: _focus,
+                textInputAction: widget.textInputAction ?? TextInputAction.search,
+                onChanged: _onChangedDebounced,
+                onTap: _onFieldTap,
+                decoration: InputDecoration(
+                  hintText: widget.placeholder,
+                  prefixIcon: widget.prefixIcon,
+                  suffixIcon: _ctrl.text.isEmpty
+                      ? const Icon(Icons.search_rounded, size: 22)
+                      : IconButton(
+                          tooltip: 'Clear',
+                          icon: const Icon(Icons.close_rounded, size: 20),
+                          onPressed: () {
+                            _ctrl.clear();
+                            setState(() {
+                              _suggestions = const [];
+                              _showSuggestions = false;
+                            });
+                            _syncOverlay();
+                          },
+                        ),
+                  isDense: true,
+                  border:
+                      OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: Colors.grey[300]!),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: cs.primary, width: 2),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey[50],
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                ),
               ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: cs.primary, width: 2),
-              ),
-              filled: true,
-              fillColor: Colors.grey[50],
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             ),
           ),
         ),
-        if (_showSuggestions && _suggestions.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: _SuggestionsList(
-              suggestions: _suggestions,
-              onPick: _pick,
-              accent: cs,
-            ),
-          ),
       ],
     );
   }
 }
 
-class _SuggestionsList extends StatelessWidget {
-  const _SuggestionsList({
+class _InlineSearchOverlay extends StatelessWidget {
+  const _InlineSearchOverlay({
+    required this.link,
+    required this.showAbove,
     required this.suggestions,
     required this.onPick,
-    required this.accent,
   });
 
+  final LayerLink link;
+  final bool showAbove;
   final List<InlineSearchItem> suggestions;
   final void Function(InlineSearchItem it) onPick;
-  final ColorScheme accent;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      elevation: 2,
-      borderRadius: BorderRadius.circular(8),
-      clipBehavior: Clip.antiAlias,
-      color: Colors.white,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxHeight: 240),
-        child: ListView.separated(
-          padding: EdgeInsets.zero,
-          shrinkWrap: true,
-          physics: const ClampingScrollPhysics(),
-          itemCount: suggestions.length,
-          separatorBuilder: (_, __) => Divider(
-            height: 1,
-            thickness: 1,
-            color: Colors.grey[200],
-          ),
-          itemBuilder: (ctx, i) {
-            final it = suggestions[i];
-            return Listener(
-              behavior: HitTestBehavior.opaque,
-              // Pointer-down so taps commit BEFORE the field loses focus and
-              // BEFORE any scroll recognizer claims the gesture.
-              onPointerDown: (_) => onPick(it),
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      it.label,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
+    final accent = Theme.of(context).colorScheme;
+
+    return Positioned.fill(
+      child: IgnorePointer(
+        ignoring: false,
+        child: Stack(
+          children: [
+            // Tap-away to dismiss keyboard/suggestions.
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+              ),
+            ),
+            CompositedTransformFollower(
+              link: link,
+              showWhenUnlinked: false,
+              targetAnchor: showAbove ? Alignment.topLeft : Alignment.bottomLeft,
+              followerAnchor: showAbove ? Alignment.bottomLeft : Alignment.topLeft,
+              offset: showAbove ? const Offset(0, -8) : const Offset(0, 8),
+              child: Material(
+                elevation: 8,
+                borderRadius: BorderRadius.circular(12),
+                clipBehavior: Clip.antiAlias,
+                color: Colors.white,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 200),
+                  child: ListView.separated(
+                    padding: EdgeInsets.zero,
+                    shrinkWrap: true,
+                    physics: const ClampingScrollPhysics(),
+                    itemCount: suggestions.length,
+                    separatorBuilder: (_, __) => Divider(
+                      height: 1,
+                      thickness: 1,
+                      color: Colors.grey[200],
                     ),
-                    if (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Text(
-                          it.subtitle!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: accent.onSurfaceVariant,
+                    itemBuilder: (ctx, i) {
+                      final it = suggestions[i];
+                      return Listener(
+                        behavior: HitTestBehavior.opaque,
+                        onPointerDown: (_) => onPick(it),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                it.label,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              if (it.subtitle != null &&
+                                  it.subtitle!.trim().isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Text(
+                                    it.subtitle!,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: accent.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
-                      ),
-                  ],
+                      );
+                    },
+                  ),
                 ),
               ),
-            );
-          },
+            ),
+          ],
         ),
       ),
     );

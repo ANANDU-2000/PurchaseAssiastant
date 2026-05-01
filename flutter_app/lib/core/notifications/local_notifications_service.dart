@@ -19,6 +19,9 @@ class LocalNotificationsService {
   static int _purchaseDueId(String purchaseId) =>
       purchaseId.hashCode & 0x3fffffff;
 
+  static int _purchaseMissingDetailsId(String purchaseId) =>
+      (purchaseId.hashCode ^ 0xa5b4c3d2) & 0x3fffffff;
+
   final FlutterLocalNotificationsPlugin _p = FlutterLocalNotificationsPlugin();
   bool _inited = false;
 
@@ -141,6 +144,45 @@ class LocalNotificationsService {
       title: 'Payment may be due',
       body: 'If settled, mark paid in History. Ref: $label',
     );
+  }
+
+  /// One-shot ~24h after save when optional header fields are still missing.
+  Future<void> schedulePurchaseMissingDetailsReminder({
+    required String purchaseId,
+    String? humanId,
+  }) async {
+    if (kIsWeb || !_inited || purchaseId.isEmpty) return;
+    final id = _purchaseMissingDetailsId(purchaseId);
+    await _p.cancel(id: id);
+    final loc = tz.local;
+    final when = tz.TZDateTime.now(loc).add(const Duration(hours: 24));
+    final label =
+        humanId != null && humanId.isNotEmpty ? humanId : purchaseId;
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'purchase_followup',
+        'Purchase follow-up',
+        channelDescription:
+            'Reminders when purchase header details are incomplete.',
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+      ),
+      iOS: DarwinNotificationDetails(),
+      windows: WindowsNotificationDetails(),
+    );
+    await _p.zonedSchedule(
+      id: id,
+      scheduledDate: when,
+      notificationDetails: details,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      title: 'Update missing purchase details',
+      body: 'Ref: $label — complete broker, freight, discount, or payment terms.',
+    );
+  }
+
+  Future<void> cancelPurchaseMissingDetailsReminder(String purchaseId) async {
+    if (kIsWeb || !_inited || purchaseId.isEmpty) return;
+    await _p.cancel(id: _purchaseMissingDetailsId(purchaseId));
   }
 
   (int, int, int)? _parseYmd(String s) {

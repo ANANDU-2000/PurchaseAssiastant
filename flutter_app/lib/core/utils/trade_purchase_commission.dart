@@ -31,3 +31,17 @@ double tradePurchaseCommissionInr(TradePurchase p) {
   if (cp > 100) cp = 100;
   return afterHeader * cp / 100.0;
 }
+
+/// Allocates header [tradePurchaseCommissionInr] across lines by each line's
+/// tax-inclusive amount share (weights match [tradePurchaseLineSumForLine]).
+double tradePurchaseLineCommissionInr(TradePurchase p, TradePurchaseLine l) {
+  final total = tradePurchaseCommissionInr(p);
+  if (total <= 0) return 0;
+  var sum = 0.0;
+  for (final x in p.lines) {
+    sum += tradePurchaseLineSumForLine(x);
+  }
+  if (sum <= 0) return 0;
+  final share = tradePurchaseLineSumForLine(l) / sum;
+  return total * share;
+}

@@ -308,7 +308,7 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
         ? double.tryParse(_perTin.text.trim())
         : null;
     try {
-      await ref.read(hexaApiProvider).createCatalogItem(
+      final created = await ref.read(hexaApiProvider).createCatalogItem(
             businessId: session.primaryBusiness.id,
             categoryId: _categoryId!,
             typeId: _typeId,
@@ -324,14 +324,12 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
             defaultItemsPerBox: _unit == 'box' ? double.tryParse(_perBox.text.trim()) : null,
             defaultWeightPerTin: (tinW != null && tinW > 0) ? tinW : null,
           );
+      final nid = created['id']?.toString() ?? '';
       await ref.read(sharedPreferencesProvider).remove(_activeDraftKey);
       ref.invalidate(catalogItemsListProvider);
       invalidateBusinessAggregates(ref);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Item created')),
-        );
-        context.pop(true);
+        context.pop(<String, dynamic>{'id': nid, 'name': _name.text.trim()});
       }
     } on DioException catch (e) {
       final existing = _existingItemIdFrom409(e);

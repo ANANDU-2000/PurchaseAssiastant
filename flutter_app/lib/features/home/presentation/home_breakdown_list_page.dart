@@ -31,13 +31,28 @@ String _itemUpperQtyLine(Map<String, dynamic> m) {
 }
 
 String _categoryQtyLabel(CategoryStat c) {
+  final parts = <String>[];
+  if (c.units.bags > 0) parts.add('${_fmtQty(c.units.bags)} BAG');
+  if (c.units.boxes > 0) parts.add('${_fmtQty(c.units.boxes)} BOX');
+  if (c.units.tins > 0) parts.add('${_fmtQty(c.units.tins)} TIN');
+  if (parts.isNotEmpty) return parts.join(' • ');
   if (c.items.isNotEmpty) {
     final u = c.items.first.unit.trim().toUpperCase();
     if (u.isNotEmpty && u != '—') {
       return '${_fmtQty(c.totalQty)} $u';
     }
   }
-  return '${_fmtQty(c.totalQty)} UNITS';
+  return '${_fmtQty(c.totalQty)} QTY';
+}
+
+String _dashboardUnitsLine(HomeDashboardData d) {
+  final parts = <String>[];
+  if (d.totalBags > 0) parts.add('${_fmtQty(d.totalBags)} BAG');
+  if (d.totalBoxes > 0) parts.add('${_fmtQty(d.totalBoxes)} BOX');
+  if (d.totalTins > 0) parts.add('${_fmtQty(d.totalTins)} TIN');
+  if (d.totalKg > 0) parts.add('${_fmtQty(d.totalKg)} KG');
+  if (parts.isNotEmpty) return parts.join(' â€¢ ');
+  return '0 KG';
 }
 
 class HomeBreakdownListPage extends ConsumerWidget {
@@ -60,6 +75,7 @@ class HomeBreakdownListPage extends ConsumerWidget {
     final title = 'All — ${tab.label}';
     final asyncDash = ref.watch(homeDashboardDataProvider);
     final asyncShell = ref.watch(homeShellReportsProvider);
+    final dashboard = asyncDash.valueOrNull;
     return Scaffold(
       backgroundColor: HexaColors.brandBackground,
       appBar: AppBar(
@@ -80,6 +96,7 @@ class HomeBreakdownListPage extends ConsumerWidget {
               final rows = d.categories.where((e) => e.totalAmount > 0).toList()
                 ..sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
               return _buildScroll(
+                header: _totalHeader(d),
                 children: [
                   for (var i = 0; i < rows.length; i++)
                     _rowCategory(context, rows[i], i),
@@ -93,9 +110,9 @@ class HomeBreakdownListPage extends ConsumerWidget {
             error: (_, __) => const Center(child: Text('Failed to load')),
             data: (bundle) {
               return switch (tab) {
-                HomeBreakdownTab.subcategory => _subList(context, bundle),
-                HomeBreakdownTab.supplier => _supList(context, bundle),
-                HomeBreakdownTab.items => _itemList(context, bundle),
+                HomeBreakdownTab.subcategory => _subList(context, bundle, dashboard),
+                HomeBreakdownTab.supplier => _supList(context, bundle, dashboard),
+                HomeBreakdownTab.items => _itemList(context, bundle, dashboard),
                 HomeBreakdownTab.category => const SizedBox.shrink(),
               };
             },
@@ -104,10 +121,65 @@ class HomeBreakdownListPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildScroll({required List<Widget> children}) {
+  Widget _buildScroll({Widget? header, required List<Widget> children}) {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-      children: children,
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+      children: [
+        if (header != null) ...[
+          header,
+          const SizedBox(height: 10),
+        ],
+        ...children,
+      ],
+    );
+  }
+
+  Widget _totalHeader(HomeDashboardData d) {
+    return Material(
+      color: Colors.white,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: const BorderSide(color: HexaColors.brandBorder),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        child: Row(
+          children: [
+            const Text(
+              'Total:',
+              style: TextStyle(
+                fontSize: 12,
+                color: HexaColors.textSecondary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _inr(d.totalPurchase),
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                _dashboardUnitsLine(d),
+                textAlign: TextAlign.end,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -140,7 +212,11 @@ class HomeBreakdownListPage extends ConsumerWidget {
     );
   }
 
-  Widget _subList(BuildContext context, HomeShellReportsBundle b) {
+  Widget _subList(
+    BuildContext context,
+    HomeShellReportsBundle b,
+    HomeDashboardData? dashboard,
+  ) {
     final rows = List<Map<String, dynamic>>.from(b.subcategories)
       ..sort((a, c) {
         final pa = (a['total_purchase'] as num?)?.toDouble() ?? 0;
@@ -148,6 +224,7 @@ class HomeBreakdownListPage extends ConsumerWidget {
         return pc.compareTo(pa);
       });
     return _buildScroll(
+      header: dashboard == null ? null : _totalHeader(dashboard),
       children: [
         for (var i = 0; i < rows.length; i++)
           _rowSub(context, rows[i], i),
@@ -161,20 +238,23 @@ class HomeBreakdownListPage extends ConsumerWidget {
         ? typ
         : (r['category_name']?.toString() ?? '—');
     final amt = (r['total_purchase'] as num?)?.toDouble() ?? 0;
-    final q = (r['total_qty'] as num?)?.toDouble() ?? 0;
     final dot = _dotColors[index % _dotColors.length];
     return _breakdownTile(
       dot: dot,
       title: title,
       amount: amt,
-      boldLine2: '${_fmtQty(q)} UNITS',
+      boldLine2: _itemUpperQtyLine(r),
       rest1: '—',
       rest2: '—',
       onTap: () => context.go('/catalog'),
     );
   }
 
-  Widget _supList(BuildContext context, HomeShellReportsBundle b) {
+  Widget _supList(
+    BuildContext context,
+    HomeShellReportsBundle b,
+    HomeDashboardData? dashboard,
+  ) {
     final rows = List<Map<String, dynamic>>.from(b.suppliers)
       ..sort((a, c) {
         final pa = (a['total_purchase'] as num?)?.toDouble() ?? 0;
@@ -182,6 +262,7 @@ class HomeBreakdownListPage extends ConsumerWidget {
         return pc.compareTo(pa);
       });
     return _buildScroll(
+      header: dashboard == null ? null : _totalHeader(dashboard),
       children: [
         for (var i = 0; i < rows.length; i++)
           _rowSup(context, rows[i], i),
@@ -192,14 +273,13 @@ class HomeBreakdownListPage extends ConsumerWidget {
   Widget _rowSup(BuildContext context, Map<String, dynamic> r, int index) {
     final name = r['supplier_name']?.toString() ?? '—';
     final amt = (r['total_purchase'] as num?)?.toDouble() ?? 0;
-    final q = (r['total_qty'] as num?)?.toDouble() ?? 0;
     final sid = r['supplier_id']?.toString() ?? '';
     final dot = _dotColors[index % _dotColors.length];
     return _breakdownTile(
       dot: dot,
       title: name,
       amount: amt,
-      boldLine2: '${_fmtQty(q)} UNITS',
+      boldLine2: _itemUpperQtyLine(r),
       rest1: '—',
       rest2: '—',
       onTap: () {
@@ -210,7 +290,11 @@ class HomeBreakdownListPage extends ConsumerWidget {
     );
   }
 
-  Widget _itemList(BuildContext context, HomeShellReportsBundle b) {
+  Widget _itemList(
+    BuildContext context,
+    HomeShellReportsBundle b,
+    HomeDashboardData? dashboard,
+  ) {
     final rows = List<Map<String, dynamic>>.from(b.items)
       ..sort((a, c) {
         final pa = (a['total_purchase'] as num?)?.toDouble() ?? 0;
@@ -218,6 +302,7 @@ class HomeBreakdownListPage extends ConsumerWidget {
         return pc.compareTo(pa);
       });
     return _buildScroll(
+      header: dashboard == null ? null : _totalHeader(dashboard),
       children: [
         for (var i = 0; i < rows.length; i++)
           _rowItem(context, rows[i], i),

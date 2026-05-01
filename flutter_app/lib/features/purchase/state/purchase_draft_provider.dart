@@ -4,7 +4,30 @@ import 'package:intl/intl.dart';
 
 import '../../../core/calc_engine.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/strict_decimal.dart';
 import '../domain/purchase_draft.dart';
+
+double? _parseDecimalInput(String text) {
+  final v = text.trim();
+  if (v.isEmpty) return null;
+  try {
+    return StrictDecimal.parse(v).toDouble();
+  } on FormatException {
+    return null;
+  }
+}
+
+double? _decimalFromObject(Object? value) {
+  if (value == null) return null;
+  try {
+    return StrictDecimal.fromObject(value).toDouble();
+  } on FormatException {
+    return null;
+  }
+}
+
+String _fixed(Object value, int scale) =>
+    StrictDecimal.fromObject(value).format(scale);
 
 // --- Parity with legacy `purchase_entry_wizard_v2.dart` (same math as _strictFooter / computeTradeTotals) ---
 
@@ -128,10 +151,19 @@ final purchaseQuantityTotalsProvider =
 });
 
 class PurchaseSaveValidation {
-  const PurchaseSaveValidation({this.errorMessage, this.lineIndex});
+  const PurchaseSaveValidation({
+    this.errorMessage,
+    this.lineIndex,
+    this.lineErrors = const {},
+  });
   final String? errorMessage;
+  /// First failing line (legacy / scroll target) when also using [lineErrors].
   final int? lineIndex;
-  bool get isOk => errorMessage == null;
+  /// 0-based line index -> blocking message for summary inline display.
+  final Map<int, String> lineErrors;
+  bool get isOk =>
+      (errorMessage == null || errorMessage!.trim().isEmpty) &&
+      lineErrors.isEmpty;
 }
 
 /// fromStep0, fromStep1, fromStep2, fromStep3: may press Next to the following step.
@@ -153,8 +185,13 @@ final purchaseStepGatesProvider =
   } else {
     validLines = false;
   }
-  // Supplier → terms → items (always) → summary/save (need lines).
-  return (from0: hasS, from1: hasS, from2: validLines, from3: validLines);
+  // Step0 supplier → Step1 items → Step2 terms → Step3 summary (items gate step 1).
+  return (
+    from0: hasS,
+    from1: validLines,
+    from2: validLines,
+    from3: validLines,
+  );
 });
 
 final purchaseSaveValidationProvider = Provider<PurchaseSaveValidation>((ref) {
@@ -167,15 +204,18 @@ final purchaseSaveValidationProvider = Provider<PurchaseSaveValidation>((ref) {
       errorMessage: 'Add at least one item.',
     );
   }
+  final lineErrors = <int, String>{};
   for (var i = 0; i < d.lines.length; i++) {
-    final it = d.lines[i];
-    final lineReason = purchaseLineSaveBlockReason(it);
-    if (lineReason != null) {
-      return PurchaseSaveValidation(
-        errorMessage: 'Line ${i + 1}: $lineReason',
-        lineIndex: i,
-      );
+    final reason = purchaseLineSaveBlockReason(d.lines[i]);
+    if (reason != null) {
+      lineErrors[i] = reason;
     }
+  }
+  if (lineErrors.isNotEmpty) {
+    return PurchaseSaveValidation(
+      lineIndex: lineErrors.keys.first,
+      lineErrors: Map<int, String>.from(lineErrors),
+    );
   }
   return const PurchaseSaveValidation();
 });
@@ -194,6 +234,11 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
 
   void reset() {
     state = PurchaseDraft.initial();
+  }
+
+  /// Replace entire draft (e.g. seeded from bill scan OCR review).
+  void replaceDraft(PurchaseDraft d) {
+    state = d;
   }
 
   void setPurchaseDate(DateTime d) {
@@ -215,7 +260,7 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
       state = state.copyWith(clearHeaderDiscount: true);
       return;
     }
-    final p = double.tryParse(v);
+    final p = _parseDecimalInput(v);
     state = state.copyWith(headerDiscountPercent: p);
   }
 
@@ -230,11 +275,13 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
 
     double? del;
     final dr = row['default_delivered_rate'];
-    if (dr is num && dr > 0) del = dr.toDouble();
+    del = _decimalFromObject(dr);
+    if (del != null && del <= 0) del = null;
 
     double? bill;
     final brR = row['default_billty_rate'];
-    if (brR is num && brR > 0) bill = brR.toDouble();
+    bill = _decimalFromObject(brR);
+    if (bill != null && bill <= 0) bill = null;
 
     var ft = state.freightType;
     final sft = row['freight_type']?.toString();
@@ -261,15 +308,52 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
   /// Clears terms tied to the previous supplier, then applies [row] (fresh API or list).
   /// Does not change line items — avoids reusing payment/delivered/billty/freight/broker
   /// from an earlier selection when the user picks a new supplier.
-  void applySupplierSelection(Map<String, dynamic> row, String id, String name) {
+  ///
+  /// Identity only: supplier master defaults are not copied; header terms come from
+  /// `tradeLastSupplierAutofill` after selection.
+  void applySupplierSelection(Map<String, dynamic> _, String id, String name) {
     state = state.copyWith(
+      supplierId: id,
+      supplierName: name,
+      clearBroker: true,
+      clearBrokerFromSupplier: true,
       clearPaymentDays: true,
       clearDelivered: true,
       clearBillty: true,
       clearFreight: true,
-      clearBroker: true,
+      freightType: 'separate',
     );
-    setSupplierFromMap(row, id, name);
+  }
+
+  /// Apply latest trade header for supplier (`source`: `supplier_last_trade`) — draft only.
+  void applyLastSupplierTradeAutofill(Map<String, dynamic> raw) {
+    if (raw['source']?.toString() != 'supplier_last_trade') return;
+    final pd = raw['payment_days'];
+    int? pay;
+    if (pd is num) pay = pd.toInt();
+
+    double? del = _decimalFromObject(raw['delivered_rate']);
+    if (del != null && del < 0) del = null;
+    double? bill = _decimalFromObject(raw['billty_rate']);
+    if (bill != null && bill < 0) bill = null;
+    double? fr = _decimalFromObject(raw['freight_amount']);
+    if (fr != null && fr < 0) fr = null;
+
+    var ft = state.freightType;
+    final sft = raw['freight_type']?.toString();
+    if (sft == 'included' || sft == 'separate') ft = sft!;
+
+    state = state.copyWith(
+      clearPaymentDays: pay == null,
+      paymentDays: pay,
+      clearDelivered: del == null,
+      deliveredRate: del,
+      clearBillty: bill == null,
+      billtyRate: bill,
+      clearFreight: fr == null,
+      freightAmount: fr,
+      freightType: ft,
+    );
   }
 
   void setSupplierNameOnly(String? name) {
@@ -333,7 +417,7 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
       state = state.copyWith(clearDelivered: true);
       return;
     }
-    state = state.copyWith(deliveredRate: double.tryParse(v));
+    state = state.copyWith(deliveredRate: _parseDecimalInput(v));
   }
 
   void setBilltyText(String t) {
@@ -342,7 +426,7 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
       state = state.copyWith(clearBillty: true);
       return;
     }
-    state = state.copyWith(billtyRate: double.tryParse(v));
+    state = state.copyWith(billtyRate: _parseDecimalInput(v));
   }
 
   void setFreightText(String t) {
@@ -351,7 +435,7 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
       state = state.copyWith(clearFreight: true);
       return;
     }
-    state = state.copyWith(freightAmount: double.tryParse(v));
+    state = state.copyWith(freightAmount: _parseDecimalInput(v));
   }
 
   void setFreightType(String t) {
@@ -365,7 +449,7 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
       state = state.copyWith(clearCommission: true);
       return;
     }
-    state = state.copyWith(commissionPercent: double.tryParse(v));
+    state = state.copyWith(commissionPercent: _parseDecimalInput(v));
   }
 
   void addOrReplaceLine(PurchaseLineDraft line, {int? editIndex}) {
@@ -394,7 +478,7 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
     setLinesFromMaps([for (final e in items) Map<String, dynamic>.from(e)]);
   }
 
-  Map<String, dynamic> buildTradePurchaseBody() {
+  Map<String, dynamic> buildTradePurchaseBody({bool forceDuplicate = false}) {
     final d = state;
     final lines = <Map<String, dynamic>>[
       for (final l in d.lines) l.toLineMap(),
@@ -404,9 +488,8 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
       'status': 'confirmed',
       'lines': lines,
       'freight_type': d.freightType,
+      if (forceDuplicate) 'force_duplicate': true,
     };
-    final inv = d.invoiceNumber?.trim() ?? '';
-    if (inv.isNotEmpty) body['invoice_number'] = inv;
     if (d.supplierId != null && d.supplierId!.isNotEmpty) {
       body['supplier_id'] = d.supplierId;
     }
@@ -416,15 +499,15 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
     final pd = d.paymentDays;
     if (pd != null && pd >= 0) body['payment_days'] = pd;
     final hd = d.headerDiscountPercent;
-    if (hd != null && hd > 0) body['discount'] = hd;
+    if (hd != null && hd > 0) body['discount'] = _fixed(hd, 2);
     final comm = d.commissionPercent;
-    if (comm != null && comm > 0) body['commission_percent'] = comm;
+    if (comm != null && comm > 0) body['commission_percent'] = _fixed(comm, 2);
     final dlr = d.deliveredRate;
-    if (dlr != null && dlr >= 0) body['delivered_rate'] = dlr;
+    if (dlr != null && dlr >= 0) body['delivered_rate'] = _fixed(dlr, 2);
     final brt = d.billtyRate;
-    if (brt != null && brt >= 0) body['billty_rate'] = brt;
+    if (brt != null && brt >= 0) body['billty_rate'] = _fixed(brt, 2);
     final fa = d.freightAmount;
-    if (fa != null && fa > 0) body['freight_amount'] = fa;
+    if (fa != null && fa > 0) body['freight_amount'] = _fixed(fa, 2);
     return body;
   }
 
@@ -452,11 +535,11 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
       purchaseDate: date,
       invoiceNumber: m['invoice']?.toString(),
       paymentDays: int.tryParse(m['paymentDays']?.toString() ?? ''),
-      headerDiscountPercent: double.tryParse(m['headerDisc']?.toString() ?? ''),
-      commissionPercent: double.tryParse(m['commission']?.toString() ?? ''),
-      deliveredRate: double.tryParse(m['delivered']?.toString() ?? ''),
-      billtyRate: double.tryParse(m['billty']?.toString() ?? ''),
-      freightAmount: double.tryParse(m['freight']?.toString() ?? ''),
+      headerDiscountPercent: _parseDecimalInput(m['headerDisc']?.toString() ?? ''),
+      commissionPercent: _parseDecimalInput(m['commission']?.toString() ?? ''),
+      deliveredRate: _parseDecimalInput(m['delivered']?.toString() ?? ''),
+      billtyRate: _parseDecimalInput(m['billty']?.toString() ?? ''),
+      freightAmount: _parseDecimalInput(m['freight']?.toString() ?? ''),
       freightType: ft ?? 'separate',
       lines: [for (final e in lines) PurchaseLineDraft.fromLineMap(e)],
     );
@@ -534,11 +617,11 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
       purchaseDate: purchaseDate,
       invoiceNumber: raw['invoice_number']?.toString(),
       paymentDays: pay,
-      headerDiscountPercent: (raw['discount'] as num?)?.toDouble(),
-      commissionPercent: (raw['commission_percent'] as num?)?.toDouble(),
-      deliveredRate: (raw['delivered_rate'] as num?)?.toDouble(),
-      billtyRate: (raw['billty_rate'] as num?)?.toDouble(),
-      freightAmount: (raw['freight_amount'] as num?)?.toDouble(),
+      headerDiscountPercent: _decimalFromObject(raw['discount']),
+      commissionPercent: _decimalFromObject(raw['commission_percent']),
+      deliveredRate: _decimalFromObject(raw['delivered_rate']),
+      billtyRate: _decimalFromObject(raw['billty_rate']),
+      freightAmount: _decimalFromObject(raw['freight_amount']),
       freightType: ft,
       lines: lines,
     );

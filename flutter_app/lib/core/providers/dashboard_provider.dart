@@ -27,7 +27,12 @@ final dashboardProvider =
   Timer(const Duration(minutes: 5), link.close);
   final session = ref.watch(sessionProvider);
   if (session == null) {
-    throw StateError('No session');
+    return const DashboardData(
+      totalPurchase: 0,
+      totalQtyBase: 0,
+      totalProfit: 0,
+      purchaseCount: 0,
+    );
   }
   final period = ref.watch(dashboardPeriodProvider);
   final api = ref.read(hexaApiProvider);

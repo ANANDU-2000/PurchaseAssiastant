@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/auth/session_notifier.dart';
+import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 
 /// Simplified single-page supplier creation form
@@ -354,31 +356,42 @@ class _SupplierCreateSimpleState extends ConsumerState<SupplierCreateSimple> {
     setState(() => _isSaving = true);
 
     try {
-      // TODO: Implement backend save
-      // final session = ref.read(sessionProvider);
-      // if (session == null) return;
-      // await ref.read(hexaApiProvider).createSupplier(
-      //   businessId: session.primaryBusiness.id,
-      //   payload: {
-      //     'name': _nameCtrl.text.trim(),
-      //     'phone': _phoneCtrl.text.trim(),
-      //     'place': _placeCtrl.text.trim(),
-      //     'whatsapp': _whatsappCtrl.text.trim(),
-      //     'gst_number': _gstCtrl.text.trim(),
-      //     'address': _addressCtrl.text.trim(),
-      //     'default_rate': double.tryParse(_defaultRateCtrl.text),
-      //   },
-      // );
-
+      final session = ref.read(sessionProvider);
+      if (session == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Not signed in.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+      final whatsapp = _whatsappCtrl.text.trim();
+      final phone = _phoneCtrl.text.trim();
+      final created = await ref.read(hexaApiProvider).createSupplier(
+            businessId: session.primaryBusiness.id,
+            name: _nameCtrl.text.trim(),
+            phone: phone,
+            whatsappNumber: whatsapp.isNotEmpty ? whatsapp : phone,
+            location: _placeCtrl.text.trim(),
+            gstNumber: _gstCtrl.text.trim(),
+            address: _addressCtrl.text.trim(),
+          );
+      ref.invalidate(suppliersListProvider);
+      final sid = created['id']?.toString() ?? '';
+      final nm = created['name']?.toString() ?? _nameCtrl.text.trim();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✓ Supplier saved successfully!'),
+            content: Text('Supplier saved.'),
             backgroundColor: Colors.green,
             duration: Duration(seconds: 2),
           ),
         );
-        Navigator.pop(context);
+        Navigator.pop(context, sid.isNotEmpty ? {'id': sid, 'name': nm} : null);
       }
     } catch (e) {
       if (mounted) {

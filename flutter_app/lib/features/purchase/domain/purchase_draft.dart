@@ -1,5 +1,28 @@
 import 'package:flutter/foundation.dart';
 
+import '../../../core/strict_decimal.dart';
+
+double _decimalToDouble(Object? value) {
+  if (value == null) return 0;
+  try {
+    return StrictDecimal.fromObject(value).toDouble();
+  } on FormatException {
+    return 0;
+  }
+}
+
+double? _decimalToNullableDouble(Object? value) {
+  if (value == null) return null;
+  try {
+    return StrictDecimal.fromObject(value).toDouble();
+  } on FormatException {
+    return null;
+  }
+}
+
+String _fixed(Object value, int scale) =>
+    StrictDecimal.fromObject(value).format(scale);
+
 /// API-aligned: `included` or `separate`.
 @immutable
 class PurchaseDraft {
@@ -121,6 +144,15 @@ class PurchaseLineDraft {
     this.sellingPrice,
     this.taxPercent,
     this.lineDiscountPercent,
+    this.freightType,
+    this.freightValue,
+    this.deliveredRate,
+    this.billtyRate,
+    this.boxMode,
+    this.itemsPerBox,
+    this.weightPerItem,
+    this.kgPerBox,
+    this.weightPerTin,
     this.hsnCode,
     this.itemCode,
   });
@@ -138,6 +170,15 @@ class PurchaseLineDraft {
   final double? sellingPrice;
   final double? taxPercent;
   final double? lineDiscountPercent;
+  final String? freightType;
+  final double? freightValue;
+  final double? deliveredRate;
+  final double? billtyRate;
+  final String? boxMode;
+  final double? itemsPerBox;
+  final double? weightPerItem;
+  final double? kgPerBox;
+  final double? weightPerTin;
   /// Carried for GST lines; from catalog or edited purchase line.
   final String? hsnCode;
   final String? itemCode;
@@ -145,18 +186,40 @@ class PurchaseLineDraft {
   Map<String, dynamic> toLineMap() {
     final m = <String, dynamic>{
       'item_name': itemName,
-      'qty': qty,
+      'qty': _fixed(qty, 3),
       'unit': unit,
-      'landing_cost': landingCost,
+      'purchase_rate': _fixed(landingCost, 2),
+      'landing_cost': _fixed(landingCost, 2),
     };
     if (catalogItemId != null && catalogItemId!.isNotEmpty) {
       m['catalog_item_id'] = catalogItemId;
     }
-    if (kgPerUnit != null) m['kg_per_unit'] = kgPerUnit;
-    if (landingCostPerKg != null) m['landing_cost_per_kg'] = landingCostPerKg;
-    if (sellingPrice != null) m['selling_cost'] = sellingPrice;
-    if (taxPercent != null) m['tax_percent'] = taxPercent;
-    if (lineDiscountPercent != null) m['discount'] = lineDiscountPercent;
+    if (kgPerUnit != null) {
+      m['weight_per_unit'] = _fixed(kgPerUnit!, 3);
+      m['kg_per_unit'] = _fixed(kgPerUnit!, 3);
+    }
+    if (landingCostPerKg != null) {
+      m['landing_cost_per_kg'] = _fixed(landingCostPerKg!, 2);
+    }
+    if (sellingPrice != null) {
+      m['selling_rate'] = _fixed(sellingPrice!, 2);
+      m['selling_cost'] = _fixed(sellingPrice!, 2);
+    }
+    if (freightType == 'included' || freightType == 'separate') {
+      m['freight_type'] = freightType;
+    }
+    if (freightValue != null) m['freight_value'] = _fixed(freightValue!, 2);
+    if (deliveredRate != null) m['delivered_rate'] = _fixed(deliveredRate!, 2);
+    if (billtyRate != null) m['billty_rate'] = _fixed(billtyRate!, 2);
+    if (boxMode != null && boxMode!.trim().isNotEmpty) m['box_mode'] = boxMode;
+    if (itemsPerBox != null) m['items_per_box'] = _fixed(itemsPerBox!, 3);
+    if (weightPerItem != null) m['weight_per_item'] = _fixed(weightPerItem!, 3);
+    if (kgPerBox != null) m['kg_per_box'] = _fixed(kgPerBox!, 3);
+    if (weightPerTin != null) m['weight_per_tin'] = _fixed(weightPerTin!, 3);
+    if (taxPercent != null) m['tax_percent'] = _fixed(taxPercent!, 2);
+    if (lineDiscountPercent != null) {
+      m['discount'] = _fixed(lineDiscountPercent!, 2);
+    }
     if (hsnCode != null && hsnCode!.trim().isNotEmpty) {
       m['hsn_code'] = hsnCode!.trim();
     }
@@ -172,14 +235,23 @@ class PurchaseLineDraft {
     return PurchaseLineDraft(
       catalogItemId: e['catalog_item_id']?.toString(),
       itemName: e['item_name']?.toString() ?? '',
-      qty: (e['qty'] as num?)?.toDouble() ?? 0,
+      qty: _decimalToDouble(e['qty']),
       unit: e['unit']?.toString() ?? 'kg',
-      landingCost: (e['landing_cost'] as num?)?.toDouble() ?? 0,
-      kgPerUnit: (e['kg_per_unit'] as num?)?.toDouble(),
-      landingCostPerKg: (e['landing_cost_per_kg'] as num?)?.toDouble(),
-      sellingPrice: (e['selling_cost'] as num?)?.toDouble(),
-      taxPercent: (e['tax_percent'] as num?)?.toDouble(),
-      lineDiscountPercent: (e['discount'] as num?)?.toDouble(),
+      landingCost: _decimalToDouble(e['purchase_rate'] ?? e['landing_cost']),
+      kgPerUnit: _decimalToNullableDouble(e['weight_per_unit'] ?? e['kg_per_unit']),
+      landingCostPerKg: _decimalToNullableDouble(e['landing_cost_per_kg']),
+      sellingPrice: _decimalToNullableDouble(e['selling_rate'] ?? e['selling_cost']),
+      taxPercent: _decimalToNullableDouble(e['tax_percent']),
+      lineDiscountPercent: _decimalToNullableDouble(e['discount']),
+      freightType: e['freight_type']?.toString(),
+      freightValue: _decimalToNullableDouble(e['freight_value'] ?? e['freight_amount']),
+      deliveredRate: _decimalToNullableDouble(e['delivered_rate']),
+      billtyRate: _decimalToNullableDouble(e['billty_rate']),
+      boxMode: e['box_mode']?.toString(),
+      itemsPerBox: _decimalToNullableDouble(e['items_per_box']),
+      weightPerItem: _decimalToNullableDouble(e['weight_per_item']),
+      kgPerBox: _decimalToNullableDouble(e['kg_per_box']),
+      weightPerTin: _decimalToNullableDouble(e['weight_per_tin']),
       hsnCode: rawHsn.isEmpty ? null : rawHsn,
       itemCode: rawIc.isEmpty ? null : rawIc,
     );
@@ -190,6 +262,9 @@ bool _isBagOrSackUnit(String unit) {
   final x = unit.trim().toLowerCase();
   return x == 'bag' || x == 'sack';
 }
+
+bool _isBoxUnit(String unit) => unit.trim().toLowerCase() == 'box';
+bool _isTinUnit(String unit) => unit.trim().toLowerCase() == 'tin';
 
 /// First validation failure for [l] that would also fail API line rules, or null
 /// when the line is save-ready (aligned with [TradePurchase] create/update).
@@ -210,6 +285,18 @@ String? purchaseLineSaveBlockReason(PurchaseLineDraft l) {
   final pk = l.landingCostPerKg;
   final weightLine = kpu != null || pk != null;
   final unitIsBagSack = _isBagOrSackUnit(l.unit);
+  final unitIsBox = _isBoxUnit(l.unit);
+  final unitIsTin = _isTinUnit(l.unit);
+  if (unitIsBox) {
+    final hasItemsBox = (l.itemsPerBox ?? 0) > 0 && (l.weightPerItem ?? 0) > 0;
+    final hasFixedBox = (l.kgPerBox ?? 0) > 0 || (l.kgPerUnit ?? 0) > 0;
+    if (!hasItemsBox && !hasFixedBox) {
+      return 'Add items per box + item weight, or fixed kg per box.';
+    }
+  }
+  if (unitIsTin && !((l.weightPerTin ?? 0) > 0 || (l.kgPerUnit ?? 0) > 0)) {
+    return 'Add weight per tin.';
+  }
   if (weightLine || unitIsBagSack) {
     if (kpu == null || kpu <= 0) {
       return unitIsBagSack

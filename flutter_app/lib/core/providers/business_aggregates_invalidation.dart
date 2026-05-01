@@ -73,6 +73,10 @@ void invalidateWorkspaceSeedData(dynamic ref) {
 /// Bust purchase lists, trade reports, and dashboard KPIs after a purchase
 /// mutation (create, update, delete, or cancel). Prefer this over ad-hoc
 /// [invalidateTradePurchaseCaches] + [invalidateBusinessAggregates] pairs.
+///
+/// [invalidateBusinessAggregates] already calls [invalidateTradePurchaseCaches]
+/// (purchase list + alert/cache providers) plus [homeDashboardDataProvider],
+/// reports insights, KPIs, and supplier/broker lists.
 void invalidatePurchaseWorkspace(dynamic ref) {
   invalidateBusinessAggregates(ref);
 }

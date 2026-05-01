@@ -5,6 +5,7 @@ import 'package:http_parser/http_parser.dart';
 import 'dio_auto_retry_interceptor.dart';
 import '../config/app_config.dart';
 import '../models/session.dart';
+import '../strict_decimal.dart';
 
 /// Transient failures only — do not retry after a full response (avoids duplicate assistant turns).
 bool _retryableAssistantRequest(DioException e) {
@@ -326,6 +327,33 @@ class HexaApi {
     return res.data ?? {};
   }
 
+  /// Bill image → OCR / text extract preview only (`requires_user_confirmation` on server).
+  Future<Map<String, dynamic>> scanPurchaseBillMultipart({
+    required String businessId,
+    required List<int> imageBytes,
+    String filename = 'bill.jpg',
+  }) async {
+    final lower = filename.toLowerCase();
+    final MediaType ct;
+    if (lower.endsWith('.png')) {
+      ct = MediaType('image', 'png');
+    } else if (lower.endsWith('.webp')) {
+      ct = MediaType('image', 'webp');
+    } else {
+      ct = MediaType('image', 'jpeg');
+    }
+    final formData = FormData.fromMap({
+      'image': MultipartFile.fromBytes(imageBytes,
+          filename: filename, contentType: ct),
+    });
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/me/scan-purchase',
+      queryParameters: {'business_id': businessId},
+      data: formData,
+    );
+    return Map<String, dynamic>.from(res.data ?? {});
+  }
+
   Future<Map<String, dynamic>> analyticsSummary(
       {required String businessId,
       required String from,
@@ -565,7 +593,7 @@ class HexaApi {
     final res = await _dio.patch<Map<String, dynamic>>(
       '/v1/businesses/$businessId/trade-purchases/$purchaseId/payment',
       data: {
-        'paid_amount': paidAmount,
+        'paid_amount': StrictDecimal.fromObject(paidAmount).format(2),
         if (paidAtIso != null && paidAtIso.isNotEmpty) 'paid_at': paidAtIso,
       },
     );
@@ -581,8 +609,26 @@ class HexaApi {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/businesses/$businessId/trade-purchases/$purchaseId/mark-paid',
       data: {
-        if (paidAmount != null) 'paid_amount': paidAmount,
+        if (paidAmount != null)
+          'paid_amount': StrictDecimal.fromObject(paidAmount).format(2),
         if (paidAtIso != null && paidAtIso.isNotEmpty) 'paid_at': paidAtIso,
+      },
+    );
+    return Map<String, dynamic>.from(res.data ?? {});
+  }
+
+  Future<Map<String, dynamic>> lastTradePurchaseDefaults({
+    required String businessId,
+    required String catalogItemId,
+    String? supplierId,
+    String? brokerId,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/trade-purchases/last-defaults',
+      queryParameters: {
+        'catalog_item_id': catalogItemId,
+        if (supplierId != null && supplierId.isNotEmpty) 'supplier_id': supplierId,
+        if (brokerId != null && brokerId.isNotEmpty) 'broker_id': brokerId,
       },
     );
     return Map<String, dynamic>.from(res.data ?? {});
@@ -704,6 +750,18 @@ class HexaApi {
     final res = await _dio.get<Map<String, dynamic>>(
       '/v1/businesses/$businessId/reports/trade-supplier-broker-map',
       queryParameters: {'from': from, 'to': to},
+    );
+    return Map<String, dynamic>.from(res.data ?? {});
+  }
+
+  /// Latest [TradePurchase] header for [supplierId] (strict DB autofill — no aggregates).
+  Future<Map<String, dynamic>> tradeLastSupplierAutofill({
+    required String businessId,
+    required String supplierId,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/reports/trade-last-supplier-autofill',
+      queryParameters: {'supplier_id': supplierId},
     );
     return Map<String, dynamic>.from(res.data ?? {});
   }

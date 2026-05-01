@@ -11,7 +11,6 @@ import '../../features/catalog/presentation/catalog_add_item_page.dart';
 import '../../features/catalog/presentation/catalog_add_subcategory_page.dart';
 import '../../features/catalog/presentation/catalog_category_detail_page.dart';
 import '../../features/catalog/presentation/catalog_item_detail_page.dart';
-import '../../features/catalog/presentation/catalog_item_purchase_history_page.dart';
 import '../../features/catalog/presentation/catalog_page.dart';
 import '../../features/catalog/presentation/catalog_type_items_page.dart';
 import '../../features/assistant/presentation/assistant_chat_page.dart';
@@ -20,18 +19,22 @@ import '../../features/auth/presentation/login_page.dart';
 import '../../features/auth/presentation/reset_password_page.dart';
 import '../../features/auth/presentation/signup_page.dart';
 import '../../features/contacts/presentation/broker_detail_page.dart';
+import '../../features/contacts/presentation/broker_wizard_page.dart';
 import '../../features/contacts/presentation/category_items_page.dart';
 import '../../features/contacts/presentation/contacts_page.dart';
 import '../../features/contacts/presentation/supplier_create_simple.dart';
 import '../../features/contacts/presentation/supplier_detail_page.dart';
-import '../../features/contacts/presentation/trade_ledger_page.dart';
+import '../../features/supplier/presentation/supplier_ledger_page.dart';
+import '../../features/item/presentation/item_history_page.dart';
+import '../../features/broker/presentation/broker_history_page.dart';
 import '../../features/home/presentation/home_breakdown_list_page.dart';
 import '../../features/home/presentation/home_page.dart';
 import '../providers/home_breakdown_tab_providers.dart' show homeBreakdownTabFromQuery, HomeBreakdownTab;
+import '../../features/purchase/domain/purchase_draft.dart';
 import '../../features/purchase/presentation/purchase_detail_page.dart';
 import '../../features/purchase/presentation/purchase_home_page.dart';
 import '../../features/purchase/presentation/purchase_entry_wizard_v2.dart';
-import '../../features/purchase/presentation/scan_bill_page.dart';
+import '../../features/purchase/presentation/scan_purchase_page.dart';
 import '../../features/notifications/presentation/notifications_page.dart';
 import '../../features/settings/presentation/business_profile_page.dart';
 import '../../features/settings/presentation/maintenance_history_page.dart';
@@ -217,7 +220,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           final id = state.pathParameters['itemId']!;
           return iosPushPage(
             key: state.pageKey,
-            child: CatalogItemPurchaseHistoryPage(itemId: id),
+            child: ItemHistoryPage(catalogItemId: id),
           );
         },
       ),
@@ -227,10 +230,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           final id = state.pathParameters['itemId']!;
           return iosPushPage(
             key: state.pageKey,
-            child: TradeLedgerPage(
-              kind: TradeLedgerKind.catalogItem,
-              entityId: id,
-            ),
+            child: ItemHistoryPage(catalogItemId: id),
           );
         },
       ),
@@ -271,10 +271,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           final id = state.pathParameters['supplierId']!;
           return iosPushPage(
             key: state.pageKey,
-            child: TradeLedgerPage(
-              kind: TradeLedgerKind.supplier,
-              entityId: id,
-            ),
+            child: SupplierLedgerPage(supplierId: id),
           );
         },
       ),
@@ -294,10 +291,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           final id = state.pathParameters['brokerId']!;
           return iosPushPage(
             key: state.pageKey,
-            child: TradeLedgerPage(
-              kind: TradeLedgerKind.broker,
-              entityId: id,
-            ),
+            child: BrokerHistoryPage(brokerId: id),
           );
         },
       ),
@@ -363,13 +357,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: 'purchase_new',
         pageBuilder: (context, state) {
           final cid = state.uri.queryParameters['catalogItemId']?.trim();
+          PurchaseDraft? seed;
+          final ex = state.extra;
+          if (ex is PurchaseDraft) seed = ex;
           return iosPushPage(
             key: ValueKey(
-              'purchase_new_${(cid != null && cid.isNotEmpty) ? cid : 'none'}',
+              'purchase_new_${seed != null ? 'seed' : ((cid != null && cid.isNotEmpty) ? cid : 'none')}',
             ),
             child: PurchaseEntryWizardV2(
               initialCatalogItemId:
                   (cid != null && cid.isNotEmpty) ? cid : null,
+              initialDraft: seed,
             ),
           );
         },
@@ -379,7 +377,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: 'purchase_scan',
         pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
-          child: const ScanBillPage(),
+          child: const ScanPurchasePage(),
         ),
       ),
       GoRoute(
@@ -410,6 +408,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
           child: const SupplierCreateSimple(),
+        ),
+      ),
+      GoRoute(
+        path: '/suppliers/quick-create',
+        name: 'supplier_quick_create',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const SupplierCreateSimple(),
+        ),
+      ),
+      GoRoute(
+        path: '/brokers/quick-create',
+        name: 'broker_quick_create',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const BrokerWizardPage(selectionReturnOnSave: true),
         ),
       ),
       GoRoute(

@@ -47,6 +47,9 @@ class MaintenanceHomeCard extends ConsumerWidget {
         if (cur == null || st == null) {
           return const SizedBox.shrink();
         }
+        if (st == MaintenanceUiStatus.paid) {
+          return const SizedBox.shrink();
+        }
         final now = DateTime.now();
         final chipColor = switch (st) {
           MaintenanceUiStatus.paid => const Color(0xFF16A34A),
@@ -124,17 +127,6 @@ class MaintenanceHomeCard extends ConsumerWidget {
                     ),
                   ],
                 ),
-                if (st == MaintenanceUiStatus.paid && cur.paidAt != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    'Paid on ${DateFormat.yMMMd().format(cur.paidAt!)}',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.green[800],
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
                 if (st != MaintenanceUiStatus.paid) ...[
                   const SizedBox(height: 6),
                   Wrap(

@@ -89,6 +89,61 @@ Future<String?> showPurchaseSavedSheet(
               style: const TextStyle(color: HexaColors.neutral, fontSize: 13),
             ),
             const Divider(height: 24),
+            if (p.hasMissingDetails)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Material(
+                  color: Colors.amber.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.warning_amber_rounded,
+                                color: Colors.orange.shade900, size: 22),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text(
+                                'Some details missing — update now?',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w800, fontSize: 14),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Broker, payment days, freight type/amount, or header discount were left blank.',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade800),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () => Navigator.pop(ctx, 'later_missing'),
+                                child: const Text('Later'),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: FilledButton(
+                                onPressed: () =>
+                                    Navigator.pop(ctx, 'edit_missing'),
+                                child: const Text('Edit now'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ListTile(
               leading: const Icon(Icons.home_outlined),
               title: const Text('Home dashboard'),

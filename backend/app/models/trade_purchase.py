@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import date, datetime, timezone
+from decimal import Decimal
 
 from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -46,20 +47,20 @@ class TradePurchase(Base):
     )
     payment_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
-    paid_amount: Mapped[float] = mapped_column(Numeric(18, 4), default=0)
+    paid_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    discount: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
-    commission_percent: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
-    delivered_rate: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
-    billty_rate: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
-    freight_amount: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
+    discount: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    commission_percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    delivered_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    billty_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    freight_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     freight_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    total_qty: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
-    total_amount: Mapped[float] = mapped_column(Numeric(18, 4))
+    total_qty: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    total_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
     # Pre-header charges: subtotals from lines (gross base; excludes header freight/commission in total_amount)
-    total_landing_subtotal: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
-    total_selling_subtotal: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
-    total_line_profit: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
+    total_landing_subtotal: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    total_selling_subtotal: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    total_line_profit: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     status: Mapped[str] = mapped_column(String(24), default="confirmed")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -80,16 +81,33 @@ class TradePurchaseLine(Base):
         Uuid(as_uuid=True), ForeignKey("catalog_items.id"), index=True
     )
     item_name: Mapped[str] = mapped_column(String(512))
-    qty: Mapped[float] = mapped_column(Numeric(18, 4))
+    qty: Mapped[Decimal] = mapped_column(Numeric(12, 3))
     unit: Mapped[str] = mapped_column(String(32))
-    landing_cost: Mapped[float] = mapped_column(Numeric(18, 4))
+    # Canonical purchase-accounting fields. Legacy aliases below are kept during
+    # rollout so older clients can still read/write the same purchase lines.
+    purchase_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    selling_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    freight_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    freight_value: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    delivered_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    billty_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    weight_per_unit: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    total_weight: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
+    line_total: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    profit: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    box_mode: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    items_per_box: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    weight_per_item: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    kg_per_box: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    weight_per_tin: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    landing_cost: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     # Weight lines (e.g. bag + per-kg): snapshot at purchase time. Totals use
     # qty * kg_per_unit * landing_cost_per_kg; landing_cost = kg_per_unit * landing_cost_per_kg per line unit.
-    kg_per_unit: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
-    landing_cost_per_kg: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
-    selling_cost: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
-    discount: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
-    tax_percent: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
+    kg_per_unit: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    landing_cost_per_kg: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    selling_cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    discount: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    tax_percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     payment_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     hsn_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # Snapshot or override; falls back to catalog item_code in API when unset.

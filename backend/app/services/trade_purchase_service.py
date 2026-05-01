@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from typing import Any
 
-from sqlalchemy import delete, exists, select
+from sqlalchemy import delete, exists, not_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -24,7 +26,79 @@ from app.schemas.trade_purchases import (
     TradePurchasePaymentPatch,
     TradePurchaseUpdateRequest,
 )
+from app.services import decimal_precision as dp
 from app.services.purchase_status import compute_status
+
+
+class TradePurchaseValidationError(Exception):
+    """Structured validation failures (FastAPI maps to HTTP 422)."""
+
+    def __init__(self, details: list[dict[str, Any]]) -> None:
+        self.details = details
+
+
+DUPLICATE_PURCHASE_DETECTED_CODE = "DUPLICATE_PURCHASE_DETECTED"
+
+
+class TradePurchaseDuplicateError(Exception):
+    """Another purchase matches supplier, date, lines, and total (within tolerance)."""
+
+    def __init__(
+        self,
+        *,
+        existing_id: uuid.UUID,
+        existing_human_id: str,
+        message: str = "DUPLICATE_PURCHASE_DETECTED",
+    ) -> None:
+        self.code = DUPLICATE_PURCHASE_DETECTED_CODE
+        self.existing_id = existing_id
+        self.existing_human_id = existing_human_id
+        self.message = message
+
+
+# Purchases with these statuses are ignored for duplicate matching and excluded from duplicates.
+_STATUS_EXCLUDED_FROM_DUP_MATCH: frozenset[str] = frozenset({"deleted", "cancelled"})
+_DUP_TOTAL_TOLERANCE = Decimal(
+    "1.0"
+)  # ₹ — header total_amount may differ slightly from fingerprinted line math
+_DUP_QTY_EPS = Decimal("0.02")
+_DUP_RATE_EPS = Decimal("0.05")  # ₹ per unit rate comparison (landing or per-kg)
+
+
+_UNIT_PATTERN = re.compile(r"^[a-z][a-z0-9\- ]{0,31}$")
+
+
+def _collect_trade_purchase_validation_errors(
+    body: TradePurchaseCreateRequest,
+) -> list[dict[str, Any]]:
+    """Post-schema checks: permissive units + authoritative line gross."""
+    errs: list[dict[str, Any]] = []
+    if not body.lines:
+        errs.append({"loc": ["body", "lines"], "msg": "At least one line item is required"})
+        return errs
+    status_l = (body.status or "").lower()
+    enforce_gross = status_l in {"confirmed", "saved", "draft"}
+    for i, li in enumerate(body.lines):
+        base: list[Any] = ["body", "lines", i]
+        if not (li.item_name or "").strip():
+            errs.append({"loc": [*base, "item_name"], "msg": "item name is required"})
+        u = (li.unit or "").strip().lower()
+        if not u:
+            errs.append({"loc": [*base, "unit"], "msg": "unit is required"})
+        elif not _UNIT_PATTERN.match(u):
+            errs.append({"loc": [*base, "unit"], "msg": "invalid unit"})
+        if li.qty <= 0:
+            errs.append({"loc": [*base, "qty"], "msg": "quantity must be greater than 0"})
+        if enforce_gross:
+            gross = _line_gross_base(li)
+            if gross <= 0:
+                errs.append(
+                    {
+                        "loc": [*base, "landing_cost"],
+                        "msg": "line gross (qty × weight × rates) must be greater than 0",
+                    }
+                )
+    return errs
 
 
 def utcnow() -> datetime:
@@ -45,40 +119,38 @@ def _due_date_from(purchase_date: date, payment_days: int | None) -> date | None
     return purchase_date + timedelta(days=int(payment_days))
 
 
-def _dec(x: float | Decimal | None) -> Decimal:
-    if x is None:
-        return Decimal("0")
-    if isinstance(x, Decimal):
-        return x
-    return Decimal(str(x))
+def _dec(x) -> Decimal:
+    return dp.dec(x)
 
 
 def _line_fp(
     name: str,
-    qty: float,
-    landing: float,
-    discount: float | None,
-    tax_percent: float | None,
-    kg_per_unit: float | None = None,
-    per_kg: float | None = None,
+    qty,
+    landing,
+    discount,
+    tax_percent,
+    kg_per_unit=None,
+    per_kg=None,
 ) -> str:
-    d = float(discount or 0)
-    t = float(tax_percent or 0)
-    kpu = float(kg_per_unit) if kg_per_unit is not None else 0.0
-    pk = float(per_kg) if per_kg is not None else 0.0
-    return f"{name.strip().lower()}|{qty:.4f}|{float(landing):.4f}|{d:.4f}|{t:.4f}|{kpu:.4f}|{pk:.4f}"
+    q = dp.qty(qty)
+    land = dp.rate(landing)
+    d = dp.percent(discount or 0)
+    t = dp.percent(tax_percent or 0)
+    kpu = dp.weight(kg_per_unit or 0)
+    pk = dp.rate(per_kg or 0)
+    return f"{name.strip().lower()}|{q:f}|{land:f}|{d:f}|{t:f}|{kpu:f}|{pk:f}"
 
 
 def _fingerprint_lines_from_lines(lines: list[TradePurchaseLine]) -> str:
     parts = sorted(
         _line_fp(
             li.item_name,
-            float(li.qty),
-            float(li.landing_cost),
-            float(li.discount) if li.discount is not None else None,
-            float(li.tax_percent) if li.tax_percent is not None else None,
-            float(li.kg_per_unit) if getattr(li, "kg_per_unit", None) is not None else None,
-            float(li.landing_cost_per_kg) if getattr(li, "landing_cost_per_kg", None) is not None else None,
+            li.qty,
+            li.landing_cost,
+            li.discount,
+            li.tax_percent,
+            getattr(li, "kg_per_unit", None),
+            getattr(li, "landing_cost_per_kg", None),
         )
         for li in lines
     )
@@ -89,16 +161,110 @@ def _fingerprint_lines_from_in(lines: list[TradePurchaseLineIn]) -> str:
     parts = sorted(
         _line_fp(
             li.item_name,
-            float(li.qty),
-            float(li.landing_cost),
-            float(li.discount) if li.discount is not None else None,
-            float(li.tax_percent) if li.tax_percent is not None else None,
-            float(li.kg_per_unit) if li.kg_per_unit is not None else None,
-            float(li.landing_cost_per_kg) if li.landing_cost_per_kg is not None else None,
+            li.qty,
+            li.landing_cost,
+            li.discount,
+            li.tax_percent,
+            li.kg_per_unit,
+            li.landing_cost_per_kg,
         )
         for li in lines
     )
     return "|".join(parts)
+
+
+def _line_key_and_rates_in(li: TradePurchaseLineIn) -> tuple[str, Decimal, Decimal]:
+    """Stable key (catalog + name) + qty + comparable unit rate for fuzzy duplicate detection."""
+    key = f"{li.catalog_item_id}|{(li.item_name or '').strip().lower()}"
+    q = dp.qty(li.qty)
+    if li.kg_per_unit is not None and li.landing_cost_per_kg is not None:
+        rate = dp.rate(li.landing_cost_per_kg)
+    else:
+        rate = dp.rate(li.landing_cost)
+    return key, q, rate
+
+
+def _line_key_and_rates_db(li: TradePurchaseLine) -> tuple[str, Decimal, Decimal]:
+    key = f"{li.catalog_item_id}|{(li.item_name or '').strip().lower()}"
+    q = dp.qty(li.qty)
+    kpu = getattr(li, "kg_per_unit", None) or getattr(li, "weight_per_unit", None)
+    lpk = getattr(li, "landing_cost_per_kg", None)
+    if kpu is not None and lpk is not None:
+        rate = dp.rate(lpk)
+    else:
+        rate = dp.rate(li.landing_cost)
+    return key, q, rate
+
+
+def _fingerprint_approx_match(
+    lines_in: list[TradePurchaseLineIn], db_lines: list[TradePurchaseLine]
+) -> bool:
+    """Same items (catalog + name), qty and rate within small tolerance."""
+    if len(lines_in) != len(db_lines):
+        return False
+    pairs_in = sorted(_line_key_and_rates_in(li) for li in lines_in)
+    pairs_db = sorted(_line_key_and_rates_db(li) for li in db_lines)
+    for (k1, q1, r1), (k2, q2, r2) in zip(pairs_in, pairs_db, strict=True):
+        if k1 != k2:
+            return False
+        if abs(q1 - q2) > _DUP_QTY_EPS:
+            return False
+        if abs(r1 - r2) > _DUP_RATE_EPS:
+            return False
+    return True
+
+
+async def find_matching_duplicate_trade_purchase(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    *,
+    supplier_id: uuid.UUID | None,
+    purchase_date: date,
+    lines: list[TradePurchaseLineIn],
+    target_total: Decimal,
+    exclude_purchase_id: uuid.UUID | None = None,
+) -> TradePurchase | None:
+    q = (
+        select(TradePurchase)
+        .where(
+            TradePurchase.business_id == business_id,
+            TradePurchase.purchase_date == purchase_date,
+            not_(TradePurchase.status.in_(tuple(_STATUS_EXCLUDED_FROM_DUP_MATCH))),
+        )
+        .options(selectinload(TradePurchase.lines))
+    )
+    if supplier_id is not None:
+        q = q.where(TradePurchase.supplier_id == supplier_id)
+    else:
+        q = q.where(TradePurchase.supplier_id.is_(None))
+    if exclude_purchase_id is not None:
+        q = q.where(TradePurchase.id != exclude_purchase_id)
+    res = await db.execute(q)
+    for p in res.scalars().unique().all():
+        if abs(_dec(p.total_amount) - _dec(target_total)) > _DUP_TOTAL_TOLERANCE:
+            continue
+        dbl = list(p.lines or [])
+        if _fingerprint_lines_from_in(lines) == _fingerprint_lines_from_lines(dbl):
+            return p
+        if _fingerprint_approx_match(lines, dbl):
+            return p
+    return None
+
+
+def _purchase_has_missing_optional_details(tp: TradePurchase) -> bool:
+    """True when follow-up header fields expected by UX are unset (None only)."""
+    if tp.broker_id is None:
+        return True
+    if tp.payment_days is None:
+        return True
+    if tp.discount is None:
+        return True
+    if tp.freight_amount is None:
+        return True
+    ft = getattr(tp, "freight_type", None)
+    if ft is None or str(ft).strip() == "":
+        return True
+    return False
 
 
 def _line_gross_base(li: TradePurchaseLineIn) -> Decimal:
@@ -107,12 +273,55 @@ def _line_gross_base(li: TradePurchaseLineIn) -> Decimal:
     return _dec(li.qty) * _dec(li.landing_cost)
 
 
+def _line_total(li: TradePurchaseLineIn) -> Decimal:
+    return dp.total(_dec(li.qty) * _dec(li.purchase_rate or li.landing_cost))
+
+
+def _line_total_weight(li: TradePurchaseLineIn) -> Decimal:
+    unit = (li.unit or "").strip().upper()
+    qty = _dec(li.qty)
+    if unit == "KG":
+        return dp.total_weight(qty)
+    if unit == "BAG":
+        return dp.total_weight(qty * _dec(li.weight_per_unit or li.kg_per_unit))
+    if unit == "BOX":
+        if li.box_mode == "fixed_weight_box" or li.kg_per_box is not None:
+            return dp.total_weight(qty * _dec(li.kg_per_box or li.weight_per_unit))
+        if li.items_per_box is not None and li.weight_per_item is not None:
+            return dp.total_weight(qty * _dec(li.items_per_box) * _dec(li.weight_per_item))
+        if li.weight_per_unit is not None:
+            return dp.total_weight(qty * _dec(li.weight_per_unit))
+    if unit == "TIN":
+        return dp.total_weight(qty * _dec(li.weight_per_tin or li.weight_per_unit))
+    if li.weight_per_unit is not None:
+        return dp.total_weight(qty * _dec(li.weight_per_unit))
+    return Decimal("0")
+
+
+def _line_item_charges(li: TradePurchaseLineIn, req: TradePurchaseCreateRequest) -> Decimal:
+    del req
+    freight_type = li.freight_type
+    freight = li.freight_value
+    freight_dec = _dec(freight) if freight is not None and freight_type == "separate" else Decimal("0")
+    delivered = _dec(li.delivered_rate) if li.delivered_rate is not None else Decimal("0")
+    billty = _dec(li.billty_rate) if li.billty_rate is not None else Decimal("0")
+    return freight_dec + delivered + billty
+
+
+def _line_profit(li: TradePurchaseLineIn, req: TradePurchaseCreateRequest) -> Decimal | None:
+    if li.selling_rate is None:
+        return None
+    revenue = _dec(li.qty) * _dec(li.selling_rate)
+    total_cost = _line_total(li) + _line_item_charges(li, req)
+    return dp.total(revenue - total_cost)
+
+
 def _line_money(li: TradePurchaseLineIn) -> Decimal:
     base = _line_gross_base(li)
     ld = _dec(li.discount) if li.discount is not None else Decimal("0")
-    after_disc = base * (Decimal("1") - min(ld, Decimal("100")) / Decimal("100"))
+    after_disc = base * (Decimal("1") - dp.clamp_percent(ld) / Decimal("100"))
     tax = _dec(li.tax_percent) if li.tax_percent is not None else Decimal("0")
-    return after_disc * (Decimal("1") + min(tax, Decimal("1000")) / Decimal("100"))
+    return after_disc * (Decimal("1") + dp.clamp_percent(tax, Decimal("1000")) / Decimal("100"))
 
 
 def _line_landing_gross_in(li: TradePurchaseLineIn) -> Decimal:
@@ -129,37 +338,41 @@ def _line_selling_gross_in(li: TradePurchaseLineIn) -> Decimal:
 
 def aggregate_landing_selling_profit(
     req: TradePurchaseCreateRequest,
-) -> tuple[float, float | None, float | None]:
+) -> tuple[Decimal, Decimal | None, Decimal | None]:
     """SSOT line subtotals (matches DB backfill in migration 008)."""
-    land = sum(_line_landing_gross_in(li) for li in req.lines)
-    sell = sum(_line_selling_gross_in(li) for li in req.lines)
-    land_f = float(land)
+    land = sum((_line_total(li) + _line_item_charges(li, req)) for li in req.lines)
+    sell = sum((_dec(li.qty) * _dec(li.selling_rate)) for li in req.lines if li.selling_rate is not None)
     if sell <= 0:
-        return land_f, None, None
-    sell_f = float(sell)
-    return land_f, sell_f, sell_f - land_f
+        return dp.total(land), None, None
+    return dp.total(land), dp.total(sell), dp.total(sell - land)
 
 
 def compute_totals(req: TradePurchaseCreateRequest) -> tuple[Decimal, Decimal]:
     qty_sum = sum(_dec(li.qty) for li in req.lines)
-    amt_sum = sum(_line_money(li) for li in req.lines)
+    has_item_level_charges = any(
+        li.freight_value is not None or li.delivered_rate is not None or li.billty_rate is not None
+        for li in req.lines
+    )
+    amt_sum = sum((_line_total(li) + _line_item_charges(li, req)) for li in req.lines)
     header_disc = _dec(req.discount) if req.discount is not None else Decimal("0")
     after_header = amt_sum
     if header_disc > 0:
-        after_header = amt_sum * (Decimal("1") - min(header_disc, Decimal("100")) / Decimal("100"))
+        after_header = amt_sum * (Decimal("1") - dp.clamp_percent(header_disc) / Decimal("100"))
     amt_sum = after_header
-    freight = _dec(req.freight_amount) if req.freight_amount is not None else Decimal("0")
-    if req.freight_type == "included":
-        freight = Decimal("0")
-    amt_sum += freight
+    if not has_item_level_charges:
+        freight = _dec(req.freight_amount) if req.freight_amount is not None else Decimal("0")
+        if req.freight_type == "included":
+            freight = Decimal("0")
+        amt_sum += freight
     comm = _dec(req.commission_percent) if req.commission_percent is not None else Decimal("0")
     if comm > 0:
-        amt_sum += after_header * min(comm, Decimal("100")) / Decimal("100")
-    # Fixed-rupee header charges (PDF / wizard footer; must match client computeTradeTotals).
-    billty = _dec(req.billty_rate) if req.billty_rate is not None else Decimal("0")
-    delivered = _dec(req.delivered_rate) if req.delivered_rate is not None else Decimal("0")
-    amt_sum += billty + delivered
-    return qty_sum, amt_sum
+        amt_sum += after_header * dp.clamp_percent(comm) / Decimal("100")
+    if not has_item_level_charges:
+        # Fixed-rupee header charges kept for compatibility with existing rows/clients.
+        billty = _dec(req.billty_rate) if req.billty_rate is not None else Decimal("0")
+        delivered = _dec(req.delivered_rate) if req.delivered_rate is not None else Decimal("0")
+        amt_sum += billty + delivered
+    return dp.qty(qty_sum), dp.total(amt_sum)
 
 
 async def _sync_purchase_memory(
@@ -179,7 +392,7 @@ async def _sync_purchase_memory(
         )
         item = ir.scalar_one_or_none()
         if item is not None:
-            item.last_purchase_price = float(li.landing_cost)
+            item.last_purchase_price = dp.rate(li.landing_cost)
         if body.supplier_id is None:
             continue
         dr = await db.execute(
@@ -197,17 +410,17 @@ async def _sync_purchase_memory(
                     business_id=business_id,
                     supplier_id=body.supplier_id,
                     catalog_item_id=li.catalog_item_id,
-                    last_price=float(li.landing_cost),
-                    last_discount=float(li.discount) if li.discount is not None else None,
+                    last_price=dp.rate(li.landing_cost),
+                    last_discount=dp.percent(li.discount) if li.discount is not None else None,
                     last_payment_days=line_pd,
                     purchase_count=1,
                 )
             )
         else:
             row.purchase_count = int(row.purchase_count or 0) + 1
-            row.last_price = float(li.landing_cost)
+            row.last_price = dp.rate(li.landing_cost)
             if li.discount is not None:
-                row.last_discount = float(li.discount)
+                row.last_discount = dp.percent(li.discount)
             if line_pd is not None:
                 row.last_payment_days = line_pd
 
@@ -238,30 +451,22 @@ async def check_duplicate(
     business_id: uuid.UUID,
     body: TradeDuplicateCheckRequest,
 ) -> TradeDuplicateCheckResponse:
-    want_fp = _fingerprint_lines_from_in(body.lines)
     target_total = _dec(body.total_amount)
-
-    q = select(TradePurchase).where(
-        TradePurchase.business_id == business_id,
-        TradePurchase.purchase_date == body.purchase_date,
+    dup = await find_matching_duplicate_trade_purchase(
+        db,
+        business_id,
+        supplier_id=body.supplier_id,
+        purchase_date=body.purchase_date,
+        lines=body.lines,
+        target_total=target_total,
     )
-    if body.supplier_id is not None:
-        q = q.where(TradePurchase.supplier_id == body.supplier_id)
-    else:
-        q = q.where(TradePurchase.supplier_id.is_(None))
-    q = q.options(selectinload(TradePurchase.lines))
-    res = await db.execute(q)
-    for p in res.scalars().unique().all():
-        if abs(_dec(p.total_amount) - target_total) > Decimal("1.0"):
-            continue
-        got_fp = _fingerprint_lines_from_lines(list(p.lines))
-        if got_fp == want_fp:
-            return TradeDuplicateCheckResponse(
-                duplicate=True,
-                message="A purchase with the same lines and total already exists for this date.",
-                existing_id=p.id,
-                existing_human_id=p.human_id,
-            )
+    if dup is not None:
+        return TradeDuplicateCheckResponse(
+            duplicate=True,
+            message="A purchase with the same lines and total already exists for this date.",
+            existing_id=dup.id,
+            existing_human_id=dup.human_id,
+        )
     return TradeDuplicateCheckResponse(
         duplicate=False, message=None, existing_id=None, existing_human_id=None
     )
@@ -293,7 +498,10 @@ async def list_trade_purchases(
         )
     stmt = (
         select(TradePurchase)
-        .where(TradePurchase.business_id == business_id)
+        .where(
+            TradePurchase.business_id == business_id,
+            TradePurchase.status != "deleted",
+        )
         .options(*_trade_purchase_load_opts())
         .order_by(TradePurchase.purchase_date.desc(), TradePurchase.created_at.desc())
     )
@@ -359,31 +567,135 @@ async def get_trade_purchase(
     return trade_purchase_to_out(p) if p else None
 
 
+async def last_purchase_defaults(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    *,
+    catalog_item_id: uuid.UUID,
+    supplier_id: uuid.UUID | None = None,
+    broker_id: uuid.UUID | None = None,
+) -> dict:
+    """Last-record lookup for purchase autofill.
+
+    Priority (trade purchases only — no catalog fallbacks):
+    1. supplier + broker + item
+    2. supplier + item
+    3. latest trade line for item (any supplier)
+    """
+
+    async def find_line(*, use_supplier: bool, use_broker: bool):
+        stmt = (
+            select(TradePurchaseLine, TradePurchase)
+            .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+            .where(
+                TradePurchase.business_id == business_id,
+                TradePurchaseLine.catalog_item_id == catalog_item_id,
+                TradePurchase.status.in_(("saved", "confirmed", "paid", "partially_paid", "overdue", "due_soon")),
+            )
+            .order_by(TradePurchase.purchase_date.desc(), TradePurchase.created_at.desc())
+            .limit(1)
+        )
+        if use_supplier and supplier_id is not None:
+            stmt = stmt.where(TradePurchase.supplier_id == supplier_id)
+        if use_broker and broker_id is not None:
+            stmt = stmt.where(TradePurchase.broker_id == broker_id)
+        row = (await db.execute(stmt)).first()
+        return row
+
+    row = None
+    source = "none"
+    if supplier_id is not None and broker_id is not None:
+        row = await find_line(use_supplier=True, use_broker=True)
+        if row is not None:
+            source = "supplier_broker_item"
+    if row is None and supplier_id is not None:
+        row = await find_line(use_supplier=True, use_broker=False)
+        if row is not None:
+            source = "supplier_item"
+    if row is None:
+        row = await find_line(use_supplier=False, use_broker=False)
+        if row is not None:
+            source = "item_global_last_trade"
+    if row is not None:
+        li, p = row
+        kpu_raw = getattr(li, "weight_per_unit", None) or li.kg_per_unit
+        kpu = dp.weight(kpu_raw) if kpu_raw is not None else None
+        purchase_rate = (
+            dp.rate(getattr(li, "purchase_rate", None))
+            if getattr(li, "purchase_rate", None) is not None
+            else (dp.rate(li.landing_cost_per_kg) if li.landing_cost_per_kg is not None else dp.rate(li.landing_cost))
+        )
+        selling_raw = getattr(li, "selling_rate", None) or li.selling_cost
+        selling_rate = dp.rate(selling_raw) if selling_raw is not None else None
+        tax_pct = dp.percent(li.tax_percent) if li.tax_percent is not None else None
+        return {
+            "source": source,
+            "purchase_id": str(p.id),
+            "purchase_date": p.purchase_date.isoformat(),
+            "payment_days": p.payment_days,
+            "broker_id": str(p.broker_id) if p.broker_id is not None else None,
+            "item_id": str(li.catalog_item_id),
+            "unit": li.unit,
+            "purchase_rate": purchase_rate,
+            "landing_cost": purchase_rate,
+            "selling_rate": selling_rate,
+            "selling_cost": selling_rate,
+            "weight_per_unit": kpu,
+            "kg_per_unit": kpu,
+            "tax_percent": tax_pct,
+            "delivered_rate": dp.money(p.delivered_rate) if p.delivered_rate is not None else None,
+            "billty_rate": dp.money(p.billty_rate) if p.billty_rate is not None else None,
+            "freight_type": p.freight_type or "separate",
+            "freight_value": dp.money(getattr(li, "freight_value", None))
+            if getattr(li, "freight_value", None) is not None
+            else (dp.money(p.freight_amount) if p.freight_amount is not None else None),
+            "freight_amount": dp.money(getattr(li, "freight_value", None))
+            if getattr(li, "freight_value", None) is not None
+            else (dp.money(p.freight_amount) if p.freight_amount is not None else None),
+            "box_mode": getattr(li, "box_mode", None),
+            "items_per_box": dp.qty(getattr(li, "items_per_box", None)) if getattr(li, "items_per_box", None) is not None else None,
+            "weight_per_item": dp.weight(getattr(li, "weight_per_item", None)) if getattr(li, "weight_per_item", None) is not None else None,
+            "kg_per_box": dp.weight(getattr(li, "kg_per_box", None)) if getattr(li, "kg_per_box", None) is not None else None,
+            "weight_per_tin": dp.weight(getattr(li, "weight_per_tin", None)) if getattr(li, "weight_per_tin", None) is not None else None,
+        }
+
+    return {"source": "none"}
+
+
 async def create_trade_purchase(
     db: AsyncSession,
     business_id: uuid.UUID,
     user_id: uuid.UUID,
     body: TradePurchaseCreateRequest,
 ) -> TradePurchaseOut:
-    if not body.lines:
-        raise ValueError("At least one line item is required")
-    for i, li in enumerate(body.lines):
-        if li.qty <= 0:
-            raise ValueError(f"line {i + 1}: quantity must be greater than 0")
-        if not (li.item_name or "").strip():
-            raise ValueError(f"line {i + 1}: item name is required")
-        if not (li.unit or "").strip():
-            raise ValueError(f"line {i + 1}: unit is required")
+    errs = _collect_trade_purchase_validation_errors(body)
+    if errs:
+        raise TradePurchaseValidationError(errs)
     initial_status = body.status if body.status in ("draft", "saved", "confirmed") else "confirmed"
     if initial_status == "confirmed":
         if body.supplier_id is None:
-            raise ValueError("confirmed purchase requires supplier_id")
-        for i, li in enumerate(body.lines):
-            if li.landing_cost <= 0:
-                raise ValueError(f"line {i + 1}: landing cost must be greater than 0")
-    human_id = await next_human_id(db, business_id)
+            raise TradePurchaseValidationError(
+                [{"loc": ["body", "supplier_id"], "msg": "supplier is required for confirmed purchases"}]
+            )
     qty_sum, amt_sum = compute_totals(body)
     land_s, sell_s, prof = aggregate_landing_selling_profit(body)
+    if not body.force_duplicate:
+        dup_p = await find_matching_duplicate_trade_purchase(
+            db,
+            business_id,
+            supplier_id=body.supplier_id,
+            purchase_date=body.purchase_date,
+            lines=body.lines,
+            target_total=dp.total(amt_sum),
+        )
+        if dup_p is not None:
+            raise TradePurchaseDuplicateError(
+                existing_id=dup_p.id,
+                existing_human_id=dup_p.human_id or "",
+                message=DUPLICATE_PURCHASE_DETECTED_CODE,
+            )
+
+    human_id = await next_human_id(db, business_id)
     due = _due_date_from(body.purchase_date, body.payment_days)
     inv = (body.invoice_number.strip() if body.invoice_number else None) or None
     tp = TradePurchase(
@@ -396,18 +708,18 @@ async def create_trade_purchase(
         broker_id=body.broker_id,
         payment_days=body.payment_days,
         due_date=due,
-        paid_amount=0.0,
+        paid_amount=dp.money(0),
         paid_at=None,
-        discount=float(body.discount) if body.discount is not None else None,
-        commission_percent=float(body.commission_percent)
+        discount=dp.percent(body.discount) if body.discount is not None else None,
+        commission_percent=dp.percent(body.commission_percent)
         if body.commission_percent is not None
         else None,
-        delivered_rate=float(body.delivered_rate) if body.delivered_rate is not None else None,
-        billty_rate=float(body.billty_rate) if body.billty_rate is not None else None,
-        freight_amount=float(body.freight_amount) if body.freight_amount is not None else None,
+        delivered_rate=dp.money(body.delivered_rate) if body.delivered_rate is not None else None,
+        billty_rate=dp.money(body.billty_rate) if body.billty_rate is not None else None,
+        freight_amount=dp.money(body.freight_amount) if body.freight_amount is not None else None,
         freight_type=body.freight_type,
-        total_qty=float(qty_sum),
-        total_amount=float(amt_sum),
+        total_qty=dp.qty(qty_sum),
+        total_amount=dp.total(amt_sum),
         total_landing_subtotal=land_s,
         total_selling_subtotal=sell_s,
         total_line_profit=prof,
@@ -416,19 +728,39 @@ async def create_trade_purchase(
     db.add(tp)
     await db.flush()
     for li in body.lines:
+        line_total = _line_total(li)
+        line_weight = _line_total_weight(li)
+        line_profit = _line_profit(li, body)
         db.add(
             TradePurchaseLine(
                 trade_purchase_id=tp.id,
                 catalog_item_id=li.catalog_item_id,
                 item_name=li.item_name,
-                qty=li.qty,
+                qty=dp.qty(li.qty),
                 unit=li.unit,
-                landing_cost=li.landing_cost,
-                kg_per_unit=li.kg_per_unit,
-                landing_cost_per_kg=li.landing_cost_per_kg,
-                selling_cost=li.selling_cost,
-                discount=li.discount,
-                tax_percent=li.tax_percent,
+                purchase_rate=dp.rate(li.purchase_rate or li.landing_cost),
+                selling_rate=dp.rate(li.selling_rate) if li.selling_rate is not None else None,
+                freight_type=li.freight_type,
+                freight_value=dp.money(li.freight_value) if li.freight_value is not None else None,
+                delivered_rate=dp.money(li.delivered_rate) if li.delivered_rate is not None else None,
+                billty_rate=dp.money(li.billty_rate) if li.billty_rate is not None else None,
+                weight_per_unit=dp.weight(li.weight_per_unit) if li.weight_per_unit is not None else None,
+                total_weight=line_weight if line_weight > 0 else None,
+                line_total=line_total,
+                profit=line_profit,
+                box_mode=li.box_mode,
+                items_per_box=dp.qty(li.items_per_box) if li.items_per_box is not None else None,
+                weight_per_item=dp.weight(li.weight_per_item) if li.weight_per_item is not None else None,
+                kg_per_box=dp.weight(li.kg_per_box) if li.kg_per_box is not None else None,
+                weight_per_tin=dp.weight(li.weight_per_tin) if li.weight_per_tin is not None else None,
+                landing_cost=dp.rate(li.landing_cost),
+                kg_per_unit=dp.weight(li.kg_per_unit) if li.kg_per_unit is not None else None,
+                landing_cost_per_kg=dp.rate(li.landing_cost_per_kg)
+                if li.landing_cost_per_kg is not None
+                else None,
+                selling_cost=dp.rate(li.selling_cost) if li.selling_cost is not None else None,
+                discount=dp.percent(li.discount) if li.discount is not None else None,
+                tax_percent=dp.percent(li.tax_percent) if li.tax_percent is not None else None,
                 payment_days=li.payment_days,
                 hsn_code=(li.hsn_code.strip() if (li.hsn_code and li.hsn_code.strip()) else None),
                 item_code=(li.item_code.strip() if (li.item_code and str(li.item_code).strip()) else None),
@@ -452,22 +784,15 @@ async def update_trade_purchase(
     purchase_id: uuid.UUID,
     body: TradePurchaseUpdateRequest,
 ) -> TradePurchaseOut | None:
-    if not body.lines:
-        raise ValueError("At least one line item is required")
-    for i, li in enumerate(body.lines):
-        if li.qty <= 0:
-            raise ValueError(f"line {i + 1}: quantity must be greater than 0")
-        if not (li.item_name or "").strip():
-            raise ValueError(f"line {i + 1}: item name is required")
-        if not (li.unit or "").strip():
-            raise ValueError(f"line {i + 1}: unit is required")
+    errs = _collect_trade_purchase_validation_errors(body)
+    if errs:
+        raise TradePurchaseValidationError(errs)
     new_status = body.status if body.status in ("draft", "saved", "confirmed") else "confirmed"
     if new_status == "confirmed":
         if body.supplier_id is None:
-            raise ValueError("confirmed purchase requires supplier_id")
-        for i, li in enumerate(body.lines):
-            if li.landing_cost <= 0:
-                raise ValueError(f"line {i + 1}: landing cost must be greater than 0")
+            raise TradePurchaseValidationError(
+                [{"loc": ["body", "supplier_id"], "msg": "supplier is required for confirmed purchases"}]
+            )
     res = await db.execute(
         select(TradePurchase)
         .where(
@@ -479,24 +804,42 @@ async def update_trade_purchase(
     tp = res.scalar_one_or_none()
     if not tp:
         return None
+    if (tp.status or "").lower() == "deleted":
+        raise ValueError("Cannot edit a deleted purchase")
     if (tp.status or "").lower() == "cancelled":
         raise ValueError("Cannot edit a cancelled purchase")
     qty_sum, amt_sum = compute_totals(body)
     land_s, sell_s, prof = aggregate_landing_selling_profit(body)
+    if not body.force_duplicate:
+        dup_p = await find_matching_duplicate_trade_purchase(
+            db,
+            business_id,
+            supplier_id=body.supplier_id,
+            purchase_date=body.purchase_date,
+            lines=body.lines,
+            target_total=dp.total(amt_sum),
+            exclude_purchase_id=purchase_id,
+        )
+        if dup_p is not None:
+            raise TradePurchaseDuplicateError(
+                existing_id=dup_p.id,
+                existing_human_id=dup_p.human_id or "",
+                message=DUPLICATE_PURCHASE_DETECTED_CODE,
+            )
     tp.purchase_date = body.purchase_date
     tp.invoice_number = (body.invoice_number.strip() if body.invoice_number else None) or None
     tp.supplier_id = body.supplier_id
     tp.broker_id = body.broker_id
     tp.payment_days = body.payment_days
     tp.due_date = _due_date_from(body.purchase_date, body.payment_days)
-    tp.discount = float(body.discount) if body.discount is not None else None
-    tp.commission_percent = float(body.commission_percent) if body.commission_percent is not None else None
-    tp.delivered_rate = float(body.delivered_rate) if body.delivered_rate is not None else None
-    tp.billty_rate = float(body.billty_rate) if body.billty_rate is not None else None
-    tp.freight_amount = float(body.freight_amount) if body.freight_amount is not None else None
+    tp.discount = dp.percent(body.discount) if body.discount is not None else None
+    tp.commission_percent = dp.percent(body.commission_percent) if body.commission_percent is not None else None
+    tp.delivered_rate = dp.money(body.delivered_rate) if body.delivered_rate is not None else None
+    tp.billty_rate = dp.money(body.billty_rate) if body.billty_rate is not None else None
+    tp.freight_amount = dp.money(body.freight_amount) if body.freight_amount is not None else None
     tp.freight_type = body.freight_type
-    tp.total_qty = float(qty_sum)
-    tp.total_amount = float(amt_sum)
+    tp.total_qty = dp.qty(qty_sum)
+    tp.total_amount = dp.total(amt_sum)
     tp.total_landing_subtotal = land_s
     tp.total_selling_subtotal = sell_s
     tp.total_line_profit = prof
@@ -505,19 +848,39 @@ async def update_trade_purchase(
     await db.execute(delete(TradePurchaseLine).where(TradePurchaseLine.trade_purchase_id == tp.id))
     await db.flush()
     for li in body.lines:
+        line_total = _line_total(li)
+        line_weight = _line_total_weight(li)
+        line_profit = _line_profit(li, body)
         db.add(
             TradePurchaseLine(
                 trade_purchase_id=tp.id,
                 catalog_item_id=li.catalog_item_id,
                 item_name=li.item_name,
-                qty=li.qty,
+                qty=dp.qty(li.qty),
                 unit=li.unit,
-                landing_cost=li.landing_cost,
-                kg_per_unit=li.kg_per_unit,
-                landing_cost_per_kg=li.landing_cost_per_kg,
-                selling_cost=li.selling_cost,
-                discount=li.discount,
-                tax_percent=li.tax_percent,
+                purchase_rate=dp.rate(li.purchase_rate or li.landing_cost),
+                selling_rate=dp.rate(li.selling_rate) if li.selling_rate is not None else None,
+                freight_type=li.freight_type,
+                freight_value=dp.money(li.freight_value) if li.freight_value is not None else None,
+                delivered_rate=dp.money(li.delivered_rate) if li.delivered_rate is not None else None,
+                billty_rate=dp.money(li.billty_rate) if li.billty_rate is not None else None,
+                weight_per_unit=dp.weight(li.weight_per_unit) if li.weight_per_unit is not None else None,
+                total_weight=line_weight if line_weight > 0 else None,
+                line_total=line_total,
+                profit=line_profit,
+                box_mode=li.box_mode,
+                items_per_box=dp.qty(li.items_per_box) if li.items_per_box is not None else None,
+                weight_per_item=dp.weight(li.weight_per_item) if li.weight_per_item is not None else None,
+                kg_per_box=dp.weight(li.kg_per_box) if li.kg_per_box is not None else None,
+                weight_per_tin=dp.weight(li.weight_per_tin) if li.weight_per_tin is not None else None,
+                landing_cost=dp.rate(li.landing_cost),
+                kg_per_unit=dp.weight(li.kg_per_unit) if li.kg_per_unit is not None else None,
+                landing_cost_per_kg=dp.rate(li.landing_cost_per_kg)
+                if li.landing_cost_per_kg is not None
+                else None,
+                selling_cost=dp.rate(li.selling_cost) if li.selling_cost is not None else None,
+                discount=dp.percent(li.discount) if li.discount is not None else None,
+                tax_percent=dp.percent(li.tax_percent) if li.tax_percent is not None else None,
                 payment_days=li.payment_days,
                 hsn_code=(li.hsn_code.strip() if (li.hsn_code and li.hsn_code.strip()) else None),
                 item_code=(li.item_code.strip() if (li.item_code and str(li.item_code).strip()) else None),
@@ -528,7 +891,7 @@ async def update_trade_purchase(
     total_dec = _dec(tp.total_amount)
     paid_dec = _dec(tp.paid_amount)
     if paid_dec > total_dec:
-        tp.paid_amount = float(total_dec)
+        tp.paid_amount = dp.money(total_dec)
     tp.updated_at = utcnow()
     await _sync_purchase_memory(db, business_id, body)
     await db.commit()
@@ -557,17 +920,19 @@ async def patch_trade_purchase_payment(
     tp = res.scalar_one_or_none()
     if not tp:
         return None
+    if (tp.status or "").lower() == "deleted":
+        return None
     if (tp.status or "").lower() in ("cancelled", "draft"):
         raise ValueError("Payment not allowed for this purchase state")
     total = _dec(tp.total_amount)
     paid = min(max(_dec(body.paid_amount), Decimal("0")), total)
-    tp.paid_amount = float(paid)
+    tp.paid_amount = dp.money(paid)
     tp.paid_at = body.paid_at or utcnow()
     tp.updated_at = utcnow()
     derived = compute_status(
         stored_status=tp.status or "confirmed",
         total_amount=total,
-        paid_amount=paid,
+        paid_amount=dp.money(paid),
         due_date=tp.due_date,
     )
     if (tp.status or "").lower() not in ("draft", "cancelled"):
@@ -593,6 +958,8 @@ async def mark_trade_purchase_paid(
     tp = res.scalar_one_or_none()
     if not tp:
         return None
+    if (tp.status or "").lower() == "deleted":
+        return None
     if (tp.status or "").lower() in ("cancelled", "draft"):
         raise ValueError("Payment not allowed for this purchase state")
     total = _dec(tp.total_amount)
@@ -600,13 +967,13 @@ async def mark_trade_purchase_paid(
         new_paid = total
     else:
         new_paid = min(max(_dec(body.paid_amount), Decimal("0")), total)
-    tp.paid_amount = float(new_paid)
+    tp.paid_amount = dp.money(new_paid)
     tp.paid_at = body.paid_at or utcnow()
     tp.updated_at = utcnow()
     derived = compute_status(
         stored_status=tp.status or "confirmed",
         total_amount=total,
-        paid_amount=_dec(tp.paid_amount),
+        paid_amount=dp.money(tp.paid_amount),
         due_date=tp.due_date,
     )
     tp.status = derived
@@ -628,6 +995,8 @@ async def cancel_trade_purchase(
     tp = res.scalar_one_or_none()
     if not tp:
         return None
+    if (tp.status or "").lower() == "deleted":
+        return None
     tp.status = "cancelled"
     tp.updated_at = utcnow()
     await db.commit()
@@ -646,7 +1015,10 @@ async def delete_trade_purchase(
     tp = res.scalar_one_or_none()
     if not tp:
         return False
-    await db.delete(tp)
+    if (tp.status or "").lower() == "deleted":
+        return False
+    tp.status = "deleted"
+    tp.updated_at = utcnow()
     await db.commit()
     return True
 
@@ -679,7 +1051,7 @@ def _line_hsn(li: TradePurchaseLine) -> str | None:
     return s or None
 
 
-def _catalog_item_unit_hints(li: TradePurchaseLine) -> tuple[str | None, float | None, str | None]:
+def _catalog_item_unit_hints(li: TradePurchaseLine) -> tuple[str | None, Decimal | None, str | None]:
     ci = getattr(li, "catalog_item", None)
     if ci is None:
         return None, None, None
@@ -688,54 +1060,86 @@ def _catalog_item_unit_hints(li: TradePurchaseLine) -> tuple[str | None, float |
     kpb = getattr(ci, "default_kg_per_bag", None)
     du_s = str(du).strip().lower() if du is not None and str(du).strip() else None
     dpu_s = str(dpu).strip().lower() if dpu is not None and str(dpu).strip() else None
-    kpb_f = float(kpb) if kpb is not None else None
+    kpb_f = dp.weight(kpb) if kpb is not None else None
     return du_s, kpb_f, dpu_s
 
 
-def _line_landing_gross_db(li: TradePurchaseLine) -> float:
+def _line_landing_gross_db(li: TradePurchaseLine) -> Decimal:
+    stored = getattr(li, "line_total", None)
+    if stored is not None:
+        return dp.total(stored)
     kpu = getattr(li, "kg_per_unit", None)
     lpk = getattr(li, "landing_cost_per_kg", None)
     if kpu is not None and lpk is not None:
-        return float(li.qty) * float(kpu) * float(lpk)
-    return float(li.qty) * float(li.landing_cost)
+        return dp.total(_dec(li.qty) * _dec(kpu) * _dec(lpk))
+    return dp.total(_dec(li.qty) * _dec(li.landing_cost))
 
 
-def _line_selling_gross_db(li: TradePurchaseLine) -> float:
-    if li.selling_cost is None:
-        return 0.0
-    kpu = getattr(li, "kg_per_unit", None)
-    lpk = getattr(li, "landing_cost_per_kg", None)
-    if kpu is not None and lpk is not None:
-        return float(li.qty) * float(kpu) * float(li.selling_cost)
-    return float(li.qty) * float(li.selling_cost)
+def _line_selling_gross_db(li: TradePurchaseLine) -> Decimal:
+    selling = getattr(li, "selling_rate", None)
+    if selling is None:
+        selling = li.selling_cost
+    if selling is None:
+        return Decimal("0")
+    return dp.total(_dec(li.qty) * _dec(selling))
 
 
 def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
     lines = []
-    sum_land = 0.0
-    sum_sell = 0.0
+    sum_land = Decimal("0")
+    sum_sell = Decimal("0")
     for li in tp.lines:
         du_s, kpb_f, dpu_s = _catalog_item_unit_hints(li)
         lg = _line_landing_gross_db(li)
         sg = _line_selling_gross_db(li)
         sum_land += lg
         sum_sell += sg
-        lp = (sg - lg) if li.selling_cost is not None else None
+        stored_profit = getattr(li, "profit", None)
+        lp = dp.total(stored_profit) if stored_profit is not None else (
+            dp.total(sg - lg) if (getattr(li, "selling_rate", None) is not None or li.selling_cost is not None) else None
+        )
+        kpu_raw = getattr(li, "weight_per_unit", None)
+        if kpu_raw is None:
+            kpu_raw = getattr(li, "kg_per_unit", None)
+        kpu_val = dp.weight(kpu_raw) if kpu_raw is not None else None
+        total_weight_raw = getattr(li, "total_weight", None)
+        total_weight = dp.total_weight(total_weight_raw) if total_weight_raw is not None else (
+            dp.total_weight(_dec(li.qty) * kpu_val) if kpu_val is not None else (
+                dp.total_weight(li.qty) if str(li.unit or "").strip().lower() == "kg" else None
+            )
+        )
+        purchase_rate = getattr(li, "purchase_rate", None) or li.landing_cost
+        selling_rate = getattr(li, "selling_rate", None) or li.selling_cost
         lines.append(
             TradePurchaseLineOut(
                 id=li.id,
                 catalog_item_id=li.catalog_item_id,
                 item_name=li.item_name,
-                qty=float(li.qty),
+                qty=dp.qty(li.qty),
                 unit=li.unit,
-                landing_cost=float(li.landing_cost),
-                kg_per_unit=float(li.kg_per_unit) if getattr(li, "kg_per_unit", None) is not None else None,
-                landing_cost_per_kg=float(li.landing_cost_per_kg)
+                landing_cost=dp.rate(li.landing_cost),
+                purchase_rate=dp.rate(purchase_rate),
+                kg_per_unit=kpu_val,
+                weight_per_unit=kpu_val,
+                landing_cost_per_kg=dp.rate(li.landing_cost_per_kg)
                 if getattr(li, "landing_cost_per_kg", None) is not None
                 else None,
-                selling_cost=float(li.selling_cost) if li.selling_cost is not None else None,
-                discount=float(li.discount) if li.discount is not None else None,
-                tax_percent=float(li.tax_percent) if li.tax_percent is not None else None,
+                selling_cost=dp.rate(selling_rate) if selling_rate is not None else None,
+                selling_rate=dp.rate(selling_rate) if selling_rate is not None else None,
+                freight_type=getattr(li, "freight_type", None),
+                freight_value=dp.money(getattr(li, "freight_value", None)) if getattr(li, "freight_value", None) is not None else None,
+                delivered_rate=dp.money(getattr(li, "delivered_rate", None)) if getattr(li, "delivered_rate", None) is not None else None,
+                billty_rate=dp.money(getattr(li, "billty_rate", None)) if getattr(li, "billty_rate", None) is not None else None,
+                total_weight=total_weight,
+                line_total=lg,
+                profit=lp,
+                box_mode=getattr(li, "box_mode", None),
+                items_per_box=dp.qty(getattr(li, "items_per_box", None)) if getattr(li, "items_per_box", None) is not None else None,
+                weight_per_item=dp.weight(getattr(li, "weight_per_item", None)) if getattr(li, "weight_per_item", None) is not None else None,
+                kg_per_box=dp.weight(getattr(li, "kg_per_box", None)) if getattr(li, "kg_per_box", None) is not None else None,
+                weight_per_tin=dp.weight(getattr(li, "weight_per_tin", None)) if getattr(li, "weight_per_tin", None) is not None else None,
+                discount=dp.percent(li.discount) if li.discount is not None else None,
+                tax_percent=dp.percent(li.tax_percent) if li.tax_percent is not None else None,
                 payment_days=getattr(li, "payment_days", None),
                 hsn_code=_line_hsn(li),
                 item_code=_line_item_code(li),
@@ -750,7 +1154,7 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
         )
     total_dec = _dec(tp.total_amount)
     paid_dec = _dec(getattr(tp, "paid_amount", None))
-    remaining = float(max(total_dec - paid_dec, Decimal("0")))
+    remaining = dp.money(max(total_dec - paid_dec, Decimal("0")))
     stored = tp.status or "confirmed"
     due = getattr(tp, "due_date", None)
     derived = compute_status(
@@ -788,7 +1192,7 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
     if tss is None and sum_sell > 0:
         tss = sum_sell
     if tlp is None and tss is not None:
-        tlp = float(tss) - float(tls)
+        tlp = dp.total(_dec(tss) - _dec(tls))
     return TradePurchaseOut(
         id=tp.id,
         human_id=tp.human_id,
@@ -798,18 +1202,18 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
         broker_id=tp.broker_id,
         payment_days=tp.payment_days,
         due_date=due,
-        paid_amount=float(paid_dec),
+        paid_amount=dp.money(paid_dec),
         paid_at=getattr(tp, "paid_at", None),
-        discount=float(tp.discount) if tp.discount is not None else None,
-        commission_percent=float(tp.commission_percent) if tp.commission_percent is not None else None,
-        delivered_rate=float(tp.delivered_rate) if tp.delivered_rate is not None else None,
-        billty_rate=float(tp.billty_rate) if tp.billty_rate is not None else None,
-        freight_amount=float(tp.freight_amount) if tp.freight_amount is not None else None,
+        discount=dp.percent(tp.discount) if tp.discount is not None else None,
+        commission_percent=dp.percent(tp.commission_percent) if tp.commission_percent is not None else None,
+        delivered_rate=dp.money(tp.delivered_rate) if tp.delivered_rate is not None else None,
+        billty_rate=dp.money(tp.billty_rate) if tp.billty_rate is not None else None,
+        freight_amount=dp.money(tp.freight_amount) if tp.freight_amount is not None else None,
         freight_type=getattr(tp, "freight_type", None),
-        total_qty=float(tp.total_qty) if tp.total_qty is not None else None,
-        total_amount=float(tp.total_amount),
-        total_landing_subtotal=float(tls) if tls is not None else None,
-        total_selling_subtotal=float(tss) if tss is not None else None,
+        total_qty=dp.qty(tp.total_qty) if tp.total_qty is not None else None,
+        total_amount=dp.total(tp.total_amount),
+        total_landing_subtotal=dp.total(tls) if tls is not None else None,
+        total_selling_subtotal=dp.total(tss) if tss is not None else None,
         total_line_profit=tlp,
         status=stored,
         remaining=remaining,
@@ -826,6 +1230,9 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
         created_at=tp.created_at,
         updated_at=getattr(tp, "updated_at", None),
         lines=lines,
+        header_discount=dp.percent(tp.discount) if tp.discount is not None else None,
+        freight_value=dp.money(tp.freight_amount) if tp.freight_amount is not None else None,
+        has_missing_details=_purchase_has_missing_optional_details(tp),
     )
 
 

@@ -1699,8 +1699,9 @@ class _SupplierCreateWizardPageState
   Widget _wizardBottomBar() {
     final isSummary = _step == 5;
     return SafeArea(
+      minimum: const EdgeInsets.only(bottom: 8),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
         child: Row(
           children: [
             if (isSummary) ...[
@@ -1817,20 +1818,32 @@ class _SupplierCreateWizardPageState
             ],
           ),
         ),
-        body: SafeArea(
-          bottom: false,
-          child: SingleChildScrollView(
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: EdgeInsets.only(
-              left: 16,
-              right: 16,
-              top: 16,
-              bottom: viewInsetsBottom + 100,
-            ),
+        body: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: SafeArea(
+            bottom: false,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _bodyForStep(),
+                Expanded(
+                  child: SingleChildScrollView(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: EdgeInsets.only(
+                      left: 16,
+                      right: 16,
+                      top: 16,
+                      bottom: viewInsetsBottom + 20,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _bodyForStep(),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
           ),

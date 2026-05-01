@@ -24,9 +24,15 @@ bool _validPhoneDigits(String raw) {
 }
 
 class BrokerWizardPage extends ConsumerStatefulWidget {
-  const BrokerWizardPage({super.key, this.brokerId});
+  const BrokerWizardPage({
+    super.key,
+    this.brokerId,
+    this.selectionReturnOnSave = false,
+  });
 
   final String? brokerId;
+  /// When true (purchase quick-create): [Navigator.pop] with `{'id','name'}` on successful save.
+  final bool selectionReturnOnSave;
 
   @override
   ConsumerState<BrokerWizardPage> createState() => _BrokerWizardPageState();
@@ -335,6 +341,14 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
       invalidateTradePurchaseCaches(ref);
       invalidateBusinessAggregates(ref);
       if (!mounted) return;
+      if (widget.selectionReturnOnSave) {
+        final rid = brokerId ?? widget.brokerId ?? '';
+        context.pop(<String, dynamic>{
+          if (rid.isNotEmpty) 'id': rid,
+          'name': _name.text.trim(),
+        });
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(widget.brokerId == null ? 'Broker created' : 'Broker updated'),
@@ -390,13 +404,14 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
       );
 
   Widget _step0() {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (_dupHint != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: Text(_dupHint!, style: const TextStyle(color: Colors.orange)),
+            child:
+                Text(_dupHint!, style: const TextStyle(color: Colors.orange)),
           ),
         TextField(
           controller: _name,
@@ -440,8 +455,8 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
   }
 
   Widget _step1() {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SegmentedButton<String>(
           segments: const [
@@ -473,8 +488,8 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
   Widget _step2() {
     final suppliersAsync = ref.watch(suppliersListProvider);
     final q = _searchSuppliers.text.trim().toLowerCase();
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
           children: [
@@ -540,8 +555,8 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
 
   Widget _step3() {
     final cats = ref.watch(itemCategoriesListProvider);
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TextField(
           controller: _searchItems,
@@ -605,8 +620,8 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
   }
 
   Widget _step4() {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _reviewCard('Basic Info', [
           _kv('Name', _name.text.trim().isEmpty ? '—' : _name.text.trim()),
@@ -684,7 +699,7 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
   Widget _footer() {
     final finalStep = _step == 4;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
       child: Row(
         children: [
           TextButton(
@@ -723,6 +738,9 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
       'Item Mapping',
       'Review',
     ];
+
+    final viewInsetsBottom = MediaQuery.viewInsetsOf(context).bottom;
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
@@ -739,8 +757,35 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
             unawaited(_exit());
           }
         },
-        body: _body(),
-        bottom: _footer(),
+        body: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: SafeArea(
+            bottom: false,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: EdgeInsets.only(
+                      left: 16,
+                      right: 16,
+                      top: 12,
+                      bottom: viewInsetsBottom + 20,
+                    ),
+                    child: _body(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        bottom: SafeArea(
+          minimum: const EdgeInsets.only(bottom: 8),
+          child: _footer(),
+        ),
       ),
     );
   }

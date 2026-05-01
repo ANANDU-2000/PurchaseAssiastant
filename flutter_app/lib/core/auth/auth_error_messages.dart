@@ -195,6 +195,22 @@ String friendlyApiError(Object error, {bool forAssistant = false}) {
       return 'That record was not found. Try refreshing.';
     }
     if (sc == 409) {
+      final resp = error.response?.data;
+      if (resp is Map) {
+        final detail = resp['detail'];
+        if (detail is Map) {
+          final code = detail['code']?.toString();
+          final raw = detail['message']?.toString() ?? '';
+          final msg = raw.trim();
+          if (msg.isNotEmpty) {
+            if (code == 'DUPLICATE_PURCHASE_DETECTED') {
+              return 'Duplicate purchase: similar entry exists for this date.';
+            }
+            const cap = 420;
+            return msg.length <= cap ? msg : '${msg.substring(0, cap)}…';
+          }
+        }
+      }
       return 'That conflicts with existing data. Try again.';
     }
     if (sc == 400 || sc == 422) {

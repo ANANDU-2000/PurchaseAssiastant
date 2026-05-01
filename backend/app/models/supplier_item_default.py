@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
@@ -23,8 +24,8 @@ class SupplierItemDefault(Base):
     business_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("businesses.id"), index=True)
     supplier_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("suppliers.id"), index=True)
     catalog_item_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("catalog_items.id"), index=True)
-    last_price: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
-    last_discount: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
+    last_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    last_discount: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     last_payment_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     purchase_count: Mapped[int] = mapped_column(Integer, default=0)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

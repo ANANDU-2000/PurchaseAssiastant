@@ -788,6 +788,26 @@ class _PurchaseRow extends StatelessWidget {
                         color: HexaColors.neutral,
                       ),
                     ),
+                    if (p.hasMissingDetails) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(Icons.warning_amber_rounded,
+                              size: 14, color: Colors.orange.shade800),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              'Complete details pending',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.orange.shade900,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                     if (dueFoot != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 4),

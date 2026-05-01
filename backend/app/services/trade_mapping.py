@@ -11,7 +11,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Broker, TradePurchase, TradePurchaseLine
 from app.models.contacts import Supplier
+from app.services import decimal_precision as dp
 from app.services import trade_query as tq
+
+_TRADE_PURCHASE_AUTOFILL_STATUSES = (
+    "saved",
+    "confirmed",
+    "paid",
+    "partially_paid",
+    "overdue",
+    "due_soon",
+)
 
 
 def _zscores(values: list[float]) -> list[float | None]:
@@ -135,6 +145,38 @@ async def item_supplier_broker_rows(
         )
 
     return detail, recommendations
+
+
+async def latest_supplier_trade_header_defaults(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    supplier_id: uuid.UUID,
+) -> dict:
+    """Latest wholesale purchase header fields for draft autofill (trade rows only)."""
+    stmt = (
+        select(TradePurchase)
+        .where(
+            TradePurchase.business_id == business_id,
+            TradePurchase.supplier_id == supplier_id,
+            TradePurchase.status.in_(_TRADE_PURCHASE_AUTOFILL_STATUSES),
+        )
+        .order_by(TradePurchase.purchase_date.desc(), TradePurchase.created_at.desc())
+        .limit(1)
+    )
+    p = (await db.execute(stmt)).scalar_one_or_none()
+    if p is None:
+        return {"source": "none"}
+    return {
+        "source": "supplier_last_trade",
+        "purchase_id": str(p.id),
+        "purchase_date": p.purchase_date.isoformat(),
+        "payment_days": p.payment_days,
+        "broker_id": str(p.broker_id) if p.broker_id is not None else None,
+        "delivered_rate": dp.money(p.delivered_rate) if p.delivered_rate is not None else None,
+        "billty_rate": dp.money(p.billty_rate) if p.billty_rate is not None else None,
+        "freight_amount": dp.money(p.freight_amount) if p.freight_amount is not None else None,
+        "freight_type": p.freight_type or "separate",
+    }
 
 
 def consistency_score_from_zscores(zs: list[float | None]) -> float | None:

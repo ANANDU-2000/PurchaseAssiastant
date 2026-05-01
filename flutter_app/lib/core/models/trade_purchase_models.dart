@@ -1,6 +1,25 @@
 import 'package:flutter/material.dart';
 
+import '../strict_decimal.dart';
 import '../theme/hexa_colors.dart';
+
+double _decDouble(Object? value) {
+  if (value == null) return 0;
+  try {
+    return StrictDecimal.fromObject(value).toDouble();
+  } on FormatException {
+    return 0;
+  }
+}
+
+double? _decNullableDouble(Object? value) {
+  if (value == null) return null;
+  try {
+    return StrictDecimal.fromObject(value).toDouble();
+  } on FormatException {
+    return null;
+  }
+}
 
 /// Mirrors backend lifecycle + [parsePurchaseStatus].
 enum PurchaseStatus {
@@ -12,6 +31,7 @@ enum PurchaseStatus {
   overdue,
   dueSoon,
   cancelled,
+  deleted,
   unknown,
 }
 
@@ -25,6 +45,7 @@ extension PurchaseStatusX on PurchaseStatus {
         PurchaseStatus.overdue => 'overdue',
         PurchaseStatus.dueSoon => 'due_soon',
         PurchaseStatus.cancelled => 'cancelled',
+        PurchaseStatus.deleted => 'deleted',
         PurchaseStatus.unknown => 'unknown',
       };
 
@@ -37,6 +58,7 @@ extension PurchaseStatusX on PurchaseStatus {
         PurchaseStatus.overdue => 'Overdue',
         PurchaseStatus.dueSoon => 'Due soon',
         PurchaseStatus.cancelled => 'Cancelled',
+        PurchaseStatus.deleted => 'Deleted',
         PurchaseStatus.unknown => '—',
       };
 
@@ -49,6 +71,7 @@ extension PurchaseStatusX on PurchaseStatus {
         PurchaseStatus.saved => HexaColors.neutral,
         PurchaseStatus.confirmed => HexaColors.profit,
         PurchaseStatus.cancelled => HexaColors.loss,
+        PurchaseStatus.deleted => HexaColors.neutral,
         PurchaseStatus.unknown => HexaColors.neutral,
       };
 
@@ -65,6 +88,7 @@ PurchaseStatus parsePurchaseStatus(String? raw) {
     'overdue' => PurchaseStatus.overdue,
     'due_soon' => PurchaseStatus.dueSoon,
     'cancelled' => PurchaseStatus.cancelled,
+    'deleted' => PurchaseStatus.deleted,
     _ => PurchaseStatus.unknown,
   };
 }
@@ -76,6 +100,15 @@ class TradePurchaseLine {
     required this.qty,
     required this.unit,
     required this.landingCost,
+    this.purchaseRate,
+    this.sellingRate,
+    this.freightType,
+    this.freightValue,
+    this.deliveredRate,
+    this.billtyRate,
+    this.totalWeight,
+    this.lineTotal,
+    this.profit,
     this.sellingCost,
     this.discount,
     this.taxPercent,
@@ -89,6 +122,11 @@ class TradePurchaseLine {
     this.defaultPurchaseUnit,
     this.kgPerUnit,
     this.landingCostPerKg,
+    this.boxMode,
+    this.itemsPerBox,
+    this.weightPerItem,
+    this.kgPerBox,
+    this.weightPerTin,
   });
 
   final String id;
@@ -96,6 +134,15 @@ class TradePurchaseLine {
   final double qty;
   final String unit;
   final double landingCost;
+  final double? purchaseRate;
+  final double? sellingRate;
+  final String? freightType;
+  final double? freightValue;
+  final double? deliveredRate;
+  final double? billtyRate;
+  final double? totalWeight;
+  final double? lineTotal;
+  final double? profit;
   /// When set, line was priced as qty × kg_per_unit × landing_cost_per_kg.
   final double? kgPerUnit;
   final double? landingCostPerKg;
@@ -111,55 +158,77 @@ class TradePurchaseLine {
   final String? defaultUnit;
   final double? defaultKgPerBag;
   final String? defaultPurchaseUnit;
+  final String? boxMode;
+  final double? itemsPerBox;
+  final double? weightPerItem;
+  final double? kgPerBox;
+  final double? weightPerTin;
 
   factory TradePurchaseLine.fromJson(Map<String, dynamic> j) {
     return TradePurchaseLine(
       id: j['id']?.toString() ?? '',
       itemName: j['item_name']?.toString() ?? '',
-      qty: (j['qty'] as num?)?.toDouble() ?? 0,
+      qty: _decDouble(j['qty']),
       unit: j['unit']?.toString() ?? '',
-      landingCost: (j['landing_cost'] as num?)?.toDouble() ?? 0,
-      sellingCost: (j['selling_cost'] as num?)?.toDouble(),
-      discount: (j['discount'] as num?)?.toDouble(),
-      taxPercent: (j['tax_percent'] as num?)?.toDouble(),
+      landingCost: _decDouble(j['landing_cost'] ?? j['purchase_rate']),
+      purchaseRate: _decNullableDouble(j['purchase_rate'] ?? j['landing_cost']),
+      sellingRate: _decNullableDouble(j['selling_rate'] ?? j['selling_cost']),
+      freightType: j['freight_type']?.toString(),
+      freightValue: _decNullableDouble(j['freight_value'] ?? j['freight_amount']),
+      deliveredRate: _decNullableDouble(j['delivered_rate']),
+      billtyRate: _decNullableDouble(j['billty_rate']),
+      totalWeight: _decNullableDouble(j['total_weight']),
+      lineTotal: _decNullableDouble(j['line_total']),
+      profit: _decNullableDouble(j['profit']),
+      sellingCost: _decNullableDouble(j['selling_cost'] ?? j['selling_rate']),
+      discount: _decNullableDouble(j['discount']),
+      taxPercent: _decNullableDouble(j['tax_percent']),
       catalogItemId: j['catalog_item_id']?.toString(),
       hsnCode: j['hsn_code']?.toString(),
       itemCode: j['item_code']?.toString(),
       paymentDays: (j['payment_days'] as num?)?.toInt(),
       description: j['description']?.toString(),
       defaultUnit: j['default_unit']?.toString(),
-      defaultKgPerBag: (j['default_kg_per_bag'] as num?)?.toDouble(),
+      defaultKgPerBag: _decNullableDouble(j['default_kg_per_bag']),
       defaultPurchaseUnit: j['default_purchase_unit']?.toString(),
-      kgPerUnit: (j['kg_per_unit'] as num?)?.toDouble(),
-      landingCostPerKg: (j['landing_cost_per_kg'] as num?)?.toDouble(),
+      kgPerUnit: _decNullableDouble(j['kg_per_unit'] ?? j['weight_per_unit']),
+      landingCostPerKg: _decNullableDouble(j['landing_cost_per_kg']),
+      boxMode: j['box_mode']?.toString(),
+      itemsPerBox: _decNullableDouble(j['items_per_box']),
+      weightPerItem: _decNullableDouble(j['weight_per_item']),
+      kgPerBox: _decNullableDouble(j['kg_per_box']),
+      weightPerTin: _decNullableDouble(j['weight_per_tin']),
     );
   }
 
   /// Gross landing value for the line (matches backend / invoice math).
   double get landingGross {
+    if (lineTotal != null) return lineTotal!;
     if (kgPerUnit != null &&
         landingCostPerKg != null &&
         kgPerUnit! > 0 &&
         landingCostPerKg! > 0) {
       return qty * kgPerUnit! * landingCostPerKg!;
     }
-    return qty * landingCost;
+    return qty * (purchaseRate ?? landingCost);
   }
 
   /// Gross selling when [sellingCost] is set (per-kg when weight line).
   double get sellingGross {
-    if (sellingCost == null) return 0;
+    final rate = sellingRate ?? sellingCost;
+    if (rate == null) return 0;
     if (kgPerUnit != null &&
         landingCostPerKg != null &&
         kgPerUnit! > 0) {
-      return qty * kgPerUnit! * sellingCost!;
+      return qty * kgPerUnit! * rate;
     }
-    return qty * sellingCost!;
+    return qty * rate;
   }
 
   /// Profit for this line when selling is recorded.
   double? get lineProfit {
-    if (sellingCost == null) return null;
+    if (profit != null) return profit;
+    if ((sellingRate ?? sellingCost) == null) return null;
     return sellingGross - landingGross;
   }
 }
@@ -201,6 +270,7 @@ class TradePurchase {
     this.totalLandingSubtotal,
     this.totalSellingSubtotal,
     this.totalLineProfit,
+    this.hasMissingDetails = false,
   });
 
   final String id;
@@ -238,6 +308,7 @@ class TradePurchase {
   final double? totalLandingSubtotal;
   final double? totalSellingSubtotal;
   final double? totalLineProfit;
+  final bool hasMissingDetails;
 
   PurchaseStatus get statusEnum => parsePurchaseStatus(derivedStatus);
 
@@ -275,18 +346,17 @@ class TradePurchase {
       brokerId: j['broker_id']?.toString(),
       paymentDays: (j['payment_days'] as num?)?.toInt(),
       dueDate: parseD('due_date'),
-      paidAmount: (j['paid_amount'] as num?)?.toDouble() ?? 0,
+      paidAmount: _decDouble(j['paid_amount']),
       paidAt: parseD('paid_at'),
-      totalAmount: (j['total_amount'] as num?)?.toDouble() ?? 0,
-      totalLandingSubtotal: (j['total_landing_subtotal'] as num?)?.toDouble(),
-      totalSellingSubtotal: (j['total_selling_subtotal'] as num?)?.toDouble(),
-      totalLineProfit: (j['total_line_profit'] as num?)?.toDouble(),
+      totalAmount: _decDouble(j['total_amount']),
+      totalLandingSubtotal: _decNullableDouble(j['total_landing_subtotal']),
+      totalSellingSubtotal: _decNullableDouble(j['total_selling_subtotal']),
+      totalLineProfit: _decNullableDouble(j['total_line_profit']),
       storedStatus: j['status']?.toString() ?? 'confirmed',
       derivedStatus:
           j['derived_status']?.toString() ?? j['status']?.toString() ?? 'confirmed',
-      remaining: (j['remaining'] as num?)?.toDouble() ??
-          ((j['total_amount'] as num?)?.toDouble() ?? 0) -
-              ((j['paid_amount'] as num?)?.toDouble() ?? 0),
+      remaining: _decNullableDouble(j['remaining']) ??
+          _decDouble(j['total_amount']) - _decDouble(j['paid_amount']),
       itemsCount: (j['items_count'] as num?)?.toInt() ?? lines.length,
       supplierName: j['supplier_name']?.toString(),
       brokerName: j['broker_name']?.toString(),
@@ -296,15 +366,17 @@ class TradePurchase {
       supplierWhatsapp: j['supplier_whatsapp']?.toString(),
       brokerPhone: j['broker_phone']?.toString(),
       brokerLocation: j['broker_location']?.toString(),
-      discount: (j['discount'] as num?)?.toDouble(),
-      commissionPercent: (j['commission_percent'] as num?)?.toDouble(),
-      deliveredRate: (j['delivered_rate'] as num?)?.toDouble(),
-      billtyRate: (j['billty_rate'] as num?)?.toDouble(),
-      freightAmount: (j['freight_amount'] as num?)?.toDouble(),
+      discount: _decNullableDouble(j['discount']),
+      commissionPercent: _decNullableDouble(j['commission_percent']),
+      deliveredRate: _decNullableDouble(j['delivered_rate']),
+      billtyRate: _decNullableDouble(j['billty_rate']),
+      freightAmount: _decNullableDouble(j['freight_amount'] ?? j['freight_value']),
       freightType: j['freight_type']?.toString(),
       lines: lines,
       createdAt: parseD('created_at'),
       updatedAt: parseD('updated_at'),
+      hasMissingDetails: j['has_missing_details'] == true ||
+          j['has_missing_details']?.toString().toLowerCase() == 'true',
     );
   }
 }

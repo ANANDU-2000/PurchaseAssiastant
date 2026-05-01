@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.deps import require_membership
 from app.models import Membership, TradePurchase, TradePurchaseLine
+from app.services import trade_query as tq
 
 router = APIRouter(prefix="/v1/businesses/{business_id}", tags=["dashboard"])
 
@@ -81,44 +82,30 @@ async def business_dashboard(
     paid_f = float(paid or 0)
     pending = max(0.0, tot_f - paid_f)
 
-    # Line-level profit: (selling - landing) * qty when selling_cost set
+    # Line-level profit from the same canonical expression used by reports.
     pr = await db.execute(
-        select(
-            func.coalesce(
-                func.sum(
-                    (func.coalesce(TradePurchaseLine.selling_cost, 0.0) - TradePurchaseLine.landing_cost)
-                    * TradePurchaseLine.qty
-                ),
-                0.0,
-            )
-        )
+        select(func.coalesce(func.sum(tq.trade_line_profit_expr()), 0.0))
         .select_from(TradePurchaseLine)
         .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
         .where(*tp_f)
     )
     line_profit = float(pr.scalar() or 0)
 
-    # Per-item spend (qty * landing) for top list
+    # Per-item spend for top list: same canonical expression as reports.
+    amt = tq.trade_line_amount_expr()
+    prof = tq.trade_line_profit_expr()
     ir = await db.execute(
         select(
             TradePurchaseLine.item_name,
-            func.coalesce(
-                func.sum(TradePurchaseLine.qty * TradePurchaseLine.landing_cost), 0.0
-            ).label("spend"),
-            func.coalesce(
-                func.sum(
-                    (func.coalesce(TradePurchaseLine.selling_cost, 0.0) - TradePurchaseLine.landing_cost)
-                    * TradePurchaseLine.qty
-                ),
-                0.0,
-            ).label("pf"),
+            func.coalesce(func.sum(amt), 0.0).label("spend"),
+            func.coalesce(func.sum(prof), 0.0).label("pf"),
             func.coalesce(func.sum(TradePurchaseLine.qty), 0.0).label("tq"),
         )
         .select_from(TradePurchaseLine)
         .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
         .where(*tp_f)
         .group_by(TradePurchaseLine.item_name)
-        .order_by(func.sum(TradePurchaseLine.qty * TradePurchaseLine.landing_cost).desc())
+        .order_by(func.sum(amt).desc())
         .limit(20)
     )
     items: list[DashboardItemSlice] = []

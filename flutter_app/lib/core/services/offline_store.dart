@@ -6,11 +6,30 @@ class OfflineStore {
 
   static const _boxCache = 'offline_cache';
   static const _boxEntries = 'offline_entries';
+  static const _boxPurchaseWizardDraft = 'purchase_wizard_draft';
 
   static Future<void> init() async {
     await Hive.initFlutter();
     await Hive.openBox(_boxCache);
     await Hive.openBox(_boxEntries);
+    await Hive.openBox(_boxPurchaseWizardDraft);
+  }
+
+  static Box get _purchaseWizardDraft => Hive.box(_boxPurchaseWizardDraft);
+
+  /// JSON blob for incomplete purchase wizard (same shape as prefs draft).
+  static Future<void> putPurchaseWizardDraft(String businessId, String json) async {
+    await _purchaseWizardDraft.put(businessId, json);
+  }
+
+  static String? getPurchaseWizardDraft(String businessId) {
+    final v = _purchaseWizardDraft.get(businessId);
+    if (v is String && v.isNotEmpty) return v;
+    return null;
+  }
+
+  static Future<void> clearPurchaseWizardDraft(String businessId) async {
+    await _purchaseWizardDraft.delete(businessId);
   }
 
   static Box get _cache => Hive.box(_boxCache);

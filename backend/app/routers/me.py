@@ -2,15 +2,16 @@ import uuid
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
 from app.database import get_db
-from app.deps import get_current_user, require_owner_membership
+from app.deps import get_current_user, require_membership, require_owner_membership
 from app.models import Business, Membership, User
+from app.services.feature_flags import is_ocr_enabled
 from app.services.default_workspace import bootstrap_user_workspace
 
 _MAX_LOGO_BYTES = 2 * 1024 * 1024
@@ -229,4 +230,92 @@ async def upload_business_logo(
         address=b.address,
         phone=b.phone,
         contact_email=b.contact_email,
+    )
+
+
+class ScanPurchaseLineOut(BaseModel):
+    name: str
+    qty: float
+    unit: str
+    rate: float
+
+
+class ScanPurchaseResponse(BaseModel):
+    text: str = ""
+    confidence: float = 0.0
+    supplier_name: str | None = None
+    items: list[ScanPurchaseLineOut] = Field(default_factory=list)
+    missing_fields: list[str] = Field(default_factory=list)
+    requires_user_confirmation: bool = True
+    auto_save_allowed: bool = False
+    note: str = ""
+
+
+@router.post("/scan-purchase", response_model=ScanPurchaseResponse)
+async def scan_purchase_bill(
+    business_id: Annotated[uuid.UUID, Query(..., description="Primary workspace for membership check")],
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    _m: Annotated[Membership, Depends(require_membership)],
+    image: UploadFile = File(..., description="Bill photo (JPEG/PNG/WebP)"),
+):
+    """Multipart bill scan → structured preview only (never creates a purchase)."""
+    del user
+    raw = await image.read()
+    if len(raw) == 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Empty upload")
+    if len(raw) > 8_000_000:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Image too large (max ~8MB)")
+
+    from app.services import ocr_parser as op
+    from app.services import purchase_scan_service as pss
+
+    text, conf = await pss.image_bytes_to_text(settings, raw)
+    if not text.strip():
+        text = op.normalize_scan_text(raw)
+
+    line_strs = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    supplier_hint = op.extract_supplier_candidate(line_strs)
+    items_raw, missing = op.extract_item_rows(text)
+    items_out = [
+        ScanPurchaseLineOut(name=e["name"], qty=float(e["qty"]), unit=e["unit"], rate=float(e["rate"]))
+        for e in items_raw
+    ]
+
+    if not supplier_hint:
+        missing.append("supplier_name")
+
+    ocr_on = await is_ocr_enabled(db, settings)
+    if not text.strip():
+        missing.append("readable_text")
+
+    uniq_missing: list[str] = []
+    seen: set[str] = set()
+    for m in missing:
+        if m not in seen:
+            seen.add(m)
+            uniq_missing.append(m)
+
+    if not ocr_on:
+        return ScanPurchaseResponse(
+            text=text[:5000],
+            confidence=conf if conf > 0 else (0.35 if items_out else 0.0),
+            supplier_name=supplier_hint,
+            items=items_out,
+            missing_fields=sorted(set(uniq_missing + (["enable_ocr"] if not items_out else []))),
+            requires_user_confirmation=True,
+            auto_save_allowed=False,
+            note="OCR/cloud vision is off — parsing may be incomplete; confirm before saving.",
+        )
+
+    return ScanPurchaseResponse(
+        text=text[:5000],
+        confidence=conf if conf > 0 else (0.5 if items_out else 0.25),
+        supplier_name=supplier_hint,
+        items=items_out,
+        missing_fields=uniq_missing,
+        requires_user_confirmation=True,
+        auto_save_allowed=False,
+        note="Review and edit extracted fields — no purchase is saved from this endpoint.",
     )

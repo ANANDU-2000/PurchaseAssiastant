@@ -26,6 +26,8 @@ def compute_status(
     st = (stored_status or "confirmed").strip().lower()
     if st == "cancelled":
         return "cancelled"
+    if st == "deleted":
+        return "deleted"
     if st == "draft":
         return "draft"
 

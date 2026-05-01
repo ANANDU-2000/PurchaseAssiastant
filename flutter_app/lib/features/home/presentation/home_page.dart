@@ -23,7 +23,7 @@ import '../../purchase/presentation/widgets/purchase_saved_sheet.dart';
 import '../../../core/providers/home_breakdown_tab_providers.dart';
 import '../../../core/providers/home_dashboard_provider.dart';
 import '../../../core/providers/maintenance_payment_provider.dart';
-import 'spend_ring_chart.dart';
+import '../../../widgets/spend_ring_chart.dart';
 import 'maintenance_home_card.dart';
 
 String _inr(num n) =>
@@ -159,7 +159,8 @@ class _HomePageState extends ConsumerState<HomePage>
       backgroundColor: HexaColors.brandBackground,
       appBar: _buildAppBar(),
       body: SafeArea(
-        bottom: false,
+        top: false,
+        bottom: true,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -398,7 +399,9 @@ class _HomePageState extends ConsumerState<HomePage>
       );
       if (!mounted) return;
       final sid = payload.savedJson['id']?.toString();
-      if (route == 'detail' && sid != null && sid.isNotEmpty) {
+      if (route == 'edit_missing' && sid != null && sid.isNotEmpty) {
+        context.go('/purchase/edit/$sid');
+      } else if (route == 'detail' && sid != null && sid.isNotEmpty) {
         context.go('/purchase/detail/$sid');
       }
     });
@@ -576,38 +579,19 @@ String _kpiUnitsLineUpper(HomeDashboardData data) {
   final tkg = data.totalKg;
   final parts = <String>[];
   if (tb > 1e-9) parts.add('${_fmtQty(tb)} ${_unitWord('BAG', tb)}');
-  if (tkg > 1e-9) parts.add('${_fmtQty(tkg)} KG');
   if (txb > 1e-9) parts.add('${_fmtQty(txb)} ${_unitWord('BOX', txb)}');
   if (ttn > 1e-9) parts.add('${_fmtQty(ttn)} ${_unitWord('TIN', ttn)}');
+  if (tkg > 1e-9) parts.add('${_fmtQty(tkg)} KG');
   if (parts.isNotEmpty) return parts.join(' • ');
-  return '0 KG';
+  return '';
 }
 
 String _primaryUnitsLineUpper(HomeDashboardData data) {
-  if (data.totalBags > 1e-9) {
-    return '${_fmtQty(data.totalBags)} ${_unitWord('BAG', data.totalBags)}';
-  }
-  if (data.totalBoxes > 1e-9) {
-    return '${_fmtQty(data.totalBoxes)} ${_unitWord('BOX', data.totalBoxes)}';
-  }
-  if (data.totalTins > 1e-9) {
-    return '${_fmtQty(data.totalTins)} ${_unitWord('TIN', data.totalTins)}';
-  }
-  if (data.totalKg > 1e-9) return '${_fmtQty(data.totalKg)} KG';
-  if (data.totalQtyAllLines > 1e-9) {
-    return '${_fmtQty(data.totalQtyAllLines)} UNITS';
-  }
-  return '0 KG';
+  return _kpiUnitsLineUpper(data);
 }
 
 String _secondaryUnitsLineUpper(HomeDashboardData data) {
-  final primary = _primaryUnitsLineUpper(data);
-  final all = _kpiUnitsLineUpper(data);
-  if (primary == all) return '';
-  if (data.totalKg > 1e-9 && !primary.endsWith('KG')) {
-    return '${_fmtQty(data.totalKg)} KG';
-  }
-  return all;
+  return '';
 }
 
 /// Profit, percent, units, and matching breakdown (for ring + KPI).
@@ -641,18 +625,37 @@ String _itemUpperQtyLine(Map<String, dynamic> m) {
 }
 
 String _categoryQtyLabel(CategoryStat c) {
+  final parts = <String>[];
+  if (c.units.bags > 0) parts.add('${_fmtQty(c.units.bags)} BAG');
+  if (c.units.boxes > 0) parts.add('${_fmtQty(c.units.boxes)} BOX');
+  if (c.units.tins > 0) parts.add('${_fmtQty(c.units.tins)} TIN');
+  if (parts.isNotEmpty) return parts.join(' • ');
   if (c.items.isNotEmpty) {
     final u = c.items.first.unit.trim().toUpperCase();
     if (u.isNotEmpty && u != '—') {
       return '${_fmtQty(c.totalQty)} $u';
     }
   }
-  return '${_fmtQty(c.totalQty)} UNITS';
+  if (c.totalQty.abs() > 1e-9) return '${_fmtQty(c.totalQty)} QTY';
+  return '';
 }
 
-const int _kMaxHomeRows = 6;
+const int _homeRingPreviewCap = 8;
+const double _homeBreakdownRowExtent = 54;
 
-class _HomeFixedHeaderBody extends ConsumerWidget {
+const _chartEmptyCenter = Text(
+  'No data',
+  textAlign: TextAlign.center,
+  style: TextStyle(
+    fontWeight: FontWeight.w800,
+    fontSize: 14,
+    color: Color(0xFF475569),
+  ),
+);
+
+bool _portfolioEmpty(HomeDashboardData d) => d.purchaseCount == 0;
+
+class _HomeFixedHeaderBody extends ConsumerStatefulWidget {
   const _HomeFixedHeaderBody({
     required this.data,
     required this.categoryColors,
@@ -662,18 +665,137 @@ class _HomeFixedHeaderBody extends ConsumerWidget {
   final List<Color> categoryColors;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_HomeFixedHeaderBody> createState() =>
+      _HomeFixedHeaderBodyState();
+}
+
+class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
+  bool _rowsExpanded = false;
+
+  @override
+  void didUpdateWidget(covariant _HomeFixedHeaderBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.data.period != widget.data.period ||
+        oldWidget.data.purchaseCount != widget.data.purchaseCount ||
+        (oldWidget.data.totalPurchase - widget.data.totalPurchase).abs() >
+            1e-6) {
+      _rowsExpanded = false;
+    }
+  }
+
+  HomeShellReportsBundle? _bundle(
+    HomeBreakdownTab tab,
+    AsyncValue<HomeShellReportsBundle> shell,
+  ) {
+    if (tab == HomeBreakdownTab.category) return null;
+    return shell is AsyncData<HomeShellReportsBundle> ? shell.value : null;
+  }
+
+  Widget _ring(
+    BuildContext context,
+    HomeBreakdownTab tab,
+    AsyncValue<HomeShellReportsBundle> shell,
+    List<String> rc,
+    double previewSide,
+  ) {
+    final data = widget.data;
+    final colors = widget.categoryColors;
+    if (_portfolioEmpty(data)) {
+      return RepaintBoundary(
+        child: SpendRingChart(
+          diameter: previewSide,
+          strokeWidth: 8,
+          values: const [1],
+          colors: const [Color(0xFFCBD5E1)],
+          centerChild: _chartEmptyCenter,
+        ),
+      );
+    }
+
+    if (tab != HomeBreakdownTab.category && shell.isLoading) {
+      return SizedBox(
+        height: previewSide,
+        child: const Center(
+          child: SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+    if (tab != HomeBreakdownTab.category && shell.hasError) {
+      return SizedBox(
+        height: 112,
+        child: Center(
+          child: Text(
+            'Could not load ${tab.label} data',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFF64748B),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      );
+    }
+
+    final bundle = _bundle(tab, shell);
+    final slice = _topSlice(data, tab, bundle, _homeRingPreviewCap);
+    final amts =
+        List<double>.generate(slice.length, (i) => slice[i].ringAmount);
+    final anySeg =
+        slice.isNotEmpty && amts.isNotEmpty && amts.any((x) => x > 1e-12);
+
+    if (!anySeg) {
+      return RepaintBoundary(
+        child: SpendRingChart(
+          diameter: previewSide,
+          strokeWidth: 8,
+          values: const [1],
+          colors: const [Color(0xFFCBD5E1)],
+          centerLine1: rc[0],
+          centerLine2: rc[1],
+          centerLine3: rc[2],
+          centerLine4: rc[3],
+        ),
+      );
+    }
+
+    return Center(
+      child: RepaintBoundary(
+        child: SpendRingChart(
+          diameter: previewSide,
+          strokeWidth: 8,
+          values: amts,
+          colors: colors,
+          centerLine1: rc[0],
+          centerLine2: rc[1],
+          centerLine3: rc[2],
+          centerLine4: rc[3],
+          onSectionTap: (i) {
+            if (i < 0 || i >= slice.length) return;
+            slice[i].onTap(context);
+          },
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final tab = ref.watch(homeBreakdownTabProvider);
     final shell = ref.watch(homeShellReportsProvider);
-    final rc = _ringCenterLines(data);
+    final rc = _ringCenterLines(widget.data);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SizedBox(height: 2),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: _KpiTightBlock(data: data),
+          child: _KpiTightBlock(data: widget.data),
         ),
         const SizedBox(height: 4),
         Padding(
@@ -681,213 +803,150 @@ class _HomeFixedHeaderBody extends ConsumerWidget {
           child: _HomeBreakdownTabStrip(
             selected: tab,
             onSelect: (t) {
+              setState(() => _rowsExpanded = false);
               ref.read(homeBreakdownTabProvider.notifier).state = t;
             },
           ),
         ),
         const SizedBox(height: 2),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: _buildRing(
-            context,
-            tab,
-            shell,
-            categoryColors,
-            rc,
-          ),
+        LayoutBuilder(
+          builder: (context, c) {
+            final previewSide = math.min(200.0, c.maxWidth * 0.82);
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: _ring(context, tab, shell, rc, previewSide),
+            );
+          },
         ),
         const SizedBox(height: 2),
         Expanded(
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: _buildRowSection(context, tab, shell),
-                ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: () {
-                      context.push(
-                        '/home/breakdown-more?tab=${tab.name}',
-                      );
-                    },
-                    child: const Text('View more'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                if (tab != HomeBreakdownTab.category) {
+                  if (shell.isLoading) {
+                    return const SizedBox.expand();
+                  }
+                  if (shell.hasError) {
+                    return const SizedBox.shrink();
+                  }
+                } else if (widget.data.categories.isEmpty) {
+                  return const Center(
+                    child: Text(
+                      'No purchases in this period',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    ),
+                  );
+                }
 
-  Widget _buildRing(
-    BuildContext context,
-    HomeBreakdownTab tab,
-    AsyncValue<HomeShellReportsBundle> shell,
-    List<Color> colors,
-    List<String> rc,
-  ) {
-    return LayoutBuilder(
-      builder: (context, c) {
-        final side = math.min(280.0, c.maxWidth);
-        // Keep layout stable: load ring shell data only for non-category tabs.
-        if (tab != HomeBreakdownTab.category && shell.isLoading) {
-          return SizedBox(
-            height: side,
-            child: const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            ),
-          );
-        }
-        if (tab != HomeBreakdownTab.category && shell.hasError) {
-          return SizedBox(
-            height: 120,
-            child: Center(
-              child: Text(
-                'Could not load ${tab.label} data',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF64748B),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          );
-        }
-        final HomeShellReportsBundle? bundle = tab == HomeBreakdownTab.category
-            ? null
-            : (shell is AsyncData<HomeShellReportsBundle>
-                ? shell.value
-                : null);
-        final slice = _topSlice(
-          data,
-          tab,
-          bundle,
-          _kMaxHomeRows,
-        );
-        final amts = List<double>.generate(
-            slice.length, (i) => slice[i].ringAmount);
-        if (slice.isEmpty || amts.isEmpty) {
-          return RepaintBoundary(
-            child: SpendRingChart(
-              diameter: side,
-              strokeWidth: 17,
-              values: [1],
-              colors: [const Color(0xFFCBD5E1)],
-              centerLine1: rc[0],
-              centerLine2: rc[1],
-              centerLine3: rc[2],
-              centerLine4: rc[3],
-            ),
-          );
-        }
-        return Center(
-          child: RepaintBoundary(
-            child: SpendRingChart(
-              diameter: side,
-              strokeWidth: 17,
-              values: amts,
-              colors: colors,
-              centerLine1: rc[0],
-              centerLine2: rc[1],
-              centerLine3: rc[2],
-              centerLine4: rc[3],
-              onSectionTap: (i) {
-                if (i < 0 || i >= slice.length) return;
-                slice[i].onTap(context);
+                final bundle = _bundle(tab, shell);
+                final full = _topSlice(
+                  widget.data,
+                  tab,
+                  bundle,
+                  10000,
+                );
+
+                if (full.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'No rows for this tab',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Color(0xFF64748B),
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => context.go('/purchase/new'),
+                          child: const Text('Add Purchase'),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                var maxSlots = math.max(
+                  1,
+                  (constraints.maxHeight / _homeBreakdownRowExtent).floor(),
+                );
+                final reserveFooter = (!_rowsExpanded && full.length > maxSlots)
+                    ? 48.0
+                    : 0.0;
+                if (reserveFooter > 0) {
+                  maxSlots = math.max(
+                    1,
+                    ((constraints.maxHeight - reserveFooter) /
+                            _homeBreakdownRowExtent)
+                        .floor(),
+                  );
+                }
+
+                final cap = _rowsExpanded
+                    ? full.length
+                    : math.min(maxSlots, full.length);
+                final needsMore = !_rowsExpanded && full.length > maxSlots;
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: ListView.builder(
+                        padding: EdgeInsets.zero,
+                        physics: _rowsExpanded
+                            ? const BouncingScrollPhysics()
+                            : const NeverScrollableScrollPhysics(),
+                        itemCount: cap,
+                        itemBuilder: (ctx, i) {
+                          final row = full[i];
+                          return SizedBox(
+                            height: _homeBreakdownRowExtent,
+                            child: _HomeBreakdownDataRow(
+                              title: row.title,
+                              amount: row.ringAmount,
+                              boldLine2: row.line2,
+                              sup: row.sup,
+                              bro: row.bro,
+                              dotColor: widget.categoryColors[
+                                  i % widget.categoryColors.length],
+                              onTap: () => row.onTap(context),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    if (needsMore || _rowsExpanded)
+                      Align(
+                        alignment: Alignment.center,
+                        child: TextButton(
+                          onPressed: () => setState(
+                            () => _rowsExpanded = !_rowsExpanded,
+                          ),
+                          child: Text(
+                            _rowsExpanded ? 'Show less' : 'View more',
+                          ),
+                        ),
+                      ),
+                  ],
+                );
               },
             ),
           ),
-        );
-      },
-    );
-  }
-
-  Widget _buildRowSection(
-    BuildContext context,
-    HomeBreakdownTab tab,
-    AsyncValue<HomeShellReportsBundle> shell,
-  ) {
-    if (tab != HomeBreakdownTab.category) {
-      if (shell.isLoading) {
-        return const SizedBox(
-          height: 2,
-        );
-      }
-      if (shell.hasError) {
-        return const SizedBox.shrink();
-      }
-    } else {
-      if (data.categories.isEmpty) {
-        return const Padding(
-          padding: EdgeInsets.symmetric(vertical: 8),
-          child: Center(
-            child: Text(
-              'No purchases in this period',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Color(0xFF64748B),
-                fontWeight: FontWeight.w600,
-                fontSize: 12,
-              ),
-            ),
-          ),
-        );
-      }
-    }
-    final HomeShellReportsBundle? bundle = tab == HomeBreakdownTab.category
-        ? null
-        : (shell is AsyncData<HomeShellReportsBundle> ? shell.value : null);
-    final slice = _topSlice(
-      data,
-      tab,
-      bundle,
-      _kMaxHomeRows,
-    );
-    if (slice.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 8),
-        child: Center(
-          child: Text(
-            'No purchases yet',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: Color(0xFF64748B),
-              fontWeight: FontWeight.w600,
-              fontSize: 12,
-            ),
-          ),
         ),
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (var i = 0; i < slice.length; i++)
-          _HomeBreakdownDataRow(
-            title: slice[i].title,
-            amount: slice[i].ringAmount,
-            boldLine2: slice[i].line2,
-            sup: slice[i].sup,
-            bro: slice[i].bro,
-            dotColor: categoryColors[i % categoryColors.length],
-            onTap: () => slice[i].onTap(context),
-          ),
       ],
     );
   }
@@ -928,7 +987,7 @@ class _KpiTightBlock extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  primaryUnits,
+                  primaryUnits.trim().isEmpty ? '—' : primaryUnits,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -1079,23 +1138,33 @@ class _HomeBreakdownDataRow extends StatelessWidget {
                 padding: const EdgeInsets.only(left: 16),
                 child: Text.rich(
                   TextSpan(
-                    style: const TextStyle(fontSize: 11, height: 1.2),
-                    children: [
-                      TextSpan(
-                        text: boldLine2,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w900,
-                          color: Color(0xFF0F172A),
-                        ),
-                      ),
-                      TextSpan(
-                        text: ' · $sup · $bro',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF64748B),
-                        ),
-                      ),
-                    ],
+                    style: const TextStyle(fontSize: 11, height: 1.15),
+                    children: boldLine2.trim().isEmpty
+                        ? const <InlineSpan>[
+                            TextSpan(
+                              text: '—',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                          ]
+                        : [
+                            TextSpan(
+                              text: boldLine2,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                            TextSpan(
+                              text: ' · $sup · $bro',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -1177,8 +1246,7 @@ List<_BreakdownRowSlice> _topSlice(
               return r['category_name']?.toString() ?? '—';
             }(),
             ringAmount: (r['total_purchase'] as num?)?.toDouble() ?? 0,
-            line2:
-                '${_fmtQty((r['total_qty'] as num?)?.toDouble() ?? 0)} UNITS',
+            line2: _itemUpperQtyLine(r),
             sup: '—',
             bro: '—',
             onTap: (ctx) => ctx.go('/catalog'),
@@ -1197,8 +1265,7 @@ List<_BreakdownRowSlice> _topSlice(
           _BreakdownRowSlice(
             title: r['supplier_name']?.toString() ?? '—',
             ringAmount: (r['total_purchase'] as num?)?.toDouble() ?? 0,
-            line2:
-                '${_fmtQty((r['total_qty'] as num?)?.toDouble() ?? 0)} UNITS',
+            line2: _itemUpperQtyLine(r),
             sup: '—',
             bro: '—',
             onTap: (ctx) {

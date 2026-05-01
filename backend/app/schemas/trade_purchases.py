@@ -4,12 +4,64 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from app.services import decimal_precision as dp
 
 
-class TradePurchaseLineIn(BaseModel):
+_LINE_NUMERIC_INPUTS = {
+    "qty",
+    "landing_cost",
+    "purchase_rate",
+    "kg_per_unit",
+    "weight_per_unit",
+    "landing_cost_per_kg",
+    "selling_cost",
+    "selling_rate",
+    "freight_value",
+    "freight_amount",
+    "delivered_rate",
+    "billty_rate",
+    "items_per_box",
+    "weight_per_item",
+    "kg_per_box",
+    "weight_per_tin",
+    "discount",
+    "tax_percent",
+}
+
+_HEADER_NUMERIC_INPUTS = {
+    "discount",
+    "header_discount",
+    "commission_percent",
+    "delivered_rate",
+    "billty_rate",
+    "freight_amount",
+    "freight_value",
+    "paid_amount",
+    "total_amount",
+}
+
+
+def _reject_float_inputs(data: dict[str, Any], keys: set[str]) -> None:
+    bad = sorted(k for k in keys if isinstance(data.get(k), float))
+    if bad:
+        raise ValueError(
+            "Decimal values must be sent as strings, not JSON floats: " + ", ".join(bad)
+        )
+
+
+class DecimalModel(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_encoders={Decimal: lambda v: format(v, "f")},
+    )
+
+
+class TradePurchaseLineIn(DecimalModel):
     """Catalog-linked purchase line.
 
     Phase 6 contract: every line must reference a `catalog_item_id`. This
@@ -20,71 +72,185 @@ class TradePurchaseLineIn(BaseModel):
 
     catalog_item_id: uuid.UUID
     item_name: str = Field(..., min_length=1, max_length=512)
-    qty: float = Field(..., gt=0)
+    qty: Decimal = Field(..., gt=0)
     unit: str = Field(..., min_length=1, max_length=32)
-    landing_cost: float = Field(..., gt=0)
+    landing_cost: Decimal = Field(..., gt=0)
+    purchase_rate: Decimal | None = Field(None, gt=0)
     """For bag/sack + per-kg pricing: weight per line unit (e.g. 50 for a 50 kg bag)."""
-    kg_per_unit: float | None = Field(None, gt=0)
+    kg_per_unit: Decimal | None = Field(None, gt=0)
+    weight_per_unit: Decimal | None = Field(None, gt=0)
     """Rupee cost per kilogram; line gross = qty * kg_per_unit * landing_cost_per_kg when both set."""
-    landing_cost_per_kg: float | None = Field(None, gt=0)
-    selling_cost: float | None = Field(None, ge=0)
-    discount: float | None = Field(None, ge=0)
-    tax_percent: float | None = Field(None, ge=0)
+    landing_cost_per_kg: Decimal | None = Field(None, gt=0)
+    selling_cost: Decimal | None = Field(None, ge=0)
+    selling_rate: Decimal | None = Field(None, ge=0)
+    freight_type: str | None = Field(default=None, pattern="^(included|separate)$")
+    freight_value: Decimal | None = Field(None, ge=0)
+    delivered_rate: Decimal | None = Field(None, ge=0)
+    billty_rate: Decimal | None = Field(None, ge=0)
+    box_mode: str | None = Field(default=None, pattern="^(items_per_box|fixed_weight_box)$")
+    items_per_box: Decimal | None = Field(None, gt=0)
+    weight_per_item: Decimal | None = Field(None, gt=0)
+    kg_per_box: Decimal | None = Field(None, gt=0)
+    weight_per_tin: Decimal | None = Field(None, gt=0)
+    discount: Decimal | None = Field(None, ge=0)
+    tax_percent: Decimal | None = Field(None, ge=0)
     payment_days: int | None = Field(None, ge=0, le=3650)
     hsn_code: str | None = Field(None, max_length=32)
     item_code: str | None = Field(None, max_length=64)
     description: str | None = Field(None, max_length=512)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_business_aliases(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        out = dict(data)
+        _reject_float_inputs(out, _LINE_NUMERIC_INPUTS)
+        if "landing_cost" not in out and "purchase_rate" in out:
+            out["landing_cost"] = out["purchase_rate"]
+        if "purchase_rate" not in out and "landing_cost" in out:
+            out["purchase_rate"] = out["landing_cost"]
+        if "selling_cost" not in out and "selling_rate" in out:
+            out["selling_cost"] = out["selling_rate"]
+        if "selling_rate" not in out and "selling_cost" in out:
+            out["selling_rate"] = out["selling_cost"]
+        if "kg_per_unit" not in out and "weight_per_unit" in out:
+            out["kg_per_unit"] = out["weight_per_unit"]
+        if "weight_per_unit" not in out and "kg_per_unit" in out:
+            out["weight_per_unit"] = out["kg_per_unit"]
+        if "freight_value" not in out and "freight_amount" in out:
+            out["freight_value"] = out["freight_amount"]
+        return out
+
     @model_validator(mode="after")
-    def _kg_fields_together(self) -> "TradePurchaseLineIn":
+    def _normalize_decimal_precision(self) -> "TradePurchaseLineIn":
+        self.qty = dp.qty(self.qty)
+        self.purchase_rate = dp.rate(self.purchase_rate) if self.purchase_rate is not None else dp.rate(self.landing_cost)
+        self.landing_cost = self.purchase_rate
+        self.kg_per_unit = dp.weight(self.kg_per_unit) if self.kg_per_unit is not None else None
+        self.weight_per_unit = (
+            dp.weight(self.weight_per_unit)
+            if self.weight_per_unit is not None
+            else self.kg_per_unit
+        )
+        self.kg_per_unit = self.weight_per_unit
+        self.landing_cost_per_kg = (
+            dp.rate(self.landing_cost_per_kg) if self.landing_cost_per_kg is not None else None
+        )
+        self.selling_rate = dp.rate(self.selling_rate) if self.selling_rate is not None else (
+            dp.rate(self.selling_cost) if self.selling_cost is not None else None
+        )
+        self.selling_cost = self.selling_rate
+        self.freight_value = dp.money(self.freight_value) if self.freight_value is not None else None
+        self.delivered_rate = dp.money(self.delivered_rate) if self.delivered_rate is not None else None
+        self.billty_rate = dp.money(self.billty_rate) if self.billty_rate is not None else None
+        self.items_per_box = dp.qty(self.items_per_box) if self.items_per_box is not None else None
+        self.weight_per_item = dp.weight(self.weight_per_item) if self.weight_per_item is not None else None
+        self.kg_per_box = dp.weight(self.kg_per_box) if self.kg_per_box is not None else None
+        self.weight_per_tin = dp.weight(self.weight_per_tin) if self.weight_per_tin is not None else None
+        self.discount = dp.percent(self.discount) if self.discount is not None else None
+        self.tax_percent = dp.percent(self.tax_percent) if self.tax_percent is not None else None
         a, b = self.kg_per_unit, self.landing_cost_per_kg
         if (a is None) != (b is None):
             raise ValueError("kg_per_unit and landing_cost_per_kg must both be set or both omitted")
+        unit = (self.unit or "").strip().upper()
+        if unit == "BAG" and self.weight_per_unit is None:
+            raise ValueError("kg_per_bag is required for BAG")
+        if unit == "BOX":
+            has_items_box = self.items_per_box is not None and self.weight_per_item is not None
+            has_fixed_box = self.kg_per_box is not None
+            if not has_items_box and not has_fixed_box and self.weight_per_unit is None:
+                raise ValueError("BOX requires items_per_box + weight_per_item or kg_per_box")
+        if unit == "TIN" and self.weight_per_tin is None and self.weight_per_unit is None:
+            raise ValueError("weight_per_tin is required for TIN")
         return self
 
 
-class TradePurchaseCreateRequest(BaseModel):
+class TradePurchaseCreateRequest(DecimalModel):
     purchase_date: date
     invoice_number: str | None = Field(None, max_length=64)
     supplier_id: uuid.UUID
     broker_id: uuid.UUID | None = None
+    force_duplicate: bool = Field(
+        False,
+        description="When true, skip server-side duplicate detection (user confirmed).",
+    )
     status: str = Field(default="confirmed", pattern="^(draft|saved|confirmed)$")
     payment_days: int | None = Field(None, ge=0, le=3650)
-    discount: float | None = Field(None, ge=0)
-    commission_percent: float | None = Field(None, ge=0)
-    delivered_rate: float | None = Field(None, ge=0)
-    billty_rate: float | None = Field(None, ge=0)
-    freight_amount: float | None = Field(None, ge=0)
+    discount: Decimal | None = Field(None, ge=0)
+    commission_percent: Decimal | None = Field(None, ge=0)
+    delivered_rate: Decimal | None = Field(None, ge=0)
+    billty_rate: Decimal | None = Field(None, ge=0)
+    freight_amount: Decimal | None = Field(None, ge=0)
     freight_type: str | None = Field(default=None, pattern="^(included|separate)$")
     lines: list[TradePurchaseLineIn] = Field(default_factory=list)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_business_aliases(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        out = dict(data)
+        _reject_float_inputs(out, _HEADER_NUMERIC_INPUTS)
+        if "freight_amount" not in out and "freight_value" in out:
+            out["freight_amount"] = out["freight_value"]
+        if "discount" not in out and "header_discount" in out:
+            out["discount"] = out["header_discount"]
+        return out
 
-class TradePurchaseLineOut(BaseModel):
+    @model_validator(mode="after")
+    def _normalize_decimal_precision(self) -> "TradePurchaseCreateRequest":
+        self.discount = dp.percent(self.discount) if self.discount is not None else None
+        self.commission_percent = (
+            dp.percent(self.commission_percent) if self.commission_percent is not None else None
+        )
+        self.delivered_rate = dp.money(self.delivered_rate) if self.delivered_rate is not None else None
+        self.billty_rate = dp.money(self.billty_rate) if self.billty_rate is not None else None
+        self.freight_amount = dp.money(self.freight_amount) if self.freight_amount is not None else None
+        return self
+
+
+class TradePurchaseLineOut(DecimalModel):
     id: uuid.UUID
     catalog_item_id: uuid.UUID
     item_name: str
-    qty: float
+    qty: Decimal
     unit: str
-    landing_cost: float
-    kg_per_unit: float | None = None
-    landing_cost_per_kg: float | None = None
-    selling_cost: float | None
-    discount: float | None
-    tax_percent: float | None
+    landing_cost: Decimal
+    purchase_rate: Decimal | None = None
+    kg_per_unit: Decimal | None = None
+    weight_per_unit: Decimal | None = None
+    landing_cost_per_kg: Decimal | None = None
+    selling_cost: Decimal | None
+    selling_rate: Decimal | None = None
+    freight_type: str | None = None
+    freight_value: Decimal | None = None
+    delivered_rate: Decimal | None = None
+    billty_rate: Decimal | None = None
+    total_weight: Decimal | None = None
+    line_total: Decimal | None = None
+    profit: Decimal | None = None
+    box_mode: str | None = None
+    items_per_box: Decimal | None = None
+    weight_per_item: Decimal | None = None
+    kg_per_box: Decimal | None = None
+    weight_per_tin: Decimal | None = None
+    discount: Decimal | None
+    tax_percent: Decimal | None
     payment_days: int | None = None
     hsn_code: str | None = None
     item_code: str | None = None
     description: str | None = None
     # From linked catalog item (for BAG/kg math in clients; omitted when no catalog row).
     default_unit: str | None = None
-    default_kg_per_bag: float | None = None
+    default_kg_per_bag: Decimal | None = None
     default_purchase_unit: str | None = None
-    line_landing_gross: float = 0
-    line_selling_gross: float = 0
-    line_profit: float | None = None
+    line_landing_gross: Decimal = Decimal("0")
+    line_selling_gross: Decimal = Decimal("0")
+    line_profit: Decimal | None = None
 
 
-class TradePurchaseOut(BaseModel):
+class TradePurchaseOut(DecimalModel):
     id: uuid.UUID
     human_id: str
     invoice_number: str | None = None
@@ -93,21 +259,21 @@ class TradePurchaseOut(BaseModel):
     broker_id: uuid.UUID | None
     payment_days: int | None
     due_date: date | None = None
-    paid_amount: float = 0
+    paid_amount: Decimal = Decimal("0")
     paid_at: datetime | None = None
-    discount: float | None
-    commission_percent: float | None
-    delivered_rate: float | None
-    billty_rate: float | None
-    freight_amount: float | None
+    discount: Decimal | None
+    commission_percent: Decimal | None
+    delivered_rate: Decimal | None
+    billty_rate: Decimal | None
+    freight_amount: Decimal | None
     freight_type: str | None = None
-    total_qty: float | None
-    total_amount: float
-    total_landing_subtotal: float | None = None
-    total_selling_subtotal: float | None = None
-    total_line_profit: float | None = None
+    total_qty: Decimal | None
+    total_amount: Decimal
+    total_landing_subtotal: Decimal | None = None
+    total_selling_subtotal: Decimal | None = None
+    total_line_profit: Decimal | None = None
     status: str
-    remaining: float = 0
+    remaining: Decimal = Decimal("0")
     derived_status: str = "confirmed"
     items_count: int = 0
     supplier_name: str | None = None
@@ -121,48 +287,66 @@ class TradePurchaseOut(BaseModel):
     created_at: datetime
     updated_at: datetime | None = None
     lines: list[TradePurchaseLineOut]
+    header_discount: Decimal | None = None
+    freight_value: Decimal | None = None
+    has_missing_details: bool = False
 
 
 class TradePurchaseUpdateRequest(TradePurchaseCreateRequest):
     """Full replace of header + lines (wizard edit)."""
 
 
-class TradePurchasePaymentPatch(BaseModel):
-    paid_amount: float = Field(..., ge=0)
+class TradePurchasePaymentPatch(DecimalModel):
+    paid_amount: Decimal = Field(..., ge=0)
     paid_at: datetime | None = None
 
+    @model_validator(mode="after")
+    def _normalize_decimal_precision(self) -> "TradePurchasePaymentPatch":
+        self.paid_amount = dp.money(self.paid_amount)
+        return self
 
-class TradeMarkPaidRequest(BaseModel):
+
+class TradeMarkPaidRequest(DecimalModel):
     """Optional partial payment; default pays remaining balance."""
 
-    paid_amount: float | None = Field(None, ge=0)
+    paid_amount: Decimal | None = Field(None, ge=0)
     paid_at: datetime | None = None
 
+    @model_validator(mode="after")
+    def _normalize_decimal_precision(self) -> "TradeMarkPaidRequest":
+        self.paid_amount = dp.money(self.paid_amount) if self.paid_amount is not None else None
+        return self
 
-class TradeDuplicateCheckRequest(BaseModel):
+
+class TradeDuplicateCheckRequest(DecimalModel):
     supplier_id: uuid.UUID | None = None
     purchase_date: date
-    total_amount: float = Field(..., ge=0)
+    total_amount: Decimal = Field(..., ge=0)
     lines: list[TradePurchaseLineIn] = Field(default_factory=list)
 
+    @model_validator(mode="after")
+    def _normalize_decimal_precision(self) -> "TradeDuplicateCheckRequest":
+        self.total_amount = dp.total(self.total_amount)
+        return self
 
-class TradeDuplicateCheckResponse(BaseModel):
+
+class TradeDuplicateCheckResponse(DecimalModel):
     duplicate: bool
     message: str | None = None
     existing_id: uuid.UUID | None = None
     existing_human_id: str | None = None
 
 
-class TradeNextHumanIdOut(BaseModel):
+class TradeNextHumanIdOut(DecimalModel):
     human_id: str
 
 
-class TradeDraftUpsertRequest(BaseModel):
+class TradeDraftUpsertRequest(DecimalModel):
     step: int = Field(0, ge=0, le=3)
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
-class TradeDraftOut(BaseModel):
+class TradeDraftOut(DecimalModel):
     step: int
     payload: dict[str, Any]
     updated_at: datetime
