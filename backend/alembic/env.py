@@ -22,15 +22,38 @@ target_metadata = Base.metadata
 
 
 def _sync_url() -> str:
-    url = os.environ.get("DATABASE_URL", "sqlite:///./hexa.db")
-    if url.startswith("postgresql+asyncpg://"):
-        return "postgresql://" + url.removeprefix("postgresql+asyncpg://")
-    if url.startswith("postgres+asyncpg://"):
-        return "postgresql://" + url.removeprefix("postgres+asyncpg://")
-    # Alembic runs sync SQLAlchemy; aiosqlite is async-only and breaks connect().
-    if "sqlite+aiosqlite" in url:
-        return url.replace("sqlite+aiosqlite", "sqlite", 1)
-    return url
+    """Match runtime DB selection in app.database: pooler URL, password-only env, HEXA_USE_SQLITE."""
+    from sqlalchemy.engine.url import make_url
+
+    if os.environ.get("HEXA_USE_SQLITE", "").strip().lower() in ("1", "true", "yes"):
+        raw = (os.environ.get("DATABASE_URL") or "").strip()
+        if raw.startswith("sqlite"):
+            if "sqlite+aiosqlite" in raw:
+                return raw.replace("sqlite+aiosqlite", "sqlite", 1)
+            return raw
+        return "sqlite:///./hexa_dev.db"
+
+    pooler = (os.environ.get("DATABASE_POOLER_URL") or "").strip()
+    database_url = (os.environ.get("DATABASE_URL") or "postgresql://user:password@localhost:5432/hexa").strip()
+    effective = pooler if pooler else database_url
+
+    if effective.startswith("postgresql+asyncpg://"):
+        effective = "postgresql://" + effective.removeprefix("postgresql+asyncpg://")
+    elif effective.startswith("postgres+asyncpg://"):
+        effective = "postgresql://" + effective.removeprefix("postgres+asyncpg://")
+
+    pwd = (os.environ.get("DATABASE_POOLER_PASSWORD") or "").strip()
+    if pooler and pwd:
+        try:
+            u = make_url(effective)
+            effective = str(u.set(password=pwd))
+        except Exception:
+            pass
+
+    if "sqlite+aiosqlite" in effective:
+        effective = effective.replace("sqlite+aiosqlite", "sqlite", 1)
+
+    return effective
 
 
 def run_migrations_offline() -> None:

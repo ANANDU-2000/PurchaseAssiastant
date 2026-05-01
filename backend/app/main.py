@@ -1,20 +1,22 @@
 import logging
 import time
-import traceback
 from contextlib import asynccontextmanager
 
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from sqlalchemy import text
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.config import get_settings
 
-from app.database import engine, is_sqlite_runtime
+from app.database import async_session_factory, engine, is_sqlite_runtime
 from app.sqlite_bootstrap import apply_sqlite_bootstrap
 from app.routers import (
     admin,
@@ -69,6 +71,14 @@ async def lifespan(app: FastAPI):
                 "Startup does not execute create_all or ad-hoc ALTERs."
             )
 
+    if not is_sqlite_runtime():
+        try:
+            async with async_session_factory() as sess:
+                await sess.execute(text("SELECT 1"))
+            logger.info("Postgres warmup: SELECT 1 ok")
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Postgres warmup failed (non-fatal): %s", e)
+
     scheduler = None
     try:
         from zoneinfo import ZoneInfo
@@ -104,39 +114,27 @@ app = FastAPI(title="Harisree Purchases API", lifespan=lifespan)
 @app.middleware("http")
 async def harisree_request_monitor_middleware(request: Request, call_next):
     start = time.perf_counter()
-    try:
-        response = await call_next(request)
-        ms = int((time.perf_counter() - start) * 1000)
-        if response.status_code >= 500:
-            logger.error(
-                "HTTP %s | %s %s | %sms",
-                response.status_code,
-                request.method,
-                request.url.path,
-                ms,
-            )
-        elif response.status_code >= 400:
-            logger.warning(
-                "HTTP %s | %s %s | %sms",
-                response.status_code,
-                request.method,
-                request.url.path,
-                ms,
-            )
-        elif ms > 3000:
-            logger.warning("SLOW %sms | %s %s", ms, request.method, request.url.path)
-        return response
-    except Exception:  # noqa: BLE001
+    response = await call_next(request)
+    ms = int((time.perf_counter() - start) * 1000)
+    if response.status_code >= 500:
         logger.error(
-            "CRASH | %s %s\n%s",
+            "HTTP %s | %s %s | %sms",
+            response.status_code,
             request.method,
             request.url.path,
-            traceback.format_exc(),
+            ms,
         )
-        return JSONResponse(
-            status_code=500,
-            content={"detail": "Internal server error"},
+    elif response.status_code >= 400:
+        logger.warning(
+            "HTTP %s | %s %s | %sms",
+            response.status_code,
+            request.method,
+            request.url.path,
+            ms,
         )
+    elif ms > 3000:
+        logger.warning("SLOW %sms | %s %s", ms, request.method, request.url.path)
+    return response
 
 
 _backend_root = Path(__file__).resolve().parent.parent
@@ -220,3 +218,30 @@ app.include_router(realtime.router)
 app.include_router(admin.router)
 app.include_router(billing.router)
 app.include_router(razorpay_webhook.router)
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Never leak tracebacks / SQL to clients — full detail stays in logs."""
+    if isinstance(exc, RequestValidationError):
+        return JSONResponse(
+            status_code=422,
+            content={"detail": exc.errors()},
+        )
+    if isinstance(exc, StarletteHTTPException):
+        detail = exc.detail
+        payload: dict
+        if isinstance(detail, dict):
+            payload = dict(detail)
+        else:
+            payload = {"detail": detail}
+        return JSONResponse(status_code=exc.status_code, content=payload)
+    logger.exception(
+        "Unhandled | %s %s",
+        request.method,
+        request.url.path,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"error": "SERVER_TEMPORARY_ISSUE"},
+    )

@@ -17,7 +17,6 @@ import '../../../core/providers/purchase_post_save_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart'
     show invalidateTradePurchaseCaches;
 import '../../../core/theme/hexa_colors.dart';
-import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/shell_quick_ref_actions.dart';
 import '../../purchase/presentation/widgets/purchase_saved_sheet.dart';
 import '../../../core/providers/home_breakdown_tab_providers.dart';
@@ -62,6 +61,9 @@ class _HomePageState extends ConsumerState<HomePage>
   /// in-flight requests complete (avoids defunct element / markNeedsBuild).
   Timer? _resumeRefreshDebounce;
   bool _handlingPurchasePostSave = false;
+  Timer? _loadCapTimer;
+  bool _loadCapReached = false;
+  bool _shownPersistDashboardSnack = false;
 
   static const _donutColors = <Color>[
     Color(0xFF0D9488),
@@ -91,6 +93,7 @@ class _HomePageState extends ConsumerState<HomePage>
   void dispose() {
     _poll?.cancel();
     _resumeRefreshDebounce?.cancel();
+    _loadCapTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -155,6 +158,65 @@ class _HomePageState extends ConsumerState<HomePage>
     final period = ref.watch(homePeriodProvider);
     final custom = ref.watch(homeCustomDateRangeProvider);
     final async = ref.watch(homeDashboardDataProvider);
+    final peek = ref.watch(homeDashboardSyncCacheProvider);
+    final pay = async.valueOrNull;
+    final effectiveData =
+        pay?.data ?? peek ?? HomeDashboardData.empty;
+
+    ref.listen<AsyncValue<HomeDashboardPayload>>(
+      homeDashboardDataProvider,
+      (prev, next) {
+        if (!next.isLoading) {
+          _loadCapTimer?.cancel();
+          _loadCapTimer = null;
+          if (mounted && _loadCapReached) {
+            setState(() => _loadCapReached = false);
+          }
+        }
+        final p = next.valueOrNull;
+        if (p == null || !p.persistAlert) {
+          _shownPersistDashboardSnack = false;
+          return;
+        }
+        if (_shownPersistDashboardSnack) return;
+        _shownPersistDashboardSnack = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Still having trouble reaching the server. Showing saved data.',
+              ),
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 5),
+            ),
+          );
+        });
+      },
+    );
+
+    final showBigLoader =
+        async.isLoading && peek == null && !_loadCapReached;
+
+    if (async.isLoading && peek == null && !_loadCapReached) {
+      _loadCapTimer ??= Timer(const Duration(seconds: 3), () {
+        if (!mounted) return;
+        setState(() {
+          _loadCapReached = true;
+          _loadCapTimer?.cancel();
+          _loadCapTimer = null;
+        });
+      });
+    } else if (!async.isLoading || peek != null) {
+      _loadCapTimer?.cancel();
+      _loadCapTimer = null;
+    }
+
+    final topBanner = pay?.banner ??
+        ((_loadCapReached && async.isLoading && peek == null)
+            ? 'Server waking up...'
+            : null);
+
     return Scaffold(
       backgroundColor: HexaColors.brandBackground,
       appBar: _buildAppBar(),
@@ -175,14 +237,43 @@ class _HomePageState extends ConsumerState<HomePage>
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: async.when(
-                skipLoadingOnReload: true,
-                loading: () => const LinearProgressIndicator(minHeight: 3),
-                error: (_, __) => FriendlyLoadError(
-                  message: 'Unable to load cloud data',
-                  onRetry: () => unawaited(_refresh()),
-                ),
-                data: (_) => const SizedBox.shrink(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (async.isLoading &&
+                      (peek != null || pay != null))
+                    const LinearProgressIndicator(minHeight: 3),
+                  if (topBanner != null)
+                    Material(
+                      color: Colors.amber.shade50,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 8),
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline,
+                                size: 18, color: Colors.amber.shade900),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                topBanner,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                  color: Colors.amber.shade900,
+                                ),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () => unawaited(_refresh()),
+                              child: const Text('Retry'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
             Padding(
@@ -360,18 +451,15 @@ class _HomePageState extends ConsumerState<HomePage>
               child: MaintenanceHomeCard(),
             ),
             Expanded(
-              child: async.when(
-                skipLoadingOnReload: true,
-                loading: () => const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 10, 16, 0),
-                  child: _LoadingPlaceholder(),
-                ),
-                error: (_, __) => const SizedBox.shrink(),
-                data: (d) => _HomeFixedHeaderBody(
-                  data: d,
-                  categoryColors: _donutColors,
-                ),
-              ),
+              child: showBigLoader
+                  ? const Padding(
+                      padding: EdgeInsets.fromLTRB(16, 10, 16, 0),
+                      child: _LoadingPlaceholder(),
+                    )
+                  : _HomeFixedHeaderBody(
+                      data: effectiveData,
+                      categoryColors: _donutColors,
+                    ),
             ),
           ],
         ),

@@ -1,6 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:dio/dio.dart';
 
 import '../auth/session_notifier.dart';
+import '../services/offline_store.dart';
 import 'home_dashboard_provider.dart';
 
 /// Breakdown view on Home (drives the ring + rows for non-category tabs).
@@ -62,6 +65,26 @@ class HomeShellReportsBundle {
   );
 }
 
+HomeShellReportsBundle _homeShellFromHive(Map<String, dynamic>? raw) {
+  if (raw == null) return HomeShellReportsBundle.empty;
+  List<Map<String, dynamic>> lm(String key) {
+    final v = raw[key];
+    if (v is! List) return [];
+    return v
+        .map((e) => e is Map ? Map<String, dynamic>.from(e) : null)
+        .whereType<Map<String, dynamic>>()
+        .toList();
+  }
+
+  return HomeShellReportsBundle(
+    subcategories: lm('subcategories'),
+    suppliers: lm('suppliers'),
+    items: lm('items'),
+  );
+}
+
+final Map<String, Future<HomeShellReportsBundle>> _shellInflight = {};
+
 /// Types + suppliers + items for the current Home date range.
 final homeShellReportsProvider =
     FutureProvider.autoDispose<HomeShellReportsBundle>((ref) async {
@@ -73,15 +96,47 @@ final homeShellReportsProvider =
   final q = homeDateRangeForRef(ref);
   final api = ref.read(hexaApiProvider);
   final bid = session.primaryBusiness.id;
-  final out = await Future.wait([
-    api.tradeReportTypes(businessId: bid, from: q.from, to: q.to),
-    api.tradeReportSuppliers(businessId: bid, from: q.from, to: q.to),
-    api.tradeReportItems(businessId: bid, from: q.from, to: q.to),
-  ]);
-  return HomeShellReportsBundle(
-    subcategories: out[0],
-    suppliers: out[1],
-    items: out[2],
+  final dedupeKey = '$bid|${q.from}|${q.to}';
+
+  Future<HomeShellReportsBundle> work() async {
+    final cachedRaw =
+        OfflineStore.getCachedHomeShellReports(bid, q.from, q.to);
+    final reachability = await Connectivity().checkConnectivity();
+    final looksOffline = reachability.isEmpty ||
+        reachability.every((c) => c == ConnectivityResult.none);
+    if (looksOffline) {
+      return _homeShellFromHive(cachedRaw);
+    }
+    try {
+      final out = await Future.wait([
+        api.tradeReportTypes(businessId: bid, from: q.from, to: q.to),
+        api.tradeReportSuppliers(businessId: bid, from: q.from, to: q.to),
+        api.tradeReportItems(businessId: bid, from: q.from, to: q.to),
+      ]);
+      final bundle = HomeShellReportsBundle(
+        subcategories: out[0],
+        suppliers: out[1],
+        items: out[2],
+      );
+      await OfflineStore.cacheHomeShellReports(
+        bid,
+        q.from,
+        q.to,
+        subcategories: bundle.subcategories,
+        suppliers: bundle.suppliers,
+        items: bundle.items,
+      );
+      return bundle;
+    } on DioException {
+      return _homeShellFromHive(cachedRaw);
+    } catch (_) {
+      return _homeShellFromHive(cachedRaw);
+    }
+  }
+
+  return _shellInflight.putIfAbsent(
+    dedupeKey,
+    () => work().whenComplete(() => _shellInflight.remove(dedupeKey)),
   );
 });
 

@@ -39,14 +39,14 @@ class HexaApi {
           BaseOptions(
             baseUrl: baseUrl ?? AppConfig.resolvedApiBaseUrl,
             connectTimeout: const Duration(seconds: 8),
-            receiveTimeout: const Duration(seconds: 15),
+            receiveTimeout: const Duration(seconds: 8),
           ),
         ),
         _plain = Dio(
           BaseOptions(
             baseUrl: baseUrl ?? AppConfig.resolvedApiBaseUrl,
             connectTimeout: const Duration(seconds: 8),
-            receiveTimeout: const Duration(seconds: 15),
+            receiveTimeout: const Duration(seconds: 8),
           ),
         ) {
     _dio.interceptors.add(

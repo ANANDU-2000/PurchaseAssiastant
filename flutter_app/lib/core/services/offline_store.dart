@@ -95,4 +95,76 @@ class OfflineStore {
 
   static List<dynamic>? getCachedCatalogItems() =>
       _cache.get('catalog_items') as List<dynamic>?;
+
+  static String _tradeDashKey(String businessId, String from, String to) =>
+      'trade_dash|$businessId|$from|$to';
+
+  static Future<void> cacheTradeDashboardSnapshot(
+    String businessId,
+    String from,
+    String to,
+    Map<String, dynamic> snap,
+  ) async {
+    await _cache.put(_tradeDashKey(businessId, from, to), {
+      ...snap,
+      'cachedAt': DateTime.now().toIso8601String(),
+    });
+  }
+
+  static Map<String, dynamic>? getCachedTradeDashboardSnapshot(
+    String businessId,
+    String from,
+    String to,
+  ) {
+    final raw = _cache.get(_tradeDashKey(businessId, from, to));
+    if (raw is! Map) return null;
+    return Map<String, dynamic>.from(raw);
+  }
+
+  static String _homeShellKey(String businessId, String from, String to) =>
+      'home_shell|$businessId|$from|$to';
+
+  static Future<void> cacheHomeShellReports(
+    String businessId,
+    String from,
+    String to, {
+    required List<Map<String, dynamic>> subcategories,
+    required List<Map<String, dynamic>> suppliers,
+    required List<Map<String, dynamic>> items,
+  }) async {
+    await _cache.put(_homeShellKey(businessId, from, to), {
+      'subcategories': subcategories,
+      'suppliers': suppliers,
+      'items': items,
+      'cachedAt': DateTime.now().toIso8601String(),
+    });
+  }
+
+  static Map<String, dynamic>? getCachedHomeShellReports(
+    String businessId,
+    String from,
+    String to,
+  ) {
+    final raw = _cache.get(_homeShellKey(businessId, from, to));
+    if (raw is! Map) return null;
+    return Map<String, dynamic>.from(raw);
+  }
+
+  static String _cloudCostKey(String businessId) => 'cloud_cost|$businessId';
+
+  static Future<void> cacheCloudCost(
+    String businessId,
+    Map<String, dynamic> m,
+  ) async {
+    await _cache.put(_cloudCostKey(businessId), {
+      ...m,
+      'cachedAt': DateTime.now().toIso8601String(),
+    });
+  }
+
+  static Map<String, dynamic>? getCachedCloudCost(String businessId) {
+    final raw = _cache.get(_cloudCostKey(businessId));
+    if (raw is! Map) return null;
+    return Map<String, dynamic>.from(raw);
+  }
 }

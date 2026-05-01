@@ -7,7 +7,8 @@ import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
-import 'core/auth/session_notifier.dart' show sessionProvider;
+import 'core/api/api_warmup.dart';
+import 'core/auth/session_notifier.dart' show sessionProvider, hexaApiProvider;
 import 'core/theme/app_theme.dart';
 import 'core/theme/hexa_colors.dart';
 import 'core/notifications/local_notifications_service.dart';
@@ -73,6 +74,14 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
       final container = ProviderContainer(
         overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
       );
+
+      unawaited(() async {
+        try {
+          final api = container.read(hexaApiProvider);
+          await ApiWarmupService.pingHealth(api);
+          ApiWarmupService.startPeriodicHealth(api);
+        } catch (_) {}
+      }());
 
       try {
         await container.read(sessionProvider.notifier).restore().timeout(

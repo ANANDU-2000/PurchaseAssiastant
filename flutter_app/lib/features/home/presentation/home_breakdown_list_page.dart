@@ -74,8 +74,12 @@ class HomeBreakdownListPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final title = 'All — ${tab.label}';
     final asyncDash = ref.watch(homeDashboardDataProvider);
+    final peekDash = ref.watch(homeDashboardSyncCacheProvider);
     final asyncShell = ref.watch(homeShellReportsProvider);
-    final dashboard = asyncDash.valueOrNull;
+    final dashboard = asyncDash.valueOrNull?.data ??
+        peekDash ??
+        HomeDashboardData.empty;
+
     return Scaffold(
       backgroundColor: HexaColors.brandBackground,
       appBar: AppBar(
@@ -88,35 +92,40 @@ class HomeBreakdownListPage extends ConsumerWidget {
         ),
       ),
       body: switch (tab) {
-        HomeBreakdownTab.category => asyncDash.when(
-            skipLoadingOnReload: true,
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (_, __) => const Center(child: Text('Failed to load')),
-            data: (d) {
-              final rows = d.categories.where((e) => e.totalAmount > 0).toList()
+        HomeBreakdownTab.category => () {
+              if (asyncDash.isLoading &&
+                  asyncDash.valueOrNull == null &&
+                  peekDash == null) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final rows = dashboard.categories
+                  .where((e) => e.totalAmount > 0)
+                  .toList()
                 ..sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
               return _buildScroll(
-                header: _totalHeader(d),
+                header: _totalHeader(dashboard),
                 children: [
                   for (var i = 0; i < rows.length; i++)
                     _rowCategory(context, rows[i], i),
                 ],
               );
-            },
-          ),
-        _ => asyncShell.when(
-            skipLoadingOnReload: true,
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (_, __) => const Center(child: Text('Failed to load')),
-            data: (bundle) {
+            }(),
+        _ => () {
+              if (asyncShell.isLoading && asyncShell.valueOrNull == null) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final bundle =
+                  asyncShell.valueOrNull ?? HomeShellReportsBundle.empty;
               return switch (tab) {
-                HomeBreakdownTab.subcategory => _subList(context, bundle, dashboard),
-                HomeBreakdownTab.supplier => _supList(context, bundle, dashboard),
-                HomeBreakdownTab.items => _itemList(context, bundle, dashboard),
+                HomeBreakdownTab.subcategory =>
+                  _subList(context, bundle, dashboard),
+                HomeBreakdownTab.supplier =>
+                  _supList(context, bundle, dashboard),
+                HomeBreakdownTab.items =>
+                  _itemList(context, bundle, dashboard),
                 HomeBreakdownTab.category => const SizedBox.shrink(),
               };
-            },
-          ),
+            }(),
       },
     );
   }
