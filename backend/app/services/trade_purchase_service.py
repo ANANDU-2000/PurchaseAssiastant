@@ -483,6 +483,8 @@ async def list_trade_purchases(
     supplier_id: uuid.UUID | None = None,
     broker_id: uuid.UUID | None = None,
     catalog_item_id: uuid.UUID | None = None,
+    purchase_from: date | None = None,
+    purchase_to: date | None = None,
 ) -> list[TradePurchaseOut]:
     """List purchases; optional status_filter: all|draft|due_soon|overdue|paid and search q."""
     has_entity_filter = (
@@ -509,6 +511,10 @@ async def list_trade_purchases(
         stmt = stmt.where(TradePurchase.supplier_id == supplier_id)
     if broker_id is not None:
         stmt = stmt.where(TradePurchase.broker_id == broker_id)
+    if purchase_from is not None:
+        stmt = stmt.where(TradePurchase.purchase_date >= purchase_from)
+    if purchase_to is not None:
+        stmt = stmt.where(TradePurchase.purchase_date <= purchase_to)
     if catalog_item_id is not None:
         stmt = stmt.where(
             exists(

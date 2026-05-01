@@ -3,6 +3,7 @@ import 'cloud_expense_provider.dart';
 import 'analytics_breakdown_providers.dart';
 import 'business_write_revision.dart';
 import 'analytics_kpi_provider.dart';
+import 'reports_provider.dart';
 import 'brokers_list_provider.dart';
 import 'catalog_providers.dart';
 import 'contacts_hub_provider.dart';
@@ -27,7 +28,7 @@ void invalidateAnalyticsData(dynamic ref) {
   ref.invalidate(fullReportsInsightsProvider);
   ref.invalidate(fullReportsGoalsProvider);
   ref.invalidate(reportsPriorPeriodDeltaProvider);
-  ref.invalidate(fullReportsTradeBundleProvider);
+  ref.invalidate(reportsPurchasesPayloadProvider);
 }
 
 /// After purchases, entries, or other business writes, bust derived KPIs so

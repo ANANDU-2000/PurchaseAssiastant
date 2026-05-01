@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -102,6 +103,12 @@ async def list_trade_purchases(
     catalog_item_id: uuid.UUID | None = Query(
         None, description="Only purchases that include a line for this catalog item"
     ),
+    purchase_from: date | None = Query(
+        None, description="Inclusive lower bound on purchase_date (calendar date)"
+    ),
+    purchase_to: date | None = Query(
+        None, description="Inclusive upper bound on purchase_date (calendar date)"
+    ),
 ):
     del user
     return await tps.list_trade_purchases(
@@ -114,6 +121,8 @@ async def list_trade_purchases(
         supplier_id=supplier_id,
         broker_id=broker_id,
         catalog_item_id=catalog_item_id,
+        purchase_from=purchase_from,
+        purchase_to=purchase_to,
     )
 
 

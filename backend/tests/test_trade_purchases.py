@@ -332,6 +332,51 @@ def test_list_q_filters_by_item_name():
     assert pid in ids
 
 
+def test_list_purchase_date_range_inclusive_filter():
+    h, bid = _register_and_business()
+    sid = _supplier_id(h, bid)
+    iid = _catalog_item_id(h, bid)
+    d_old = date(2024, 1, 15)
+    d_mid = date(2024, 6, 10)
+    d_new = date(2024, 12, 1)
+
+    for pd in (d_old, d_mid, d_new):
+        body = {
+            "purchase_date": pd.isoformat(),
+            "supplier_id": sid,
+            "lines": [
+                {
+                    "catalog_item_id": iid,
+                    "item_name": "Rice",
+                    "qty": 1,
+                    "unit": "kg",
+                    "landing_cost": 10,
+                    "tax_percent": 0,
+                }
+            ],
+        }
+        cr = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
+        assert cr.status_code == 201, cr.text
+
+    ra = client.get(
+        f"/v1/businesses/{bid}/trade-purchases"
+        f"?purchase_from={d_mid.isoformat()}&purchase_to={d_mid.isoformat()}&limit=50",
+        headers=h,
+    )
+    assert ra.status_code == 200, ra.text
+    rows = ra.json()
+    assert len(rows) == 1
+    assert rows[0]["purchase_date"] == d_mid.isoformat()
+
+    rb = client.get(
+        f"/v1/businesses/{bid}/trade-purchases"
+        f"?purchase_from={d_old.isoformat()}&purchase_to={d_new.isoformat()}&limit=50",
+        headers=h,
+    )
+    assert rb.status_code == 200, rb.text
+    assert len(rb.json()) == 3
+
+
 def test_compute_totals_plain_line():
     req = TradePurchaseCreateRequest(
         purchase_date=date.today(),

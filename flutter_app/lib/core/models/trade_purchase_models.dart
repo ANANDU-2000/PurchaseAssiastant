@@ -178,7 +178,8 @@ class TradePurchaseLine {
       deliveredRate: _decNullableDouble(j['delivered_rate']),
       billtyRate: _decNullableDouble(j['billty_rate']),
       totalWeight: _decNullableDouble(j['total_weight']),
-      lineTotal: _decNullableDouble(j['line_total']),
+      lineTotal: _decNullableDouble(
+          j['line_total'] ?? j['line_landing_gross']),
       profit: _decNullableDouble(j['profit']),
       sellingCost: _decNullableDouble(j['selling_cost'] ?? j['selling_rate']),
       discount: _decNullableDouble(j['discount']),

@@ -4,6 +4,8 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../models/business_profile.dart';
+import '../models/trade_purchase_models.dart';
+import '../reporting/trade_report_aggregate.dart';
 import 'pdf_text_safe.dart';
 
 final _money = NumberFormat('#,##,##0', 'en_IN');
@@ -399,4 +401,122 @@ Future<void> shareItemPurchaseTradeHistoryPdf({
     bytes: await doc.save(),
     filename: 'item_statement_$safe.pdf',
   );
+}
+
+/// Line statement from `/trade-purchases` aggregate (reports SSOT).
+Future<void> layoutTradeStatementSsotPdf({
+  required BusinessProfile business,
+  required DateTime from,
+  required DateTime to,
+  required List<TradePurchase> purchases,
+}) async {
+  final lines = buildTradeStatementLines(purchases);
+  final bizTitle = safePdfText(
+    business.displayTitle.trim().isNotEmpty
+        ? business.displayTitle
+        : 'Business',
+  );
+  final money2 = NumberFormat('#,##,##0.00', 'en_IN');
+
+  pw.Widget cell(String t, {bool hdr = false, bool right = false}) =>
+      pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 3, vertical: 2),
+        child: pw.Text(
+          safePdfText(t),
+          textAlign: right ? pw.TextAlign.right : pw.TextAlign.left,
+          style: pw.TextStyle(
+            fontSize: hdr ? 8 : 7.5,
+            fontWeight:
+                hdr ? pw.FontWeight.bold : pw.FontWeight.normal,
+          ),
+        ),
+      );
+
+  const hdrs = [
+    'Date',
+    'Supplier',
+    'Item',
+    'Qty',
+    'Unit',
+    'Kg',
+    'Rate',
+    'Amount',
+  ];
+  final rows = <List<String>>[];
+  double sumAmt = 0;
+  double sumKg = 0;
+  for (final l in lines) {
+    sumAmt += l.amountInr;
+    sumKg += l.kg;
+    rows.add([
+      _df.format(l.date),
+      l.supplierName,
+      l.itemName,
+      l.qty == l.qty.roundToDouble()
+          ? '${l.qty.round()}'
+          : money2.format(l.qty),
+      l.unit,
+      l.kg < 1e-9
+          ? '—'
+          : (l.kg == l.kg.roundToDouble()
+              ? '${l.kg.round()}'
+              : l.kg.toStringAsFixed(1)),
+      money2.format(l.rate),
+      money2.format(l.amountInr),
+    ]);
+  }
+
+  final doc = pw.Document();
+  doc.addPage(
+    pw.MultiPage(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.all(26),
+      build: (_) => [
+        pw.Text(bizTitle,
+            style:
+                pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+        pw.Text('Trade purchases statement',
+            style: const pw.TextStyle(fontSize: 10, color: _muted)),
+        pw.Text('${_df.format(from)} – ${_df.format(to)}',
+            style: const pw.TextStyle(fontSize: 9, color: _muted)),
+        pw.SizedBox(height: 8),
+        pw.Table(
+          border: pw.TableBorder.all(color: _border, width: 0.4),
+          children: [
+            pw.TableRow(
+              decoration: const pw.BoxDecoration(color: _headerBg),
+              children: [for (final h in hdrs) cell(h, hdr: true)],
+            ),
+            for (final r in rows)
+              pw.TableRow(
+                children: [
+                  cell(r[0]),
+                  cell(r[1]),
+                  cell(r[2]),
+                  cell(r[3], right: true),
+                  cell(r[4]),
+                  cell(r[5], right: true),
+                  cell(r[6], right: true),
+                  cell(r[7], right: true),
+                ],
+              ),
+          ],
+        ),
+        pw.SizedBox(height: 10),
+        pw.Align(
+          alignment: pw.Alignment.centerRight,
+          child: pw.Text(
+            safePdfText(
+              'Totals: '
+              '${sumKg < 1e-9 ? '—' : (sumKg == sumKg.roundToDouble() ? '${sumKg.round()} kg' : '${sumKg.toStringAsFixed(1)} kg')}'
+              ' · Rs. ${_money.format(sumAmt)}',
+            ),
+            style:
+                pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
+          ),
+        ),
+      ],
+    ),
+  );
+  await Printing.layoutPdf(onLayout: (_) async => doc.save());
 }

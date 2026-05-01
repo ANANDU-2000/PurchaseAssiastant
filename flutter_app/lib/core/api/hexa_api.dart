@@ -467,6 +467,8 @@ class HexaApi {
     String? supplierId,
     String? brokerId,
     String? catalogItemId,
+    String? purchaseFrom,
+    String? purchaseTo,
   }) async {
     final res = await _dio.get<dynamic>(
       '/v1/businesses/$businessId/trade-purchases',
@@ -480,6 +482,9 @@ class HexaApi {
         if (brokerId != null && brokerId.trim().isNotEmpty) 'broker_id': brokerId.trim(),
         if (catalogItemId != null && catalogItemId.trim().isNotEmpty)
           'catalog_item_id': catalogItemId.trim(),
+        if (purchaseFrom != null && purchaseFrom.isNotEmpty)
+          'purchase_from': purchaseFrom,
+        if (purchaseTo != null && purchaseTo.isNotEmpty) 'purchase_to': purchaseTo,
       },
     );
     final data = res.data;

@@ -167,4 +167,26 @@ class OfflineStore {
     if (raw is! Map) return null;
     return Map<String, dynamic>.from(raw);
   }
+
+  static String _reportsTpKey(String businessId, String from, String to) =>
+      'reports_tp|$businessId|$from|$to';
+
+  /// Raw JSON array string of `/trade-purchases` list for SSOT Reports.
+  static Future<void> cacheReportsTradePurchasesJson(
+      String businessId,
+      String from,
+      String to,
+      String jsonList) async {
+    await _cache.put(_reportsTpKey(businessId, from, to), jsonList);
+  }
+
+  static String? getReportsTradePurchasesJson(
+      String businessId,
+      String from,
+      String to,
+      ) {
+    final v = _cache.get(_reportsTpKey(businessId, from, to));
+    if (v is String && v.isNotEmpty) return v;
+    return null;
+  }
 }
