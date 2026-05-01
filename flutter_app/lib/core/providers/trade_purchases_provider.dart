@@ -3,6 +3,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../auth/session_notifier.dart';
 import '../models/trade_purchase_models.dart';
 
+/// Allowed `status=` values for [HexaApi.listTradePurchases] (omit = all).
+const _tradeListApiStatuses = {'draft', 'due_soon', 'overdue', 'paid'};
+
+/// Derives API `status` from history chips / route. [null] means unfiltered (`all`).
+String? _tradeListApiStatus(String primaryRaw, String? secondaryRaw) {
+  final sec = secondaryRaw?.trim().toLowerCase();
+  if (sec == 'overdue' || sec == 'paid') return sec;
+
+  final p = primaryRaw.trim().toLowerCase();
+  return _tradeListApiStatuses.contains(p) ? p : null;
+}
+
 /// Bust list + catalog-intel snapshots together.
 void invalidateTradePurchaseCaches(dynamic ref) {
   ref.invalidate(tradePurchasesListProvider);
@@ -10,7 +22,7 @@ void invalidateTradePurchaseCaches(dynamic ref) {
   ref.invalidate(tradePurchasesCatalogIntelProvider);
 }
 
-/// Primary history tab for API: `all` | `draft` | `due_soon` | `overdue` | `paid`.
+/// Primary history chip / route filter (client state). Use [_tradeListApiStatus] for API.
 final purchaseHistoryPrimaryFilterProvider =
     StateProvider<String>((ref) => 'all');
 
@@ -29,7 +41,6 @@ final tradePurchasesForAlertsProvider =
   return ref.read(hexaApiProvider).listTradePurchases(
         businessId: session.primaryBusiness.id,
         limit: 200,
-        status: 'all',
       );
 });
 
@@ -39,11 +50,7 @@ final tradePurchasesListProvider =
   if (session == null) return [];
   final primary = ref.watch(purchaseHistoryPrimaryFilterProvider);
   final secondary = ref.watch(purchaseHistorySecondaryFilterProvider);
-  final apiStatus = switch (secondary) {
-    'overdue' => 'overdue',
-    'paid' => 'paid',
-    _ => primary,
-  };
+  final apiStatus = _tradeListApiStatus(primary, secondary);
   return ref.read(hexaApiProvider).listTradePurchases(
         businessId: session.primaryBusiness.id,
         limit: 200,
@@ -124,8 +131,7 @@ final purchaseUnitTotalsProvider =
   );
 });
 
-/// Trade list for catalog item intel — always `status=all`, not tied to History
-/// tab filters (draft / due_soon chips).
+/// Trade list for catalog item intel — full list, not tied to History tab filters.
 final tradePurchasesCatalogIntelProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final session = ref.watch(sessionProvider);
@@ -133,7 +139,6 @@ final tradePurchasesCatalogIntelProvider =
   return ref.read(hexaApiProvider).listTradePurchases(
         businessId: session.primaryBusiness.id,
         limit: 200,
-        status: 'all',
       );
 });
 

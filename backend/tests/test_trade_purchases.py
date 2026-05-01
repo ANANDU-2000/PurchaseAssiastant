@@ -300,6 +300,17 @@ def test_list_due_soon_filter():
     assert pid in ids_ds
 
 
+def test_list_unknown_status_returns_200_not_422():
+    """Optional filters must not yield validation errors (bad clients / URLs)."""
+    h, bid = _register_and_business()
+    r = client.get(
+        f"/v1/businesses/{bid}/trade-purchases?status=not_a_real_status",
+        headers=h,
+    )
+    assert r.status_code == 200, r.text
+    assert isinstance(r.json(), list)
+
+
 def test_list_q_filters_by_item_name():
     h, bid = _register_and_business()
     sid = _supplier_id(h, bid)

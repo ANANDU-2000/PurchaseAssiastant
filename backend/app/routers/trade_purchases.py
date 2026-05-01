@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import date
-from typing import Annotated, Literal
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,6 +28,21 @@ from app.schemas.trade_purchases import (
 from app.services import trade_purchase_service as tps
 
 router = APIRouter(prefix="/v1/businesses/{business_id}/trade-purchases", tags=["trade-purchases"])
+_log = logging.getLogger(__name__)
+
+_ALLOWED_TRADE_LIST_STATUSES = frozenset({"draft", "due_soon", "overdue", "paid"})
+
+
+def _normalize_trade_list_status(status: str | None) -> str | None:
+    """Map query `status` to a value the list service understands, or None (= all). Never 422."""
+    if status is None:
+        return None
+    s = status.strip().lower()
+    if not s or s in ("all", "undefined", "null"):
+        return None
+    if s in _ALLOWED_TRADE_LIST_STATUSES:
+        return s
+    return None
 
 
 @router.get("/draft", response_model=TradeDraftOut)
@@ -96,7 +112,10 @@ async def list_trade_purchases(
     _m: Annotated[Membership, Depends(require_membership)],
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0, le=10_000),
-    status: Literal["all", "draft", "due_soon", "overdue", "paid"] = Query("all"),
+    status: str | None = Query(
+        None,
+        description="draft|due_soon|overdue|paid; omit or 'all' / unknown = no status filter",
+    ),
     q: str | None = Query(None, max_length=200),
     supplier_id: uuid.UUID | None = Query(None),
     broker_id: uuid.UUID | None = Query(None),
@@ -111,12 +130,24 @@ async def list_trade_purchases(
     ),
 ):
     del user
+    limit_v = max(1, min(limit, 200))
+    offset_v = max(0, min(offset, 10_000))
+    status_norm = _normalize_trade_list_status(status)
+    _log.debug(
+        "list_trade_purchases business_id=%s limit=%s offset=%s status_raw=%r status_norm=%r q=%s",
+        business_id,
+        limit_v,
+        offset_v,
+        status,
+        status_norm,
+        (q or "").strip()[:80] or None,
+    )
     return await tps.list_trade_purchases(
         db,
         business_id,
-        limit=limit,
-        offset=offset,
-        status_filter=status,
+        limit=limit_v,
+        offset=offset_v,
+        status_filter=status_norm,
         q=q,
         supplier_id=supplier_id,
         broker_id=broker_id,

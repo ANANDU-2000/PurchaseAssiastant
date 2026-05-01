@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
@@ -516,6 +517,24 @@ final homeDashboardDataProvider =
         banner: 'No connection',
       );
     }
+
+    Future<void> healthPreflightBestEffort() async {
+      for (var attempt = 0; attempt <= 2; attempt++) {
+        try {
+          await api.health();
+          return;
+        } catch (_) {
+          if (kDebugMode && attempt < 2) {
+            debugPrint('homeDashboard: health preflight retry ${attempt + 1}/2');
+          }
+          if (attempt < 2) {
+            await Future<void>.delayed(const Duration(milliseconds: 500));
+          }
+        }
+      }
+    }
+
+    await healthPreflightBestEffort();
 
     try {
       final snap = await api.tradeDashboardSnapshot(

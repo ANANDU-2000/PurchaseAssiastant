@@ -29,6 +29,9 @@ String _inr(num n) =>
     NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
         .format(n);
 
+/// [GoRouterState] `filter=` values that map to primary chips (`all` canonical).
+const _routePrimaryPurchaseFilters = {'all', 'draft', 'due_soon'};
+
 String _purchaseItemsSummary(TradePurchase p) {
   if (p.lines.isEmpty) return 'No items';
   if (p.lines.length == 1) {
@@ -153,7 +156,9 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
       ref.read(purchaseHistoryPrimaryFilterProvider.notifier).state = 'due_soon';
     } else {
       ref.read(purchaseHistorySecondaryFilterProvider.notifier).state = null;
-      ref.read(purchaseHistoryPrimaryFilterProvider.notifier).state = f;
+      final primary =
+          _routePrimaryPurchaseFilters.contains(f) ? f : 'all';
+      ref.read(purchaseHistoryPrimaryFilterProvider.notifier).state = primary;
     }
   }
 

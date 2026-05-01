@@ -1,5 +1,5 @@
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:http_parser/http_parser.dart';
 
 import 'dio_auto_retry_interceptor.dart';
@@ -38,15 +38,15 @@ class HexaApi {
         _dio = Dio(
           BaseOptions(
             baseUrl: baseUrl ?? AppConfig.resolvedApiBaseUrl,
-            connectTimeout: const Duration(seconds: 5),
-            receiveTimeout: const Duration(seconds: 5),
+            connectTimeout: const Duration(seconds: 8),
+            receiveTimeout: const Duration(seconds: 8),
           ),
         ),
         _plain = Dio(
           BaseOptions(
             baseUrl: baseUrl ?? AppConfig.resolvedApiBaseUrl,
-            connectTimeout: const Duration(seconds: 5),
-            receiveTimeout: const Duration(seconds: 5),
+            connectTimeout: const Duration(seconds: 8),
+            receiveTimeout: const Duration(seconds: 8),
           ),
         ) {
     _dio.interceptors.add(
@@ -462,7 +462,7 @@ class HexaApi {
     required String businessId,
     int limit = 50,
     int offset = 0,
-    String status = 'all',
+    String? status,
     String? q,
     String? supplierId,
     String? brokerId,
@@ -470,26 +470,58 @@ class HexaApi {
     String? purchaseFrom,
     String? purchaseTo,
   }) async {
-    final res = await _dio.get<dynamic>(
-      '/v1/businesses/$businessId/trade-purchases',
-      queryParameters: {
-        'limit': limit,
-        'offset': offset,
-        'status': status,
-        if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
-        if (supplierId != null && supplierId.trim().isNotEmpty)
-          'supplier_id': supplierId.trim(),
-        if (brokerId != null && brokerId.trim().isNotEmpty) 'broker_id': brokerId.trim(),
-        if (catalogItemId != null && catalogItemId.trim().isNotEmpty)
-          'catalog_item_id': catalogItemId.trim(),
-        if (purchaseFrom != null && purchaseFrom.isNotEmpty)
-          'purchase_from': purchaseFrom,
-        if (purchaseTo != null && purchaseTo.isNotEmpty) 'purchase_to': purchaseTo,
-      },
-    );
-    final data = res.data;
-    if (data is! List) return [];
-    return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    final s = status?.trim().toLowerCase();
+    final statusNorm = (s == null ||
+            s.isEmpty ||
+            s == 'all' ||
+            s == 'undefined' ||
+            s == 'null')
+        ? null
+        : s;
+    const allowed = {'draft', 'due_soon', 'overdue', 'paid'};
+    final statusParam =
+        statusNorm != null && allowed.contains(statusNorm) ? statusNorm : null;
+
+    final path = '/v1/businesses/$businessId/trade-purchases';
+    final queryParameters = <String, dynamic>{
+      'limit': limit,
+      'offset': offset,
+      if (statusParam != null) 'status': statusParam,
+      if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+      if (supplierId != null && supplierId.trim().isNotEmpty)
+        'supplier_id': supplierId.trim(),
+      if (brokerId != null && brokerId.trim().isNotEmpty)
+        'broker_id': brokerId.trim(),
+      if (catalogItemId != null && catalogItemId.trim().isNotEmpty)
+        'catalog_item_id': catalogItemId.trim(),
+      if (purchaseFrom != null && purchaseFrom.isNotEmpty)
+        'purchase_from': purchaseFrom,
+      if (purchaseTo != null && purchaseTo.isNotEmpty) 'purchase_to': purchaseTo,
+    };
+
+    if (kDebugMode) {
+      debugPrint('HexaApi.listTradePurchases GET $path query=$queryParameters');
+    }
+
+    try {
+      final res = await _dio.get<dynamic>(path, queryParameters: queryParameters);
+      if (kDebugMode) {
+        debugPrint('HexaApi.listTradePurchases status=${res.statusCode}');
+      }
+      final data = res.data;
+      if (data is! List) return [];
+      return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 422) {
+        if (kDebugMode) {
+          debugPrint(
+            'HexaApi.listTradePurchases 422 → [] (break poisoned-filter loops)',
+          );
+        }
+        return [];
+      }
+      rethrow;
+    }
   }
 
   Future<Map<String, dynamic>?> getTradePurchaseDraft({
