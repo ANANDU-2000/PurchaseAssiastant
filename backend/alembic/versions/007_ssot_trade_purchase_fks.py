@@ -90,9 +90,9 @@ def upgrade() -> None:
             FROM trade_purchases tp
             JOIN catalog_items ci
               ON ci.business_id = tp.business_id
-             AND lower(trim(ci.name)) = lower(trim(tpl.item_name))
             WHERE tpl.trade_purchase_id = tp.id
               AND tpl.catalog_item_id IS NULL
+              AND lower(trim(ci.name)) = lower(trim(tpl.item_name))
             """
         )
     )

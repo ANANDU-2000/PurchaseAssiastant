@@ -5,11 +5,21 @@ from __future__ import annotations
 import os
 import sys
 from logging.config import fileConfig
+from pathlib import Path
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+_backend_root = Path(__file__).resolve().parent.parent
+try:
+    from dotenv import load_dotenv
+
+    # Prefer values in backend/.env over inherited shell env (avoids stale DATABASE_* on dev machines).
+    load_dotenv(_backend_root / ".env", override=True)
+except ImportError:
+    pass
 
 from app.models.base import Base  # noqa: E402
 from app.models import *  # noqa: F401,F403,E402 — register metadata
@@ -46,7 +56,7 @@ def _sync_url() -> str:
     if pooler and pwd:
         try:
             u = make_url(effective)
-            effective = str(u.set(password=pwd))
+            effective = u.set(password=pwd).render_as_string(hide_password=False)
         except Exception:
             pass
 

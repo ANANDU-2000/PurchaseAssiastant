@@ -75,7 +75,9 @@ else:
     if _pooler and settings.database_pooler_password and settings.database_pooler_password.strip():
         try:
             _u = make_url(_effective_url)
-            _effective_url = str(_u.set(password=settings.database_pooler_password.strip()))
+            _effective_url = _u.set(
+                password=settings.database_pooler_password.strip(),
+            ).render_as_string(hide_password=False)
             logger.info("Applied DATABASE_POOLER_PASSWORD (URI should omit password; userinfo user@host only).")
         except Exception as e:  # noqa: BLE001
             logger.warning("Could not merge DATABASE_POOLER_PASSWORD into pooler URL: %s", e)

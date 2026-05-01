@@ -16,11 +16,18 @@ branch_labels = None
 depends_on = None
 
 
+def _has_column(table: str, column: str) -> bool:
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    return any(c["name"] == column for c in insp.get_columns(table))
+
+
 def upgrade() -> None:
-    op.add_column(
-        "businesses",
-        sa.Column("contact_email", sa.String(length=255), nullable=True),
-    )
+    if not _has_column("businesses", "contact_email"):
+        op.add_column(
+            "businesses",
+            sa.Column("contact_email", sa.String(length=255), nullable=True),
+        )
 
 
 def downgrade() -> None:

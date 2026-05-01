@@ -17,36 +17,45 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "cloud_expenses",
-        sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("business_id", sa.Uuid(), nullable=False),
-        sa.Column("name", sa.String(length=128), nullable=False),
-        sa.Column("amount_inr", sa.Numeric(18, 4), nullable=False),
-        sa.Column("due_day", sa.Integer(), nullable=False),
-        sa.Column("last_paid_date", sa.Date(), nullable=True),
-        sa.Column("next_due_date", sa.Date(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(["business_id"], ["businesses.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("business_id", name="uq_cloud_expenses_business"),
-    )
-    op.create_index(op.f("ix_cloud_expenses_business_id"), "cloud_expenses", ["business_id"], unique=True)
-    op.create_index(op.f("ix_cloud_expenses_next_due_date"), "cloud_expenses", ["next_due_date"], unique=False)
+    bind = op.get_bind()
 
-    op.create_table(
-        "cloud_payment_history",
-        sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("business_id", sa.Uuid(), nullable=False),
-        sa.Column("amount_inr", sa.Numeric(18, 4), nullable=False),
-        sa.Column("paid_on", sa.Date(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(["business_id"], ["businesses.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_index(op.f("ix_cloud_payment_history_business_id"), "cloud_payment_history", ["business_id"], unique=False)
-    op.create_index(op.f("ix_cloud_payment_history_paid_on"), "cloud_payment_history", ["paid_on"], unique=False)
+    def _has(name: str) -> bool:
+        return sa.inspect(bind).has_table(name)
+
+    if not _has("cloud_expenses"):
+        op.create_table(
+            "cloud_expenses",
+            sa.Column("id", sa.Uuid(), nullable=False),
+            sa.Column("business_id", sa.Uuid(), nullable=False),
+            sa.Column("name", sa.String(length=128), nullable=False),
+            sa.Column("amount_inr", sa.Numeric(18, 4), nullable=False),
+            sa.Column("due_day", sa.Integer(), nullable=False),
+            sa.Column("last_paid_date", sa.Date(), nullable=True),
+            sa.Column("next_due_date", sa.Date(), nullable=False),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+            sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+            sa.ForeignKeyConstraint(["business_id"], ["businesses.id"], ondelete="CASCADE"),
+            sa.PrimaryKeyConstraint("id"),
+            sa.UniqueConstraint("business_id", name="uq_cloud_expenses_business"),
+        )
+        op.create_index(op.f("ix_cloud_expenses_business_id"), "cloud_expenses", ["business_id"], unique=True)
+        op.create_index(op.f("ix_cloud_expenses_next_due_date"), "cloud_expenses", ["next_due_date"], unique=False)
+
+    if not _has("cloud_payment_history"):
+        op.create_table(
+            "cloud_payment_history",
+            sa.Column("id", sa.Uuid(), nullable=False),
+            sa.Column("business_id", sa.Uuid(), nullable=False),
+            sa.Column("amount_inr", sa.Numeric(18, 4), nullable=False),
+            sa.Column("paid_on", sa.Date(), nullable=False),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+            sa.ForeignKeyConstraint(["business_id"], ["businesses.id"], ondelete="CASCADE"),
+            sa.PrimaryKeyConstraint("id"),
+        )
+        op.create_index(
+            op.f("ix_cloud_payment_history_business_id"), "cloud_payment_history", ["business_id"], unique=False
+        )
+        op.create_index(op.f("ix_cloud_payment_history_paid_on"), "cloud_payment_history", ["paid_on"], unique=False)
 
 
 def downgrade() -> None:

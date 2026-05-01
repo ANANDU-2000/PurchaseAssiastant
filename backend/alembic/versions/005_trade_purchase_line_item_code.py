@@ -17,11 +17,18 @@ branch_labels = None
 depends_on = None
 
 
+def _has_column(table: str, column: str) -> bool:
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    return any(c["name"] == column for c in insp.get_columns(table))
+
+
 def upgrade() -> None:
-    op.add_column(
-        "trade_purchase_lines",
-        sa.Column("item_code", sa.String(length=64), nullable=True),
-    )
+    if not _has_column("trade_purchase_lines", "item_code"):
+        op.add_column(
+            "trade_purchase_lines",
+            sa.Column("item_code", sa.String(length=64), nullable=True),
+        )
 
 
 def downgrade() -> None:

@@ -1,6 +1,6 @@
 """Add item-level purchase accounting decimal fields.
 
-Revision ID: 010_trade_purchase_line_item_level_decimal_fields
+Revision ID: 010_tp_line_decimals
 Revises: 009_strict_decimal_precision
 Create Date: 2026-04-30
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from alembic import op
 
 
-revision: str = "010_trade_purchase_line_item_level_decimal_fields"
+revision: str = "010_tp_line_decimals"
 down_revision: Union[str, None] = "009_strict_decimal_precision"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
