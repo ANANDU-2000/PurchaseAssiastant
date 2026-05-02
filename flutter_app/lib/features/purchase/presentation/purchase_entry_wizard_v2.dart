@@ -353,6 +353,16 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     unawaited(OfflineStore.putPurchaseWizardDraft(bid, json));
   }
 
+  /// Immediate save for party-step footer (still debounces on normal edits via [_onDraftChanged]).
+  void _saveDraftNow() {
+    _draftDebounce?.cancel();
+    _flushDraftToPrefs();
+    if (!mounted || widget.editingId != null) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      const SnackBar(content: Text('Draft saved')),
+    );
+  }
+
   Future<void> _clearDraftInPrefs() async {
     final k = _draftPrefsKey();
     final s = ref.read(sessionProvider);
@@ -665,6 +675,21 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     }
     row ??= <String, dynamic>{'id': it.id, 'name': it.label};
     final session = ref.read(sessionProvider);
+
+    // Commit draft immediately so a tap cannot be wiped by overlapping async / seq churn.
+    final commitRow = Map<String, dynamic>.from(row);
+    if (mounted && seq == _supplierApplySeq) {
+      ref
+          .read(purchaseDraftProvider.notifier)
+          .applySupplierSelection(commitRow, it.id, it.label);
+      _syncControllersFromDraft();
+      setState(() {
+        _supplierFieldError = null;
+        _inlineSaveError = null;
+      });
+      _onDraftChanged();
+    }
+
     if (session != null) {
       try {
         final fresh = await ref.read(hexaApiProvider).getSupplier(
@@ -678,6 +703,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     }
     if (!mounted || seq != _supplierApplySeq) return;
     final supplierRow = row!;
+    // Re-apply after possible fresh master row fetch (still same selection).
     ref
         .read(purchaseDraftProvider.notifier)
         .applySupplierSelection(supplierRow, it.id, it.label);
@@ -1302,14 +1328,29 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       builder: (context) {
         final step = stepSlot();
         if (_wizStep == 0) {
-          final bottomSafe = MediaQuery.paddingOf(context).bottom +
-              24 +
-              MediaQuery.viewInsetsOf(context).bottom;
-          return SingleChildScrollView(
-            physics: const ClampingScrollPhysics(),
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: EdgeInsets.fromLTRB(12, 8, 12, bottomSafe),
-            child: step,
+          final bottomPad = MediaQuery.paddingOf(context).bottom + 12;
+          final surfaceColor = Theme.of(context).colorScheme.surface;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  physics: const ClampingScrollPhysics(),
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.fromLTRB(12, 8, 12, bottomPad),
+                  child: step,
+                ),
+              ),
+              Material(
+                elevation: 4,
+                color: surfaceColor,
+                child: SafeArea(
+                  top: false,
+                  child: _wizardFooterChrome(catalog, isEdit),
+                ),
+              ),
+            ],
           );
         }
 
@@ -1334,6 +1375,24 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
   }
 
   Widget _wizardFooterChrome(List<Map<String, dynamic>> catalog, bool isEdit) {
+    if (_wizStep == 0 && !isEdit && (widget.editingId == null)) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+        child: SizedBox(
+          width: double.infinity,
+          height: 46,
+          child: OutlinedButton(
+            onPressed: _saveDraftNow,
+            child: const Text(
+              'Save draft',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Edit mode step 0: no separate draft row (same parity as legacy).
     if (_wizStep == 0) {
       return const SizedBox.shrink();
     }

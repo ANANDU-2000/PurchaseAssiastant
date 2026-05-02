@@ -242,65 +242,28 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     final maxPanelH = _effectiveMaxPanelHeight(context);
 
     final borderColor = Colors.grey.shade300;
-    final borderRadiusBottom = hasPanel ? 0.0 : 8.0;
-    final vPad = widget.dense ? 10.0 : 12.0;
-    final hPad = widget.dense ? 10.0 : 12.0;
+    final focused = widget.focusNode.hasFocus;
 
-    Widget? prefixIcon;
+    final vPad = widget.dense ? 12.0 : 14.0;
+    final hPad = widget.dense ? 8.0 : 10.0;
+
+    Widget? leading;
     if (widget.prefixIcon != null) {
-      prefixIcon = Padding(
+      leading = Padding(
         padding: EdgeInsets.only(right: widget.dense ? 4 : 6),
-        child: Align(
-          widthFactor: 1,
-          heightFactor: 1,
-          alignment: Alignment.center,
-          child: IconTheme.merge(
-            data: IconThemeData(
-              size: widget.dense ? 18 : 22,
-              color: cs.primary.withValues(alpha: 0.75),
-            ),
-            child: widget.prefixIcon!,
+        child: IconTheme.merge(
+          data: IconThemeData(
+            size: widget.dense ? 18 : 22,
+            color: cs.primary.withValues(alpha: 0.75),
           ),
+          child: widget.prefixIcon!,
         ),
       );
     }
 
-    final fieldDecoration = InputDecoration(
-      labelText: widget.hintText,
-      floatingLabelBehavior: FloatingLabelBehavior.auto,
-      isDense: true,
-      prefixIconConstraints: BoxConstraints(
-        minWidth: widget.dense ? 32 : 40,
-        minHeight: widget.dense ? 34 : 40,
-      ),
-      prefixIcon: prefixIcon,
-      filled: true,
-      fillColor: Colors.grey.shade50,
-      contentPadding: EdgeInsets.only(
-        left: prefixIcon == null ? hPad : 2,
-        right: hPad,
-        top: vPad - 4,
-        bottom: vPad - 2,
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.vertical(
-          top: const Radius.circular(8),
-          bottom: Radius.circular(borderRadiusBottom),
-        ),
-        borderSide: BorderSide(color: borderColor),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.vertical(
-          top: const Radius.circular(8),
-          bottom: Radius.circular(borderRadiusBottom),
-        ),
-        borderSide: BorderSide(color: cs.primary, width: 2),
-      ),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: BorderSide(color: borderColor),
-      ),
-    );
+    final fieldPad = leading == null
+        ? EdgeInsets.symmetric(horizontal: hPad, vertical: vPad)
+        : EdgeInsets.only(right: hPad, top: vPad, bottom: vPad);
 
     Widget field = Focus(
       onKeyEvent: _onKey,
@@ -310,8 +273,43 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
         textInputAction: widget.textInputAction,
         onSubmitted: _onFieldSubmitted,
         scrollPadding: _scrollPad(context),
-        decoration: fieldDecoration,
+        decoration: InputDecoration(
+          hintText: widget.hintText,
+          isDense: true,
+          hintStyle: TextStyle(
+            fontSize: widget.dense ? 13 : 14,
+            color: Colors.grey.shade600,
+          ),
+          border: InputBorder.none,
+          isCollapsed: false,
+          contentPadding: fieldPad,
+        ),
       ),
+    );
+
+    field = AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: focused ? cs.primary : borderColor,
+          width: focused ? 2 : 1,
+        ),
+      ),
+      child: leading == null
+          ? field
+          : Padding(
+              padding: EdgeInsets.only(left: hPad),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  leading,
+                  Expanded(child: field),
+                ],
+              ),
+            ),
     );
 
     return KeyedSubtree(
@@ -321,66 +319,66 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           field,
-          if (hasPanel)
+          if (hasPanel) ...[
+            const SizedBox(height: 4),
             DecoratedBox(
               decoration: BoxDecoration(
                 color: Colors.grey.shade50,
-                border: Border(
-                  left: BorderSide(color: borderColor),
-                  right: BorderSide(color: borderColor),
-                  bottom: BorderSide(color: borderColor),
-                ),
-                borderRadius: const BorderRadius.vertical(
-                  bottom: Radius.circular(8),
-                ),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: borderColor),
               ),
               child: ConstrainedBox(
                 constraints: BoxConstraints(maxHeight: maxPanelH),
                 child: ClipRRect(
-                  borderRadius: const BorderRadius.vertical(
-                    bottom: Radius.circular(7),
-                  ),
+                  borderRadius: BorderRadius.circular(7),
                   child: ListView(
                     shrinkWrap: true,
                     physics: const ClampingScrollPhysics(),
                     padding: EdgeInsets.zero,
                     children: [
                       for (final it in rows)
-                        InkWell(
-                          onTap: () => _pick(it),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 10,
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  it.label,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                                if (it.subtitle != null &&
-                                    it.subtitle!.trim().isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 2),
-                                    child: Text(
-                                      it.subtitle!,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: cs.onSurfaceVariant,
-                                      ),
+                        Material(
+                          color: Colors.grey.shade50,
+                          child: InkWell(
+                            onTap: () => WidgetsBinding.instance
+                                .addPostFrameCallback((_) {
+                              if (!mounted) return;
+                              _pick(it);
+                            }),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 10,
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    it.label,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13,
                                     ),
                                   ),
-                              ],
+                                  if (it.subtitle != null &&
+                                      it.subtitle!.trim().isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 2),
+                                      child: Text(
+                                        it.subtitle!,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: cs.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -389,19 +387,26 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
                           rows.isNotEmpty)
                         Divider(height: 1, thickness: 1, color: borderColor),
                       if (showAddFocused && widget.onAddRow != null)
-                        InkWell(
-                          onTap: widget.onAddRow,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 11,
-                            ),
-                            child: Text(
-                              widget.addRowLabel ?? '',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13,
-                                color: cs.primary,
+                        Material(
+                          color: Colors.grey.shade50,
+                          child: InkWell(
+                            onTap: () => WidgetsBinding.instance
+                                .addPostFrameCallback((_) {
+                              if (!mounted) return;
+                              widget.onAddRow!.call();
+                            }),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 11,
+                              ),
+                              child: Text(
+                                widget.addRowLabel ?? '',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                  color: cs.primary,
+                                ),
                               ),
                             ),
                           ),
@@ -411,6 +416,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
                 ),
               ),
             ),
+          ],
         ],
       ),
     );
