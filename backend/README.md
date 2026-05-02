@@ -83,6 +83,8 @@ Startup logs one line:
 
 **Tune via env** (see root `.env.example`): `HTTP_SLOW_REQUEST_WARNING_MS` (default **500** — requests slower than this log `SLOW_HTTP …`), `HTTP_PROPAGATE_REQUEST_ID` (**true** — sets `X-Request-Id` / `X-Process-Time-Ms` on responses), `LOG_LEVEL`, `DATABASE_SLOW_QUERY_LOG_MS`, `API_READ_BUDGET_SECONDS`, `SENTRY_DSN`.
 
-**Grepping logs:** `SLOW_HTTP`, `VERY_SLOW_HTTP`, `HTTP 503`, `Postgres warmup failed`, `database`, `x-database-unavailable` (from connectivity middleware on business routes).
+**Grepping logs:** `SLOW_HTTP`, `VERY_SLOW_HTTP`, `HTTP 503`, `Postgres warmup failed`, `database`, `x-database-unavailable` (from connectivity middleware on business routes). List endpoints also emit **`list_suppliers ok`**, **`list_brokers ok`**, **`list_catalog_items ok`** with `count` and `ms` for slow-empty triage.
 
 **Flutter:** each API call sends **`X-Request-Id`**; on failure (debug builds) DevTools/console prints it — paste into Render log search to match the same request on the server.
+
+**Cursor MCP:** with **Render** and **Supabase** MCP servers enabled and authenticated in Cursor, you can list workspaces/services and Supabase projects from the IDE; connectivity is per your API keys, not implied by the repo alone.

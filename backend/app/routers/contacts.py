@@ -1,4 +1,6 @@
+import logging
 import re
+import time
 import uuid
 from collections import defaultdict
 from datetime import date
@@ -10,10 +12,12 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.db_resilience import execute_with_retry
 from app.deps import require_membership, require_owner_membership
 from app.models import Broker, BrokerSupplierLink, Entry, EntryLineItem, Membership, Supplier
 
 router = APIRouter(prefix="/v1/businesses/{business_id}", tags=["contacts"])
+logger = logging.getLogger(__name__)
 
 
 def _norm_name(s: str) -> str:
@@ -228,26 +232,39 @@ async def list_suppliers(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     del _m
-    r = await db.execute(select(Supplier).where(Supplier.business_id == business_id))
-    rows = r.scalars().all()
-    if not rows:
-        return []
+    t0 = time.perf_counter()
 
-    supplier_ids = [s.id for s in rows]
-    rb = await db.execute(
-        select(BrokerSupplierLink.supplier_id, BrokerSupplierLink.broker_id).where(
-            BrokerSupplierLink.supplier_id.in_(supplier_ids)
+    async def _read() -> list[SupplierOut]:
+        r = await db.execute(select(Supplier).where(Supplier.business_id == business_id))
+        rows = r.scalars().all()
+        if not rows:
+            return []
+
+        supplier_ids = [s.id for s in rows]
+        rb = await db.execute(
+            select(BrokerSupplierLink.supplier_id, BrokerSupplierLink.broker_id).where(
+                BrokerSupplierLink.supplier_id.in_(supplier_ids)
+            )
         )
-    )
-    broker_map: dict[uuid.UUID, list[uuid.UUID]] = defaultdict(list)
-    for sid, bid in rb.all():
-        broker_map[sid].append(bid)
+        broker_map: dict[uuid.UUID, list[uuid.UUID]] = defaultdict(list)
+        for sid, bid in rb.all():
+            broker_map[sid].append(bid)
 
-    out: list[SupplierOut] = []
-    for s in rows:
-        base = SupplierOut.model_validate(s).model_dump()
-        base["broker_ids"] = list(broker_map.get(s.id, []))
-        out.append(SupplierOut.model_validate(base))
+        out: list[SupplierOut] = []
+        for s in rows:
+            base = SupplierOut.model_validate(s).model_dump()
+            base["broker_ids"] = list(broker_map.get(s.id, []))
+            out.append(SupplierOut.model_validate(base))
+        return out
+
+    out = await execute_with_retry(_read)
+    ms = int((time.perf_counter() - t0) * 1000)
+    logger.info(
+        "list_suppliers ok business_id=%s count=%s ms=%s",
+        business_id,
+        len(out),
+        ms,
+    )
     return out
 
 
@@ -505,11 +522,37 @@ async def list_brokers(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     del _m
-    r = await db.execute(select(Broker).where(Broker.business_id == business_id))
-    rows = r.scalars().all()
-    out: list[BrokerOut] = []
-    for b in rows:
-        out.append(await _broker_out(db, b))
+    t0 = time.perf_counter()
+
+    async def _read() -> list[BrokerOut]:
+        r = await db.execute(select(Broker).where(Broker.business_id == business_id))
+        rows = r.scalars().all()
+        if not rows:
+            return []
+        broker_ids = [b.id for b in rows]
+        rs = await db.execute(
+            select(BrokerSupplierLink.broker_id, BrokerSupplierLink.supplier_id).where(
+                BrokerSupplierLink.broker_id.in_(broker_ids)
+            )
+        )
+        sup_map: dict[uuid.UUID, list[uuid.UUID]] = defaultdict(list)
+        for bid, sid in rs.all():
+            sup_map[bid].append(sid)
+        out: list[BrokerOut] = []
+        for b in rows:
+            base = BrokerOut.model_validate(b).model_dump()
+            base["supplier_ids"] = list(sup_map.get(b.id, []))
+            out.append(BrokerOut.model_validate(base))
+        return out
+
+    out = await execute_with_retry(_read)
+    ms = int((time.perf_counter() - t0) * 1000)
+    logger.info(
+        "list_brokers ok business_id=%s count=%s ms=%s",
+        business_id,
+        len(out),
+        ms,
+    )
     return out
 
 

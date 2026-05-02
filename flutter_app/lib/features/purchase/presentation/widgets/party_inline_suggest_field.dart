@@ -171,22 +171,18 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   }
 
   void _scheduleRevealInScrollView() {
-    void run() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !widget.focusNode.hasFocus) return;
       final ctx = _revealKey.currentContext;
       final ro = ctx?.findRenderObject();
       if (ctx == null || ro == null || !ro.attached) return;
       Scrollable.ensureVisible(
         ctx,
-        duration: const Duration(milliseconds: 280),
+        duration: const Duration(milliseconds: 220),
         curve: Curves.easeOutCubic,
-        alignment: 0.06,
+        alignment: 0.08,
       );
-    }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) => run());
-    Future<void>.delayed(const Duration(milliseconds: 140), run);
-    Future<void>.delayed(const Duration(milliseconds: 320), run);
+    });
   }
 
   List<InlineSearchItem> _filteredFromQuery(String qRaw) {
@@ -368,9 +364,6 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
         widget.focusNode.hasFocus &&
         (rows.isNotEmpty || showAddFocused);
 
-    final panelScrollH =
-        widget.maxPanelAbs.clamp(120.0, 260.0);
-
     final borderColor = Colors.grey.shade300;
     final focused = widget.focusNode.hasFocus;
 
@@ -467,22 +460,20 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
                 border: Border.all(color: borderColor.withValues(alpha: 0.45)),
               ),
               clipBehavior: Clip.antiAlias,
-              child: SizedBox(
-                height: panelScrollH,
-                child: ListView(
-                  padding: EdgeInsets.zero,
-                  physics: const ClampingScrollPhysics(),
-                  primary: false,
-                  children: [
-                    for (final it in rows) _buildSuggestionTile(cs, it),
-                    if (rows.isNotEmpty &&
-                        showAddFocused &&
-                        widget.onAddRow != null)
-                      Divider(height: 1, thickness: 1, color: borderColor),
-                    if (showAddFocused && widget.onAddRow != null)
-                      _buildAddRowTile(cs),
-                  ],
-                ),
+              // Single scroll ancestor: expanded Column (no nested ListView).
+              // Parent wizard `SingleChildScrollView` handles overflow; taps reach tiles reliably.
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final it in rows) _buildSuggestionTile(cs, it),
+                  if (rows.isNotEmpty &&
+                      showAddFocused &&
+                      widget.onAddRow != null)
+                    Divider(height: 1, thickness: 1, color: borderColor),
+                  if (showAddFocused && widget.onAddRow != null)
+                    _buildAddRowTile(cs),
+                ],
               ),
             ),
           ],

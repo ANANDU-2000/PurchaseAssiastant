@@ -38,9 +38,11 @@ class PurchasePartyStep extends ConsumerWidget {
     required this.supplierMapLabel,
     required this.sortSuppliers,
     required this.filterSuppliersByCatalog,
+    this.onCatalogAutoSupplierSelected,
     required this.onSupplierSelectedSync,
     required this.openQuickSupplierCreate,
     required this.onSupplierClear,
+    required this.partyUserSupplierActionGen,
     required this.applyBrokerSelection,
     required this.openQuickBrokerCreate,
     required this.brokerRowId,
@@ -78,14 +80,19 @@ class PurchasePartyStep extends ConsumerWidget {
     List<Map<String, dynamic>>,
     List<Map<String, dynamic>>,
   ) filterSuppliersByCatalog;
+  /// When set, single-option catalog auto-pick uses this (no user-action generation bump).
+  final void Function(List<Map<String, dynamic>>, InlineSearchItem)?
+      onCatalogAutoSupplierSelected;
   final void Function(List<Map<String, dynamic>>, InlineSearchItem)
       onSupplierSelectedSync;
   final Future<void> Function(List<Map<String, dynamic>>)
       openQuickSupplierCreate;
   final VoidCallback onSupplierClear;
 
-  final void Function(List<Map<String, dynamic>>, InlineSearchItem)
-      applyBrokerSelection;
+  /// Monotonic counter: auto-pick post-frame callbacks bail if the user picked/cleared meanwhile.
+  final int Function() partyUserSupplierActionGen;
+
+  final void Function(InlineSearchItem) applyBrokerSelection;
   final Future<void> Function(List<Map<String, dynamic>>) openQuickBrokerCreate;
   final String Function(Map<String, dynamic>) brokerRowId;
   final String Function(Map<String, dynamic>) brokerMapLabel;
@@ -310,7 +317,9 @@ class PurchasePartyStep extends ConsumerWidget {
                 ref.read(purchaseDraftProvider).supplierId!.isEmpty)) {
           if (lastAutoSupplierFromCatalogSig != sig) {
             onLastAutoSupplierFromCatalogSigChanged(sig);
+            final genAtSchedule = partyUserSupplierActionGen();
             WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (partyUserSupplierActionGen() != genAtSchedule) return;
               final d = ref.read(purchaseDraftProvider);
               if (d.supplierId != null && d.supplierId!.isNotEmpty) {
                 return;
@@ -318,13 +327,14 @@ class PurchasePartyStep extends ConsumerWidget {
               if (filtered.length != 1) return;
               final row = filtered.first;
               if (supplierRowId(row).isEmpty) return;
-              onSupplierSelectedSync(
+              final pick = InlineSearchItem(
+                id: supplierRowId(row),
+                label: supplierMapLabel(row),
+                subtitle: supplierSubtitleFor(row),
+              );
+              (onCatalogAutoSupplierSelected ?? onSupplierSelectedSync)(
                 full,
-                InlineSearchItem(
-                  id: supplierRowId(row),
-                  label: supplierMapLabel(row),
-                  subtitle: supplierSubtitleFor(row),
-                ),
+                pick,
               );
             });
           }
@@ -494,7 +504,7 @@ class PurchasePartyStep extends ConsumerWidget {
                   onAddRow: () => openQuickBrokerCreate(brokers),
                   onSelected: (it) {
                     if (it.id.isEmpty) return;
-                    applyBrokerSelection(brokers, it);
+                    applyBrokerSelection(it);
                   },
                 );
                 return _brokerListNotice(
@@ -529,7 +539,7 @@ class PurchasePartyStep extends ConsumerWidget {
                     onAddRow: () => openQuickBrokerCreate(brokersRaw),
                     onSelected: (it) {
                       if (it.id.isEmpty) return;
-                      applyBrokerSelection(brokersRaw, it);
+                      applyBrokerSelection(it);
                     },
                   );
                   return Column(
@@ -607,7 +617,7 @@ class PurchasePartyStep extends ConsumerWidget {
                     onAddRow: () => openQuickBrokerCreate(brokersRaw),
                     onSelected: (it) {
                       if (it.id.isEmpty) return;
-                      applyBrokerSelection(brokersRaw, it);
+                      applyBrokerSelection(it);
                     },
                   );
                   return Column(

@@ -1,4 +1,5 @@
 import logging
+import time
 import uuid
 from datetime import date
 from typing import Annotated
@@ -11,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
 
 from app.database import get_db
+from app.db_resilience import execute_with_retry
 from app.db_schema_compat import catalog_items_has_type_id_column
 from app.deps import require_membership, require_owner_membership
 from app.models import (
@@ -947,7 +949,8 @@ async def list_catalog_items(
     type_id: uuid.UUID | None = Query(None, description="Filter by category type"),
 ):
     del _m
-    try:
+
+    async def _read() -> list[CatalogItemOut]:
         has_type_col = await catalog_items_has_type_id_column(db)
         if has_type_col:
             q = (
@@ -996,6 +999,10 @@ async def list_catalog_items(
             )
             for i in items
         ]
+
+    t0 = time.perf_counter()
+    try:
+        out = await execute_with_retry(_read)
     except SQLAlchemyError:
         logger.exception(
             "list_catalog_items failed business_id=%s category_id=%s type_id=%s",
@@ -1004,6 +1011,16 @@ async def list_catalog_items(
             type_id,
         )
         raise
+    ms = int((time.perf_counter() - t0) * 1000)
+    logger.info(
+        "list_catalog_items ok business_id=%s count=%s ms=%s category_id=%s type_id=%s",
+        business_id,
+        len(out),
+        ms,
+        category_id,
+        type_id,
+    )
+    return out
 
 
 @router.post("/catalog-items", response_model=CatalogItemOut, status_code=status.HTTP_201_CREATED)

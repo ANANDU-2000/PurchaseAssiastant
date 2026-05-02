@@ -70,6 +70,9 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
   /// When catalog line defaults reduce suppliers to a single option, we auto-pick once per signature.
   String? _lastAutoSupplierFromCatalogSig;
 
+  /// Bumped on manual supplier pick/clear/quick-create so catalog auto-pick post-frames cannot race the user.
+  int _partyUserSupplierActionGeneration = 0;
+
   /// Last good catalog snapshot for stale-while-revalidate UX.
   List<Map<String, dynamic>>? _lastCatalogSnapshot;
 
@@ -534,39 +537,49 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     return '';
   }
 
+  void _partyStepSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   Future<void> _openQuickSupplierCreate(
     List<Map<String, dynamic>> lookupList,
   ) async {
     await Future<void>.delayed(Duration.zero);
     if (!mounted) return;
-    final result = await context.push<Map<String, dynamic>?>(
-      '/suppliers/quick-create',
-    );
+    Map<String, dynamic>? result;
+    try {
+      result = await context.push<Map<String, dynamic>?>(
+        '/suppliers/quick-create',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _partyStepSnack('Could not open new supplier: $e');
+      return;
+    }
     if (!mounted) return;
     final id = result?['id']?.toString();
-    if (id == null || id.isEmpty) return;
-    ref.invalidate(suppliersListProvider);
-    final label = (result?['name']?.toString() ?? '').trim();
-    try {
-      final list = await ref.read(suppliersListProvider.future);
-      if (!mounted) return;
-      await _applySupplierSelectionAsync(
-        list,
-        InlineSearchItem(
-          id: id,
-          label: label.isNotEmpty ? label : 'Supplier',
-        ),
+    if (id == null || id.isEmpty) {
+      _partyStepSnack(
+        result == null
+            ? 'New supplier cancelled.'
+            : 'Supplier not saved (missing id). Fill required fields and save.',
       );
-    } catch (_) {
-      if (!mounted) return;
-      await _applySupplierSelectionAsync(
-        lookupList,
-        InlineSearchItem(
-          id: id,
-          label: label.isNotEmpty ? label : 'Supplier',
-        ),
-      );
+      return;
     }
+    setState(() => _partyUserSupplierActionGeneration++);
+    final label = (result?['name']?.toString() ?? '').trim();
+    final disp = label.isNotEmpty ? label : 'Supplier';
+    final item = InlineSearchItem(id: id, label: disp);
+    unawaited(_applySupplierSelectionAsync(const [], item));
+    Future.microtask(() {
+      if (mounted) ref.invalidate(suppliersListProvider);
+    });
   }
 
   Future<void> _openQuickBrokerCreate(
@@ -574,34 +587,32 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
   ) async {
     await Future<void>.delayed(Duration.zero);
     if (!mounted) return;
-    final result = await context.push<Map<String, dynamic>?>(
-      '/brokers/quick-create',
-    );
+    Map<String, dynamic>? result;
+    try {
+      result = await context.push<Map<String, dynamic>?>(
+        '/brokers/quick-create',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _partyStepSnack('Could not open new broker: $e');
+      return;
+    }
     if (!mounted) return;
     final id = result?['id']?.toString();
-    if (id == null || id.isEmpty) return;
-    ref.invalidate(brokersListProvider);
-    final label = (result?['name']?.toString() ?? '').trim();
-    try {
-      final list = await ref.read(brokersListProvider.future);
-      if (!mounted) return;
-      _applyBrokerSelection(
-        list.map((e) => Map<String, dynamic>.from(e as Map)).toList(),
-        InlineSearchItem(
-          id: id,
-          label: label.isNotEmpty ? label : 'Broker',
-        ),
+    if (id == null || id.isEmpty) {
+      _partyStepSnack(
+        result == null
+            ? 'New broker cancelled.'
+            : 'Broker not saved (missing id). Fill required fields and save.',
       );
-    } catch (_) {
-      if (!mounted) return;
-      _applyBrokerSelection(
-        lookupList,
-        InlineSearchItem(
-          id: id,
-          label: label.isNotEmpty ? label : 'Broker',
-        ),
-      );
+      return;
     }
+    final label = (result?['name']?.toString() ?? '').trim();
+    final disp = label.isNotEmpty ? label : 'Broker';
+    unawaited(_applyBrokerSelectionAsync(InlineSearchItem(id: id, label: disp)));
+    Future.microtask(() {
+      if (mounted) ref.invalidate(brokersListProvider);
+    });
   }
 
   String _apiDateOnly(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
@@ -803,11 +814,16 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     return _brokerRowId(m);
   }
 
-  void _applyBrokerSelection(
-    List<Map<String, dynamic>> brokers,
+  void _applyBrokerSelection(InlineSearchItem it) {
+    unawaited(_applyBrokerSelectionAsync(it));
+  }
+
+  void _onUserSupplierSelected(
+    List<Map<String, dynamic>> list,
     InlineSearchItem it,
   ) {
-    unawaited(_applyBrokerSelectionAsync(it));
+    setState(() => _partyUserSupplierActionGeneration++);
+    _applySupplierSelection(list, it);
   }
 
   Future<void> _applyBrokerSelectionAsync(InlineSearchItem it) async {
@@ -1335,9 +1351,12 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
             supplierMapLabel: _supplierMapLabel,
             sortSuppliers: _sortSuppliersByPurchaseRecency,
             filterSuppliersByCatalog: _filterSuppliersByCatalogLineDefaults,
-            onSupplierSelectedSync: _applySupplierSelection,
+            onCatalogAutoSupplierSelected: _applySupplierSelection,
+            onSupplierSelectedSync: _onUserSupplierSelected,
             openQuickSupplierCreate: _openQuickSupplierCreate,
+            partyUserSupplierActionGen: () => _partyUserSupplierActionGeneration,
             onSupplierClear: () {
+              setState(() => _partyUserSupplierActionGeneration++);
               ref.read(purchaseDraftProvider.notifier).clearSupplier();
               _supplierCtrl.clear();
               _syncControllersFromDraft();
