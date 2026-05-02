@@ -765,17 +765,18 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
       );
     }
 
+    // Shell loading: single spinner lives in the list area below — ring stays a neutral placeholder.
     if (tab != HomeBreakdownTab.category &&
         shell.isLoading &&
         shell.valueOrNull == null) {
-      return SizedBox(
-        height: previewSide,
-        child: const Center(
-          child: SizedBox(
-            width: 28,
-            height: 28,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
+      return RepaintBoundary(
+        child: SpendRingChart(
+          diameter: previewSide,
+          strokeWidth: 8,
+          values: const [1],
+          colors: const [Color(0xFFCBD5E1)],
+          centerChild:
+              widget.paintShellSkeleton ? _chartSkeletonCenterInner : null,
         ),
       );
     }
@@ -882,13 +883,28 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
               builder: (context, constraints) {
                 if (tab != HomeBreakdownTab.category) {
                   if (shell.isLoading && shell.valueOrNull == null) {
-                    return const Center(
+                    return Center(
                       child: Padding(
-                        padding: EdgeInsets.all(24),
-                        child: SizedBox(
-                          width: 28,
-                          height: 28,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const SizedBox(
+                              width: 36,
+                              height: 36,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Loading ${tab.label} breakdown…',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     );

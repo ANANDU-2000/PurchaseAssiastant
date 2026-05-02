@@ -128,6 +128,13 @@ class _ItemAnalyticsDetailPageState
               ? (avg - bestAvg).clamp(-1e12, 1e12)
               : null;
 
+          var sumDeals = 0;
+          var sumProfit = 0.0;
+          for (final r in rows) {
+            sumDeals += (r['deals'] as num?)?.toInt() ?? 0;
+            sumProfit += (r['total_profit'] as num?)?.toDouble() ?? 0;
+          }
+
           Map<String, dynamic>? buyRow;
           var maxProfit = -1e18;
           for (final r in rows) {
@@ -290,21 +297,54 @@ class _ItemAnalyticsDetailPageState
                     ),
                   ),
                 ],
-                const SizedBox(height: 12),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Suppliers',
-                        style: tt.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                          color: onSurf,
-                        ),
+                const SizedBox(height: 20),
+                if (rows.isNotEmpty)
+                  Card(
+                    color: Theme.of(context).colorScheme.surface,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(
+                          color: Theme.of(context).colorScheme.outlineVariant),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _ItemSummaryCell(
+                              label: 'Supplier rows',
+                              value: '${rows.length}',
+                              onSurf: onSurf,
+                            ),
+                          ),
+                          Expanded(
+                            child: _ItemSummaryCell(
+                              label: 'Total deals',
+                              value: '$sumDeals',
+                              onSurf: onSurf,
+                            ),
+                          ),
+                          Expanded(
+                            child: _ItemSummaryCell(
+                              label: 'Profit (sum)',
+                              value: _inr(sumProfit),
+                              onSurf: onSurf,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
+                  ),
+                if (rows.isNotEmpty) const SizedBox(height: 16),
+                Text(
+                  'Suppliers',
+                  style: tt.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                    color: onSurf,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Wrap(
@@ -404,6 +444,47 @@ class _ItemAnalyticsDetailPageState
           );
         },
       ),
+    );
+  }
+}
+
+class _ItemSummaryCell extends StatelessWidget {
+  const _ItemSummaryCell({
+    required this.label,
+    required this.value,
+    required this.onSurf,
+  });
+
+  final String label;
+  final String value;
+  final Color onSurf;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: tt.labelSmall?.copyWith(
+            color: cs.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+            fontSize: 10,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: tt.titleSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+            color: onSurf,
+          ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
     );
   }
 }

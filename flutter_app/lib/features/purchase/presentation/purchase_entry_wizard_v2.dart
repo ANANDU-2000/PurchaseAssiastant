@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math' as math;
-
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
@@ -23,12 +21,11 @@ import '../../../core/notifications/local_notifications_service.dart';
 import '../../purchase/domain/purchase_draft.dart';
 import '../../purchase/state/purchase_draft_provider.dart';
 
-import '../../../shared/widgets/keyboard_safe_form_viewport.dart';
 import '../../../shared/widgets/inline_search_field.dart';
-import 'wizard/purchase_items_step.dart';
+import 'wizard/purchase_fast_items_step.dart';
+import 'wizard/purchase_review_step.dart';
 import 'wizard/purchase_party_step.dart';
-import 'wizard/purchase_summary_step.dart';
-import 'wizard/purchase_terms_step.dart';
+import 'widgets/purchase_bill_scan_panel.dart';
 import 'widgets/add_item_entry_page.dart';
 import 'widgets/purchase_saved_sheet.dart';
 
@@ -62,6 +59,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
   double? _loadedRemaining;
   String? _inlineSaveError;
   String? _supplierFieldError;
+  String? _brokerFieldError;
   List<Map<String, dynamic>>? _lastGoodSuppliers;
   List<Map<String, dynamic>>? _lastGoodBrokers;
   bool _triedEmptyCatalogBootstrap = false;
@@ -84,7 +82,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
   /// Ignore stale async work when the user picks another supplier before requests finish.
   int _supplierApplySeq = 0;
 
-  /// 0 party → 1 items → 2 terms → 3 summary (no dots UI).
+  /// 0 party → 1 fast items → 2 review (+ terms edit).
   int _wizStep = 0;
 
   final _supplierCtrl = TextEditingController();
@@ -634,50 +632,89 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     });
   }
 
-  String _apiDateOnly(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
-      '${d.month.toString().padLeft(2, '0')}-'
-      '${d.day.toString().padLeft(2, '0')}';
+  void _applyHeaderDefaultsFromLastTrade(Map<String, dynamic> d) {
+    final notifier = ref.read(purchaseDraftProvider.notifier);
+    final pdays = d['payment_days'];
+    if (pdays is num && pdays.toInt() >= 0) {
+      notifier.setPaymentDaysText('${pdays.toInt()}');
+    }
+    final brid = d['broker_id']?.toString().trim();
+    if (brid != null && brid.isNotEmpty) {
+      final brokers = ref.read(brokersListProvider).valueOrNull ?? const [];
+      var bn = 'Broker';
+      for (final b in brokers) {
+        if (b['id']?.toString() == brid) {
+          bn = b['name']?.toString() ?? bn;
+          break;
+        }
+      }
+      notifier.setBroker(brid, bn, fromSupplier: false);
+    }
+    _syncControllersFromDraft();
+    if (mounted) setState(() {});
+  }
 
-  /// Top-3 suppliers by aggregated [deals] across all [catalogIds] (hint only).
-  Future<List<String>> _fetchSupplierHistoryHintsForCatalogs(
-      String businessId, Set<String> catalogIds) async {
-    if (catalogIds.isEmpty) return [];
-    final now = DateTime.now();
-    final from = DateTime(now.year, now.month, now.day)
-        .subtract(const Duration(days: 365));
-    final m = await ref.read(hexaApiProvider).tradeSupplierBrokerMap(
-          businessId: businessId,
-          from: _apiDateOnly(from),
-          to: _apiDateOnly(now),
-        );
-    final rows = (m['rows'] as List?) ?? const [];
-    final bySupplierId = <String, Map<String, dynamic>>{};
-    for (final r in rows) {
-      if (r is! Map) continue;
-      final row = Map<String, dynamic>.from(r);
-      final cid = row['catalog_item_id']?.toString();
-      if (cid == null || !catalogIds.contains(cid)) continue;
-      final sid = row['supplier_id']?.toString().trim() ?? '';
-      if (sid.isEmpty) continue;
-      final name = row['supplier_name']?.toString().trim() ?? '';
-      final deals = (row['deals'] as num?)?.toInt() ?? 0;
-      final ex = bySupplierId[sid];
-      if (ex == null) {
-        bySupplierId[sid] = {'name': name, 'deals': deals};
-      } else {
-        ex['deals'] = (ex['deals'] as int) + deals;
+  /// Append scanned/freeform lines without dropping an already-picked supplier.
+  void _mergeScannedDraft(PurchaseDraft scan) {
+    final cur = ref.read(purchaseDraftProvider);
+    final notifier = ref.read(purchaseDraftProvider.notifier);
+    final mergedLines = [...cur.lines, ...scan.lines];
+    var next = cur.copyWith(lines: mergedLines);
+    final sn = scan.supplierName?.trim();
+    if ((cur.supplierId == null || cur.supplierId!.isEmpty) &&
+        sn != null &&
+        sn.isNotEmpty) {
+      next = next.copyWith(supplierName: sn);
+      if (_supplierCtrl.text.trim().isEmpty) {
+        _supplierCtrl.text = sn;
       }
     }
-    final list = bySupplierId.entries.toList()
-      ..sort((a, b) =>
-          (b.value['deals'] as int).compareTo(a.value['deals'] as int));
-    final names = <String>[];
-    for (final e in list.take(3)) {
-      final n = e.value['name'] as String;
-      if (n.isNotEmpty) names.add(n);
-    }
-    return names;
+    notifier.replaceDraft(next);
+    _syncControllersFromDraft();
+    _onDraftChanged();
   }
+
+  Future<void> _openScanBillSheet() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    FocusScope.of(context).unfocus();
+    if (!mounted) return;
+    final h = MediaQuery.sizeOf(context).height * 0.92;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        return SizedBox(
+          height: h,
+          child: Scaffold(
+            appBar: AppBar(
+              automaticallyImplyLeading: false,
+              title: const Text('Scan bill'),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () => Navigator.of(ctx).pop(),
+                ),
+              ],
+            ),
+            body: PurchaseBillScanPanel(
+              compactHeading: true,
+              onApplyDraft: (d) {
+                Navigator.of(ctx).pop();
+                _mergeScannedDraft(d);
+                if (mounted) {
+                  setState(() => _wizStep = 1);
+                }
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+
 
   /// Restricts supplier pick to intersection of [default_supplier_ids] on every line
   /// that has a catalog item with non-empty defaults. If any such line has no defaults,
@@ -748,6 +785,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       _syncControllersFromDraft();
       setState(() {
         _supplierFieldError = null;
+        _brokerFieldError = null;
         _inlineSaveError = null;
       });
       _onDraftChanged();
@@ -820,10 +858,12 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     _syncControllersFromDraft();
     setState(() {
       _supplierFieldError = null;
+      _brokerFieldError = null;
       _inlineSaveError = null;
     });
     _onDraftChanged();
     HapticFeedback.selectionClick();
+    _maybeAutoAdvanceFromParty();
     unawaited(_openCatalogLinePrefillIfNeeded());
   }
 
@@ -877,10 +917,12 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     if (!mounted) return;
     _syncControllersFromDraft();
     setState(() {
+      _brokerFieldError = null;
       _inlineSaveError = null;
     });
     _onDraftChanged();
     HapticFeedback.selectionClick();
+    _maybeAutoAdvanceFromParty();
   }
 
   Future<void> _openItemSheet(
@@ -951,28 +993,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
                 },
           onDefaultsResolved: session == null
               ? null
-              : (d) {
-                  final notifier = ref.read(purchaseDraftProvider.notifier);
-                  final pdays = d['payment_days'];
-                  if (pdays is num && pdays.toInt() >= 0) {
-                    notifier.setPaymentDaysText('${pdays.toInt()}');
-                  }
-                  final brid = d['broker_id']?.toString().trim();
-                  if (brid != null && brid.isNotEmpty) {
-                    final brokers =
-                        ref.read(brokersListProvider).valueOrNull ?? const [];
-                    var bn = 'Broker';
-                    for (final b in brokers) {
-                      if (b['id']?.toString() == brid) {
-                        bn = b['name']?.toString() ?? bn;
-                        break;
-                      }
-                    }
-                    notifier.setBroker(brid, bn, fromSupplier: false);
-                  }
-                  _syncControllersFromDraft();
-                  if (mounted) setState(() {});
-                },
+              : _applyHeaderDefaultsFromLastTrade,
           resolveCatalogItem: session == null
               ? null
               : (String catalogItemId) =>
@@ -1065,15 +1086,25 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     setState(() {
       _inlineSaveError = null;
       _supplierFieldError = null;
+      _brokerFieldError = null;
     });
     final v = ref.read(purchaseSaveValidationProvider);
     if (!v.isOk) {
       if (v.errorMessage != null) {
         final msg = v.errorMessage!.toLowerCase();
         final isSupplier = msg.contains('supplier');
+        final isBroker = msg.contains('broker');
         if (isSupplier) {
           setState(() {
             _supplierFieldError = v.errorMessage;
+            _brokerFieldError = null;
+            _inlineSaveError = null;
+            _wizStep = 0;
+          });
+        } else if (isBroker) {
+          setState(() {
+            _brokerFieldError = v.errorMessage;
+            _supplierFieldError = null;
             _inlineSaveError = null;
             _wizStep = 0;
           });
@@ -1081,6 +1112,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
           setState(() {
             _inlineSaveError = v.errorMessage;
             _supplierFieldError = null;
+            _brokerFieldError = null;
             _wizStep = 1;
           });
         }
@@ -1089,6 +1121,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         setState(() {
           _inlineSaveError = first;
           _supplierFieldError = null;
+          _brokerFieldError = null;
           _wizStep = 1;
         });
       }
@@ -1264,13 +1297,21 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
           if (hint != null && hint.supplierField) {
             _wizStep = 0;
             _supplierFieldError = msg;
+            _brokerFieldError = null;
+            _inlineSaveError = null;
+          } else if (hint != null && hint.brokerField) {
+            _wizStep = 0;
+            _brokerFieldError = msg;
+            _supplierFieldError = null;
             _inlineSaveError = null;
           } else if (hint != null && hint.lineIndex != null) {
             _wizStep = 1;
             _supplierFieldError = null;
+            _brokerFieldError = null;
             _inlineSaveError = msg;
           } else {
             _supplierFieldError = null;
+            _brokerFieldError = null;
             _inlineSaveError = msg;
           }
         });
@@ -1303,17 +1344,33 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     await _confirmDiscardIfNeeded();
   }
 
-  void _partyAdvanceIfValid() {
+  void _maybeAutoAdvanceFromParty() {
+    if (!mounted || _wizStep != 0) return;
     final g = ref.read(purchaseStepGatesProvider);
+    if (!g.from0) return;
+    setState(() {
+      _wizStep = 1;
+      _supplierFieldError = null;
+      _brokerFieldError = null;
+      _inlineSaveError = null;
+    });
+    FocusScope.of(context).unfocus();
+  }
+
+  void _partyAdvanceIfValid() {
+    final d = ref.read(purchaseDraftProvider);
+    final hasS = d.supplierId != null && d.supplierId!.trim().isNotEmpty;
     setState(() => _inlineSaveError = null);
-    if (!g.from0) {
+    if (!hasS) {
       setState(() {
         _supplierFieldError = 'Select a supplier.';
+        _brokerFieldError = null;
       });
       return;
     }
     setState(() {
       _supplierFieldError = null;
+      _brokerFieldError = null;
       _wizStep = 1;
     });
     FocusScope.of(context).unfocus();
@@ -1337,33 +1394,28 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
               (v.lineErrors.isNotEmpty ? v.lineErrors.values.first : null) ??
               'Add at least one valid item.';
           _supplierFieldError = null;
+          _brokerFieldError = null;
         });
         return;
       }
       setState(() => _wizStep = 2);
-      return;
-    }
-    if (_wizStep == 2) {
-      if (!g.from2) {
-        final v = ref.read(purchaseSaveValidationProvider);
-        setState(() {
-          _inlineSaveError = v.errorMessage ??
-              (v.lineErrors.isNotEmpty ? v.lineErrors.values.first : null);
-        });
-        return;
-      }
-      setState(() => _wizStep = 3);
     }
   }
 
   Widget _wizBody(List<Map<String, dynamic>> catalog, bool isEdit) {
     final session = ref.read(sessionProvider);
     final bid = session?.primaryBusiness.id;
+    final api = ref.read(hexaApiProvider);
 
-    Widget stepSlot() {
-      switch (_wizStep) {
-        case 0:
-          return PurchasePartyStep(
+    Widget step;
+    switch (_wizStep) {
+      case 0:
+        step = SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          keyboardDismissBehavior:
+              ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: const EdgeInsets.only(top: 8, bottom: 12),
+          child: PurchasePartyStep(
             isEdit: isEdit,
             loadedDerivedStatus: _loadedDerivedStatus,
             loadedRemaining: _loadedRemaining,
@@ -1375,6 +1427,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
             brokerFocusNode: _partyBrokerFocus,
             onProceedFromParty: _partyAdvanceIfValid,
             supplierFieldError: _supplierFieldError,
+            brokerFieldError: _brokerFieldError,
             catalog: catalog,
             lastGoodSuppliers: _lastGoodSuppliers,
             lastGoodBrokers: _lastGoodBrokers,
@@ -1393,127 +1446,90 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
             openQuickSupplierCreate: _openQuickSupplierCreate,
             partyUserSupplierActionGen: () => _partyUserSupplierActionGeneration,
             onSupplierClear: () {
-              setState(() => _partyUserSupplierActionGeneration++);
+              setState(() {
+                _partyUserSupplierActionGeneration++;
+                _supplierFieldError = null;
+                _brokerFieldError = null;
+              });
               ref.read(purchaseDraftProvider.notifier).clearSupplier();
               _supplierCtrl.clear();
               _syncControllersFromDraft();
               _onDraftChanged();
-              setState(() {});
             },
             applyBrokerSelection: _applyBrokerSelection,
             openQuickBrokerCreate: _openQuickBrokerCreate,
             brokerRowId: _brokerRowId,
             brokerMapLabel: _brokerMapLabel,
-          );
-        case 1:
-          return PurchaseItemsStep(
-            onOpenItem: ({editIndex, initialOverride}) => _openItemSheet(
-                catalog,
-                editIndex: editIndex,
-                initialOverride: initialOverride),
-            fetchSupplierHistoryHints: _fetchSupplierHistoryHintsForCatalogs,
-            hexaBusinessIdOrNull: bid,
-          );
-        case 2:
-          return PurchaseTermsStep(
-            paymentDaysCtrl: _paymentDaysCtrl,
-            deliveredRateCtrl: _deliveredRateCtrl,
-            billtyRateCtrl: _billtyRateCtrl,
-            freightCtrl: _freightCtrl,
-            commissionCtrl: _commissionCtrl,
-            headerDiscCtrl: _headerDiscCtrl,
-            memoCtrl: _invoiceCtrl,
-            freightType: _freightType,
-            onFreightTypeChanged: (v) {
-              setState(() => _freightType = v);
-              ref.read(purchaseDraftProvider.notifier).setFreightType(v);
-              _onDraftChanged();
-            },
-            onDraftChanged: _onDraftChanged,
-          );
-        case 3:
-          return const PurchaseSummaryStep();
-        default:
-          return const PurchaseSummaryStep();
-      }
-    }
-
-    return Builder(
-      builder: (context) {
-        final step = stepSlot();
-        if (_wizStep == 0) {
-          final bottomPad =
-              20 + MediaQuery.viewPaddingOf(context).bottom + 112;
-          return SingleChildScrollView(
-            physics: const ClampingScrollPhysics(),
-            keyboardDismissBehavior:
-                ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: EdgeInsets.fromLTRB(12, 8, 12, bottomPad),
-            child: step,
-          );
-        }
-
-        return LayoutBuilder(
-          builder: (context, cts) {
-            final minFields = math.max(220.0, cts.maxHeight - 280);
-            final surfaceColor = Theme.of(context).colorScheme.surface;
-            return KeyboardSafeFormViewport(
-              horizontalPadding: 12,
-              minFieldsHeight: cts.hasBoundedHeight ? minFields : 220,
-              fields: step,
-              footer: Material(
-                elevation: 8,
-                color: surfaceColor,
-                child: SafeArea(
-                  top: false,
-                  minimum: const EdgeInsets.only(bottom: 8),
-                  child: _wizardFooterChrome(catalog, isEdit),
-                ),
-              ),
+            onOpenScanBill: _openScanBillSheet,
+          ),
+        );
+        break;
+      case 1:
+        step = PurchaseFastItemsStep(
+          catalog: catalog,
+          businessIdOrNull: bid,
+          resolveLastTradeDefaults: (cid) async {
+            if (bid == null) return {'source': 'none'};
+            final d = ref.read(purchaseDraftProvider);
+            return api.lastTradePurchaseDefaults(
+              businessId: bid,
+              catalogItemId: cid,
+              supplierId: d.supplierId,
+              brokerId: d.brokerId,
             );
           },
+          resolveCatalogItemRow: (cid) async {
+            if (bid == null || cid.isEmpty) return {};
+            try {
+              return await api.getCatalogItem(
+                businessId: bid,
+                itemId: cid,
+              );
+            } catch (_) {
+              return {};
+            }
+          },
+          onDraftChanged: _onDraftChanged,
+          defaultsSideEffect: session == null
+              ? null
+              : _applyHeaderDefaultsFromLastTrade,
+          openAdvancedItemEditor: ({editIndex, initialOverride}) =>
+              _openItemSheet(
+                catalog,
+                editIndex: editIndex,
+                initialOverride: initialOverride,
+              ),
         );
-      },
+        break;
+      case 2:
+        step = PurchaseReviewStep(
+          paymentDaysCtrl: _paymentDaysCtrl,
+          deliveredRateCtrl: _deliveredRateCtrl,
+          billtyRateCtrl: _billtyRateCtrl,
+          freightCtrl: _freightCtrl,
+          commissionCtrl: _commissionCtrl,
+          headerDiscCtrl: _headerDiscCtrl,
+          memoCtrl: _invoiceCtrl,
+          freightType: _freightType,
+          onFreightTypeChanged: (v) {
+            setState(() => _freightType = v);
+            ref.read(purchaseDraftProvider.notifier).setFreightType(v);
+            _onDraftChanged();
+          },
+          onDraftChanged: _onDraftChanged,
+        );
+        break;
+      default:
+        step = const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: step,
     );
   }
 
   Widget _wizardFooterChrome(List<Map<String, dynamic>> catalog, bool isEdit) {
-    if (_wizStep == 0 && !isEdit && (widget.editingId == null)) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              height: 48,
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: _isSaving ? null : _wizNext,
-                child: const Text(
-                  'Continue',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              height: 46,
-              child: OutlinedButton(
-                onPressed: _saveDraftNow,
-                child: const Text(
-                  'Save draft',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Edit / resume flows on party step fall through below so Continue appears here too.
     final gates = ref.watch(purchaseStepGatesProvider);
     final saveVal = ref.watch(purchaseSaveValidationProvider);
     final canAddItem = gates.from0 && !_isSaving;
@@ -1522,10 +1538,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (_inlineSaveError != null &&
-            (_wizStep == 1 ||
-                _wizStep == 2 ||
-                (_wizStep == 3 && !saveVal.isOk)))
+        if (_inlineSaveError != null && (_wizStep == 1 || _wizStep == 2))
           Material(
             color: Colors.red[50],
             child: Padding(
@@ -1536,99 +1549,114 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
               ),
             ),
           ),
-        if (_wizStep == 1)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-            child: SizedBox(
-              height: 48,
+        if (_wizStep == 0) ...[
+          SizedBox(
+            height: 48,
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: _isSaving ? null : _wizNext,
+              child: const Text(
+                'Continue',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+          if (!isEdit && widget.editingId == null) ...[
+            const SizedBox(height: 8),
+            SizedBox(
               width: double.infinity,
-              child: FilledButton(
-                onPressed: canAddItem ? () => _openItemSheet(catalog) : null,
+              height: 46,
+              child: OutlinedButton(
+                onPressed: _isSaving ? null : _saveDraftNow,
                 child: const Text(
-                  'Add item',
+                  'Save draft',
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
             ),
-          ),
-        if (_wizStep == 3)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (!saveVal.isOk)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      saveVal.errorMessage ??
-                          (saveVal.lineErrors.isNotEmpty
-                              ? saveVal.lineErrors.values.first
-                              : ''),
-                      style: TextStyle(color: Colors.red[800], fontSize: 12),
-                    ),
-                  ),
-                SizedBox(
-                  height: 48,
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed:
-                        (!saveVal.isOk || _isSaving) ? null : _validateAndSave,
-                    child: _isSaving
-                        ? const SizedBox(
-                            height: 22,
-                            width: 22,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text(
-                            'Save purchase',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 15,
-                            ),
-                          ),
-                  ),
-                ),
-              ],
+          ],
+        ],
+        if (_wizStep == 1) ...[
+          SizedBox(
+            height: 48,
+            width: double.infinity,
+            child: FilledButton(
+              onPressed:
+                  canAddItem ? () => _openItemSheet(catalog) : null,
+              child: const Text(
+                'Advanced add…',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
             ),
           ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
-          child: _wizStep == 3
-              ? Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: _isSaving ? null : () => _wizBack(),
-                    icon: const Icon(Icons.arrow_back),
-                    label: const Text('Back'),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _isSaving ? null : () => _wizBack(),
+                  child: const Text('Back'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: FilledButton(
+                  onPressed: _isSaving ? null : _wizNext,
+                  child: const Text(
+                    'Continue',
+                    style: TextStyle(fontWeight: FontWeight.w700),
                   ),
-                )
-              : Row(
-                  children: [
-                    if (_wizStep > 0)
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: _isSaving ? null : () => _wizBack(),
-                          child: const Text('Back'),
-                        ),
+                ),
+              ),
+            ],
+          ),
+        ],
+        if (_wizStep == 2) ...[
+          if (!saveVal.isOk)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                saveVal.errorMessage ??
+                    (saveVal.lineErrors.isNotEmpty
+                        ? saveVal.lineErrors.values.first
+                        : ''),
+                style: TextStyle(color: Colors.red[800], fontSize: 12),
+              ),
+            ),
+          SizedBox(
+            height: 48,
+            width: double.infinity,
+            child: FilledButton(
+              onPressed:
+                  (!saveVal.isOk || _isSaving) ? null : _validateAndSave,
+              child: _isSaving
+                  ? const SizedBox(
+                      height: 22,
+                      width: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
                       ),
-                    if (_wizStep > 0) const SizedBox(width: 10),
-                    Expanded(
-                      flex: _wizStep > 0 ? 2 : 1,
-                      child: FilledButton(
-                        onPressed: _isSaving ? null : _wizNext,
-                        child: const Text(
-                          'Continue',
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
+                    )
+                  : const Text(
+                      'Save purchase',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
                       ),
                     ),
-                  ],
-                ),
-        ),
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _isSaving ? null : () => _wizBack(),
+              icon: const Icon(Icons.arrow_back),
+              label: const Text('Back'),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -1705,9 +1733,18 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         _lastCatalogSnapshot ??
         const <Map<String, dynamic>>[];
 
-    final appBarTitle = isEdit
-        ? 'Edit purchase'
-        : (_wizStep == 0 ? 'New Purchase' : 'New purchase');
+    final appBarTitle =
+        !isEdit
+            ? switch (_wizStep) {
+              0 => 'New purchase — Party',
+              1 => 'New purchase — Items',
+              _ => 'New purchase — Review',
+            }
+            : switch (_wizStep) {
+              0 => 'Edit purchase — Party',
+              1 => 'Edit purchase — Items',
+              _ => 'Edit purchase — Review',
+            };
 
     Widget purchaseWizardSafeBody() {
       return SafeArea(
@@ -1794,9 +1831,8 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     }
 
     final theme = Theme.of(context);
-    final showPartyBottomBar = _wizStep == 0 &&
-        !_isBootstrapping &&
-        _editBootstrapError == null;
+    final showWizardFooter =
+        !_isBootstrapping && _editBootstrapError == null;
 
     return PopScope(
       canPop: isEdit || !_formDirty,
@@ -1819,22 +1855,23 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
             onPressed: _isSaving ? null : () => _wizBack(),
           ),
         ),
-        body: _wizStep == 0
-            ? purchaseWizardSafeBody()
-            : GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onTap: () => FocusScope.of(context).unfocus(),
-                child: purchaseWizardSafeBody(),
-              ),
-        bottomNavigationBar: showPartyBottomBar
+        body: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: purchaseWizardSafeBody(),
+        ),
+        bottomNavigationBar: showWizardFooter
             ? Material(
                 elevation: 8,
                 surfaceTintColor: Colors.transparent,
                 color: theme.colorScheme.surface,
                 child: SafeArea(
                   top: false,
-                  minimum: const EdgeInsets.only(bottom: 8),
-                  child: _wizardFooterChrome(catalog, isEdit),
+                  minimum: const EdgeInsets.only(bottom: 6),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
+                    child: _wizardFooterChrome(catalog, isEdit),
+                  ),
                 ),
               )
             : null,

@@ -196,7 +196,8 @@ final purchaseStepGatesProvider =
   } else {
     validLines = false;
   }
-  // Step0 supplier → Step1 items → Step2 terms → Step3 summary (items gate step 1).
+  // Party: supplier only. Broker is optional (terms/freight defaults when set).
+  // Items → Review keeps the same validity tuple for callers.
   return (
     from0: hasS,
     from1: validLines,

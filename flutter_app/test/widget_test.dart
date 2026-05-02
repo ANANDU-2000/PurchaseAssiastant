@@ -43,7 +43,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Summary'), findsOneWidget);
     expect(find.text('Analytics'), findsOneWidget);
-    expect(find.text('This month'), findsWidgets);
+    expect(find.text('Last 30 days'), findsWidgets);
   });
 
   /// Uses [ProviderContainer] instead of pumping [HexaApp]: splash schedules a long

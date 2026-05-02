@@ -13,6 +13,7 @@ import '../../../core/utils/trade_purchase_commission.dart';
 import '../../../core/providers/purchase_prefill_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
+import '../../../shared/widgets/trade_purchase_ledger_cards.dart';
 import '../../../shared/widgets/search_picker_sheet.dart';
 
 final _brokerProvider = FutureProvider.autoDispose
@@ -45,7 +46,6 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
   Map<String, dynamic>? _metrics;
   /// Trades for [_from, _to] (broker-filtered) — used for chart; single source: trade purchase lines.
   List<TradePurchase> _rangeTrades = const [];
-  List<TradePurchase> _recentTrades = const [];
 
   @override
   void initState() {
@@ -98,12 +98,10 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
         rangeTrades = rangeTrades.where(_inSelectedRange).toList();
         rangeTrades.sort((a, b) => b.purchaseDate.compareTo(a.purchaseDate));
       } catch (_) {}
-      final recentTrades = rangeTrades.take(5).toList();
       if (mounted) {
         setState(() {
           _metrics = m;
           _rangeTrades = rangeTrades;
-          _recentTrades = recentTrades;
           _loading = false;
         });
       }
@@ -233,6 +231,17 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
         ),
         data: (b) {
           final cs = Theme.of(context).colorScheme;
+          final viewW = MediaQuery.sizeOf(context).width;
+          final compactLedger = viewW < 560;
+          final ledgerT = ledgerMoneyKgTotals(_rangeTrades,
+              include: defaultActiveBill);
+          final ledgerC = ledgerContainerHints(_rangeTrades,
+              include: defaultActiveBill);
+          final inrLedger = NumberFormat.currency(
+            locale: 'en_IN',
+            symbol: '₹',
+            decimalDigits: 0,
+          );
           final ct = b['commission_type']?.toString() ?? '';
           final cv = b['commission_value'];
           final badgeLabel = ct == 'flat'
@@ -355,61 +364,44 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
+                  TradeLedgerSummaryStrip(
+                    bills: ledgerT.bills,
+                    inrSpend: inrLedger.format(ledgerT.spend.round()),
+                    kg: ledgerT.kg,
+                    bags: ledgerC.bags,
+                    boxes: ledgerC.boxes,
+                    tins: ledgerC.tins,
+                    subtitle:
+                        '${fmt.format(_from)} – ${fmt.format(_to)} · trade PUR',
+                  ),
+                  const SizedBox(height: 12),
                   Text(
-                    'Recent trade purchases (PUR)',
+                    'Trade purchases (PUR)',
                     style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 8),
-                  if (_recentTrades.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Text(
-                        'No PUR bills with this broker yet.',
-                        style: tt.bodySmall?.copyWith(color: HexaColors.textSecondary),
-                      ),
-                    )
-                  else
-                    Card(
-                      margin: EdgeInsets.zero,
-                      child: Column(
-                        children: [
-                          for (final p in _recentTrades.take(5))
-                            ListTile(
-                              dense: true,
-                              title: Text(
-                                p.humanId,
-                                style: const TextStyle(fontWeight: FontWeight.w700),
-                              ),
-                              subtitle: Text(
-                                '${fmt.format(p.purchaseDate)} · ${p.derivedStatus}',
-                                style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-                              ),
-                              trailing: Text(
-                                NumberFormat.currency(
-                                  locale: 'en_IN',
-                                  symbol: '₹',
-                                  decimalDigits: 0,
-                                ).format(p.totalAmount.round()),
-                                style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
-                              ),
-                              onTap: () => context.push('/purchase/detail/${p.id}'),
-                            ),
-                          ListTile(
-                            dense: true,
-                            leading: Icon(Icons.receipt_long_outlined, size: 20, color: cs.primary),
-                            title: Text(
-                              'Full PUR ledger',
-                              style: TextStyle(
-                                color: cs.primary,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            onTap: () => context.push('/broker/${widget.brokerId}/ledger'),
-                          ),
-                        ],
+                  TradeLedgerCardList(
+                    trades: _rangeTrades,
+                    useCompactLines: compactLedger,
+                    emptyHint:
+                        'No PUR bills with this broker in this date range.',
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    leading:
+                        Icon(Icons.receipt_long_outlined, size: 20, color: cs.primary),
+                    title: Text(
+                      'Full PUR ledger',
+                      style: TextStyle(
+                        color: cs.primary,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
+                    onTap: () =>
+                        context.push('/broker/${widget.brokerId}/ledger'),
+                  ),
                   const SizedBox(height: 20),
                   Text('Commission impact (monthly)',
                       style:

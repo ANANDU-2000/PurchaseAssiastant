@@ -11,6 +11,7 @@ import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/providers/analytics_kpi_provider.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/business_profile_provider.dart';
+import '../../../core/providers/home_dashboard_provider.dart';
 import '../../../core/providers/reports_provider.dart';
 import '../../../core/reporting/trade_report_aggregate.dart';
 import '../../../core/services/reports_pdf.dart';
@@ -147,12 +148,38 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
       _DatePreset.today => (from: today, to: today),
       _DatePreset.week =>
         (from: today.subtract(const Duration(days: 6)), to: today),
-      _DatePreset.month => (from: DateTime(n.year, n.month, 1), to: today),
+      _DatePreset.month =>
+        (from: today.subtract(const Duration(days: 29)), to: today),
       _DatePreset.year => (from: DateTime(n.year, 1, 1), to: today),
       _DatePreset.custom => ref.read(analyticsDateRangeProvider),
     };
     setState(() {
       _preset = p;
+      _visibleCap = 5;
+    });
+    _bumpInvalidate();
+  }
+
+  void _syncRangeWithHome() {
+    final hp = ref.read(homePeriodProvider);
+    final custom = ref.read(homeCustomDateRangeProvider);
+    final r = homePeriodRange(
+      hp,
+      now: DateTime.now(),
+      custom: custom,
+    );
+    final from = DateTime(r.start.year, r.start.month, r.start.day);
+    final rawTo = r.end.subtract(const Duration(days: 1));
+    final to = DateTime(rawTo.year, rawTo.month, rawTo.day);
+    ref.read(analyticsDateRangeProvider.notifier).state = (from: from, to: to);
+    setState(() {
+      _preset = switch (hp) {
+        HomePeriod.today => _DatePreset.today,
+        HomePeriod.week => _DatePreset.week,
+        HomePeriod.month => _DatePreset.month,
+        HomePeriod.year => _DatePreset.year,
+        HomePeriod.custom => _DatePreset.custom,
+      };
       _visibleCap = 5;
     });
     _bumpInvalidate();
@@ -274,6 +301,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
   }
 
   Widget _totalsTop(TradeReportTotals t) {
+    final tt = Theme.of(context).textTheme;
     final packBits = <Widget>[
       if (t.bags > 1e-9)
         Text('Bags ${_qtyReadable(t.bags)}',
@@ -304,15 +332,17 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Total purchase',
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  'Total purchase (${t.deals} bill${t.deals == 1 ? '' : 's'})',
+                  style: tt.labelMedium?.copyWith(
                         color: HexaColors.textBody,
+                        fontWeight: FontWeight.w600,
                       ),
                 ),
+                const SizedBox(height: 4),
                 SelectableText(
                   _inr0(t.inr),
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
+                  style: tt.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w900,
                       ),
                 ),
               ],
@@ -328,7 +358,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                 if (packBits.isEmpty)
                   Text(
                     '—',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    style: tt.bodySmall?.copyWith(
                           color: HexaColors.textBody,
                           fontWeight: FontWeight.w600,
                         ),
@@ -336,6 +366,46 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _reportsFooterTotals(TradeReportTotals t) {
+    Widget cell(String label, String value) {
+      final tt = Theme.of(context).textTheme;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            label,
+            style: tt.labelSmall?.copyWith(
+              color: HexaColors.textBody,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          SelectableText(
+            value,
+            textAlign: TextAlign.center,
+            style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+          ),
+        ],
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+      decoration: BoxDecoration(
+        color: HexaColors.brandCard.withValues(alpha: 0.85),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: HexaColors.brandBorder),
+      ),
+      child: Row(
+        children: [
+          Expanded(child: cell('Bills', '${t.deals}')),
+          Expanded(child: cell('Kg', _kgReadable(t.kg))),
+          Expanded(child: cell('₹ total', _inr0(t.inr))),
         ],
       ),
     );
@@ -724,47 +794,95 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                       side: BorderSide(color: HexaColors.brandBorder),
                     ),
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(8, 4, 12, 8),
-                      child: Row(
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          PopupMenuButton<_DatePreset>(
-                            tooltip: 'Date range',
-                            onSelected: (p) {
-                              if (p == _DatePreset.custom) {
-                                _pickCustomRange();
-                              } else {
-                                _applyDatePreset(p);
-                              }
-                            },
-                            itemBuilder: (ctx) => _DatePreset.values
-                                .map(
-                                  (p) => PopupMenuItem(
-                                    value: p,
-                                    child: Text(_presetLabel(p)),
+                          Text(
+                            'Date range',
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelLarge
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              for (final p in <_DatePreset>[
+                                _DatePreset.today,
+                                _DatePreset.week,
+                                _DatePreset.month,
+                                _DatePreset.year,
+                              ])
+                                ChoiceChip(
+                                  label: Text(
+                                    _presetLabel(p),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: _preset == p
+                                          ? Colors.white
+                                          : HexaColors.textBody,
+                                    ),
                                   ),
-                                )
-                                .toList(),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  _presetLabel(_preset),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 13,
+                                  selected: _preset == p,
+                                  onSelected: (_) => _applyDatePreset(p),
+                                  selectedColor: HexaColors.primaryMid,
+                                  backgroundColor:
+                                      HexaColors.brandBackground.withValues(
+                                          alpha: 0.6),
+                                  showCheckmark: false,
+                                  side: BorderSide.none,
+                                ),
+                              ChoiceChip(
+                                label: Text(
+                                  _presetLabel(_DatePreset.custom),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: _preset == _DatePreset.custom
+                                        ? Colors.white
+                                        : HexaColors.textBody,
                                   ),
                                 ),
-                                const Icon(Icons.expand_more_rounded, size: 18),
-                              ],
+                                selected: _preset == _DatePreset.custom,
+                                onSelected: (_) => _pickCustomRange(),
+                                selectedColor: HexaColors.primaryMid,
+                                backgroundColor:
+                                    HexaColors.brandBackground.withValues(
+                                        alpha: 0.6),
+                                showCheckmark: false,
+                                side: BorderSide.none,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          SelectableText(
+                            rangeFmt,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: HexaColors.brandPrimary,
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: SelectableText(
-                              rangeFmt,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: HexaColors.textBody,
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: OutlinedButton.icon(
+                              onPressed: _syncRangeWithHome,
+                              icon: Icon(
+                                Icons.home_rounded,
+                                size: 18,
+                                color: HexaColors.primaryMid,
+                              ),
+                              label: Text(
+                                'Same as Home',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: HexaColors.brandPrimary,
+                                ),
                               ),
                             ),
                           ),
@@ -853,7 +971,14 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                       ),
                     )
                   else
-                    _listBody(agg),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _listBody(agg),
+                        const SizedBox(height: 16),
+                        _reportsFooterTotals(agg.totals),
+                      ],
+                    ),
                 ],
               ),
             ),

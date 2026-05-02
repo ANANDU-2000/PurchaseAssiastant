@@ -375,15 +375,32 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
   bool _searchLoading = false;
   static const _searchMinLen = 2;
 
+  static String _scopeForTab(int tabIndex) {
+    const scopes = ['suppliers', 'brokers', 'categories', 'catalog_types', 'items'];
+    if (tabIndex < 0 || tabIndex >= scopes.length) return 'all';
+    return scopes[tabIndex];
+  }
+
+  void _onTabChanged() {
+    if (_tabController.indexIsChanging || !mounted) return;
+    setState(() {});
+    final q = _searchCtrl.text.trim();
+    if (q.length >= _searchMinLen) {
+      _debounce?.cancel();
+      _scheduleSearch(q);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
-    _tabController.addListener(() => setState(() {}));
+    _tabController = TabController(length: 5, vsync: this);
+    _tabController.addListener(_onTabChanged);
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_onTabChanged);
     _debounce?.cancel();
     _searchCtrl.dispose();
     _tabController.dispose();
@@ -401,7 +418,8 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
       });
       return;
     }
-    _debounce = Timer(const Duration(milliseconds: 150), () async {
+    final scopeTab = _tabController.index;
+    _debounce = Timer(const Duration(milliseconds: 180), () async {
       if (!mounted) return;
       final session = ref.read(sessionProvider);
       if (session == null) return;
@@ -413,6 +431,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
         final data = await ref.read(hexaApiProvider).contactsSearch(
               businessId: session.primaryBusiness.id,
               query: t,
+              scope: _scopeForTab(scopeTab),
             );
         if (!mounted) return;
         setState(() {
@@ -442,8 +461,12 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
         return ((d['brokers'] as List?) ?? []).length;
       case 2:
         return ((d['categories'] as List?) ?? []).length;
-      default:
+      case 3:
+        return ((d['catalog_subcategories'] as List?) ?? []).length;
+      case 4:
         return ((d['item_names'] as List?) ?? []).length;
+      default:
+        return 0;
     }
   }
 
@@ -830,7 +853,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-                subtitle: const Text('Open items in this category'),
+                subtitle: const Text('Purchase line category (from history)'),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => context.push(
                     '/contacts/category?name=${Uri.encodeComponent(name)}'),
@@ -838,7 +861,65 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
             );
           },
         );
-      default:
+      case 3:
+        final subs = (d['catalog_subcategories'] as List?) ?? [];
+        if (subs.isEmpty) {
+          return Center(
+              child: Text('No catalog type matches.',
+                  style: tt.bodyMedium
+                      ?.copyWith(color: HexaColors.textSecondary)));
+        }
+        return ListView.separated(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+          itemCount: subs.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (context, i) {
+            final m = Map<String, dynamic>.from(subs[i] as Map);
+            final tid = m['id']?.toString() ?? '';
+            final cid = m['category_id']?.toString() ?? '';
+            final tname = m['name']?.toString() ?? '—';
+            final cname = m['category_name']?.toString() ?? '';
+            final cs = Theme.of(context).colorScheme;
+            return Card(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  side: const BorderSide(color: HexaColors.border)),
+              child: ListTile(
+                leading: const Icon(Icons.category_outlined,
+                    color: HexaColors.primaryMid),
+                title: Text.rich(
+                  TextSpan(
+                    children: highlightSearchQuery(
+                      tname,
+                      _searchQuery,
+                      baseStyle: const TextStyle(fontWeight: FontWeight.w700),
+                      highlightStyle: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: cs.primary,
+                        backgroundColor:
+                            cs.primaryContainer.withValues(alpha: 0.4),
+                      ),
+                    ),
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Text(
+                  cname.isNotEmpty ? 'In $cname' : 'Catalog type',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: tid.isEmpty || cid.isEmpty
+                    ? null
+                    : () => context.push('/catalog/category/$cid/type/$tid'),
+              ),
+            );
+          },
+        );
+      case 4:
         final items = (d['item_names'] as List?) ?? [];
         if (items.isEmpty) {
           return Center(
@@ -887,6 +968,8 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
             );
           },
         );
+      default:
+        return const SizedBox.shrink();
     }
   }
 
@@ -900,6 +983,10 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
         break;
       case 2:
         _addCategorySheet();
+        break;
+      case 3:
+        if (!mounted) return;
+        context.push('/catalog');
         break;
       default:
         _addItemSheet();
@@ -923,7 +1010,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                 style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
             const SizedBox(height: 2),
             Text(
-              'Suppliers · brokers · categories · names for purchases. Units & variants: Catalog screen.',
+              'Suppliers · brokers · categories · catalog types · item names.',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: tt.labelSmall?.copyWith(
@@ -964,7 +1051,8 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                   _tabWithBadge('Suppliers', _searchCountForTab(0)),
                   _tabWithBadge('Brokers', _searchCountForTab(1)),
                   _tabWithBadge('Categories', _searchCountForTab(2)),
-                  _tabWithBadge('Items', _searchCountForTab(3)),
+                  _tabWithBadge('Types', _searchCountForTab(3)),
+                  _tabWithBadge('Items', _searchCountForTab(4)),
                 ],
               ),
             ),
@@ -1012,6 +1100,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                           _searchResultsForTab(1),
                           _searchResultsForTab(2),
                           _searchResultsForTab(3),
+                          _searchResultsForTab(4),
                         ],
                       ))
                 : TabBarView(
@@ -1028,11 +1117,51 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                         onDelete: _deleteBroker,
                       ),
                       _CategoriesTab(),
+                      const _CatalogTypesBrowseHint(),
                       _ItemsTab(),
                     ],
                   ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CatalogTypesBrowseHint extends StatelessWidget {
+  const _CatalogTypesBrowseHint();
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final sub = Theme.of(context).colorScheme.onSurfaceVariant;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Catalog types',
+              textAlign: TextAlign.center,
+              style:
+                  tt.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Subcategories (e.g. rice type) live under Categories in Catalog. Manage structure there; search finds types on the Types tab.',
+              textAlign: TextAlign.center,
+              style: tt.bodyMedium?.copyWith(color: sub, height: 1.35),
+            ),
+            const SizedBox(height: 22),
+            FilledButton.icon(
+              onPressed: () => context.push('/catalog'),
+              icon: const Icon(Icons.open_in_new_rounded, size: 18),
+              label: const Text('Open catalog'),
+            ),
+          ],
+        ),
       ),
     );
   }

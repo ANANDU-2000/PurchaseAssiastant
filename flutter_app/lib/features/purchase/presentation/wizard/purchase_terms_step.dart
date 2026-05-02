@@ -76,8 +76,9 @@ class _PurchaseTermsStepState extends ConsumerState<PurchaseTermsStep> {
         ),
       );
     }
-    return ListView(
-      padding: EdgeInsets.zero,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         ExpansionTile(
           initiallyExpanded: false,

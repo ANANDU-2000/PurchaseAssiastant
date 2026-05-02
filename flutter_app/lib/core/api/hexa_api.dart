@@ -1549,11 +1549,18 @@ class HexaApi {
         .delete<void>('/v1/businesses/$businessId/catalog-variants/$variantId');
   }
 
-  Future<Map<String, dynamic>> contactsSearch(
-      {required String businessId, required String query}) async {
+  Future<Map<String, dynamic>> contactsSearch({
+    required String businessId,
+    required String query,
+    String? scope,
+  }) async {
+    final qp = <String, dynamic>{'q': query};
+    if (scope != null && scope.trim().isNotEmpty) {
+      qp['scope'] = scope.trim();
+    }
     final res = await _dio.get<Map<String, dynamic>>(
       '/v1/businesses/$businessId/contacts/search',
-      queryParameters: {'q': query},
+      queryParameters: qp,
     );
     return res.data ?? {};
   }

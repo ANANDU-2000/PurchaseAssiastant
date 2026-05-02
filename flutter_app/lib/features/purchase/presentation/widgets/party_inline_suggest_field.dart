@@ -80,8 +80,8 @@ class PartyInlineSuggestField extends StatefulWidget {
 }
 
 class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
-  static const _filterDebounce = Duration(milliseconds: 350);
-  static const _revealDebounce = Duration(milliseconds: 400);
+  static const _filterDebounce = Duration(milliseconds: 400);
+  static const _revealDebounce = Duration(milliseconds: 420);
 
   bool _pickInProgress = false;
   bool _suppressPanelAfterPick = false;

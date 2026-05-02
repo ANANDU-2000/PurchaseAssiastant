@@ -27,6 +27,7 @@ class PurchasePartyStep extends ConsumerWidget {
     required this.brokerFocusNode,
     required this.onProceedFromParty,
     required this.supplierFieldError,
+    required this.brokerFieldError,
     required this.catalog,
     required this.lastGoodSuppliers,
     required this.lastGoodBrokers,
@@ -47,6 +48,7 @@ class PurchasePartyStep extends ConsumerWidget {
     required this.openQuickBrokerCreate,
     required this.brokerRowId,
     required this.brokerMapLabel,
+    this.onOpenScanBill,
   });
 
   final bool isEdit;
@@ -64,6 +66,8 @@ class PurchasePartyStep extends ConsumerWidget {
   final VoidCallback onProceedFromParty;
 
   final String? supplierFieldError;
+  /// Shown below broker search when Continue pressed without broker.
+  final String? brokerFieldError;
   final List<Map<String, dynamic>> catalog;
   final List<Map<String, dynamic>>? lastGoodSuppliers;
   final List<Map<String, dynamic>>? lastGoodBrokers;
@@ -96,6 +100,9 @@ class PurchasePartyStep extends ConsumerWidget {
   final Future<void> Function(List<Map<String, dynamic>>) openQuickBrokerCreate;
   final String Function(Map<String, dynamic>) brokerRowId;
   final String Function(Map<String, dynamic>) brokerMapLabel;
+
+  /// Optional: open inline bill scanner (wizard hosts bottom sheet).
+  final VoidCallback? onOpenScanBill;
 
   Future<void> _pickDate(BuildContext context, WidgetRef ref) async {
     final draft = ref.read(purchaseDraftProvider);
@@ -642,12 +649,43 @@ class PurchasePartyStep extends ConsumerWidget {
       },
     );
 
+    if (brokerFieldError != null) {
+      brokerCell = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          brokerCell,
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              brokerFieldError!,
+              style: TextStyle(color: Colors.red[800], fontSize: 11),
+            ),
+          ),
+        ],
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
         supplierCell,
         const SizedBox(height: 16),
+        Text(
+          'Broker (optional)',
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'When set: payment days, freight, delivered/billty, commission defaults apply.',
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+        ),
+        const SizedBox(height: 8),
         brokerCell,
       ],
     );
@@ -675,6 +713,14 @@ class PurchasePartyStep extends ConsumerWidget {
           const SizedBox(height: 4),
         ],
         _compactMeta(context, ref),
+        if (onOpenScanBill != null) ...[
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: onOpenScanBill,
+            icon: const Icon(Icons.document_scanner_outlined),
+            label: const Text('Scan bill (camera)'),
+          ),
+        ],
         const SizedBox(height: 6),
         _partyFieldsColumn(context, ref),
         if (showClearSupplier)

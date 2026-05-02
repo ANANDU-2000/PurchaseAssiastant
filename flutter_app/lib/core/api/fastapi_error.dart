@@ -132,14 +132,22 @@ String? fastApiDetailString(Object? data) {
 
 /// Hints for scrolling the purchase wizard to the relevant field on validation errors.
 class FastApiPurchaseScrollHint {
-  const FastApiPurchaseScrollHint._({this.supplierField = false, this.lineIndex});
+  const FastApiPurchaseScrollHint._({
+    this.supplierField = false,
+    this.brokerField = false,
+    this.lineIndex,
+  });
 
   const FastApiPurchaseScrollHint.supplier() : this._(supplierField: true);
 
+  const FastApiPurchaseScrollHint.broker() : this._(brokerField: true);
+
   /// 0-based line index from e.g. `["body", "lines", 2, "qty"]`.
-  const FastApiPurchaseScrollHint.line(int index) : this._(supplierField: false, lineIndex: index);
+  const FastApiPurchaseScrollHint.line(int index)
+      : this._(supplierField: false, lineIndex: index);
 
   final bool supplierField;
+  final bool brokerField;
   final int? lineIndex;
 }
 
@@ -159,6 +167,9 @@ FastApiPurchaseScrollHint? fastApiPurchaseScrollHint(Object? data) {
     }
     if (segs.isNotEmpty && segs.last == 'supplier_id') {
       return const FastApiPurchaseScrollHint.supplier();
+    }
+    if (segs.isNotEmpty && segs.last == 'broker_id') {
+      return const FastApiPurchaseScrollHint.broker();
     }
     final li = segs.indexOf('lines');
     if (li >= 0 && li + 1 < segs.length) {

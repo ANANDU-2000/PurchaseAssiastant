@@ -7,8 +7,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
-import '../../../core/calc_engine.dart' show lineMoney;
-import '../../../core/catalog/item_trade_history.dart' show tradeLineToCalc;
 import '../../../core/config/app_config.dart';
 import '../../../core/router/navigation_ext.dart';
 import '../../../core/models/trade_purchase_models.dart';
@@ -16,6 +14,7 @@ import '../../../core/providers/purchase_prefill_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/hexa_empty_state.dart';
+import '../../../shared/widgets/trade_purchase_ledger_cards.dart';
 import 'supplier_create_wizard_page.dart';
 
 final _supplierProvider = FutureProvider.autoDispose
@@ -42,9 +41,6 @@ List<TradePurchase> _tradesInDateWindow(
         p,
   ];
 }
-
-double _lineAmountInr(TradePurchaseLine ln) =>
-    lineMoney(tradeLineToCalc(ln));
 
 class SupplierDetailPage extends ConsumerStatefulWidget {
   const SupplierDetailPage({super.key, required this.supplierId});
@@ -143,15 +139,26 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
       p.statusEnum != PurchaseStatus.draft &&
       p.statusEnum != PurchaseStatus.cancelled;
 
-  (int bills, double spend, double unpaid) _rangeStats() {
-    var bills = 0, spend = 0.0, unpaid = 0.0;
-    for (final p in _trades) {
-      if (!_isActiveBill(p)) continue;
-      bills++;
-      spend += p.totalAmount;
-      unpaid += p.remaining;
-    }
-    return (bills, spend, unpaid);
+  ({
+    int bills,
+    double spend,
+    double unpaid,
+    double kg,
+    double bags,
+    double boxes,
+    double tins,
+  }) _rangeStats() {
+    final m = ledgerMoneyKgTotals(_trades, include: _isActiveBill);
+    final c = ledgerContainerHints(_trades, include: _isActiveBill);
+    return (
+      bills: m.bills,
+      spend: m.spend,
+      unpaid: m.unpaid,
+      kg: m.kg,
+      bags: c.bags,
+      boxes: c.boxes,
+      tins: c.tins,
+    );
   }
 
   List<TradePurchase> _tradesForList() {
@@ -199,7 +206,7 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
             ? ln.landingCostPerKg
             : ln.landingCost;
         buf.writeln(
-            '$d,${p.humanId},"${ln.itemName.replaceAll('"', "'")}",${ln.qty},${ln.unit},$lpu,${ln.sellingCost ?? ''},${_lineAmountInr(ln)}');
+            '$d,${p.humanId},"${ln.itemName.replaceAll('"', "'")}",${ln.qty},${ln.unit},$lpu,${ln.sellingCost ?? ''},${lineAmountInr(ln)}');
       }
     }
     if (buf.length < 100) {
@@ -294,15 +301,19 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
           final gst = s['gst_number']?.toString() ?? s['gstin']?.toString() ?? '';
           final cs = Theme.of(context).colorScheme;
           final st = _rangeStats();
-          final billN = st.$1;
-          final spendN = st.$2;
-          final unpaidN = st.$3;
+          final billN = st.bills;
+          final spendN = st.spend;
+          final unpaidN = st.unpaid;
+          final kgN = st.kg;
           final inr = NumberFormat.currency(
             locale: 'en_IN',
             symbol: '₹',
             decimalDigits: 0,
           );
           final shown = _tradesForList();
+          final filtered = _searchCtrl.text.trim().isNotEmpty;
+          final mShown = ledgerMoneyKgTotals(shown, include: _isActiveBill);
+          final cShown = ledgerContainerHints(shown, include: _isActiveBill);
           const chipTeal = Color(0xFF17A8A7);
           const chipText = Color(0xFF374151);
           return RefreshIndicator(
@@ -447,6 +458,48 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                             ),
                           ],
                         ),
+                        if (kgN > 0 ||
+                            st.bags > 0 ||
+                            st.boxes > 0 ||
+                            st.tins > 0) ...[
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 6,
+                            children: [
+                              if (kgN > 0)
+                                _WeightChip(
+                                  label: 'Est. weight',
+                                  value: kgN >= 1000
+                                      ? '${(kgN / 1000).toStringAsFixed(2)} t'
+                                      : (kgN == kgN.roundToDouble()
+                                          ? '${kgN.round()} kg'
+                                          : '${kgN.toStringAsFixed(1)} kg'),
+                                ),
+                              if (st.bags > 0)
+                                _WeightChip(
+                                  label: 'Bags',
+                                  value: st.bags == st.bags.roundToDouble()
+                                      ? '${st.bags.round()}'
+                                      : st.bags.toStringAsFixed(1),
+                                ),
+                              if (st.boxes > 0)
+                                _WeightChip(
+                                  label: 'Boxes',
+                                  value: st.boxes == st.boxes.roundToDouble()
+                                      ? '${st.boxes.round()}'
+                                      : st.boxes.toStringAsFixed(1),
+                                ),
+                              if (st.tins > 0)
+                                _WeightChip(
+                                  label: 'Tins',
+                                  value: st.tins == st.tins.roundToDouble()
+                                      ? '${st.tins.round()}'
+                                      : st.tins.toStringAsFixed(1),
+                                ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -521,6 +574,20 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                   ),
                 ),
                 const SizedBox(height: 12),
+                if (filtered && shown.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: TradeLedgerSummaryStrip(
+                      bills: mShown.bills,
+                      inrSpend: inr.format(mShown.spend.round()),
+                      kg: mShown.kg,
+                      bags: cShown.bags,
+                      boxes: cShown.boxes,
+                      tins: cShown.tins,
+                      subtitle:
+                          '${shown.length} bill${shown.length == 1 ? '' : 's'} match search · ${fmt.format(_from)} – ${fmt.format(_to)}',
+                    ),
+                  ),
                 if (_loading)
                   const Padding(
                     padding: EdgeInsets.all(24),
@@ -555,7 +622,15 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                       onPrimaryAction: () => context.push('/purchase/new'),
                     )
                   else
-                    _SupplierTradeTable(trades: shown),
+                    LayoutBuilder(
+                      builder: (context, c) {
+                        final narrow = c.maxWidth < 560;
+                        return TradeLedgerCardList(
+                          trades: shown,
+                          useCompactLines: narrow,
+                        );
+                      },
+                    ),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: Icon(Icons.receipt_long_outlined,
@@ -632,138 +707,43 @@ class _SupplierVBar extends StatelessWidget {
   }
 }
 
-class _SupplierTradeTable extends StatelessWidget {
-  const _SupplierTradeTable({required this.trades});
+class _WeightChip extends StatelessWidget {
+  const _WeightChip({required this.label, required this.value});
 
-  final List<TradePurchase> trades;
-
-  String _inr(num v) => NumberFormat.currency(
-        locale: 'en_IN',
-        symbol: '₹',
-        decimalDigits: 0,
-      ).format(v);
-
-  String _rateL(TradePurchaseLine ln) {
-    final kpu = ln.kgPerUnit;
-    final lcpk = ln.landingCostPerKg;
-    if (kpu != null && lcpk != null && kpu > 0 && lcpk > 0) {
-      return 'L ${_inr(lcpk)}/kg';
-    }
-    return 'L ${_inr(ln.landingCost)}/${ln.unit}';
-  }
+  final String label;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
-    return Card(
-      margin: EdgeInsets.zero,
-      child: ListView.separated(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: trades.length,
-        separatorBuilder: (_, __) => const Divider(height: 1, indent: 12, endIndent: 12),
-        itemBuilder: (context, ip) {
-          final p = trades[ip];
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ListTile(
-                dense: true,
-                title: Text(
-                  p.humanId,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-                subtitle: Text(
-                  '${DateFormat.yMMMd().format(p.purchaseDate)} · ${p.derivedStatus}'
-                  '${(p.brokerName ?? '').isNotEmpty ? ' · ${p.brokerName}' : ''}',
-                  style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-                ),
-                trailing: Text(
-                  _inr(p.totalAmount.round()),
-                  style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
-                ),
-                onTap: () => context.push('/purchase/detail/${p.id}'),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '$label · ',
+              style: tt.labelSmall?.copyWith(
+                color: cs.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+                fontSize: 11,
               ),
-              if (p.lines.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: Text(
-                    'No line items',
-                    style: tt.labelSmall
-                        ?.copyWith(color: cs.onSurfaceVariant),
-                  ),
-                )
-              else
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-                  child: Column(
-                    children: [
-                      for (final ln in p.lines)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 6),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                flex: 3,
-                                child: Text(
-                                  ln.itemName,
-                                  style: tt.bodySmall?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                flex: 2,
-                                child: Text(
-                                  '${ln.qty % 1 == 0 ? ln.qty.toInt() : ln.qty.toStringAsFixed(1)} ${ln.unit}',
-                                  textAlign: TextAlign.right,
-                                  style: tt.labelSmall,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                flex: 2,
-                                child: Text(
-                                  _rateL(ln),
-                                  textAlign: TextAlign.right,
-                                  style: tt.labelSmall
-                                      ?.copyWith(color: cs.onSurfaceVariant),
-                                ),
-                              ),
-                              if (ln.sellingCost != null) ...[
-                                const SizedBox(width: 4),
-                                Expanded(
-                                  flex: 2,
-                                  child: Text(
-                                    'S ${_inr(ln.sellingCost!)}',
-                                    textAlign: TextAlign.right,
-                                    style: tt.labelSmall
-                                        ?.copyWith(color: cs.onSurfaceVariant),
-                                  ),
-                                ),
-                              ],
-                              const SizedBox(width: 4),
-                              Expanded(
-                                flex: 2,
-                                child: Text(
-                                  _inr(_lineAmountInr(ln).round()),
-                                  textAlign: TextAlign.right,
-                                  style: tt.labelSmall?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-            ],
-          );
-        },
+            ),
+            Text(
+              value,
+              style: tt.labelSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                fontSize: 11,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

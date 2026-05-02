@@ -4,11 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/hexa_colors.dart';
 import '../../state/purchase_draft_provider.dart';
 
-/// Step 4 — read-only recap + totals.
-class PurchaseSummaryStep extends ConsumerWidget {
-  const PurchaseSummaryStep({super.key});
+/// Read-only recap + totals — use inside parent scroll views.
+class PurchaseSummarySections extends ConsumerWidget {
+  const PurchaseSummarySections({super.key});
 
-  static Widget _row(
+  static Widget row(
     String label,
     String value, {
     bool emphasize = false,
@@ -100,18 +100,18 @@ class PurchaseSummaryStep extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _row('Goods (approx)', '₹${bd.subtotalGross.toStringAsFixed(2)}'),
-            _row('Tax', '+ ₹${bd.taxTotal.toStringAsFixed(2)}'),
-            _row('Discounts', '− ₹${bd.discountTotal.toStringAsFixed(2)}'),
+            row('Goods (approx)', '₹${bd.subtotalGross.toStringAsFixed(2)}'),
+            row('Tax', '+ ₹${bd.taxTotal.toStringAsFixed(2)}'),
+            row('Discounts', '− ₹${bd.discountTotal.toStringAsFixed(2)}'),
             if (bd.freight > 1e-9)
-              _row('Freight', '+ ₹${bd.freight.toStringAsFixed(2)}'),
+              row('Freight', '+ ₹${bd.freight.toStringAsFixed(2)}'),
             if (bd.commission > 1e-9)
-              _row(
+              row(
                 'Broker commission',
                 '− ₹${bd.commission.toStringAsFixed(2)}',
               ),
             const Divider(height: 20),
-            _row(
+            row(
               'Grand payable',
               '₹${bd.grand.toStringAsFixed(2)}',
               emphasize: true,
@@ -152,9 +152,23 @@ class PurchaseSummaryStep extends ConsumerWidget {
       ),
     );
 
-    return ListView(
-      padding: const EdgeInsets.only(bottom: 24),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
       children: chunks,
+    );
+  }
+}
+
+/// Stand-alone scrollable recap (full screen); prefer [PurchaseSummarySections] when nested.
+class PurchaseSummaryStep extends StatelessWidget {
+  const PurchaseSummaryStep({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const SingleChildScrollView(
+      padding: EdgeInsets.only(bottom: 24),
+      child: PurchaseSummarySections(),
     );
   }
 }

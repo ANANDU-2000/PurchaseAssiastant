@@ -8,13 +8,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.db_resilience import execute_with_retry
 from app.deps import require_membership, require_owner_membership
-from app.models import Broker, BrokerSupplierLink, Entry, EntryLineItem, Membership, Supplier
+from app.models import Broker, BrokerSupplierLink, CategoryType, Entry, EntryLineItem, ItemCategory, Membership, Supplier
 
 router = APIRouter(prefix="/v1/businesses/{business_id}", tags=["contacts"])
 logger = logging.getLogger(__name__)
@@ -874,11 +874,21 @@ async def broker_metrics(
     )
 
 
+class CatalogSubcategoryRow(BaseModel):
+    """Catalog middle layer: type under category (subcategory)."""
+
+    id: uuid.UUID
+    name: str
+    category_id: uuid.UUID
+    category_name: str
+
+
 class SearchOut(BaseModel):
     suppliers: list[SupplierOut]
     brokers: list[BrokerOut]
     item_names: list[str]
     categories: list[str]
+    catalog_subcategories: list[CatalogSubcategoryRow] = Field(default_factory=list)
 
 
 @router.get("/contacts/search", response_model=SearchOut)
@@ -888,63 +898,156 @@ async def contacts_search(
     db: Annotated[AsyncSession, Depends(get_db)],
     q: str = Query("", max_length=200),
     limit: int = Query(15, ge=1, le=50),
+    scope: str | None = Query(
+        None,
+        description="Optional: suppliers|brokers|categories|catalog_types|items — fetch only that bucket",
+    ),
 ):
     del _m
     term = q.strip()
-    if not term:
-        return SearchOut(suppliers=[], brokers=[], item_names=[], categories=[])
+    scopes = scope.strip().lower() if scope and scope.strip() else None
 
-    like = f"%{_norm_name(term)}%"
-    # Suppliers
-    rs = await db.execute(
-        select(Supplier)
-        .where(
-            Supplier.business_id == business_id,
-            func.lower(Supplier.name).like(like),
+    def bucket(name: str) -> bool:
+        if scopes is None or scopes == "all":
+            return True
+        return scopes == name
+
+    if not term:
+        return SearchOut(
+            suppliers=[],
+            brokers=[],
+            item_names=[],
+            categories=[],
+            catalog_subcategories=[],
         )
-        .limit(limit)
-    )
+
+    like_contains = f"%{_norm_name(term)}%"
+    term_l = _norm_name(term)
+
     suppliers: list[SupplierOut] = []
-    for s in rs.scalars().all():
-        suppliers.append(await _supplier_out(db, s))
-    rb = await db.execute(
-        select(Broker)
-        .where(
-            Broker.business_id == business_id,
-            func.lower(Broker.name).like(like),
+    if bucket("suppliers"):
+        rs = await db.execute(
+            select(Supplier)
+            .where(
+                Supplier.business_id == business_id,
+                func.lower(Supplier.name).like(like_contains),
+            )
+            .limit(limit)
         )
-        .limit(limit)
-    )
-    brokers = [BrokerOut.model_validate(b) for b in rb.scalars().all()]
-    ri = await db.execute(
-        select(EntryLineItem.item_name)
-        .distinct()
-        .select_from(EntryLineItem)
-        .join(Entry, Entry.id == EntryLineItem.entry_id)
-        .where(
-            Entry.business_id == business_id,
-            func.lower(EntryLineItem.item_name).like(like),
+        rows = list(rs.scalars().all())
+        rows.sort(
+            key=lambda s: (
+                not str(s.name).strip().lower().startswith(term_l),
+                str(s.name).strip().lower(),
+            )
         )
-        .limit(limit)
-    )
-    item_names = [row[0] for row in ri.all() if row[0]]
-    rc = await db.execute(
-        select(func.coalesce(EntryLineItem.category, "Uncategorized"))
-        .distinct()
-        .select_from(EntryLineItem)
-        .join(Entry, Entry.id == EntryLineItem.entry_id)
-        .where(
-            Entry.business_id == business_id,
-            func.lower(func.coalesce(EntryLineItem.category, "Uncategorized")).like(like),
+        for s in rows:
+            suppliers.append(await _supplier_out(db, s))
+
+    brokers: list[BrokerOut] = []
+    if bucket("brokers"):
+        rb = await db.execute(
+            select(Broker)
+            .where(
+                Broker.business_id == business_id,
+                func.lower(Broker.name).like(like_contains),
+            )
+            .limit(limit)
         )
-        .limit(limit)
-    )
-    categories = [row[0] for row in rc.all() if row[0]]
+        brows = list(rb.scalars().all())
+        brows.sort(
+            key=lambda b: (
+                not str(b.name).strip().lower().startswith(term_l),
+                str(b.name).strip().lower(),
+            )
+        )
+        brokers = [BrokerOut.model_validate(b) for b in brows]
+
+    item_names: list[str] = []
+    if bucket("items"):
+        ri = await db.execute(
+            select(EntryLineItem.item_name)
+            .distinct()
+            .select_from(EntryLineItem)
+            .join(Entry, Entry.id == EntryLineItem.entry_id)
+            .where(
+                Entry.business_id == business_id,
+                func.lower(EntryLineItem.item_name).like(like_contains),
+            )
+            .limit(limit * 2)
+        )
+        raw_names = [row[0] for row in ri.all() if row[0]]
+        raw_names.sort(
+            key=lambda n: (
+                not str(n).strip().lower().startswith(term_l),
+                str(n).strip().lower(),
+            )
+        )
+        item_names = raw_names[:limit]
+
+    categories: list[str] = []
+    if bucket("categories"):
+        rc = await db.execute(
+            select(func.coalesce(EntryLineItem.category, "Uncategorized"))
+            .distinct()
+            .select_from(EntryLineItem)
+            .join(Entry, Entry.id == EntryLineItem.entry_id)
+            .where(
+                Entry.business_id == business_id,
+                func.lower(func.coalesce(EntryLineItem.category, "Uncategorized")).like(
+                    like_contains
+                ),
+            )
+            .limit(limit * 2)
+        )
+        cats = [row[0] for row in rc.all() if row[0]]
+        cats.sort(
+            key=lambda n: (
+                not str(n).strip().lower().startswith(term_l),
+                str(n).strip().lower(),
+            )
+        )
+        categories = cats[:limit]
+
+    catalog_subcategories: list[CatalogSubcategoryRow] = []
+    if bucket("catalog_types"):
+        rsub = await db.execute(
+            select(CategoryType.id, CategoryType.name, ItemCategory.id, ItemCategory.name)
+            .join(ItemCategory, ItemCategory.id == CategoryType.category_id)
+            .where(
+                ItemCategory.business_id == business_id,
+                or_(
+                    func.lower(CategoryType.name).like(like_contains),
+                    func.lower(ItemCategory.name).like(like_contains),
+                ),
+            )
+            .distinct()
+            .limit(limit * 2)
+        )
+        sub_pairs: list[tuple[object, ...]] = list(rsub.all())
+        sub_pairs.sort(
+            key=lambda row: (
+                not str(row[1]).strip().lower().startswith(term_l)
+                and not str(row[3]).strip().lower().startswith(term_l),
+                str(row[1]).strip().lower(),
+            )
+        )
+        for row in sub_pairs[:limit]:
+            catalog_subcategories.append(
+                CatalogSubcategoryRow(
+                    id=row[0],
+                    name=row[1],
+                    category_id=row[2],
+                    category_name=row[3],
+                )
+            )
+
     return SearchOut(
         suppliers=suppliers,
         brokers=brokers,
         item_names=item_names,
         categories=categories,
+        catalog_subcategories=catalog_subcategories,
     )
 
 

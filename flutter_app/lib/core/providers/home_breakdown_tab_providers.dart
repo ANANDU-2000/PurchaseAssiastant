@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
@@ -85,6 +87,20 @@ HomeShellReportsBundle _homeShellFromHive(Map<String, dynamic>? raw) {
 
 final Map<String, Future<HomeShellReportsBundle>> _shellInflight = {};
 
+const _shellEachTimeout = Duration(seconds: 28);
+
+Future<List<Map<String, dynamic>>> _fetchShellList(
+  Future<List<Map<String, dynamic>>> Function() fn,
+) async {
+  try {
+    return await fn().timeout(_shellEachTimeout);
+  } on TimeoutException {
+    return [];
+  } catch (_) {
+    return [];
+  }
+}
+
 /// Types + suppliers + items for the current Home date range.
 final homeShellReportsProvider =
     FutureProvider.autoDispose<HomeShellReportsBundle>((ref) async {
@@ -108,25 +124,41 @@ final homeShellReportsProvider =
       return _homeShellFromHive(cachedRaw);
     }
     try {
-      final out = await Future.wait([
-        api.tradeReportTypes(businessId: bid, from: q.from, to: q.to),
-        api.tradeReportSuppliers(businessId: bid, from: q.from, to: q.to),
-        api.tradeReportItems(businessId: bid, from: q.from, to: q.to),
-      ]);
+      // Per-endpoint timeout + isolation: one slow/hung API does not block others.
+      final typesF = _fetchShellList(
+        () => api.tradeReportTypes(
+            businessId: bid, from: q.from, to: q.to),
+      );
+      final supF = _fetchShellList(
+        () => api.tradeReportSuppliers(
+            businessId: bid, from: q.from, to: q.to),
+      );
+      final itemsF = _fetchShellList(
+        () => api.tradeReportItems(
+            businessId: bid, from: q.from, to: q.to),
+      );
+      final out = await Future.wait([typesF, supF, itemsF])
+          .timeout(const Duration(seconds: 32));
       final bundle = HomeShellReportsBundle(
         subcategories: out[0],
         suppliers: out[1],
         items: out[2],
       );
-      await OfflineStore.cacheHomeShellReports(
-        bid,
-        q.from,
-        q.to,
-        subcategories: bundle.subcategories,
-        suppliers: bundle.suppliers,
-        items: bundle.items,
-      );
+      if (bundle.subcategories.isNotEmpty ||
+          bundle.suppliers.isNotEmpty ||
+          bundle.items.isNotEmpty) {
+        await OfflineStore.cacheHomeShellReports(
+          bid,
+          q.from,
+          q.to,
+          subcategories: bundle.subcategories,
+          suppliers: bundle.suppliers,
+          items: bundle.items,
+        );
+      }
       return bundle;
+    } on TimeoutException {
+      return _homeShellFromHive(cachedRaw);
     } on DioException {
       return _homeShellFromHive(cachedRaw);
     } catch (_) {
