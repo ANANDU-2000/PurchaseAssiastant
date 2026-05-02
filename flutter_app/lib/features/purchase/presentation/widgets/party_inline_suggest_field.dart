@@ -194,9 +194,9 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     final out = <InlineSearchItem>[];
     for (final it in widget.items) {
       if (out.length >= widget.maxMatches) break;
+      // Label only — matching subtitle caused false positives (e.g. "sura" ⊂ "insurance").
       final lab = it.label.toLowerCase();
-      final sub = (it.subtitle ?? '').toLowerCase();
-      if (lab.contains(qRaw) || sub.contains(qRaw)) out.add(it);
+      if (lab.contains(qRaw)) out.add(it);
     }
     return out;
   }
@@ -214,6 +214,8 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
 
   void _tryBlurExactPick() {
     if (_pickInProgress) return;
+    // Tap selection sets this before blur; avoid a second _pick from blur exact-match.
+    if (_suppressPanelAfterPick) return;
     final q = widget.controller.text.trim().toLowerCase();
     if (q.isEmpty) return;
     final exact = <InlineSearchItem>[];
@@ -229,98 +231,118 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   }
 
   void _pick(InlineSearchItem it, {bool keepFocus = true}) {
-    _pickInProgress = true;
     _filterDebounceTimer?.cancel();
     _revealDebounceTimer?.cancel();
     _suppressPanelAfterPick = true;
     _lastPickedLabel = it.label.trim();
     _filterQuery = it.label.trim().toLowerCase();
-    if (!mounted) {
-      _pickInProgress = false;
-      return;
+
+    // Always sync the visible field immediately — deferring this allowed the IME /
+    // one frame of rebuild to leave the old query visible so it looked like tap did nothing.
+    widget.controller.text = it.label;
+    widget.controller.selection = TextSelection.fromPosition(
+      TextPosition(offset: widget.controller.text.length),
+    );
+    if (mounted) setState(() {});
+
+    void notifyParent() {
+      if (!mounted) return;
+      _pickInProgress = true;
+      try {
+        widget.onSelected?.call(it);
+      } catch (e, st) {
+        FlutterError.reportError(
+          FlutterErrorDetails(
+            exception: e,
+            stack: st,
+            library: 'party_inline_suggest_field',
+            context: ErrorDescription('onSelected callback'),
+          ),
+        );
+      } finally {
+        _pickInProgress = false;
+      }
+      if (mounted) setState(() {});
     }
-    try {
-      // Commit visible text before parent handlers (Riverpod/sync can rebuild).
-      widget.controller.text = it.label;
-      widget.controller.selection = TextSelection.fromPosition(
-        TextPosition(offset: widget.controller.text.length),
-      );
-      widget.onSelected?.call(it);
-    } finally {
-      _pickInProgress = false;
-    }
-    if (!mounted) return;
-    setState(() {});
+
+    // When closing the IME, the first physical tap often only dismisses the keyboard.
+    // Unfocus, then tell the parent on the *next* frame so Riverpod + routes still run reliably.
     if (!keepFocus) {
       widget.focusNode.unfocus();
       FocusManager.instance.primaryFocus?.unfocus();
+      WidgetsBinding.instance.addPostFrameCallback((_) => notifyParent());
+      return;
     }
+    notifyParent();
   }
 
   Widget _buildSuggestionTile(ColorScheme cs, InlineSearchItem it) {
     return Material(
       color: cs.surface,
-      child: TextButton(
-        style: TextButton.styleFrom(
-          alignment: Alignment.centerLeft,
+      child: InkWell(
+        onTap: () => _pick(it, keepFocus: false),
+        child: Padding(
           padding: EdgeInsets.symmetric(
             horizontal: 14,
             vertical: widget.dense ? 10 : 12,
           ),
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          foregroundColor: cs.onSurface,
-        ),
-        onPressed: () => _pick(it, keepFocus: false),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              it.label,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-              ),
-            ),
-            if (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  it.subtitle!.trim(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: cs.onSurfaceVariant,
-                  ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                it.label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  color: cs.onSurface,
                 ),
               ),
-          ],
+              if (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    it.subtitle!.trim(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildAddRowTile(ColorScheme cs) {
+    final cb = widget.onAddRow;
     return Material(
       color: cs.surface,
-      child: TextButton(
-        style: TextButton.styleFrom(
-          alignment: Alignment.centerLeft,
+      child: InkWell(
+        onTap: cb == null
+            ? null
+            : () {
+                widget.focusNode.unfocus();
+                FocusManager.instance.primaryFocus?.unfocus();
+                WidgetsBinding.instance.addPostFrameCallback((_) => cb());
+              },
+        child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
-        onPressed: widget.onAddRow,
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            widget.addRowLabel ?? '',
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 13,
-              color: cs.primary,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              widget.addRowLabel ?? '',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                color: cs.primary,
+              ),
             ),
           ),
         ),

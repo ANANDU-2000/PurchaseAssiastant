@@ -547,14 +547,29 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     );
   }
 
+  void _reportWizardNonFatal(String context, Object error, StackTrace stack) {
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stack,
+        library: 'purchase_entry_wizard_v2',
+        context: ErrorDescription(context),
+      ),
+    );
+  }
+
   Future<void> _openQuickSupplierCreate(
     List<Map<String, dynamic>> lookupList,
   ) async {
     await Future<void>.delayed(Duration.zero);
     if (!mounted) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    FocusScope.of(context).unfocus();
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+    if (!mounted) return;
     Map<String, dynamic>? result;
     try {
-      result = await context.push<Map<String, dynamic>?>(
+      result = await GoRouter.of(context).push<Map<String, dynamic>?>(
         '/suppliers/quick-create',
       );
     } catch (e) {
@@ -587,9 +602,13 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
   ) async {
     await Future<void>.delayed(Duration.zero);
     if (!mounted) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    FocusScope.of(context).unfocus();
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+    if (!mounted) return;
     Map<String, dynamic>? result;
     try {
-      result = await context.push<Map<String, dynamic>?>(
+      result = await GoRouter.of(context).push<Map<String, dynamic>?>(
         '/brokers/quick-create',
       );
     } catch (e) {
@@ -743,7 +762,9 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         if (fresh.isNotEmpty) {
           row = fresh;
         }
-      } catch (_) {}
+      } catch (e, st) {
+        _reportWizardNonFatal('getSupplier after supplier selection', e, st);
+      }
     }
     if (!mounted || seq != _supplierApplySeq) return;
     final supplierRow = row!;
@@ -779,7 +800,8 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
                   .read(purchaseDraftProvider.notifier)
                   .applyBrokerDealDefaults(b);
             }
-          } catch (_) {
+          } catch (e, st) {
+            _reportWizardNonFatal('getBroker during supplier autofill', e, st);
             if (!mounted || seq != _supplierApplySeq) return;
             ref.read(purchaseDraftProvider.notifier).setBroker(
                   abid,
@@ -790,7 +812,9 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         } else if (src == 'supplier_last_trade') {
           ref.read(purchaseDraftProvider.notifier).setBroker(null, null);
         }
-      } catch (_) {}
+      } catch (e, st) {
+        _reportWizardNonFatal('tradeLastSupplierAutofill', e, st);
+      }
     }
     if (!mounted || seq != _supplierApplySeq) return;
     _syncControllersFromDraft();
@@ -844,7 +868,9 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         if (b.isNotEmpty) {
           ref.read(purchaseDraftProvider.notifier).applyBrokerDealDefaults(b);
         }
-      } catch (_) {}
+      } catch (e, st) {
+        _reportWizardNonFatal('getBroker after broker selection', e, st);
+      }
     }
     if (!mounted) return;
     _syncControllersFromDraft();
@@ -1230,12 +1256,21 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       }
       if (mounted) {
         final hint = fastApiPurchaseScrollHint(e.response?.data);
-        if (hint != null && hint.supplierField) {
-          // stay on single editor screen
-        }
+        final msg = friendlyApiError(e);
         setState(() {
           _isSaving = false;
-          _inlineSaveError = friendlyApiError(e);
+          if (hint != null && hint.supplierField) {
+            _wizStep = 0;
+            _supplierFieldError = msg;
+            _inlineSaveError = null;
+          } else if (hint != null && hint.lineIndex != null) {
+            _wizStep = 1;
+            _supplierFieldError = null;
+            _inlineSaveError = msg;
+          } else {
+            _supplierFieldError = null;
+            _inlineSaveError = msg;
+          }
         });
       }
     } catch (e) {
@@ -1405,11 +1440,13 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       builder: (context) {
         final step = stepSlot();
         if (_wizStep == 0) {
+          final bottomPad =
+              20 + MediaQuery.viewPaddingOf(context).bottom + 112;
           return SingleChildScrollView(
             physics: const ClampingScrollPhysics(),
             keyboardDismissBehavior:
                 ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
+            padding: EdgeInsets.fromLTRB(12, 8, 12, bottomPad),
             child: step,
           );
         }

@@ -4,7 +4,7 @@ import time
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
 from app.config import Settings, get_settings
 from app.database import get_db
@@ -24,6 +24,12 @@ async def root():
         "health_ready": "/health/ready",
         "hint": "The operator admin app is the Vite dev server (see ADMIN_URL in backend settings), path /login.",
     }
+
+
+@router.head("/")
+async def root_head():
+    """Uptime probes often use HEAD; without this, Starlette returns 405 for HEAD /."""
+    return Response(status_code=200)
 
 
 @router.get("/health")
