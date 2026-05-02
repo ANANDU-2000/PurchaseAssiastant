@@ -1,9 +1,13 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../shared/widgets/inline_search_field.dart';
 
-/// Party step only: dropdown suggestions **below** the field (no overlay), max height 250.
+/// Party step only: suggestions render **below** the field (not a floating overlay),
+/// capped in height (`maxPanelAbs`, default 250) and further reduced when space is tight
+/// above the IME so lists stay scrollable inline instead of sitting under the keyboard.
 class PartyInlineSuggestField extends StatefulWidget {
   const PartyInlineSuggestField({
     super.key,
@@ -20,6 +24,8 @@ class PartyInlineSuggestField extends StatefulWidget {
     this.addRowLabel,
     this.onAddRow,
     this.dense = false,
+    this.prefixIcon,
+    this.maxPanelAbs = 250,
   })  : assert(minQueryLength >= 0),
         assert(
           !showAddRow || (addRowLabel != null && onAddRow != null),
@@ -44,6 +50,12 @@ class PartyInlineSuggestField extends StatefulWidget {
 
   /// Tighter paddings when two columns sit side by side.
   final bool dense;
+
+  /// Optional leading icon inside the outlined field (parity with Material “party” UX).
+  final Widget? prefixIcon;
+
+  /// Hard cap on suggestion panel height before keyboard-aware shrinking.
+  final double maxPanelAbs;
 
   @override
   State<PartyInlineSuggestField> createState() =>
@@ -80,11 +92,57 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     super.dispose();
   }
 
-  void _listenCtrl() => setState(() {});
+  void _listenCtrl() {
+    setState(() {});
+    if (widget.focusNode.hasFocus) {
+      final rows = _listRowsForUi();
+      final add = widget.showAddRow &&
+          widget.focusNode.hasFocus &&
+          widget.onAddRow != null;
+      if (rows.isNotEmpty || add) _scheduleRevealInScrollView();
+    }
+  }
 
   void _listenFocus() {
-    if (!widget.focusNode.hasFocus) _tryBlurExactPick();
+    final nowFocused = widget.focusNode.hasFocus;
+    if (!nowFocused) _tryBlurExactPick();
     setState(() {});
+    if (nowFocused) _scheduleRevealInScrollView();
+  }
+
+  double _effectiveMaxPanelHeight(BuildContext context) {
+    final kb = MediaQuery.viewInsetsOf(context).bottom;
+    final h = MediaQuery.sizeOf(context).height;
+    final usableAboveKb = math.max(h - kb, h * 0.45);
+    // Keep list short when vertical space shrinks so it stays scrollable inline, not IME-covered.
+    return math.min(
+      widget.maxPanelAbs,
+      math.max(
+        120.0,
+        usableAboveKb * 0.42,
+      ),
+    );
+  }
+
+  final GlobalKey _revealKey = GlobalKey(debugLabel: 'partyInlineSuggest');
+
+  void _scheduleRevealInScrollView() {
+    void run() {
+      if (!mounted || !widget.focusNode.hasFocus) return;
+      final ctx = _revealKey.currentContext;
+      final ro = ctx?.findRenderObject();
+      if (ctx == null || ro == null || !ro.attached) return;
+      Scrollable.ensureVisible(
+        ctx,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+        alignment: 0.06,
+      );
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) => run());
+    Future<void>.delayed(const Duration(milliseconds: 140), run);
+    Future<void>.delayed(const Duration(milliseconds: 320), run);
   }
 
   List<InlineSearchItem> _filteredData() {
@@ -104,12 +162,13 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     return out;
   }
 
-
   List<InlineSearchItem> _listRowsForUi() => _filteredData();
 
   EdgeInsets _scrollPad(BuildContext context) {
     final kb = MediaQuery.viewInsetsOf(context).bottom;
-    return EdgeInsets.only(bottom: 24 + kb);
+    final panelReserve = widget.maxPanelAbs.clamp(0.0, 260.0);
+    const accessoryFudge = 56.0;
+    return EdgeInsets.only(bottom: kb + panelReserve + accessoryFudge);
   }
 
   void _tryBlurExactPick() {
@@ -175,15 +234,73 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final rows = _listRowsForUi();
-    final showAddFocused =
-        widget.showAddRow && widget.focusNode.hasFocus && widget.onAddRow != null;
+    final showAddFocused = widget.showAddRow &&
+        widget.focusNode.hasFocus &&
+        widget.onAddRow != null;
     final hasPanel =
         widget.focusNode.hasFocus && (rows.isNotEmpty || showAddFocused);
+    final maxPanelH = _effectiveMaxPanelHeight(context);
 
     final borderColor = Colors.grey.shade300;
     final borderRadiusBottom = hasPanel ? 0.0 : 8.0;
-    final vPad = widget.dense ? 8.0 : 10.0;
-    final hPad = widget.dense ? 8.0 : 10.0;
+    final vPad = widget.dense ? 10.0 : 12.0;
+    final hPad = widget.dense ? 10.0 : 12.0;
+
+    Widget? prefixIcon;
+    if (widget.prefixIcon != null) {
+      prefixIcon = Padding(
+        padding: EdgeInsets.only(right: widget.dense ? 4 : 6),
+        child: Align(
+          widthFactor: 1,
+          heightFactor: 1,
+          alignment: Alignment.center,
+          child: IconTheme.merge(
+            data: IconThemeData(
+              size: widget.dense ? 18 : 22,
+              color: cs.primary.withValues(alpha: 0.75),
+            ),
+            child: widget.prefixIcon!,
+          ),
+        ),
+      );
+    }
+
+    final fieldDecoration = InputDecoration(
+      labelText: widget.hintText,
+      floatingLabelBehavior: FloatingLabelBehavior.auto,
+      isDense: true,
+      prefixIconConstraints: BoxConstraints(
+        minWidth: widget.dense ? 32 : 40,
+        minHeight: widget.dense ? 34 : 40,
+      ),
+      prefixIcon: prefixIcon,
+      filled: true,
+      fillColor: Colors.grey.shade50,
+      contentPadding: EdgeInsets.only(
+        left: prefixIcon == null ? hPad : 2,
+        right: hPad,
+        top: vPad - 4,
+        bottom: vPad - 2,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.vertical(
+          top: const Radius.circular(8),
+          bottom: Radius.circular(borderRadiusBottom),
+        ),
+        borderSide: BorderSide(color: borderColor),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.vertical(
+          top: const Radius.circular(8),
+          bottom: Radius.circular(borderRadiusBottom),
+        ),
+        borderSide: BorderSide(color: cs.primary, width: 2),
+      ),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: BorderSide(color: borderColor),
+      ),
+    );
 
     Widget field = Focus(
       onKeyEvent: _onKey,
@@ -193,132 +310,109 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
         textInputAction: widget.textInputAction,
         onSubmitted: _onFieldSubmitted,
         scrollPadding: _scrollPad(context),
-        decoration: InputDecoration(
-          hintText: widget.hintText,
-          isDense: true,
-          filled: true,
-          fillColor: Colors.grey.shade50,
-          contentPadding:
-              EdgeInsets.symmetric(horizontal: hPad, vertical: vPad),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.vertical(
-              top: const Radius.circular(8),
-              bottom: Radius.circular(borderRadiusBottom),
-            ),
-            borderSide: BorderSide(color: borderColor),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.vertical(
-              top: const Radius.circular(8),
-              bottom: Radius.circular(borderRadiusBottom),
-            ),
-            borderSide: BorderSide(color: cs.primary, width: 2),
-          ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: borderColor),
-          ),
-        ),
+        decoration: fieldDecoration,
       ),
     );
 
-    if (!hasPanel) return field;
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        field,
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: Colors.grey.shade50,
-            border: Border(
-              left: BorderSide(color: borderColor),
-              right: BorderSide(color: borderColor),
-              bottom: BorderSide(color: borderColor),
-            ),
-            borderRadius: const BorderRadius.vertical(
-              bottom: Radius.circular(8),
-            ),
-          ),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 250),
-            child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(
-                bottom: Radius.circular(7),
+    return KeyedSubtree(
+      key: _revealKey,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          field,
+          if (hasPanel)
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                border: Border(
+                  left: BorderSide(color: borderColor),
+                  right: BorderSide(color: borderColor),
+                  bottom: BorderSide(color: borderColor),
+                ),
+                borderRadius: const BorderRadius.vertical(
+                  bottom: Radius.circular(8),
+                ),
               ),
-              child: ListView(
-                shrinkWrap: true,
-                physics: const ClampingScrollPhysics(),
-                padding: EdgeInsets.zero,
-                children: [
-                  for (final it in rows)
-                    InkWell(
-                      onTap: () => _pick(it),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 10,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              it.label,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13,
-                              ),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: maxPanelH),
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.vertical(
+                    bottom: Radius.circular(7),
+                  ),
+                  child: ListView(
+                    shrinkWrap: true,
+                    physics: const ClampingScrollPhysics(),
+                    padding: EdgeInsets.zero,
+                    children: [
+                      for (final it in rows)
+                        InkWell(
+                          onTap: () => _pick(it),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 10,
                             ),
-                            if (it.subtitle != null &&
-                                it.subtitle!.trim().isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 2),
-                                child: Text(
-                                  it.subtitle!,
-                                  maxLines: 1,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  it.label,
+                                  maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: cs.onSurfaceVariant,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13,
                                   ),
                                 ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  if (widget.showAddRow &&
-                      widget.onAddRow != null &&
-                      rows.isNotEmpty)
-                    Divider(height: 1, thickness: 1, color: borderColor),
-                  if (showAddFocused && widget.onAddRow != null)
-                    InkWell(
-                      onTap: widget.onAddRow,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 11,
-                        ),
-                        child: Text(
-                          widget.addRowLabel ?? '',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                            color: cs.primary,
+                                if (it.subtitle != null &&
+                                    it.subtitle!.trim().isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 2),
+                                    child: Text(
+                                      it.subtitle!,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: cs.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                ],
+                      if (widget.showAddRow &&
+                          widget.onAddRow != null &&
+                          rows.isNotEmpty)
+                        Divider(height: 1, thickness: 1, color: borderColor),
+                      if (showAddFocused && widget.onAddRow != null)
+                        InkWell(
+                          onTap: widget.onAddRow,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 11,
+                            ),
+                            child: Text(
+                              widget.addRowLabel ?? '',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                                color: cs.primary,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

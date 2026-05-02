@@ -124,9 +124,7 @@ class PurchasePartyStep extends ConsumerWidget {
                     mode: CupertinoDatePickerMode.date,
                     initialDateTime: sel.isAfter(today)
                         ? today
-                        : (sel.isBefore(DateTime(2020))
-                            ? DateTime(2020)
-                            : sel),
+                        : (sel.isBefore(DateTime(2020)) ? DateTime(2020) : sel),
                     minimumDate: DateTime(2020),
                     maximumDate: today,
                     onDateTimeChanged: (dt) =>
@@ -214,123 +212,125 @@ class PurchasePartyStep extends ConsumerWidget {
   /// Single row: supplier | broker (+ inline lists).
   Widget _partyFieldsRow(BuildContext context, WidgetRef ref) {
     Widget supplierCell = ref.watch(suppliersListProvider).when(
-          data: (list) {
-            final full = list
-                .map((e) => Map<String, dynamic>.from(e as Map))
-                .toList();
-            final filtered = filterSuppliersByCatalog(full, catalog);
+      data: (list) {
+        final full =
+            list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        final filtered = filterSuppliersByCatalog(full, catalog);
 
-            final sig =
-                '${ref.read(purchaseDraftProvider).lines.map((l) => l.catalogItemId ?? "").join(",")}|${filtered.length}|${full.length}';
-            if (filtered.length == 1 &&
-                full.isNotEmpty &&
-                (ref.read(purchaseDraftProvider).supplierId == null ||
-                    ref.read(purchaseDraftProvider).supplierId!.isEmpty)) {
-              if (lastAutoSupplierFromCatalogSig != sig) {
-                onLastAutoSupplierFromCatalogSigChanged(sig);
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  final d = ref.read(purchaseDraftProvider);
-                  if (d.supplierId != null && d.supplierId!.isNotEmpty) {
-                    return;
-                  }
-                  if (filtered.length != 1) return;
-                  final row = filtered.first;
-                  if (supplierRowId(row).isEmpty) return;
-                  onSupplierSelectedSync(
-                    full,
-                    InlineSearchItem(
-                      id: supplierRowId(row),
-                      label: supplierMapLabel(row),
-                      subtitle: supplierSubtitleFor(row),
-                    ),
-                  );
-                });
+        final sig =
+            '${ref.read(purchaseDraftProvider).lines.map((l) => l.catalogItemId ?? "").join(",")}|${filtered.length}|${full.length}';
+        if (filtered.length == 1 &&
+            full.isNotEmpty &&
+            (ref.read(purchaseDraftProvider).supplierId == null ||
+                ref.read(purchaseDraftProvider).supplierId!.isEmpty)) {
+          if (lastAutoSupplierFromCatalogSig != sig) {
+            onLastAutoSupplierFromCatalogSigChanged(sig);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              final d = ref.read(purchaseDraftProvider);
+              if (d.supplierId != null && d.supplierId!.isNotEmpty) {
+                return;
               }
-            }
+              if (filtered.length != 1) return;
+              final row = filtered.first;
+              if (supplierRowId(row).isEmpty) return;
+              onSupplierSelectedSync(
+                full,
+                InlineSearchItem(
+                  id: supplierRowId(row),
+                  label: supplierMapLabel(row),
+                  subtitle: supplierSubtitleFor(row),
+                ),
+              );
+            });
+          }
+        }
 
-            final items = _supplierItems(filtered);
-            return PartyInlineSuggestField(
-              controller: supplierCtrl,
-              focusNode: supplierFocusNode,
-              hintText: 'Supplier',
-              minQueryLength: 1,
-              maxMatches: 8,
-              dense: true,
-              textInputAction: TextInputAction.next,
-              onSubmitted: () => brokerFocusNode.requestFocus(),
-              items: items,
-              showAddRow: full.isNotEmpty,
-              addRowLabel: 'New supplier…',
-              onAddRow: () => openQuickSupplierCreate(full),
-              onSelected: (it) {
-                if (it.id.isEmpty) return;
-                onSupplierSelectedSync(full, it);
-              },
-            );
-          },
-          error: (_, __) {
-            if (lastGoodSuppliers != null) {
-              final full = lastGoodSuppliers!
-                  .map((e) => Map<String, dynamic>.from(e as Map))
-                  .toList();
-              final filtered = filterSuppliersByCatalog(full, catalog);
-              final items = _supplierItems(filtered);
-              return PartyInlineSuggestField(
-                controller: supplierCtrl,
-                focusNode: supplierFocusNode,
-                hintText: 'Supplier',
-                minQueryLength: 1,
-                maxMatches: 8,
-                dense: true,
-                textInputAction: TextInputAction.next,
-                onSubmitted: () => brokerFocusNode.requestFocus(),
-                items: items,
-                showAddRow: true,
-                addRowLabel: 'New supplier…',
-                onAddRow: () => openQuickSupplierCreate(full),
-                onSelected: (it) {
-                  if (it.id.isEmpty) return;
-                  onSupplierSelectedSync(full, it);
-                },
-              );
-            }
-            return Text(
-              'Could not load suppliers',
-              style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context).colorScheme.error,
-              ),
-            );
-          },
-          loading: () {
-            if (lastGoodSuppliers != null) {
-              final full = lastGoodSuppliers!
-                  .map((e) => Map<String, dynamic>.from(e as Map))
-                  .toList();
-              final filtered = filterSuppliersByCatalog(full, catalog);
-              final items = _supplierItems(filtered);
-              return PartyInlineSuggestField(
-                controller: supplierCtrl,
-                focusNode: supplierFocusNode,
-                hintText: 'Supplier',
-                minQueryLength: 1,
-                maxMatches: 8,
-                dense: true,
-                textInputAction: TextInputAction.next,
-                onSubmitted: () => brokerFocusNode.requestFocus(),
-                items: items,
-                showAddRow: true,
-                addRowLabel: 'New supplier…',
-                onAddRow: () => openQuickSupplierCreate(full),
-                onSelected: (it) {
-                  if (it.id.isEmpty) return;
-                  onSupplierSelectedSync(full, it);
-                },
-              );
-            }
-            return const LinearProgressIndicator(minHeight: 2);
+        final items = _supplierItems(filtered);
+        return PartyInlineSuggestField(
+          controller: supplierCtrl,
+          focusNode: supplierFocusNode,
+          hintText: 'Supplier',
+          prefixIcon: const Icon(Icons.store_rounded),
+          minQueryLength: 1,
+          maxMatches: 8,
+          dense: true,
+          textInputAction: TextInputAction.next,
+          onSubmitted: () => brokerFocusNode.requestFocus(),
+          items: items,
+          showAddRow: full.isNotEmpty,
+          addRowLabel: 'New supplier…',
+          onAddRow: () => openQuickSupplierCreate(full),
+          onSelected: (it) {
+            if (it.id.isEmpty) return;
+            onSupplierSelectedSync(full, it);
           },
         );
+      },
+      error: (_, __) {
+        if (lastGoodSuppliers != null) {
+          final full = lastGoodSuppliers!
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
+          final filtered = filterSuppliersByCatalog(full, catalog);
+          final items = _supplierItems(filtered);
+          return PartyInlineSuggestField(
+            controller: supplierCtrl,
+            focusNode: supplierFocusNode,
+            hintText: 'Supplier',
+            prefixIcon: const Icon(Icons.store_rounded),
+            minQueryLength: 1,
+            maxMatches: 8,
+            dense: true,
+            textInputAction: TextInputAction.next,
+            onSubmitted: () => brokerFocusNode.requestFocus(),
+            items: items,
+            showAddRow: true,
+            addRowLabel: 'New supplier…',
+            onAddRow: () => openQuickSupplierCreate(full),
+            onSelected: (it) {
+              if (it.id.isEmpty) return;
+              onSupplierSelectedSync(full, it);
+            },
+          );
+        }
+        return Text(
+          'Could not load suppliers',
+          style: TextStyle(
+            fontSize: 12,
+            color: Theme.of(context).colorScheme.error,
+          ),
+        );
+      },
+      loading: () {
+        if (lastGoodSuppliers != null) {
+          final full = lastGoodSuppliers!
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
+          final filtered = filterSuppliersByCatalog(full, catalog);
+          final items = _supplierItems(filtered);
+          return PartyInlineSuggestField(
+            controller: supplierCtrl,
+            focusNode: supplierFocusNode,
+            hintText: 'Supplier',
+            prefixIcon: const Icon(Icons.store_rounded),
+            minQueryLength: 1,
+            maxMatches: 8,
+            dense: true,
+            textInputAction: TextInputAction.next,
+            onSubmitted: () => brokerFocusNode.requestFocus(),
+            items: items,
+            showAddRow: true,
+            addRowLabel: 'New supplier…',
+            onAddRow: () => openQuickSupplierCreate(full),
+            onSelected: (it) {
+              if (it.id.isEmpty) return;
+              onSupplierSelectedSync(full, it);
+            },
+          );
+        }
+        return const LinearProgressIndicator(minHeight: 2);
+      },
+    );
 
     if (supplierFieldError != null) {
       supplierCell = Column(
@@ -361,6 +361,7 @@ class PurchasePartyStep extends ConsumerWidget {
                   controller: brokerCtrl,
                   focusNode: brokerFocusNode,
                   hintText: 'Broker',
+                  prefixIcon: const Icon(Icons.person_outline_rounded),
                   minQueryLength: 0,
                   maxMatches: 8,
                   dense: true,
@@ -410,8 +411,7 @@ class PurchasePartyStep extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (isEdit &&
-            loadedDerivedStatus != null) ...[
+        if (isEdit && loadedDerivedStatus != null) ...[
           Text(
             'Payment: $loadedDerivedStatus · Bal ₹${(loadedRemaining ?? 0).toStringAsFixed(2)}',
             style: const TextStyle(fontSize: 11),
