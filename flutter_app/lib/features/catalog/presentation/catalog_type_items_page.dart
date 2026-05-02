@@ -378,42 +378,46 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
     final name = it['name']?.toString() ?? '';
     showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.edit_outlined),
-              title: const Text('Edit on detail'),
-              subtitle: const Text('Change defaults, see history'),
-              onTap: () {
-                Navigator.pop(ctx);
-                context.push('/catalog/item/$id');
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.delete_outline, color: Colors.red.shade700),
-              title: Text('Delete', style: TextStyle(color: Colors.red.shade800)),
-              onTap: () async {
-                Navigator.pop(ctx);
-                await _deleteItemById(id, name);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.checklist_rounded),
-              title: const Text('Select multiple'),
-              onTap: () {
-                Navigator.pop(ctx);
-                setState(() {
-                  _selectionMode = true;
-                  _selected
-                    ..clear()
-                    ..add(id);
-                });
-              },
-            ),
-          ],
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.edit_outlined),
+                title: const Text('Edit on detail'),
+                subtitle: const Text('Change defaults, see history'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.push('/catalog/item/$id');
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.delete_outline, color: Colors.red.shade700),
+                title: Text('Delete', style: TextStyle(color: Colors.red.shade800)),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await _deleteItemById(id, name);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.checklist_rounded),
+                title: const Text('Select multiple'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  setState(() {
+                    _selectionMode = true;
+                    _selected
+                      ..clear()
+                      ..add(id);
+                  });
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );

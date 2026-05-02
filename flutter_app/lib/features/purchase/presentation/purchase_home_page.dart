@@ -196,37 +196,41 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
   Future<void> _openMoreFilters() async {
     await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const ListTile(title: Text('More filters', style: TextStyle(fontWeight: FontWeight.w800))),
-            ListTile(
-              leading: const Icon(Icons.hourglass_top_rounded),
-              title: const Text('Pending'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _selectSecondary('pending');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.payments_rounded),
-              title: const Text('Paid'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _selectSecondary('paid');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.warning_amber_rounded),
-              title: const Text('Overdue'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _selectSecondary('overdue');
-              },
-            ),
-          ],
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const ListTile(title: Text('More filters', style: TextStyle(fontWeight: FontWeight.w800))),
+              ListTile(
+                leading: const Icon(Icons.hourglass_top_rounded),
+                title: const Text('Pending'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _selectSecondary('pending');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.payments_rounded),
+                title: const Text('Paid'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _selectSecondary('paid');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.warning_amber_rounded),
+                title: const Text('Overdue'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _selectSecondary('overdue');
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );

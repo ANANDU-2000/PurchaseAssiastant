@@ -306,37 +306,41 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
     HapticFeedback.selectionClick();
     showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.copy_rounded),
-              title: Text('Copy', style: AssistantChatTheme.inter(16, w: FontWeight.w600)),
-              onTap: () {
-                Clipboard.setData(ClipboardData(text: t));
-                Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Copied')),
-                );
-              },
-            ),
-            if (isUser)
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
               ListTile(
-                leading: Icon(Icons.delete_outline_rounded, color: Colors.red.shade700),
-                title: Text('Delete', style: AssistantChatTheme.inter(16, w: FontWeight.w600, c: Colors.red.shade800)),
+                leading: const Icon(Icons.copy_rounded),
+                title: Text('Copy', style: AssistantChatTheme.inter(16, w: FontWeight.w600)),
                 onTap: () {
+                  Clipboard.setData(ClipboardData(text: t));
                   Navigator.pop(ctx);
-                  setState(() {
-                    _msgs.removeWhere((m) => m.isUser && m.text == t);
-                  });
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Copied')),
+                  );
                 },
               ),
-          ],
+              if (isUser)
+                ListTile(
+                  leading: Icon(Icons.delete_outline_rounded, color: Colors.red.shade700),
+                  title: Text('Delete', style: AssistantChatTheme.inter(16, w: FontWeight.w600, c: Colors.red.shade800)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    setState(() {
+                      _msgs.removeWhere((m) => m.isUser && m.text == t);
+                    });
+                  },
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -519,37 +523,41 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
     HapticFeedback.selectionClick();
     showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.vertical_align_bottom_rounded),
-              title: const Text('Jump to latest'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _scrollEnd();
-                _inputFocus.requestFocus();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.mic_rounded),
-              title: const Text('Voice mode'),
-              onTap: () {
-                Navigator.pop(ctx);
-                context.push('/voice');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.home_outlined),
-              title: const Text('Home'),
-              onTap: () {
-                Navigator.pop(ctx);
-                context.go('/home');
-              },
-            ),
-          ],
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.vertical_align_bottom_rounded),
+                title: const Text('Jump to latest'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _scrollEnd();
+                  _inputFocus.requestFocus();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.mic_rounded),
+                title: const Text('Voice mode'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.push('/voice');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.home_outlined),
+                title: const Text('Home'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.go('/home');
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );

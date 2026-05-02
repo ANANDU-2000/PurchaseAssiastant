@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-/// Keyboard-aware scroll viewport: scrollable fields + footer aligned to bottom
-/// when short, with bottom inset for IME. Prefer over pinned [Scaffold.bottomNavigationBar].
+/// Single-scroll form body under [Scaffold] with [resizeToAvoidBottomInset].
 ///
-/// Footer is scrolled with content so it stays above the keyboard when fields grow.
+/// By default omits [MediaQuery.viewInsets.bottom] from padding (parent scaffold
+/// already shrinks the body), avoiding a double IME gap.
 class KeyboardSafeFormViewport extends StatelessWidget {
   const KeyboardSafeFormViewport({
     super.key,
@@ -15,112 +15,103 @@ class KeyboardSafeFormViewport extends StatelessWidget {
     this.horizontalPadding = 16,
     this.topPadding = 12,
     this.bottomExtraInset = 20,
-    /// When > 0, wraps [fields] in [ConstrainedBox] so descendants like
-    /// `Expanded` / `Spacer` get a bounded height (e.g. nested wizard steps).
+    /// When > 0, wraps [fields] so nested [Expanded]/[Spacer] get bounded height.
     this.minFieldsHeight = 0,
     this.dismissKeyboardOnTap = false,
     this.keyboardDismissBehavior = ScrollViewKeyboardDismissBehavior.onDrag,
     this.primaryScroll = false,
+    /// When false (default): bottom pad = safe area inset + [bottomExtraInset].
+    /// When true: also add view insets (for parents that keep [resizeToAvoidBottomInset]: false).
+    this.useViewInsetBottom = false,
   });
 
-  /// Full-width widgets above padded fields (e.g. banners).
   final Widget? prepend;
-
-  /// Main form body (typically a [Column]); given max width via padding.
   final Widget fields;
-
-  /// Pinned visually to bottom when space allows; scrolls above keyboard when tall.
   final Widget footer;
-
-  /// Placed inside the padded region after [fields].
   final Widget? append;
 
   final ScrollController? scrollController;
 
   final double horizontalPadding;
-
   final double topPadding;
-
   final double bottomExtraInset;
-
   final double minFieldsHeight;
 
   final bool dismissKeyboardOnTap;
-
   final ScrollViewKeyboardDismissBehavior keyboardDismissBehavior;
-
   final bool primaryScroll;
+  final bool useViewInsetBottom;
 
   @override
   Widget build(BuildContext context) {
-    final kb = MediaQuery.viewInsetsOf(context).bottom;
+    final viewPaddingBottom = MediaQuery.paddingOf(context).bottom;
+    final insetBottom = MediaQuery.viewInsetsOf(context).bottom;
+    final bottomPad = bottomExtraInset +
+        viewPaddingBottom +
+        (useViewInsetBottom ? insetBottom : 0);
 
-    Widget body = CustomScrollView(
-      controller: scrollController,
-      primary: primaryScroll,
-      keyboardDismissBehavior: keyboardDismissBehavior,
-      physics: const ClampingScrollPhysics(),
-      slivers: [
-        if (prepend != null) SliverToBoxAdapter(child: prepend!),
-        SliverPadding(
+    Widget viewport = LayoutBuilder(
+      builder: (context, constraints) {
+        final maxH = constraints.maxHeight;
+        final hasBoundedH = maxH.isFinite && maxH > 0;
+        final minColHeight = hasBoundedH ? maxH : 0.0;
+
+        Widget inner = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (prepend != null) prepend!,
+            if (minFieldsHeight > 0)
+              ConstrainedBox(
+                constraints: BoxConstraints(minHeight: minFieldsHeight),
+                child: fields,
+              )
+            else
+              fields,
+            if (append != null) ...[
+              const SizedBox(height: 12),
+              append!,
+            ],
+            const SizedBox(height: 16),
+            SafeArea(
+              top: false,
+              maintainBottomViewPadding: true,
+              child: footer,
+            ),
+          ],
+        );
+
+        if (minColHeight > 0) {
+          inner = ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minColHeight),
+            child: inner,
+          );
+        }
+
+        return SingleChildScrollView(
+          controller: scrollController,
+          primary: primaryScroll,
+          physics: const ClampingScrollPhysics(),
+          keyboardDismissBehavior: keyboardDismissBehavior,
           padding: EdgeInsets.fromLTRB(
             horizontalPadding,
             topPadding,
             horizontalPadding,
-            0,
+            bottomPad,
           ),
-          sliver: SliverToBoxAdapter(
-            child: minFieldsHeight > 0
-                ? ConstrainedBox(
-                    constraints: BoxConstraints(minHeight: minFieldsHeight),
-                    child: fields,
-                  )
-                : fields,
-          ),
-        ),
-        if (append != null)
-          SliverPadding(
-            padding: EdgeInsets.fromLTRB(
-              horizontalPadding,
-              12,
-              horizontalPadding,
-              0,
-            ),
-            sliver: SliverToBoxAdapter(child: append!),
-          ),
-        SliverFillRemaining(
-          hasScrollBody: false,
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(
-              horizontalPadding,
-              12,
-              horizontalPadding,
-              kb + bottomExtraInset,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                SafeArea(
-                  top: false,
-                  maintainBottomViewPadding: true,
-                  child: footer,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
+          child: inner,
+        );
+      },
     );
 
     if (dismissKeyboardOnTap) {
-      body = GestureDetector(
+      viewport = GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTap: () => FocusScope.of(context).unfocus(),
-        child: body,
+        child: viewport,
       );
     }
 
-    return body;
+    return viewport;
   }
 }

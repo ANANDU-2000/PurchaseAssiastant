@@ -194,17 +194,21 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
   Future<void> _pickCategorySheet(List<Map<String, dynamic>> cl) async {
     final id = await showModalBottomSheet<String>(
       context: context,
+      isScrollControlled: true,
       showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            for (final c in cl)
-              ListTile(
-                title: Text(c['name']?.toString() ?? ''),
-                onTap: () => Navigator.pop(ctx, c['id']?.toString()),
-              ),
-          ],
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+        child: SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              for (final c in cl)
+                ListTile(
+                  title: Text(c['name']?.toString() ?? ''),
+                  onTap: () => Navigator.pop(ctx, c['id']?.toString()),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -214,17 +218,21 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
   Future<void> _pickTypeSheet(List<Map<String, dynamic>> tl) async {
     final id = await showModalBottomSheet<String>(
       context: context,
+      isScrollControlled: true,
       showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            for (final t in tl)
-              ListTile(
-                title: Text(t['name']?.toString() ?? ''),
-                onTap: () => Navigator.pop(ctx, t['id']?.toString()),
-              ),
-          ],
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+        child: SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              for (final t in tl)
+                ListTile(
+                  title: Text(t['name']?.toString() ?? ''),
+                  onTap: () => Navigator.pop(ctx, t['id']?.toString()),
+                ),
+            ],
+          ),
         ),
       ),
     );

@@ -495,47 +495,23 @@ class PurchasePartyStep extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final viewInset = MediaQuery.viewInsetsOf(context).bottom;
-    final keyboardOpen = viewInset > 0;
-
     return Padding(
-      padding: EdgeInsets.only(
-        left: 4,
-        right: 4,
-        bottom: viewInset,
-      ),
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTap: () => FocusScope.of(context).unfocus(),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (isEdit && loadedDerivedStatus != null) ...[
-              Text(
-                'Payment: $loadedDerivedStatus · Bal ₹${(loadedRemaining ?? 0).toStringAsFixed(2)}',
-                style: const TextStyle(fontSize: 11),
-              ),
-              const SizedBox(height: 8),
-            ],
-            _compactDateIdRow(context, ref),
-            const SizedBox(height: 12),
-            Expanded(
-              child: keyboardOpen
-                  ? SingleChildScrollView(
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      child: _supplierAndBroker(context, ref),
-                    )
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _supplierAndBroker(context, ref),
-                        const Spacer(),
-                      ],
-                    ),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isEdit && loadedDerivedStatus != null) ...[
+            Text(
+              'Payment: $loadedDerivedStatus · Bal ₹${(loadedRemaining ?? 0).toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 11),
             ),
+            const SizedBox(height: 8),
           ],
-        ),
+          _compactDateIdRow(context, ref),
+          const SizedBox(height: 12),
+          _supplierAndBroker(context, ref),
+        ],
       ),
     );
   }

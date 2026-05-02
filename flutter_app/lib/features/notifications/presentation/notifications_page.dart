@@ -97,12 +97,18 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
             onPressed: () {
               showModalBottomSheet<void>(
                 context: context,
+                isScrollControlled: true,
                 backgroundColor: context.adaptiveCard,
                 shape: const RoundedRectangleBorder(
                   borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
                 ),
                 builder: (ctx) => Padding(
-                  padding: const EdgeInsets.all(20),
+                  padding: EdgeInsets.fromLTRB(
+                    20,
+                    20,
+                    20,
+                    20 + MediaQuery.viewInsetsOf(ctx).bottom,
+                  ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
