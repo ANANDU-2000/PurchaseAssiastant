@@ -587,11 +587,11 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       );
       return;
     }
-    setState(() => _partyUserSupplierActionGeneration++);
     final label = (result?['name']?.toString() ?? '').trim();
     final disp = label.isNotEmpty ? label : 'Supplier';
     final item = InlineSearchItem(id: id, label: disp);
     unawaited(_applySupplierSelectionAsync(const [], item));
+    if (mounted) setState(() => _partyUserSupplierActionGeneration++);
     Future.microtask(() {
       if (mounted) ref.invalidate(suppliersListProvider);
     });
@@ -846,8 +846,10 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     List<Map<String, dynamic>> list,
     InlineSearchItem it,
   ) {
-    setState(() => _partyUserSupplierActionGeneration++);
+    // Commit draft first (sync portion of async apply), then bump generation so a
+    // rebuild never runs between "empty" and "picked" in a way that drops the selection.
     _applySupplierSelection(list, it);
+    if (mounted) setState(() => _partyUserSupplierActionGeneration++);
   }
 
   Future<void> _applyBrokerSelectionAsync(InlineSearchItem it) async {

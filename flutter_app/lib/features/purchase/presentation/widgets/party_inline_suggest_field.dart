@@ -245,10 +245,10 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     final q = widget.controller.text.trim().toLowerCase();
     if (q.isEmpty) return;
 
-    // One visible filtered row (e.g. typed "sura" → only "surag") — commit on blur
-    // when the platform ate the list tap.
+    // One visible filtered row — commit on blur when the list tap was eaten.
+    // Require 2+ chars so single-letter queries do not auto-pick the wrong supplier.
     final narrowed = _listRowsForUi(live: true);
-    if (narrowed.length == 1) {
+    if (q.length >= 2 && narrowed.length == 1) {
       _pick(narrowed.first, keepFocus: false);
       return;
     }
@@ -300,12 +300,13 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       if (mounted) setState(() {});
     }
 
-    // Apply selection **before** unfocus so draft + Riverpod see the pick while focus is
-    // still stable (avoids rare races where sync clears the field on the same frame).
+    // Unfocus first, then notify on the next frame. Calling [onSelected] synchronously
+    // inside the tap handler (before unfocus) can break on some devices — parent
+    // setState + Riverpod during the gesture caused "tap does nothing" / stuck panel.
     if (!keepFocus) {
-      notifyParent();
       widget.focusNode.unfocus();
       FocusManager.instance.primaryFocus?.unfocus();
+      WidgetsBinding.instance.addPostFrameCallback((_) => notifyParent());
       return;
     }
     notifyParent();
@@ -314,10 +315,8 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   Widget _buildSuggestionTile(ColorScheme cs, InlineSearchItem it) {
     return Material(
       color: cs.surface,
-      child: InkWell(
-        // Opaque hit target — helps taps inside nested scroll views on mobile.
-        splashColor: cs.primary.withValues(alpha: 0.12),
-        highlightColor: cs.primary.withValues(alpha: 0.06),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: () => _pick(it, keepFocus: false),
         child: Padding(
           padding: EdgeInsets.symmetric(
@@ -362,7 +361,8 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     final cb = widget.onAddRow;
     return Material(
       color: cs.surface,
-      child: InkWell(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: cb == null
             ? null
             : () {
