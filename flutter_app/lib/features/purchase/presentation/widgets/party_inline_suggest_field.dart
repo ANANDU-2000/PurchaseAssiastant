@@ -233,20 +233,22 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     _revealDebounceTimer?.cancel();
     _suppressPanelAfterPick = true;
     _lastPickedLabel = it.label.trim();
-    widget.controller.text = it.label;
-    widget.controller.selection = TextSelection.fromPosition(
-      TextPosition(offset: widget.controller.text.length),
-    );
     if (!mounted) {
       _pickInProgress = false;
       return;
     }
-    setState(() {});
     try {
+      // Parent may sync controllers from draft; set field text afterward so UI wins.
       widget.onSelected?.call(it);
+      widget.controller.text = it.label;
+      widget.controller.selection = TextSelection.fromPosition(
+        TextPosition(offset: widget.controller.text.length),
+      );
     } finally {
       _pickInProgress = false;
     }
+    if (!mounted) return;
+    setState(() {});
     if (!keepFocus) {
       widget.focusNode.unfocus();
     }
@@ -255,42 +257,44 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   Widget _buildSuggestionTile(ColorScheme cs, InlineSearchItem it) {
     return Material(
       color: cs.surface,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => _pick(it, keepFocus: false),
-        child: Padding(
+      child: TextButton(
+        style: TextButton.styleFrom(
+          alignment: Alignment.centerLeft,
           padding: EdgeInsets.symmetric(
-            horizontal: 16,
+            horizontal: 14,
             vertical: widget.dense ? 10 : 12,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                it.label,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                ),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          foregroundColor: cs.onSurface,
+        ),
+        onPressed: () => _pick(it, keepFocus: false),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              it.label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
               ),
-              if (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    it.subtitle!.trim(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: cs.onSurfaceVariant,
-                    ),
+            ),
+            if (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  it.subtitle!.trim(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: cs.onSurfaceVariant,
                   ),
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );
@@ -299,20 +303,21 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   Widget _buildAddRowTile(ColorScheme cs) {
     return Material(
       color: cs.surface,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onAddRow,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              widget.addRowLabel ?? '',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-                color: cs.primary,
-              ),
+      child: TextButton(
+        style: TextButton.styleFrom(
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        onPressed: widget.onAddRow,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            widget.addRowLabel ?? '',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+              color: cs.primary,
             ),
           ),
         ),

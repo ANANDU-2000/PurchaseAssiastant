@@ -782,6 +782,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
           it.label,
           fromSupplier: false,
         );
+    _syncControllersFromDraft();
     setState(() {});
     _onDraftChanged();
   }

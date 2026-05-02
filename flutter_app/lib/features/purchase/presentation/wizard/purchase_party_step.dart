@@ -294,7 +294,8 @@ class PurchasePartyStep extends ConsumerWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Text(
-        'Suggestions appear only under the field that has focus (tap Supplier or Broker first).',
+        'Suggestions appear only under the focused field (tap Supplier or Broker first). '
+        'Picking a supplier clears Broker so defaults are not mixed—choose broker again afterward.',
         style: TextStyle(
           fontSize: 11,
           height: 1.25,
