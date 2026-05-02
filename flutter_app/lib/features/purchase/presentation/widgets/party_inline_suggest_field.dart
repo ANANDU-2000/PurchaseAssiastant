@@ -5,6 +5,27 @@ import 'package:flutter/services.dart';
 
 import '../../../../shared/widgets/inline_search_field.dart';
 
+/// True if [qLower] is empty or matches [label] by **whole-label prefix** or
+/// **token prefix** (tokens split on non-alphanumeric).
+///
+/// Avoids substring noise such as `sura` ⊂ `insurance`.
+bool partySuggestLabelMatches(String label, String qLower) {
+  if (qLower.isEmpty) return true;
+  final lab = label.toLowerCase().trim();
+  if (lab.startsWith(qLower)) return true;
+  for (final token in lab.split(RegExp(r'[^a-z0-9]+'))) {
+    if (token.isNotEmpty && token.startsWith(qLower)) return true;
+  }
+  return false;
+}
+
+int _partySuggestMatchRank(String label, String qLower) {
+  if (qLower.isEmpty) return 0;
+  final lab = label.toLowerCase().trim();
+  if (lab.startsWith(qLower)) return 0;
+  return 1;
+}
+
 /// Party step: suggestions **inline** below the field (no overlay).
 /// Filter is debounced while typing; commits use the live query via [live: true].
 class PartyInlineSuggestField extends StatefulWidget {
@@ -191,14 +212,18 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       return widget.items.take(widget.maxMatches).toList();
     }
     if (qRaw.length < min) return [];
-    final out = <InlineSearchItem>[];
+    final hits = <InlineSearchItem>[];
     for (final it in widget.items) {
-      if (out.length >= widget.maxMatches) break;
-      // Label only — matching subtitle caused false positives (e.g. "sura" ⊂ "insurance").
-      final lab = it.label.toLowerCase();
-      if (lab.contains(qRaw)) out.add(it);
+      if (partySuggestLabelMatches(it.label, qRaw)) hits.add(it);
     }
-    return out;
+    hits.sort((a, b) {
+      final ra = _partySuggestMatchRank(a.label, qRaw);
+      final rb = _partySuggestMatchRank(b.label, qRaw);
+      final c = ra.compareTo(rb);
+      if (c != 0) return c;
+      return a.label.toLowerCase().compareTo(b.label.toLowerCase());
+    });
+    return hits.take(widget.maxMatches).toList();
   }
 
   /// [live]: use typed text immediately (pick / enter / blur).
@@ -216,8 +241,18 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     if (_pickInProgress) return;
     // Tap selection sets this before blur; avoid a second _pick from blur exact-match.
     if (_suppressPanelAfterPick) return;
+    _flushFilterToLive();
     final q = widget.controller.text.trim().toLowerCase();
     if (q.isEmpty) return;
+
+    // One visible filtered row (e.g. typed "sura" → only "surag") — commit on blur
+    // when the platform ate the list tap.
+    final narrowed = _listRowsForUi(live: true);
+    if (narrowed.length == 1) {
+      _pick(narrowed.first, keepFocus: false);
+      return;
+    }
+
     final exact = <InlineSearchItem>[];
     for (final it in widget.items) {
       if (it.label.toLowerCase() == q) {
@@ -265,12 +300,12 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       if (mounted) setState(() {});
     }
 
-    // When closing the IME, the first physical tap often only dismisses the keyboard.
-    // Unfocus, then tell the parent on the *next* frame so Riverpod + routes still run reliably.
+    // Apply selection **before** unfocus so draft + Riverpod see the pick while focus is
+    // still stable (avoids rare races where sync clears the field on the same frame).
     if (!keepFocus) {
+      notifyParent();
       widget.focusNode.unfocus();
       FocusManager.instance.primaryFocus?.unfocus();
-      WidgetsBinding.instance.addPostFrameCallback((_) => notifyParent());
       return;
     }
     notifyParent();
@@ -280,6 +315,9 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     return Material(
       color: cs.surface,
       child: InkWell(
+        // Opaque hit target — helps taps inside nested scroll views on mobile.
+        splashColor: cs.primary.withValues(alpha: 0.12),
+        highlightColor: cs.primary.withValues(alpha: 0.06),
         onTap: () => _pick(it, keepFocus: false),
         child: Padding(
           padding: EdgeInsets.symmetric(
