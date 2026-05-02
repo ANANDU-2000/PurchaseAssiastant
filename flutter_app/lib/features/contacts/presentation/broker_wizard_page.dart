@@ -48,6 +48,10 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
   final _location = TextEditingController();
   final _notes = TextEditingController();
   final _commission = TextEditingController();
+  final _paymentDays = TextEditingController();
+  final _discount = TextEditingController();
+  final _delivered = TextEditingController();
+  final _billty = TextEditingController();
   final _searchSuppliers = TextEditingController();
   final _searchItems = TextEditingController();
 
@@ -66,6 +70,7 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
   Timer? _dupTimer;
   Timer? _itemDebounce;
   List<Map<String, dynamic>> _itemHits = [];
+  String _freightType = 'separate';
 
   @override
   void initState() {
@@ -87,6 +92,10 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
     _location.dispose();
     _notes.dispose();
     _commission.dispose();
+    _paymentDays.dispose();
+    _discount.dispose();
+    _delivered.dispose();
+    _billty.dispose();
     _searchSuppliers.dispose();
     _searchItems.dispose();
     super.dispose();
@@ -120,6 +129,18 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
           _notes.text = b['notes']?.toString() ?? '';
           _commissionType = b['commission_type']?.toString() == 'flat' ? 'flat' : 'percent';
           _commission.text = b['commission_value']?.toString() ?? '';
+          final pd = (b['default_payment_days'] as num?)?.toInt();
+          _paymentDays.text = pd != null ? '$pd' : '';
+          _discount.text =
+              b['default_discount']?.toString() ?? '';
+          _delivered.text =
+              b['default_delivered_rate']?.toString() ?? '';
+          _billty.text =
+              b['default_billty_rate']?.toString() ?? '';
+          final ft = b['freight_type']?.toString();
+          _freightType = (ft == 'included' || ft == 'separate')
+              ? ft!
+              : 'separate';
           _supplierIds
             ..clear()
             ..addAll(((b['supplier_ids'] as List?) ?? const [])
@@ -173,7 +194,8 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
     _nameError = null;
     _phoneError = null;
     if (_name.text.trim().isEmpty) _nameError = 'Required';
-    if (!_validPhoneDigits(_phone.text)) {
+    final rawPhone = _phone.text.trim();
+    if (rawPhone.isNotEmpty && !_validPhoneDigits(_phone.text)) {
       _phoneError = 'Enter a valid phone (10–15 digits)';
     }
     setState(() {});
@@ -272,6 +294,42 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
     if (session == null) return;
     final bid = session.primaryBusiness.id;
     final cv = double.tryParse(_commission.text.trim());
+    final payDays = int.tryParse(_paymentDays.text.trim());
+    final disc = double.tryParse(_discount.text.trim());
+    final del = double.tryParse(_delivered.text.trim());
+    final bill = double.tryParse(_billty.text.trim());
+    if (_paymentDays.text.trim().isNotEmpty && payDays == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid payment days number.')),
+      );
+      setState(() => _step = 1);
+      return;
+    }
+    if (_discount.text.trim().isNotEmpty && disc == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid discount %.')),
+      );
+      setState(() => _step = 1);
+      return;
+    }
+    if (_delivered.text.trim().isNotEmpty && del == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid delivered rate.')),
+      );
+      setState(() => _step = 1);
+      return;
+    }
+    if (_billty.text.trim().isNotEmpty && bill == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid billty rate.')),
+      );
+      setState(() => _step = 1);
+      return;
+    }
     final prefs = <String, dynamic>{
       'category_ids': _categoryIds.toList(),
       'type_ids': _typeIds.toList(),
@@ -290,6 +348,13 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
               notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
               commissionType: _commissionType,
               commissionValue: cv,
+              defaultPaymentDays:
+                  _paymentDays.text.trim().isEmpty ? null : payDays,
+              defaultDiscount: _discount.text.trim().isEmpty ? null : disc,
+              defaultDeliveredRate:
+                  _delivered.text.trim().isEmpty ? null : del,
+              defaultBilltyRate: _billty.text.trim().isEmpty ? null : bill,
+              freightType: _freightType,
               supplierIds: _supplierIds.toList(),
               preferences: prefs,
             );
@@ -303,6 +368,13 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
               notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
               commissionType: _commissionType,
               commissionValue: cv,
+              defaultPaymentDays:
+                  _paymentDays.text.trim().isEmpty ? null : payDays,
+              defaultDiscount: _discount.text.trim().isEmpty ? null : disc,
+              defaultDeliveredRate:
+                  _delivered.text.trim().isEmpty ? null : del,
+              defaultBilltyRate: _billty.text.trim().isEmpty ? null : bill,
+              freightType: _freightType,
               supplierIds: _supplierIds.toList(),
               preferences: prefs,
             );
@@ -422,16 +494,16 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
         const SizedBox(height: 8),
         TextField(
           controller: _phone,
-          decoration: _d('Phone *').copyWith(errorText: _phoneError),
-          keyboardType: TextInputType.phone,
+          decoration: _d('Phone (optional)').copyWith(errorText: _phoneError),
+          keyboardType: const TextInputType.numberWithOptions(signed: false, decimal: false),
           onChanged: (_) => _markDirty(),
           textInputAction: TextInputAction.next,
         ),
         const SizedBox(height: 8),
         TextField(
           controller: _wa,
-          decoration: _d('WhatsApp'),
-          keyboardType: TextInputType.phone,
+          decoration: _d('WhatsApp (optional)'),
+          keyboardType: const TextInputType.numberWithOptions(signed: false, decimal: false),
           onChanged: (_) => _markDirty(),
           textInputAction: TextInputAction.next,
         ),
@@ -480,6 +552,57 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
                   : 'Commission Value (₹)')
               .copyWith(errorText: _commissionError),
           onChanged: (_) => _markDirty(),
+        ),
+        const SizedBox(height: 18),
+        Text(
+          'Default deal terms for new purchases',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _paymentDays,
+          keyboardType: TextInputType.number,
+          decoration: _d('Payment days (optional)'),
+          onChanged: (_) => _markDirty(),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _discount,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: _d('Header discount % (optional)'),
+          onChanged: (_) => _markDirty(),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _delivered,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: _d('Default delivered rate ₹ (optional)'),
+          onChanged: (_) => _markDirty(),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _billty,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: _d('Default billty rate ₹ (optional)'),
+          onChanged: (_) => _markDirty(),
+        ),
+        const SizedBox(height: 10),
+        Text('Freight handling', style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 6),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'included', label: Text('Included')),
+            ButtonSegment(value: 'separate', label: Text('Separate')),
+          ],
+          selected: {_freightType},
+          onSelectionChanged: (v) {
+            setState(() {
+              _freightType = v.first;
+              _markDirty();
+            });
+          },
         ),
       ],
     );
@@ -619,113 +742,76 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
     );
   }
 
-  Widget _step4() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _reviewCard('Basic Info', [
-          _kv('Name', _name.text.trim().isEmpty ? '—' : _name.text.trim()),
-          _kv('Phone', _phone.text.trim().isEmpty ? '—' : _phone.text.trim()),
-          _kv('WhatsApp', _wa.text.trim().isEmpty ? '—' : _wa.text.trim()),
-          _kv('Location', _location.text.trim().isEmpty ? '—' : _location.text.trim()),
-        ]),
-        _reviewCard('Commission', [
-          _kv('Type', _commissionType == 'percent' ? 'Percentage %' : 'Fixed ₹'),
-          _kv('Value', _commission.text.trim().isEmpty ? '—' : _commission.text.trim()),
-        ]),
-        _reviewCard('Connections', [
-          _kv('Suppliers linked', '${_supplierIds.length}'),
-          _kv('Items linked', '${_itemIds.length}'),
-          _kv('Categories linked', '${_categoryIds.length}'),
-        ]),
-      ],
-    );
-  }
-
-  Widget _reviewCard(String title, List<Widget> rows) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.7),
-        ),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
-        const SizedBox(height: 6),
-        ...rows,
-      ]),
-    );
-  }
-
-  Widget _kv(String k, String v) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 130,
-            child: Text(
-              k,
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-            ),
-          ),
-          Expanded(
-            child: Text(v, style: const TextStyle(fontWeight: FontWeight.w700)),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _body() {
     switch (_step) {
       case 0:
-        return _step0();
-      case 1:
-        return _step1();
-      case 2:
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Linked suppliers',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    color: const Color(0xFF0F172A),
+        return SingleChildScrollView(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.paddingOf(context).bottom + 8,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _step0(),
+              const SizedBox(height: 4),
+              Theme(
+                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  title: Text(
+                    'Advanced (optional)',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF0F172A),
+                        ),
                   ),
-            ),
-            const SizedBox(height: 8),
-            _step2(),
-            const SizedBox(height: 20),
-            Text(
-              'Preferred items & categories',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    color: const Color(0xFF0F172A),
+                  subtitle: Text(
+                    'Link suppliers & item preferences — can be edited later from broker detail',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
-            ),
-            const SizedBox(height: 8),
-            _step3(),
-          ],
+                  children: [
+                    Text(
+                      'Linked suppliers',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w900,
+                            color: const Color(0xFF0F172A),
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    _step2(),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Preferred items & categories',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w900,
+                            color: const Color(0xFF0F172A),
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    _step3(),
+                  ],
+                ),
+              ),
+            ],
+          ),
         );
       default:
-        return _step4();
+        return _step1();
     }
   }
 
   Widget _footer() {
-    final finalStep = _step == 3;
+    final finalStep = _step == 1;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
       child: Row(
         children: [
           TextButton(
             onPressed: _exit,
-            child: Text(finalStep ? 'Cancel' : 'Cancel'),
+            child: const Text('Cancel'),
           ),
           const Spacer(),
           if (finalStep)
@@ -736,10 +822,9 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
           else
             FilledButton(
               onPressed: () {
-                if (_step == 0 && !_validateStep0()) return;
-                if (_step == 1 && !_validateStep1()) return;
+                if (!_validateStep0()) return;
                 setState(() {
-                  _step++;
+                  _step = 1;
                   _dirty = true;
                 });
               },
@@ -753,10 +838,8 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
   @override
   Widget build(BuildContext context) {
     final titles = [
-      'Basic Info',
-      'Commission Setup',
-      'Mappings',
-      'Review',
+      'Broker details',
+      'Commission',
     ];
 
     return PopScope(

@@ -25,6 +25,11 @@ class Broker(Base):
     preferences_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     commission_type: Mapped[str] = mapped_column(String(32), default="percent")
     commission_value: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    default_payment_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    default_discount: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    default_delivered_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    default_billty_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    freight_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     suppliers = relationship("Supplier", back_populates="broker")

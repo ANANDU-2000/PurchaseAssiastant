@@ -649,8 +649,7 @@ String _itemUpperQtyLine(Map<String, dynamic> m) {
   if (tkg > 0) parts.add('${_fmtQty(tkg)} KG');
   if (parts.isNotEmpty) return parts.join(' • ');
   final q = (m['total_qty'] as num?)?.toDouble() ?? 0;
-  final u = (m['unit']?.toString() ?? '—').toUpperCase();
-  return '${_fmtQty(q)} $u';
+  return homePackQtyWithDbUnit(q, m['unit']?.toString());
 }
 
 String _categoryQtyLabel(CategoryStat c) {
@@ -669,9 +668,9 @@ String _categoryQtyLabel(CategoryStat c) {
   }
   if (parts.isNotEmpty) return parts.join(' • ');
   if (c.items.isNotEmpty) {
-    final u = c.items.first.unit.trim().toUpperCase();
+    final u = c.items.first.unit.trim();
     if (u.isNotEmpty && u != '—') {
-      return '${_fmtQty(c.totalQty)} $u';
+      return homePackQtyWithDbUnit(c.totalQty, u);
     }
   }
   if (c.totalQty.abs() > 1e-9) return '${_fmtQty(c.totalQty)} QTY';
@@ -732,18 +731,6 @@ class _HomeFixedHeaderBody extends ConsumerStatefulWidget {
 }
 
 class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
-  bool _rowsExpanded = false;
-
-  @override
-  void didUpdateWidget(covariant _HomeFixedHeaderBody oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.data.period != widget.data.period ||
-        oldWidget.data.purchaseCount != widget.data.purchaseCount ||
-        (oldWidget.data.totalPurchase - widget.data.totalPurchase).abs() >
-            1e-6) {
-      _rowsExpanded = false;
-    }
-  }
 
   HomeShellReportsBundle? _bundle(
     HomeBreakdownTab tab,
@@ -868,7 +855,6 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
           child: _HomeBreakdownTabStrip(
             selected: tab,
             onSelect: (t) {
-              setState(() => _rowsExpanded = false);
               ref.read(homeBreakdownTabProvider.notifier).state = t;
             },
           ),
@@ -963,22 +949,16 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
                   1,
                   (constraints.maxHeight / _homeBreakdownRowExtent).floor(),
                 );
-                final reserveFooter = (!_rowsExpanded && full.length > maxSlots)
-                    ? 48.0
-                    : 0.0;
-                if (reserveFooter > 0) {
-                  maxSlots = math.max(
-                    1,
-                    ((constraints.maxHeight - reserveFooter) /
-                            _homeBreakdownRowExtent)
-                        .floor(),
-                  );
-                }
+                const reserveFooter = 48.0;
+                maxSlots = math.max(
+                  1,
+                  ((constraints.maxHeight - reserveFooter) /
+                          _homeBreakdownRowExtent)
+                      .floor(),
+                );
 
-                final cap = _rowsExpanded
-                    ? full.length
-                    : math.min(maxSlots, full.length);
-                final needsMore = !_rowsExpanded && full.length > maxSlots;
+                final cap = math.min(maxSlots, full.length);
+                final needsMore = full.length > maxSlots;
 
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -986,9 +966,7 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
                     Expanded(
                       child: ListView.builder(
                         padding: EdgeInsets.zero,
-                        physics: _rowsExpanded
-                            ? const BouncingScrollPhysics()
-                            : const NeverScrollableScrollPhysics(),
+                        physics: const NeverScrollableScrollPhysics(),
                         itemCount: cap,
                         itemBuilder: (ctx, i) {
                           final row = full[i];
@@ -1008,16 +986,14 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
                         },
                       ),
                     ),
-                    if (needsMore || _rowsExpanded)
+                    if (needsMore)
                       Align(
                         alignment: Alignment.center,
                         child: TextButton(
-                          onPressed: () => setState(
-                            () => _rowsExpanded = !_rowsExpanded,
+                          onPressed: () => context.push(
+                            '/home/breakdown-more?tab=${tab.name}',
                           ),
-                          child: Text(
-                            _rowsExpanded ? 'Show less' : 'View more',
-                          ),
+                          child: const Text('View more'),
                         ),
                       ),
                   ],
@@ -1055,38 +1031,41 @@ class _KpiTightBlock extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(
-                  flex: 3,
+                  flex: 5,
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        _inr(data.totalPurchase),
-                        maxLines: 1,
-                        style: HexaDsType.purchaseLineMoney.copyWith(
-                          fontSize: 26,
-                          height: 1.08,
+                        primaryUnits.trim().isEmpty ? '—' : primaryUnits,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 22,
+                          height: 1.12,
+                          color: Color(0xFF0F172A),
                         ),
                       ),
                     ),
                   ),
                 ),
                 Expanded(
-                  flex: 2,
+                  flex: 4,
                   child: Align(
                     alignment: Alignment.centerRight,
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerRight,
                       child: Text(
-                        primaryUnits.trim().isEmpty ? '—' : primaryUnits,
+                        _inr(data.totalPurchase),
                         maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 15,
-                          color: Color(0xFF0F172A),
+                        style: HexaDsType.purchaseLineMoney.copyWith(
+                          fontSize: 18,
+                          height: 1.1,
+                          color: const Color(0xFF475569),
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),

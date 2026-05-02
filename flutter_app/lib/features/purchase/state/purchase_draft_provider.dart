@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show immutable;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -73,6 +75,15 @@ TradeCalcRequest draftToCalcRequest(PurchaseDraft d) {
 
 TradeCalcTotals computePurchaseTotals(PurchaseDraft d) =>
     computeTradeTotals(draftToCalcRequest(d));
+
+bool _tradePurchaseMapLooksValid(Map<String, dynamic> raw) {
+  final id = raw['id']?.toString();
+  if (id == null || id.isEmpty) return false;
+  final sid = raw['supplier_id']?.toString();
+  if (sid != null && sid.isNotEmpty) return true;
+  final ls = raw['lines'];
+  return ls is List && ls.isNotEmpty;
+}
 
 PurchaseStrictBreakdown strictFooterBreakdown(PurchaseDraft d) {
   var subtotalGross = 0.0;
@@ -309,8 +320,8 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
   /// Does not change line items — avoids reusing payment/delivered/billty/freight/broker
   /// from an earlier selection when the user picks a new supplier.
   ///
-  /// Identity only: supplier master defaults are not copied; header terms come from
-  /// `tradeLastSupplierAutofill` after selection.
+  /// Clears broker + header terms when picking a supplier; fills terms via broker defaults
+  /// when a broker is selected (or hinted from last trade without copying header money).
   void applySupplierSelection(Map<String, dynamic> _, String id, String name) {
     state = state.copyWith(
       supplierId: id,
@@ -318,41 +329,12 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
       clearBroker: true,
       clearBrokerFromSupplier: true,
       clearPaymentDays: true,
+      clearHeaderDiscount: true,
+      clearCommission: true,
       clearDelivered: true,
       clearBillty: true,
       clearFreight: true,
       freightType: 'separate',
-    );
-  }
-
-  /// Apply latest trade header for supplier (`source`: `supplier_last_trade`) — draft only.
-  void applyLastSupplierTradeAutofill(Map<String, dynamic> raw) {
-    if (raw['source']?.toString() != 'supplier_last_trade') return;
-    final pd = raw['payment_days'];
-    int? pay;
-    if (pd is num) pay = pd.toInt();
-
-    double? del = _decimalFromObject(raw['delivered_rate']);
-    if (del != null && del < 0) del = null;
-    double? bill = _decimalFromObject(raw['billty_rate']);
-    if (bill != null && bill < 0) bill = null;
-    double? fr = _decimalFromObject(raw['freight_amount']);
-    if (fr != null && fr < 0) fr = null;
-
-    var ft = state.freightType;
-    final sft = raw['freight_type']?.toString();
-    if (sft == 'included' || sft == 'separate') ft = sft!;
-
-    state = state.copyWith(
-      clearPaymentDays: pay == null,
-      paymentDays: pay,
-      clearDelivered: del == null,
-      deliveredRate: del,
-      clearBillty: bill == null,
-      billtyRate: bill,
-      clearFreight: fr == null,
-      freightAmount: fr,
-      freightType: ft,
     );
   }
 
@@ -400,6 +382,46 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
         clearBrokerFromSupplier: true,
       );
     }
+  }
+
+  /// Header terms from broker master (payment/discount/rates/freight/commission).
+  void applyBrokerDealDefaults(Map<String, dynamic> raw) {
+    final pd = raw['default_payment_days'];
+    int? pay;
+    if (pd is num) pay = pd.toInt();
+
+    double? disc = _decimalFromObject(raw['default_discount']);
+    if (disc != null && disc < 0) disc = null;
+
+    double? del = _decimalFromObject(raw['default_delivered_rate']);
+    if (del != null && del < 0) del = null;
+    double? bill = _decimalFromObject(raw['default_billty_rate']);
+    if (bill != null && bill < 0) bill = null;
+
+    double? comm;
+    final ct = raw['commission_type']?.toString() ?? 'percent';
+    if (ct == 'percent') {
+      comm = _decimalFromObject(raw['commission_value']);
+      if (comm != null && comm < 0) comm = null;
+    }
+
+    var ft = state.freightType;
+    final sft = raw['freight_type']?.toString();
+    if (sft == 'included' || sft == 'separate') ft = sft!;
+
+    state = state.copyWith(
+      clearPaymentDays: pay == null,
+      paymentDays: pay,
+      clearHeaderDiscount: disc == null,
+      headerDiscountPercent: disc,
+      clearCommission: comm == null,
+      commissionPercent: comm,
+      clearDelivered: del == null,
+      deliveredRate: del,
+      clearBillty: bill == null,
+      billtyRate: bill,
+      freightType: ft,
+    );
   }
 
   void setPaymentDaysText(String t) {
@@ -571,11 +593,22 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
     if (_disposed) return null;
     final session = ref.read(sessionProvider);
     if (session == null) return null;
-    final raw = await ref.read(hexaApiProvider).getTradePurchase(
-          businessId: session.primaryBusiness.id,
-          purchaseId: purchaseId,
-        );
+    Map<String, dynamic> raw;
+    try {
+      raw = await ref
+          .read(hexaApiProvider)
+          .getTradePurchase(
+            businessId: session.primaryBusiness.id,
+            purchaseId: purchaseId,
+          )
+          .timeout(const Duration(seconds: 20));
+    } on TimeoutException {
+      return null;
+    }
     if (_disposed) return raw;
+    if (!_tradePurchaseMapLooksValid(raw)) {
+      return null;
+    }
     state = _parseServerPurchaseMap(raw);
     return raw;
   }

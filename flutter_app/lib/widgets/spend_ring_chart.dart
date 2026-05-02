@@ -152,12 +152,13 @@ class SpendRingChart extends StatelessWidget {
               Text(
                 centerLine3!,
                 textAlign: TextAlign.center,
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontSize: 14,
+                  fontSize: 12,
                   fontWeight: FontWeight.w900,
                   color: Color(0xFF0F172A),
+                  height: 1.12,
                 ),
               ),
             if (centerLine4 != null && centerLine4!.trim().isNotEmpty) ...[
@@ -165,13 +166,13 @@ class SpendRingChart extends StatelessWidget {
               Text(
                 centerLine4!,
                 textAlign: TextAlign.center,
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w600,
                   color: Color(0xFF64748B),
-                  height: 1.1,
+                  height: 1.15,
                 ),
               ),
             ],

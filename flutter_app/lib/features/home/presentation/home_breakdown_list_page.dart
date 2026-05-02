@@ -27,8 +27,7 @@ String _itemUpperQtyLine(Map<String, dynamic> m) {
   if (tkg > 0) parts.add('${_fmtQty(tkg)} KG');
   if (parts.isNotEmpty) return parts.join(' • ');
   final q = (m['total_qty'] as num?)?.toDouble() ?? 0;
-  final u = (m['unit']?.toString() ?? '—').toUpperCase();
-  return '${_fmtQty(q)} $u';
+  return homePackQtyWithDbUnit(q, m['unit']?.toString());
 }
 
 String _categoryQtyLabel(CategoryStat c) {
@@ -47,9 +46,9 @@ String _categoryQtyLabel(CategoryStat c) {
   }
   if (parts.isNotEmpty) return parts.join(' • ');
   if (c.items.isNotEmpty) {
-    final u = c.items.first.unit.trim().toUpperCase();
+    final u = c.items.first.unit.trim();
     if (u.isNotEmpty && u != '—') {
-      return '${_fmtQty(c.totalQty)} $u';
+      return homePackQtyWithDbUnit(c.totalQty, u);
     }
   }
   return '${_fmtQty(c.totalQty)} QTY';

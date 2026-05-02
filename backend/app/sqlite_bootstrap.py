@@ -246,6 +246,16 @@ def _ensure_broker_phone_column(sync_conn):
         alters.append("ALTER TABLE brokers ADD COLUMN notes TEXT")
     if "preferences_json" not in cols:
         alters.append("ALTER TABLE brokers ADD COLUMN preferences_json TEXT")
+    if "default_payment_days" not in cols:
+        alters.append("ALTER TABLE brokers ADD COLUMN default_payment_days INTEGER")
+    if "default_discount" not in cols:
+        alters.append("ALTER TABLE brokers ADD COLUMN default_discount NUMERIC(5, 2)")
+    if "default_delivered_rate" not in cols:
+        alters.append("ALTER TABLE brokers ADD COLUMN default_delivered_rate NUMERIC(12, 2)")
+    if "default_billty_rate" not in cols:
+        alters.append("ALTER TABLE brokers ADD COLUMN default_billty_rate NUMERIC(12, 2)")
+    if "freight_type" not in cols:
+        alters.append("ALTER TABLE brokers ADD COLUMN freight_type VARCHAR(16)")
     for sql in alters:
         try:
             sync_conn.exec_driver_sql(sql)

@@ -25,7 +25,6 @@ const _kDraftKey = 'supplier_create_wizard_draft_v1';
 const _stepTitles = <String>[
   'Basic details',
   'Business details',
-  'Purchase defaults',
   'Brokers',
   'Items & categories',
   'Review',
@@ -92,10 +91,6 @@ class _SupplierCreateWizardPageState
   final _gst = TextEditingController();
   final _addr = TextEditingController();
   final _notes = TextEditingController();
-  final _delivered = TextEditingController();
-  final _billty = TextEditingController();
-  final _customPay = TextEditingController();
-  final _customDisc = TextEditingController();
   final _itemSearch = TextEditingController();
 
   final _nameFocus = FocusNode();
@@ -105,21 +100,12 @@ class _SupplierCreateWizardPageState
   final _gstFocus = FocusNode();
   final _addrFocus = FocusNode();
   final _notesFocus = FocusNode();
-  final _customPayFocus = FocusNode();
-  final _customDiscFocus = FocusNode();
-  final _deliveredFocus = FocusNode();
-  final _billtyFocus = FocusNode();
   final _itemSearchFocus = FocusNode();
 
   String? _nameError;
   String? _phoneError;
   String? _gstError;
 
-  int? _payChip;
-  bool _payCustom = false;
-  double? _discChip;
-  bool _discCustom = false;
-  bool _freightIncluded = true;
   bool _aiMemory = false;
 
   final Set<String> _brokerIds = {};
@@ -148,10 +134,6 @@ class _SupplierCreateWizardPageState
       _gstFocus,
       _addrFocus,
       _notesFocus,
-      _customPayFocus,
-      _customDiscFocus,
-      _deliveredFocus,
-      _billtyFocus,
       _itemSearchFocus,
     ]) {
       n.addListener(() {
@@ -187,14 +169,6 @@ class _SupplierCreateWizardPageState
     return EdgeInsets.only(bottom: 24 + kb);
   }
 
-  void _focusAfterCustomPay() {
-    if (_discCustom) {
-      _customDiscFocus.requestFocus();
-    } else {
-      _deliveredFocus.requestFocus();
-    }
-  }
-
   void _unfocusForm() {
     FocusManager.instance.primaryFocus?.unfocus();
   }
@@ -206,22 +180,21 @@ class _SupplierCreateWizardPageState
         case 1:
           _gstFocus.requestFocus();
           break;
-        case 2:
-          if (_payCustom) {
-            _customPayFocus.requestFocus();
-          } else if (_discCustom) {
-            _customDiscFocus.requestFocus();
-          } else {
-            _deliveredFocus.requestFocus();
-          }
-          break;
-        case 4:
+        case 3:
           _itemSearchFocus.requestFocus();
           break;
         default:
           break;
       }
     });
+  }
+
+  /// Migrate draft step indices from the older 6-step wizard (purchase defaults removed).
+  int _mapLegacyDraftStep(int oldStep) {
+    final o = oldStep.clamp(0, 5);
+    if (o <= 1) return o;
+    if (o == 2) return 2;
+    return o - 1;
   }
 
   Future<void> _bootstrap() async {
@@ -252,27 +225,6 @@ class _SupplierCreateWizardPageState
             _gst.text = s['gst_number']?.toString() ?? '';
             _addr.text = s['address']?.toString() ?? '';
             _notes.text = s['notes']?.toString() ?? '';
-            _delivered.text =
-                (s['default_delivered_rate']?.toString() ?? '').trim();
-            _billty.text = (s['default_billty_rate']?.toString() ?? '').trim();
-            final pd = (s['default_payment_days'] as num?)?.toInt();
-            if (pd != null && (pd == 7 || pd == 14 || pd == 30)) {
-              _payChip = pd;
-              _payCustom = false;
-            } else if (pd != null) {
-              _payCustom = true;
-              _customPay.text = '$pd';
-            }
-            final dd = (s['default_discount'] as num?)?.toDouble();
-            if (dd != null && (dd == 0 || dd == 1 || dd == 1.5 || dd == 2)) {
-              _discChip = dd;
-              _discCustom = false;
-            } else if (dd != null) {
-              _discCustom = true;
-              _customDisc.text = '$dd';
-            }
-            final ft = s['freight_type']?.toString();
-            _freightIncluded = ft != 'separate';
             _aiMemory = s['ai_memory_enabled'] == true;
             _brokerIds
               ..clear()
@@ -357,7 +309,8 @@ class _SupplierCreateWizardPageState
       final m = jsonDecode(raw) as Map<String, dynamic>;
       if (!mounted) return;
       setState(() {
-        _step = ((m['step'] as num?)?.toInt() ?? 0).clamp(0, 5);
+        final rawStep = ((m['step'] as num?)?.toInt() ?? 0);
+        _step = _mapLegacyDraftStep(rawStep).clamp(0, 4);
         _name.text = m['name']?.toString() ?? '';
         _phone.text = m['phone']?.toString() ?? '';
         _wa.text = m['whatsapp']?.toString() ?? '';
@@ -365,15 +318,6 @@ class _SupplierCreateWizardPageState
         _gst.text = m['gst']?.toString() ?? '';
         _addr.text = m['address']?.toString() ?? '';
         _notes.text = m['notes']?.toString() ?? '';
-        _delivered.text = m['delivered']?.toString() ?? '';
-        _billty.text = m['billty']?.toString() ?? '';
-        _customPay.text = m['custom_pay']?.toString() ?? '';
-        _customDisc.text = m['custom_disc']?.toString() ?? '';
-        _payChip = (m['pay_chip'] as num?)?.toInt();
-        _payCustom = m['pay_custom'] == true;
-        _discChip = (m['disc_chip'] as num?)?.toDouble();
-        _discCustom = m['disc_custom'] == true;
-        _freightIncluded = m['freight_included'] != false;
         _aiMemory = m['ai_memory'] == true;
         _brokerIds
           ..clear()
@@ -412,15 +356,6 @@ class _SupplierCreateWizardPageState
       'gst': _gst.text,
       'address': _addr.text,
       'notes': _notes.text,
-      'delivered': _delivered.text,
-      'billty': _billty.text,
-      'custom_pay': _customPay.text,
-      'custom_disc': _customDisc.text,
-      'pay_chip': _payChip,
-      'pay_custom': _payCustom,
-      'disc_chip': _discChip,
-      'disc_custom': _discCustom,
-      'freight_included': _freightIncluded,
       'ai_memory': _aiMemory,
       'brokers': _brokerIds.toList(),
       'cats': _categoryIds.toList(),
@@ -500,20 +435,6 @@ class _SupplierCreateWizardPageState
     return ok;
   }
 
-  int? _resolvedPaymentDays() {
-    if (_payCustom) {
-      return int.tryParse(_customPay.text.trim());
-    }
-    return _payChip;
-  }
-
-  double? _resolvedDiscount() {
-    if (_discCustom) {
-      return double.tryParse(_customDisc.text.trim());
-    }
-    return _discChip;
-  }
-
   /// Blocks create/rename when another supplier already uses this name (case-insensitive).
   String? _blockingDuplicateName(String candidate) {
     final c = candidate.trim().toLowerCase();
@@ -587,7 +508,7 @@ class _SupplierCreateWizardPageState
         if (!mounted) return;
         setState(() {
           _gstError = 'Invalid GST format (e.g. 32ABCDE1234F1Z5).';
-          _step = 2;
+          _step = 1;
         });
         return;
       }
@@ -625,11 +546,6 @@ class _SupplierCreateWizardPageState
               gstNumber: _gst.text.trim().isEmpty ? null : _gst.text.trim(),
               address: _addr.text.trim().isEmpty ? null : _addr.text.trim(),
               notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
-              defaultPaymentDays: _resolvedPaymentDays(),
-              defaultDiscount: _resolvedDiscount(),
-              defaultDeliveredRate: double.tryParse(_delivered.text.trim()),
-              defaultBilltyRate: double.tryParse(_billty.text.trim()),
-              freightType: _freightIncluded ? 'included' : 'separate',
               aiMemoryEnabled: _aiMemory,
               preferences: prefsMap,
             );
@@ -645,11 +561,6 @@ class _SupplierCreateWizardPageState
               gstNumber: _gst.text.trim().isEmpty ? null : _gst.text.trim(),
               address: _addr.text.trim().isEmpty ? null : _addr.text.trim(),
               notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
-              defaultPaymentDays: _resolvedPaymentDays(),
-              defaultDiscount: _resolvedDiscount(),
-              defaultDeliveredRate: double.tryParse(_delivered.text.trim()),
-              defaultBilltyRate: double.tryParse(_billty.text.trim()),
-              freightType: _freightIncluded ? 'included' : 'separate',
               aiMemoryEnabled: _aiMemory,
               preferences: prefsMap,
             );
@@ -953,163 +864,6 @@ class _SupplierCreateWizardPageState
     );
   }
 
-  Widget _payChipRow() {
-    Widget chip(String label, int? days, {bool custom = false}) {
-      final sel = custom ? _payCustom : (_payChip == days && !_payCustom);
-      return FilterChip(
-        label: Text(label),
-        selected: sel,
-        onSelected: (_) {
-          setState(() {
-            if (custom) {
-              _payCustom = true;
-              _payChip = null;
-            } else {
-              _payCustom = false;
-              _payChip = days;
-            }
-            _markDirty();
-          });
-          if (custom) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) _customPayFocus.requestFocus();
-            });
-          }
-        },
-      );
-    }
-
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        chip('7', 7),
-        chip('14', 14),
-        chip('30', 30),
-        chip('Custom', null, custom: true),
-      ],
-    );
-  }
-
-  Widget _discChipRow() {
-    Widget chip(String label, double? v, {bool custom = false}) {
-      final sel = custom ? _discCustom : (_discChip == v && !_discCustom);
-      return FilterChip(
-        label: Text(label),
-        selected: sel,
-        onSelected: (_) {
-          setState(() {
-            if (custom) {
-              _discCustom = true;
-              _discChip = null;
-            } else {
-              _discCustom = false;
-              _discChip = v;
-            }
-            _markDirty();
-          });
-          if (custom) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) _customDiscFocus.requestFocus();
-            });
-          }
-        },
-      );
-    }
-
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        chip('0', 0),
-        chip('1', 1),
-        chip('1.5', 1.5),
-        chip('2', 2),
-        chip('Custom', null, custom: true),
-      ],
-    );
-  }
-
-  Widget _buildStep2() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _stepHeader('Defaults for new purchases'),
-        const Text('Payment days'),
-        const SizedBox(height: 8),
-        _payChipRow(),
-        if (_payCustom) ...[
-          const SizedBox(height: 8),
-          TextField(
-            controller: _customPay,
-            focusNode: _customPayFocus,
-            scrollPadding: _fieldScrollPad(context),
-            keyboardType: TextInputType.number,
-            decoration: _dec('Custom payment days'),
-            textInputAction: TextInputAction.next,
-            onChanged: (_) => _markDirty(),
-            onSubmitted: (_) => _focusAfterCustomPay(),
-          ),
-        ],
-        const SizedBox(height: 16),
-        const Text('Discount %'),
-        const SizedBox(height: 8),
-        _discChipRow(),
-        if (_discCustom) ...[
-          const SizedBox(height: 8),
-          TextField(
-            controller: _customDisc,
-            focusNode: _customDiscFocus,
-            scrollPadding: _fieldScrollPad(context),
-            keyboardType: TextInputType.number,
-            decoration: _dec('Custom discount %'),
-            textInputAction: TextInputAction.next,
-            onChanged: (_) => _markDirty(),
-            onSubmitted: (_) => _deliveredFocus.requestFocus(),
-          ),
-        ],
-        const SizedBox(height: 16),
-        TextField(
-          controller: _delivered,
-          focusNode: _deliveredFocus,
-          scrollPadding: _fieldScrollPad(context),
-          keyboardType: TextInputType.number,
-          decoration: _dec('Default delivered rate', hint: 'Optional'),
-          textInputAction: TextInputAction.next,
-          onChanged: (_) => _markDirty(),
-          onSubmitted: (_) => _billtyFocus.requestFocus(),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _billty,
-          focusNode: _billtyFocus,
-          scrollPadding: _fieldScrollPad(context),
-          keyboardType: TextInputType.number,
-          decoration: _dec('Default billty rate', hint: 'Optional'),
-          textInputAction: TextInputAction.done,
-          onChanged: (_) => _markDirty(),
-          onSubmitted: (_) => _unfocusForm(),
-        ),
-        const SizedBox(height: 16),
-        const Text('Freight'),
-        const SizedBox(height: 8),
-        SegmentedButton<bool>(
-          segments: const [
-            ButtonSegment(value: true, label: Text('Included')),
-            ButtonSegment(value: false, label: Text('Separate')),
-          ],
-          selected: {_freightIncluded},
-          onSelectionChanged: (s) {
-            setState(() {
-              _freightIncluded = s.first;
-              _markDirty();
-            });
-          },
-        ),
-      ],
-    );
-  }
-
   Widget _buildStep3() {
     final brokers = ref.watch(brokersListProvider);
     return Column(
@@ -1381,8 +1135,6 @@ class _SupplierCreateWizardPageState
   }
 
   Widget _buildStep6() {
-    final disc = _resolvedDiscount();
-    final pay = _resolvedPaymentDays();
     final brokers = ref.watch(brokersListProvider).valueOrNull ?? const [];
     final brokerRows = brokers
         .where((b) => _brokerIds.contains(b['id']?.toString() ?? ''))
@@ -1475,20 +1227,8 @@ class _SupplierCreateWizardPageState
           ),
         ),
         _reviewCard(
-          title: 'Purchase Defaults',
-          onEdit: () => setState(() => _step = 2),
-          child: Column(
-            children: [
-              _kvRow('Payment Days', pay == null ? '—' : '$pay days'),
-              _kvRow('Discount', disc == null ? '—' : '$disc%'),
-              _kvRow('Delivered', _fmtMoney(_delivered.text)),
-              _kvRow('Billty', _fmtMoney(_billty.text)),
-              _kvRow('Freight', _freightIncluded ? 'Included' : 'Separate'),
-            ],
-          ),
-        ),
-        _reviewCard(
           title: 'Brokers',
+          onEdit: () => setState(() => _step = 2),
           child: brokerRows.isEmpty
               ? Text(
                   'No brokers linked',
@@ -1524,7 +1264,7 @@ class _SupplierCreateWizardPageState
         ),
         _reviewCard(
           title: 'Items & Categories',
-          onEdit: () => setState(() => _step = 4),
+          onEdit: () => setState(() => _step = 3),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1655,13 +1395,6 @@ class _SupplierCreateWizardPageState
     );
   }
 
-  String _fmtMoney(String raw) {
-    final n = double.tryParse(raw.trim());
-    if (n == null) return '—';
-    if (n == n.roundToDouble()) return '₹${n.toStringAsFixed(0)}';
-    return '₹${n.toStringAsFixed(2)}';
-  }
-
   static Widget _miniFact(String label, String value) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1693,10 +1426,8 @@ class _SupplierCreateWizardPageState
       case 1:
         return _buildStep1();
       case 2:
-        return _buildStep2();
-      case 3:
         return _buildStep3();
-      case 4:
+      case 3:
         return _buildStep4();
       default:
         return _buildStep6();
@@ -1704,7 +1435,7 @@ class _SupplierCreateWizardPageState
   }
 
   Widget _wizardBottomBar() {
-    final isSummary = _step == 5;
+    final isSummary = _step == 4;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
       child: Row(
@@ -1735,7 +1466,7 @@ class _SupplierCreateWizardPageState
                 child: FilledButton(
                   onPressed: () {
                     if (_step == 0 && !_validateStep0()) return;
-                    final nextStep = (_step + 1).clamp(0, 5);
+                    final nextStep = (_step + 1).clamp(0, 4);
                     setState(() {
                       _step = nextStep;
                       _dirty = true;
@@ -1763,10 +1494,6 @@ class _SupplierCreateWizardPageState
     _gst.dispose();
     _addr.dispose();
     _notes.dispose();
-    _delivered.dispose();
-    _billty.dispose();
-    _customPay.dispose();
-    _customDisc.dispose();
     _itemSearch.dispose();
     _nameFocus.dispose();
     _phoneFocus.dispose();
@@ -1775,10 +1502,6 @@ class _SupplierCreateWizardPageState
     _gstFocus.dispose();
     _addrFocus.dispose();
     _notesFocus.dispose();
-    _customPayFocus.dispose();
-    _customDiscFocus.dispose();
-    _deliveredFocus.dispose();
-    _billtyFocus.dispose();
     _itemSearchFocus.dispose();
     super.dispose();
   }
@@ -1786,7 +1509,7 @@ class _SupplierCreateWizardPageState
   @override
   Widget build(BuildContext context) {
     final title = widget.supplierId != null ? 'Edit supplier' : 'New supplier';
-    final subtitle = '${_stepTitles[_step]} · Step ${_step + 1} of 6';
+    final subtitle = '${_stepTitles[_step]} · Step ${_step + 1} of ${_stepTitles.length}';
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {

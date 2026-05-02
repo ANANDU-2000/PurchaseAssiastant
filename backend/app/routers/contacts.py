@@ -1,5 +1,6 @@
 import re
 import uuid
+from collections import defaultdict
 from datetime import date
 from typing import Annotated
 
@@ -229,9 +230,24 @@ async def list_suppliers(
     del _m
     r = await db.execute(select(Supplier).where(Supplier.business_id == business_id))
     rows = r.scalars().all()
+    if not rows:
+        return []
+
+    supplier_ids = [s.id for s in rows]
+    rb = await db.execute(
+        select(BrokerSupplierLink.supplier_id, BrokerSupplierLink.broker_id).where(
+            BrokerSupplierLink.supplier_id.in_(supplier_ids)
+        )
+    )
+    broker_map: dict[uuid.UUID, list[uuid.UUID]] = defaultdict(list)
+    for sid, bid in rb.all():
+        broker_map[sid].append(bid)
+
     out: list[SupplierOut] = []
     for s in rows:
-        out.append(await _supplier_out(db, s))
+        base = SupplierOut.model_validate(s).model_dump()
+        base["broker_ids"] = list(broker_map.get(s.id, []))
+        out.append(SupplierOut.model_validate(base))
     return out
 
 
@@ -432,6 +448,11 @@ class BrokerOut(BaseModel):
     notes: str | None = None
     commission_type: str
     commission_value: float | None
+    default_payment_days: int | None = None
+    default_discount: float | None = None
+    default_delivered_rate: float | None = None
+    default_billty_rate: float | None = None
+    freight_type: str | None = None
     supplier_ids: list[uuid.UUID] = Field(default_factory=list)
     preferences_json: str | None = None
 
@@ -446,6 +467,11 @@ class BrokerUpdate(BaseModel):
     notes: str | None = None
     commission_type: str | None = Field(default=None, pattern="^(percent|flat)$")
     commission_value: float | None = Field(default=None, ge=0)
+    default_payment_days: int | None = Field(default=None, ge=0)
+    default_discount: float | None = Field(default=None, ge=0)
+    default_delivered_rate: float | None = Field(default=None, ge=0)
+    default_billty_rate: float | None = Field(default=None, ge=0)
+    freight_type: str | None = Field(default=None, pattern="^(included|separate)$")
     supplier_ids: list[uuid.UUID] | None = None
     preferences: SupplierPrefsIn | None = None
 
@@ -495,6 +521,11 @@ class BrokerCreate(BaseModel):
     notes: str | None = None
     commission_type: str = Field(default="percent", pattern="^(percent|flat)$")
     commission_value: float | None = Field(default=None, ge=0)
+    default_payment_days: int | None = Field(default=None, ge=0)
+    default_discount: float | None = Field(default=None, ge=0)
+    default_delivered_rate: float | None = Field(default=None, ge=0)
+    default_billty_rate: float | None = Field(default=None, ge=0)
+    freight_type: str | None = Field(default=None, pattern="^(included|separate)$")
     supplier_ids: list[uuid.UUID] | None = None
     preferences: SupplierPrefsIn | None = None
 
@@ -521,6 +552,11 @@ async def create_broker(
         notes=body.notes,
         commission_type=body.commission_type,
         commission_value=body.commission_value,
+        default_payment_days=body.default_payment_days,
+        default_discount=body.default_discount,
+        default_delivered_rate=body.default_delivered_rate,
+        default_billty_rate=body.default_billty_rate,
+        freight_type=body.freight_type,
         preferences_json=body.preferences.model_dump_json() if body.preferences else None,
     )
     db.add(b)
@@ -584,6 +620,16 @@ async def update_broker(
         b.notes = data["notes"]
     if "preferences" in data and data["preferences"] is not None:
         b.preferences_json = SupplierPrefsIn.model_validate(data["preferences"]).model_dump_json()
+    if "default_payment_days" in data:
+        b.default_payment_days = data["default_payment_days"]
+    if "default_discount" in data:
+        b.default_discount = data["default_discount"]
+    if "default_delivered_rate" in data:
+        b.default_delivered_rate = data["default_delivered_rate"]
+    if "default_billty_rate" in data:
+        b.default_billty_rate = data["default_billty_rate"]
+    if "freight_type" in data:
+        b.freight_type = data["freight_type"]
     if "supplier_ids" in data:
         dedup_suppliers: list[uuid.UUID] = []
         for sid in data["supplier_ids"] or []:

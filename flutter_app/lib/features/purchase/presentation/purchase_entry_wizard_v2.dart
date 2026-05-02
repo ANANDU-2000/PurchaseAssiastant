@@ -113,6 +113,11 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       Map<String, dynamic>? raw;
       try {
         raw = await notifier.loadFromEdit(widget.editingId!);
+        if (raw == null && mounted) {
+          await Future<void>.delayed(const Duration(milliseconds: 420));
+          if (!mounted) return;
+          raw = await notifier.loadFromEdit(widget.editingId!);
+        }
       } catch (e) {
         if (!mounted) return;
         setState(() {
@@ -124,8 +129,8 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       if (!mounted) return;
       if (raw == null) {
         setState(() {
-          _editBootstrapError = 'Could not load this purchase. '
-              'Check that you are signed in and try again.';
+          _editBootstrapError = 'Could not load this purchase (timeout or incomplete data). '
+              'Check your connection, pull to refresh login, then tap Retry.';
           _isBootstrapping = false;
         });
         return;
@@ -719,9 +724,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
                   supplierId: it.id,
                 );
         if (!mounted || seq != _supplierApplySeq) return;
-        ref
-            .read(purchaseDraftProvider.notifier)
-            .applyLastSupplierTradeAutofill(autofill);
         final src = autofill['source']?.toString();
         final abid = autofill['broker_id']?.toString().trim();
         if (abid != null && abid.isNotEmpty) {
@@ -737,6 +739,11 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
                   (nm != null && nm.isNotEmpty) ? nm : 'Broker',
                   fromSupplier: false,
                 );
+            if (b.isNotEmpty) {
+              ref
+                  .read(purchaseDraftProvider.notifier)
+                  .applyBrokerDealDefaults(b);
+            }
           } catch (_) {
             if (!mounted || seq != _supplierApplySeq) return;
             ref.read(purchaseDraftProvider.notifier).setBroker(
@@ -776,15 +783,36 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     List<Map<String, dynamic>> brokers,
     InlineSearchItem it,
   ) {
+    unawaited(_applyBrokerSelectionAsync(it));
+  }
+
+  Future<void> _applyBrokerSelectionAsync(InlineSearchItem it) async {
     if (it.id.isEmpty) return;
     ref.read(purchaseDraftProvider.notifier).setBroker(
           it.id,
           it.label,
           fromSupplier: false,
         );
+    final session = ref.read(sessionProvider);
+    if (session != null) {
+      try {
+        final b = await ref.read(hexaApiProvider).getBroker(
+              businessId: session.primaryBusiness.id,
+              brokerId: it.id,
+            );
+        if (!mounted) return;
+        if (b.isNotEmpty) {
+          ref.read(purchaseDraftProvider.notifier).applyBrokerDealDefaults(b);
+        }
+      } catch (_) {}
+    }
+    if (!mounted) return;
     _syncControllersFromDraft();
-    setState(() {});
+    setState(() {
+      _inlineSaveError = null;
+    });
     _onDraftChanged();
+    HapticFeedback.selectionClick();
   }
 
   Future<void> _openItemSheet(
@@ -1333,29 +1361,12 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       builder: (context) {
         final step = stepSlot();
         if (_wizStep == 0) {
-          final bottomPad = MediaQuery.paddingOf(context).bottom + 12;
-          final surfaceColor = Theme.of(context).colorScheme.surface;
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: SingleChildScrollView(
-                  physics: const ClampingScrollPhysics(),
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: EdgeInsets.fromLTRB(12, 8, 12, bottomPad),
-                  child: step,
-                ),
-              ),
-              Material(
-                elevation: 4,
-                color: surfaceColor,
-                child: SafeArea(
-                  top: false,
-                  child: _wizardFooterChrome(catalog, isEdit),
-                ),
-              ),
-            ],
+          return SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            keyboardDismissBehavior:
+                ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
+            child: step,
           );
         }
 
@@ -1370,7 +1381,11 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
               footer: Material(
                 elevation: 8,
                 color: surfaceColor,
-                child: _wizardFooterChrome(catalog, isEdit),
+                child: SafeArea(
+                  top: false,
+                  minimum: const EdgeInsets.only(bottom: 8),
+                  child: _wizardFooterChrome(catalog, isEdit),
+                ),
               ),
             );
           },
@@ -1381,13 +1396,8 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
 
   Widget _wizardFooterChrome(List<Map<String, dynamic>> catalog, bool isEdit) {
     if (_wizStep == 0 && !isEdit && (widget.editingId == null)) {
-      final hintStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-            fontSize: 11,
-            height: 1.25,
-          );
       return Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
@@ -1414,12 +1424,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Continue picks supplier & broker then adds lines. Save draft keeps this header on-device; saving syncs to the server.',
-              textAlign: TextAlign.center,
-              style: hintStyle,
             ),
           ],
         ),
@@ -1509,7 +1513,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
             ),
           ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
           child: _wizStep == 3
               ? Align(
                   alignment: Alignment.centerLeft,
@@ -1595,9 +1599,15 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       },
     );
     final isEdit = _isEditMode();
+    final catalogAsync = ref.watch(catalogItemsListProvider);
+    final catalog = catalogAsync.valueOrNull ??
+        _lastCatalogSnapshot ??
+        const <Map<String, dynamic>>[];
+
     final appBarTitle = isEdit
         ? 'Edit purchase'
         : (_wizStep == 0 ? 'New Purchase' : 'New purchase');
+
     Widget purchaseWizardSafeBody() {
       return SafeArea(
         bottom: false,
@@ -1644,10 +1654,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
               );
             }
 
-            final catalogAsync = ref.watch(catalogItemsListProvider);
-            final catalog = catalogAsync.valueOrNull ??
-                _lastCatalogSnapshot ??
-                const <Map<String, dynamic>>[];
             final emptyCache = catalog.isEmpty;
             final showTopLoad = catalogAsync.isLoading && emptyCache;
             final showCatalogErrorStrip = catalogAsync.hasError && emptyCache;
@@ -1686,6 +1692,11 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       );
     }
 
+    final theme = Theme.of(context);
+    final showPartyBottomBar = _wizStep == 0 &&
+        !_isBootstrapping &&
+        _editBootstrapError == null;
+
     return PopScope(
       canPop: isEdit || !_formDirty,
       onPopInvokedWithResult: (didPop, _) async {
@@ -1714,6 +1725,18 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
                 onTap: () => FocusScope.of(context).unfocus(),
                 child: purchaseWizardSafeBody(),
               ),
+        bottomNavigationBar: showPartyBottomBar
+            ? Material(
+                elevation: 8,
+                surfaceTintColor: Colors.transparent,
+                color: theme.colorScheme.surface,
+                child: SafeArea(
+                  top: false,
+                  minimum: const EdgeInsets.only(bottom: 8),
+                  child: _wizardFooterChrome(catalog, isEdit),
+                ),
+              )
+            : null,
       ),
     );
   }

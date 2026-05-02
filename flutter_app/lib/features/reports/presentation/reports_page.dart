@@ -274,6 +274,20 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
   }
 
   Widget _totalsTop(TradeReportTotals t) {
+    final packBits = <Widget>[
+      if (t.bags > 1e-9)
+        Text('Bags ${_qtyReadable(t.bags)}',
+            style: const TextStyle(fontWeight: FontWeight.w600)),
+      if (t.kg > 1e-9)
+        Text('Kg ${_kgReadable(t.kg)}',
+            style: const TextStyle(fontWeight: FontWeight.w600)),
+      if (t.boxes > 1e-9)
+        Text('Box ${_qtyReadable(t.boxes)}',
+            style: const TextStyle(fontWeight: FontWeight.w600)),
+      if (t.tins > 1e-9)
+        Text('Tin ${_qtyReadable(t.tins)}',
+            style: const TextStyle(fontWeight: FontWeight.w600)),
+    ];
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -310,14 +324,15 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
               spacing: 10,
               runSpacing: 4,
               children: [
-                Text('Bags ${_qtyReadable(t.bags)}',
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
-                Text('Kg ${_kgReadable(t.kg)}',
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
-                Text('Box ${_qtyReadable(t.boxes)}',
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
-                Text('Tin ${_qtyReadable(t.tins)}',
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                ...packBits,
+                if (packBits.isEmpty)
+                  Text(
+                    '—',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: HexaColors.textBody,
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
               ],
             ),
           ),

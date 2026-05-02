@@ -1017,6 +1017,11 @@ class HexaApi {
     String? notes,
     String commissionType = 'percent',
     double? commissionValue,
+    int? defaultPaymentDays,
+    double? defaultDiscount,
+    double? defaultDeliveredRate,
+    double? defaultBilltyRate,
+    String? freightType,
     List<String>? supplierIds,
     Map<String, dynamic>? preferences,
   }) async {
@@ -1031,6 +1036,14 @@ class HexaApi {
         if (notes != null && notes.isNotEmpty) 'notes': notes,
         'commission_type': commissionType,
         if (commissionValue != null) 'commission_value': commissionValue,
+        if (defaultPaymentDays != null)
+          'default_payment_days': defaultPaymentDays,
+        if (defaultDiscount != null) 'default_discount': defaultDiscount,
+        if (defaultDeliveredRate != null)
+          'default_delivered_rate': defaultDeliveredRate,
+        if (defaultBilltyRate != null) 'default_billty_rate': defaultBilltyRate,
+        if (freightType != null && freightType.isNotEmpty)
+          'freight_type': freightType,
         if (supplierIds != null) 'supplier_ids': supplierIds,
         if (preferences != null) 'preferences': preferences,
       },
@@ -1099,6 +1112,11 @@ class HexaApi {
     String? notes,
     String? commissionType,
     double? commissionValue,
+    int? defaultPaymentDays,
+    double? defaultDiscount,
+    double? defaultDeliveredRate,
+    double? defaultBilltyRate,
+    String? freightType,
     List<String>? supplierIds,
     Map<String, dynamic>? preferences,
   }) async {
@@ -1112,6 +1130,13 @@ class HexaApi {
         if (notes != null) 'notes': notes,
         if (commissionType != null) 'commission_type': commissionType,
         if (commissionValue != null) 'commission_value': commissionValue,
+        if (defaultPaymentDays != null)
+          'default_payment_days': defaultPaymentDays,
+        if (defaultDiscount != null) 'default_discount': defaultDiscount,
+        if (defaultDeliveredRate != null)
+          'default_delivered_rate': defaultDeliveredRate,
+        if (defaultBilltyRate != null) 'default_billty_rate': defaultBilltyRate,
+        if (freightType != null) 'freight_type': freightType,
         if (supplierIds != null) 'supplier_ids': supplierIds,
         if (preferences != null) 'preferences': preferences,
       },

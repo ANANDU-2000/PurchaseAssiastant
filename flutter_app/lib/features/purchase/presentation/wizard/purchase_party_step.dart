@@ -290,21 +290,6 @@ class PurchasePartyStep extends ConsumerWidget {
     );
   }
 
-  Widget _partyAutocompleteFocusReminder(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Text(
-        'Suggestions appear only under the focused field (tap Supplier or Broker first). '
-        'Picking a supplier clears Broker so defaults are not mixed—choose broker again afterward.',
-        style: TextStyle(
-          fontSize: 11,
-          height: 1.25,
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-        ),
-      ),
-    );
-  }
-
   /// Full-width supplier (with suggestions under field), spacing, full-width broker.
   Widget _partyFieldsColumn(BuildContext context, WidgetRef ref) {
     Widget supplierCell = ref.watch(suppliersListProvider).when(
@@ -346,7 +331,7 @@ class PurchasePartyStep extends ConsumerWidget {
         final field = PartyInlineSuggestField(
           controller: supplierCtrl,
           focusNode: supplierFocusNode,
-          hintText: 'Supplier',
+          hintText: 'Search supplier by name…',
           prefixIcon: const Icon(Icons.store_rounded),
           minQueryLength: 1,
           maxMatches: 8,
@@ -382,7 +367,7 @@ class PurchasePartyStep extends ConsumerWidget {
           final field = PartyInlineSuggestField(
             controller: supplierCtrl,
             focusNode: supplierFocusNode,
-            hintText: 'Supplier',
+            hintText: 'Search supplier by name…',
             prefixIcon: const Icon(Icons.store_rounded),
             minQueryLength: 1,
             maxMatches: 8,
@@ -434,7 +419,7 @@ class PurchasePartyStep extends ConsumerWidget {
           final field = PartyInlineSuggestField(
             controller: supplierCtrl,
             focusNode: supplierFocusNode,
-            hintText: 'Supplier',
+            hintText: 'Search supplier by name…',
             prefixIcon: const Icon(Icons.store_rounded),
             minQueryLength: 1,
             maxMatches: 8,
@@ -492,7 +477,7 @@ class PurchasePartyStep extends ConsumerWidget {
                 final field = PartyInlineSuggestField(
                   controller: brokerCtrl,
                   focusNode: brokerFocusNode,
-                  hintText: 'Broker',
+                  hintText: 'Search broker by name…',
                   prefixIcon: const Icon(Icons.person_outline_rounded),
                   minQueryLength: 0,
                   maxMatches: 8,
@@ -554,7 +539,9 @@ class PurchasePartyStep extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final showClearSupplier = ref.watch(
       purchaseDraftProvider.select(
-        (d) => (d.supplierId != null && d.supplierId!.isNotEmpty),
+        (d) =>
+            d.supplierId != null &&
+            d.supplierId!.isNotEmpty,
       ),
     );
 
@@ -571,7 +558,6 @@ class PurchasePartyStep extends ConsumerWidget {
         ],
         _compactMeta(context, ref),
         const SizedBox(height: 6),
-        _partyAutocompleteFocusReminder(context),
         _partyFieldsColumn(context, ref),
         if (showClearSupplier)
           Padding(
