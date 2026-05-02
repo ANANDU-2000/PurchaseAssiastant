@@ -1,8 +1,10 @@
 import logging
+import time
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import JSONResponse
 
 from app.config import Settings, get_settings
 from app.database import get_db
@@ -19,6 +21,7 @@ async def root():
         "docs": "/docs",
         "openapi_json": "/openapi.json",
         "health": "/health",
+        "health_ready": "/health/ready",
         "hint": "The operator admin app is the Vite dev server (see ADMIN_URL in backend settings), path /login.",
     }
 
@@ -58,6 +61,31 @@ async def health(settings: Settings = Depends(get_settings)):
         "assistant_ready": True,
         "redis_url_set": bool((settings.redis_url or "").strip()),
     }
+
+
+@router.get("/health/ready")
+async def health_ready(db: AsyncSession = Depends(get_db)):
+    """Readiness for load balancers (Render health checks, uptime monitors).
+
+    Returns **200** when `SELECT 1` succeeds; **503** if the database is unreachable.
+    Response includes **db_ms** — use Render logs + `SLOW_HTTP` / `HTTP 503` to correlate.
+    """
+    t0 = time.perf_counter()
+    try:
+        await db.execute(text("SELECT 1"))
+    except Exception:  # noqa: BLE001
+        logger.exception("health_ready: SELECT 1 failed")
+        ms = int((time.perf_counter() - t0) * 1000)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "unhealthy",
+                "db": "down",
+                "db_ms": ms,
+            },
+        )
+    ms = int((time.perf_counter() - t0) * 1000)
+    return {"status": "ok", "db": "ok", "db_ms": ms}
 
 
 @router.get("/health/db-check")

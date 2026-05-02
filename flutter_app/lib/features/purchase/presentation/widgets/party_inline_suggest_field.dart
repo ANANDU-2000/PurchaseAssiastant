@@ -244,11 +244,12 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       return;
     }
     try {
-      widget.onSelected?.call(it);
+      // Commit visible text before parent handlers (Riverpod/sync can rebuild).
       widget.controller.text = it.label;
       widget.controller.selection = TextSelection.fromPosition(
         TextPosition(offset: widget.controller.text.length),
       );
+      widget.onSelected?.call(it);
     } finally {
       _pickInProgress = false;
     }

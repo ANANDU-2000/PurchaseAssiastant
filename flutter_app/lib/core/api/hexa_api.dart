@@ -1,5 +1,7 @@
 import 'dart:math' show min;
 
+import 'dart:math' show Random;
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:http_parser/http_parser.dart';
@@ -20,6 +22,15 @@ bool _retryableAssistantRequest(DioException e) {
 }
 
 bool _reports404HintLogged = false;
+
+/// Correlates app failures with Render/API logs (echoed as `X-Request-Id`).
+String _newRequestCorrelationId() {
+  const hex = '0123456789abcdef';
+  final r = Random();
+  String seg(int n) =>
+      List.generate(n, (_) => hex[r.nextInt(16)]).join();
+  return '${seg(8)}-${seg(4)}-${seg(4)}-${seg(4)}-${seg(12)}';
+}
 
 bool _isAuthEndpoint(String path) {
   return path.contains('/auth/login') ||
@@ -84,17 +95,30 @@ class HexaApi {
         _dio = Dio(
           BaseOptions(
             baseUrl: baseUrl ?? AppConfig.resolvedApiBaseUrl,
-            connectTimeout: const Duration(seconds: 8),
-            receiveTimeout: const Duration(seconds: 8),
+            connectTimeout: const Duration(seconds: 12),
+            receiveTimeout: const Duration(seconds: 20),
           ),
         ),
         _plain = Dio(
           BaseOptions(
             baseUrl: baseUrl ?? AppConfig.resolvedApiBaseUrl,
-            connectTimeout: const Duration(seconds: 8),
-            receiveTimeout: const Duration(seconds: 8),
+            connectTimeout: const Duration(seconds: 12),
+            receiveTimeout: const Duration(seconds: 20),
           ),
         ) {
+    _dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          final h = options.headers;
+          final raw = h['x-request-id'] ?? h['X-Request-Id'];
+          final s = raw?.toString().trim() ?? '';
+          if (s.isEmpty) {
+            h['x-request-id'] = _newRequestCorrelationId();
+          }
+          return handler.next(options);
+        },
+      ),
+    );
     _dio.interceptors.add(
       InterceptorsWrapper(
         // Belt-and-suspenders: if a request goes out without an Authorization
@@ -158,6 +182,19 @@ class HexaApi {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onError: (DioException err, ErrorInterceptorHandler handler) {
+          if (kDebugMode) {
+            final req = err.requestOptions;
+            final sent = req.headers['x-request-id']?.toString();
+            final echoed = err.response?.headers.value('x-request-id') ??
+                err.response?.headers.value('X-Request-Id');
+            if ((sent != null && sent.isNotEmpty) ||
+                (echoed != null && echoed.isNotEmpty)) {
+              debugPrint(
+                'HexaApi: ${req.uri.path} x-request-id=${echoed ?? sent} '
+                '(search this id in API / Render logs)',
+              );
+            }
+          }
           if (err.response?.statusCode == 404) {
             final p = err.requestOptions.uri.path;
             if (p.contains('/reports/') && !_reports404HintLogged) {
@@ -174,7 +211,7 @@ class HexaApi {
         },
       ),
     );
-    _dio.interceptors.add(DioAutoRetryInterceptor(_dio, maxAttempts: 2));
+    _dio.interceptors.add(DioAutoRetryInterceptor(_dio, maxAttempts: 3));
     final banner = _onConnectivityBanner;
     if (banner != null) {
       _dio.interceptors.add(_BusinessConnectivityBannerInterceptor(banner));

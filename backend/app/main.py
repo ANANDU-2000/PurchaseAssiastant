@@ -68,6 +68,17 @@ async def lifespan(app: FastAPI):
         except Exception as e:  # noqa: BLE001
             logger.warning("Sentry init failed: %s", e)
 
+    logger.info(
+        "Observability: log_level=%s slow_http_warning_ms=%s request_id_echo=%s "
+        "sentry=%s db_slow_query_ms=%s api_read_budget_s=%s",
+        settings.log_level,
+        settings.http_slow_request_warning_ms,
+        settings.http_propagate_request_id,
+        bool(settings.sentry_dsn),
+        settings.database_slow_query_log_ms,
+        settings.api_read_budget_seconds,
+    )
+
     async with engine.begin() as conn:
         if is_sqlite_runtime():
             await conn.run_sync(apply_sqlite_bootstrap)

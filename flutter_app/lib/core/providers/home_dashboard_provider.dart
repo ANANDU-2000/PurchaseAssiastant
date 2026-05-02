@@ -552,23 +552,27 @@ Future<HomeDashboardPayload> _homeDashboardPullFresh({
     );
   }
 
-  Future<void> healthPreflightBestEffort() async {
-    for (var attempt = 0; attempt <= 2; attempt++) {
-      try {
-        await api.health();
-        return;
-      } catch (_) {
-        if (kDebugMode && attempt < 2) {
-          debugPrint('homeDashboard: health preflight retry ${attempt + 1}/2');
-        }
-        if (attempt < 2) {
-          await Future<void>.delayed(const Duration(milliseconds: 500));
+  // Cold path only: health wake-up adds ~1s+ serial latency. Skip when we can
+  // already render from cache and are doing a background refresh.
+  if (cachedData == null) {
+    Future<void> healthPreflightBestEffort() async {
+      for (var attempt = 0; attempt <= 2; attempt++) {
+        try {
+          await api.health();
+          return;
+        } catch (_) {
+          if (kDebugMode && attempt < 2) {
+            debugPrint('homeDashboard: health preflight retry ${attempt + 1}/2');
+          }
+          if (attempt < 2) {
+            await Future<void>.delayed(const Duration(milliseconds: 500));
+          }
         }
       }
     }
-  }
 
-  await healthPreflightBestEffort();
+    await healthPreflightBestEffort();
+  }
 
   try {
     final snap = await api.reportsHomeOverview(
@@ -745,7 +749,14 @@ class HomeDashboardDataNotifier extends AutoDisposeNotifier<HomeDashboardDashSta
       }
     });
 
-    return HomeDashboardDashState(snapshot: seed, refreshing: true);
+    // Only show the top progress / shell skeleton when we have no snapshot to
+    // render yet. If memory or Hive already has this range, refresh in the
+    // background without flashing loaders on every provider rebuild.
+    final hasRenderableCache = hydrated != null;
+    return HomeDashboardDashState(
+      snapshot: seed,
+      refreshing: !hasRenderableCache,
+    );
   }
 }
 HomeDashboardData aggregateHomeDashboard({

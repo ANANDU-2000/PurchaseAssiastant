@@ -68,3 +68,21 @@ Requires `DATABASE_URL` (same as runtime). Install test deps:
 .venv\Scripts\pip install -r requirements.txt
 .venv\Scripts\python -m pytest tests\ -q
 ```
+
+## Observability & Render
+
+**Dashboard → your Web Service → Logs** — everything stdout/stderr is searchable.
+
+1. **`GET /health`** — lightweight liveness + config flags (no DB).
+2. **`GET /health/ready`** — **DB readiness**: runs `SELECT 1`, returns JSON `db_ms`. Use as **Render Health Check Path** (`/health/ready`) so deploys flip unhealthy when Postgres/pooler is down. Expect **503** + log line `health_ready: SELECT 1 failed` when the database is unreachable.
+3. **`GET /health/db-check`** — verifies key tables (`trade_purchases`, `item_categories`).
+
+Startup logs one line:
+
+`Observability: log_level=… slow_http_warning_ms=… request_id_echo=… sentry=…`
+
+**Tune via env** (see root `.env.example`): `HTTP_SLOW_REQUEST_WARNING_MS` (default **500** — requests slower than this log `SLOW_HTTP …`), `HTTP_PROPAGATE_REQUEST_ID` (**true** — sets `X-Request-Id` / `X-Process-Time-Ms` on responses), `LOG_LEVEL`, `DATABASE_SLOW_QUERY_LOG_MS`, `API_READ_BUDGET_SECONDS`, `SENTRY_DSN`.
+
+**Grepping logs:** `SLOW_HTTP`, `VERY_SLOW_HTTP`, `HTTP 503`, `Postgres warmup failed`, `database`, `x-database-unavailable` (from connectivity middleware on business routes).
+
+**Flutter:** each API call sends **`X-Request-Id`**; on failure (debug builds) DevTools/console prints it — paste into Render log search to match the same request on the server.

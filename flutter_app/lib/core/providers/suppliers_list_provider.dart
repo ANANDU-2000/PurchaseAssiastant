@@ -5,6 +5,7 @@ import '../auth/session_notifier.dart';
 /// Kept alive so supplier pickers never cold-load across navigations.
 final suppliersListProvider =
     FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  ref.keepAlive();
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   final api = ref.read(hexaApiProvider);

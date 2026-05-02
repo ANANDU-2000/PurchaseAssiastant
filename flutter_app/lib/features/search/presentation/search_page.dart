@@ -125,6 +125,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
             )
           else
             searchAsync.when(
+              skipLoadingOnReload: true,
               loading: () => const Padding(
                 padding: EdgeInsets.symmetric(vertical: 24),
                 child: Center(child: CircularProgressIndicator()),

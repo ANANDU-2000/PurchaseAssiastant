@@ -29,6 +29,7 @@ class PurchasePartyStep extends ConsumerWidget {
     required this.supplierFieldError,
     required this.catalog,
     required this.lastGoodSuppliers,
+    required this.lastGoodBrokers,
     required this.lastAutoSupplierFromCatalogSig,
     required this.onLastAutoSupplierFromCatalogSigChanged,
     required this.onDraftChanged,
@@ -63,6 +64,7 @@ class PurchasePartyStep extends ConsumerWidget {
   final String? supplierFieldError;
   final List<Map<String, dynamic>> catalog;
   final List<Map<String, dynamic>>? lastGoodSuppliers;
+  final List<Map<String, dynamic>>? lastGoodBrokers;
   final String? lastAutoSupplierFromCatalogSig;
   final void Function(String?) onLastAutoSupplierFromCatalogSigChanged;
   final VoidCallback onDraftChanged;
@@ -293,6 +295,7 @@ class PurchasePartyStep extends ConsumerWidget {
   /// Full-width supplier (with suggestions under field), spacing, full-width broker.
   Widget _partyFieldsColumn(BuildContext context, WidgetRef ref) {
     Widget supplierCell = ref.watch(suppliersListProvider).when(
+      skipLoadingOnReload: true,
       data: (list) {
         final session = ref.watch(sessionProvider);
         final full =
@@ -468,6 +471,7 @@ class PurchasePartyStep extends ConsumerWidget {
     Widget brokerCell = Builder(
       builder: (cx) {
         return ref.watch(brokersListProvider).when(
+              skipLoadingOnReload: true,
               data: (brokersRaw) {
                 final session = ref.watch(sessionProvider);
                 final brokers = brokersRaw
@@ -502,24 +506,128 @@ class PurchasePartyStep extends ConsumerWidget {
                   brokersRaw: brokers,
                 );
               },
-              error: (_, __) => Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Could not load brokers.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(cx).colorScheme.error,
+              error: (_, __) {
+                if (lastGoodBrokers != null) {
+                  final session = ref.watch(sessionProvider);
+                  final brokersRaw = lastGoodBrokers!
+                      .map((e) => Map<String, dynamic>.from(e as Map))
+                      .toList();
+                  final items = _brokerItems(brokersRaw);
+                  final field = PartyInlineSuggestField(
+                    controller: brokerCtrl,
+                    focusNode: brokerFocusNode,
+                    hintText: 'Search broker by name…',
+                    prefixIcon: const Icon(Icons.person_outline_rounded),
+                    minQueryLength: 0,
+                    maxMatches: 8,
+                    dense: true,
+                    textInputAction: TextInputAction.next,
+                    onSubmitted: onProceedFromParty,
+                    items: items,
+                    showAddRow: session != null,
+                    addRowLabel: 'New broker…',
+                    onAddRow: () => openQuickBrokerCreate(brokersRaw),
+                    onSelected: (it) {
+                      if (it.id.isEmpty) return;
+                      applyBrokerSelection(brokersRaw, it);
+                    },
+                  );
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _brokerListNotice(
+                        context,
+                        ref,
+                        session: session,
+                        brokerField: field,
+                        items: items,
+                        brokersRaw: brokersRaw,
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Could not refresh brokers. Using last loaded list.',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Theme.of(cx).colorScheme.error,
+                                ),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () =>
+                                  ref.invalidate(brokersListProvider),
+                              child: const Text('Retry'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                }
+                final csErr = Theme.of(cx).colorScheme;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Could not load brokers.',
+                      style: TextStyle(fontSize: 12, color: csErr.error),
                     ),
-                  ),
-                  TextButton(
-                    onPressed: () => ref.invalidate(brokersListProvider),
-                    child: const Text('Retry'),
-                  ),
-                ],
-              ),
-              loading: () => const LinearProgressIndicator(minHeight: 2),
+                    TextButton(
+                      onPressed: () => ref.invalidate(brokersListProvider),
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                );
+              },
+              loading: () {
+                if (lastGoodBrokers != null) {
+                  final session = ref.watch(sessionProvider);
+                  final brokersRaw = lastGoodBrokers!
+                      .map((e) => Map<String, dynamic>.from(e as Map))
+                      .toList();
+                  final items = _brokerItems(brokersRaw);
+                  final field = PartyInlineSuggestField(
+                    controller: brokerCtrl,
+                    focusNode: brokerFocusNode,
+                    hintText: 'Search broker by name…',
+                    prefixIcon: const Icon(Icons.person_outline_rounded),
+                    minQueryLength: 0,
+                    maxMatches: 8,
+                    dense: true,
+                    textInputAction: TextInputAction.next,
+                    onSubmitted: onProceedFromParty,
+                    items: items,
+                    showAddRow: session != null,
+                    addRowLabel: 'New broker…',
+                    onAddRow: () => openQuickBrokerCreate(brokersRaw),
+                    onSelected: (it) {
+                      if (it.id.isEmpty) return;
+                      applyBrokerSelection(brokersRaw, it);
+                    },
+                  );
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const LinearProgressIndicator(minHeight: 2),
+                      _brokerListNotice(
+                        context,
+                        ref,
+                        session: session,
+                        brokerField: field,
+                        items: items,
+                        brokersRaw: brokersRaw,
+                      ),
+                    ],
+                  );
+                }
+                return const LinearProgressIndicator(minHeight: 2);
+              },
             );
       },
     );

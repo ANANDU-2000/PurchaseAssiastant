@@ -63,6 +63,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
   String? _inlineSaveError;
   String? _supplierFieldError;
   List<Map<String, dynamic>>? _lastGoodSuppliers;
+  List<Map<String, dynamic>>? _lastGoodBrokers;
   bool _triedEmptyCatalogBootstrap = false;
   bool _catalogLinePrefillOpened = false;
 
@@ -176,8 +177,31 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
   void _syncControllersFromDraft() {
     final d = ref.read(purchaseDraftProvider);
     _freightType = d.freightType;
-    _supplierCtrl.text = d.supplierName ?? '';
-    _brokerCtrl.text = d.brokerName ?? '';
+
+    /// Party fields: never blank a picked row just because prefs/API omitted the
+    /// display name (`supplier_name`/`broker_name`). Only overwrite when draft
+    /// has a trimmed label or we are clearing commitment (no id).
+    final supplierTrimmed = (d.supplierName ?? '').trim();
+    final supplierCommitted =
+        d.supplierId != null && d.supplierId!.trim().isNotEmpty;
+    if (!supplierCommitted) {
+      if (_supplierCtrl.text.isNotEmpty) _supplierCtrl.clear();
+    } else if (supplierTrimmed.isNotEmpty) {
+      if (_supplierCtrl.text != supplierTrimmed) {
+        _supplierCtrl.text = supplierTrimmed;
+      }
+    }
+
+    final brokerTrimmed = (d.brokerName ?? '').trim();
+    final brokerCommitted =
+        d.brokerId != null && d.brokerId!.trim().isNotEmpty;
+    if (!brokerCommitted) {
+      if (_brokerCtrl.text.isNotEmpty) _brokerCtrl.clear();
+    } else if (brokerTrimmed.isNotEmpty) {
+      if (_brokerCtrl.text != brokerTrimmed) {
+        _brokerCtrl.text = brokerTrimmed;
+      }
+    }
     _paymentDaysCtrl.text = d.paymentDays != null ? '${d.paymentDays}' : '';
     _headerDiscCtrl.text = d.headerDiscountPercent != null
         ? d.headerDiscountPercent!.toStringAsFixed(2)
@@ -1300,6 +1324,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
             supplierFieldError: _supplierFieldError,
             catalog: catalog,
             lastGoodSuppliers: _lastGoodSuppliers,
+            lastGoodBrokers: _lastGoodBrokers,
             lastAutoSupplierFromCatalogSig: _lastAutoSupplierFromCatalogSig,
             onLastAutoSupplierFromCatalogSigChanged: (sig) {
               setState(() => _lastAutoSupplierFromCatalogSig = sig);
@@ -1563,13 +1588,23 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       purchaseDraftProvider.select((d) => (d.supplierId, d.supplierName)),
       (prev, next) {
         if (!mounted) return;
-        final (id, name) = next;
-        if (id == null || id.isEmpty) {
-          if (_supplierCtrl.text.isNotEmpty) _supplierCtrl.clear();
-        } else if (name != null &&
-            name.isNotEmpty &&
-            _supplierCtrl.text != name) {
-          _supplierCtrl.text = name;
+        final hadSupplier =
+            prev?.$1 != null && prev!.$1!.trim().isNotEmpty;
+        final (nextId, nextName) = next;
+        final hasSupplier =
+            nextId != null && nextId.trim().isNotEmpty;
+        if (!hasSupplier) {
+          // Do not wipe the field whenever draft is (null,null) — that happens
+          // on every unrelated draft edit before a supplier is picked; only clear
+          // when we lose a supplier that was already committed.
+          if (hadSupplier && _supplierCtrl.text.isNotEmpty) {
+            _supplierCtrl.clear();
+          }
+          return;
+        }
+        final display = nextName?.trim() ?? '';
+        if (display.isNotEmpty && _supplierCtrl.text != display) {
+          _supplierCtrl.text = display;
         }
       },
     );
@@ -1577,18 +1612,26 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       purchaseDraftProvider.select((d) => (d.brokerId, d.brokerName)),
       (prev, next) {
         if (!mounted) return;
-        final (id, name) = next;
-        if (id == null || id.isEmpty) {
-          if (_brokerCtrl.text.isNotEmpty) _brokerCtrl.clear();
-        } else if (name != null &&
-            name.isNotEmpty &&
-            _brokerCtrl.text != name) {
-          _brokerCtrl.text = name;
+        final hadBroker = prev?.$1 != null && prev!.$1!.trim().isNotEmpty;
+        final (nextId, nextName) = next;
+        final hasBroker = nextId != null && nextId.trim().isNotEmpty;
+        if (!hasBroker) {
+          if (hadBroker && _brokerCtrl.text.isNotEmpty) {
+            _brokerCtrl.clear();
+          }
+          return;
+        }
+        final display = nextName?.trim() ?? '';
+        if (display.isNotEmpty && _brokerCtrl.text != display) {
+          _brokerCtrl.text = display;
         }
       },
     );
     ref.listen(suppliersListProvider, (prev, next) {
       next.whenData((d) => _lastGoodSuppliers = d);
+    });
+    ref.listen(brokersListProvider, (prev, next) {
+      next.whenData((d) => _lastGoodBrokers = d);
     });
     ref.listen(
       purchaseDraftProvider.select((d) => d.supplierId),

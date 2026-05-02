@@ -75,8 +75,8 @@ class _HomePageState extends ConsumerState<HomePage>
     WidgetsBinding.instance.addObserver(this);
     _poll = Timer.periodic(const Duration(minutes: 10), (_) {
       if (!mounted) return;
-      ref.invalidate(homeDashboardDataProvider);
-      ref.invalidate(homeShellReportsProvider);
+      // Lightweight: purchase row status (due/overdue) drift. Full dashboard +
+      // breakdown shell are heavier — user pulls to refresh or app resumes.
       invalidateTradePurchaseCaches(ref);
     });
   }
@@ -274,6 +274,7 @@ class _HomePageState extends ConsumerState<HomePage>
                 builder: (context, ref, _) {
                   final cc = ref.watch(cloudCostProvider);
                   return cc.when(
+                    skipLoadingOnReload: true,
                     loading: () => const SizedBox.shrink(),
                     error: (_, __) => const SizedBox.shrink(),
                     data: (m) {
@@ -737,7 +738,7 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
     AsyncValue<HomeShellReportsBundle> shell,
   ) {
     if (tab == HomeBreakdownTab.category) return null;
-    return shell is AsyncData<HomeShellReportsBundle> ? shell.value : null;
+    return shell.valueOrNull;
   }
 
   Widget _ring(
@@ -764,7 +765,9 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
       );
     }
 
-    if (tab != HomeBreakdownTab.category && shell.isLoading) {
+    if (tab != HomeBreakdownTab.category &&
+        shell.isLoading &&
+        shell.valueOrNull == null) {
       return SizedBox(
         height: previewSide,
         child: const Center(
@@ -776,7 +779,9 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
         ),
       );
     }
-    if (tab != HomeBreakdownTab.category && shell.hasError) {
+    if (tab != HomeBreakdownTab.category &&
+        shell.hasError &&
+        shell.valueOrNull == null) {
       return SizedBox(
         height: 112,
         child: Center(
@@ -876,11 +881,31 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
             child: LayoutBuilder(
               builder: (context, constraints) {
                 if (tab != HomeBreakdownTab.category) {
-                  if (shell.isLoading) {
-                    return const SizedBox.expand();
+                  if (shell.isLoading && shell.valueOrNull == null) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child: SizedBox(
+                          width: 28,
+                          height: 28,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    );
                   }
-                  if (shell.hasError) {
-                    return const SizedBox.shrink();
+                  if (shell.hasError && shell.valueOrNull == null) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: TextButton.icon(
+                          onPressed: () =>
+                              ref.invalidate(homeShellReportsProvider),
+                          icon: const Icon(Icons.refresh_rounded),
+                          label:
+                              const Text('Could not load breakdown — Retry'),
+                        ),
+                      ),
+                    );
                   }
                 } else if (widget.data.categories.isEmpty) {
                   return Center(

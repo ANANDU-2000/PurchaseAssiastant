@@ -534,6 +534,7 @@ class _OverviewTab extends ConsumerWidget {
     final cats = ref.watch(analyticsCategoriesTableProvider);
     final sup = ref.watch(analyticsSuppliersTableProvider);
     return kpi.when(
+      skipLoadingOnReload: true,
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (_, __) => FriendlyLoadError(
         onRetry: () {
@@ -574,6 +575,7 @@ class _OverviewTab extends ConsumerWidget {
               ),
               const SizedBox(height: 12),
               sup.when(
+                skipLoadingOnReload: true,
                 loading: () => const SizedBox.shrink(),
                 error: (_, __) => AnalyticsOverviewSliceError(
                     sectionLabel: 'Supplier performance',
@@ -583,6 +585,7 @@ class _OverviewTab extends ConsumerWidget {
               ),
               const SizedBox(height: 10),
               cats.when(
+                skipLoadingOnReload: true,
                 loading: () => const SizedBox.shrink(),
                 error: (_, __) => AnalyticsOverviewSliceError(
                     sectionLabel: 'Category split',

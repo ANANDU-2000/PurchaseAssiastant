@@ -5,6 +5,7 @@ import '../auth/session_notifier.dart';
 /// Kept alive — brokers list is small and reused frequently.
 final brokersListProvider =
     FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  ref.keepAlive();
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   final api = ref.read(hexaApiProvider);

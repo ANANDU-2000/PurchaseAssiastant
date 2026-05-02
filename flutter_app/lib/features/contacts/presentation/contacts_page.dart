@@ -1200,6 +1200,7 @@ class _CategoriesTab extends ConsumerWidget {
     final catsAsync = ref.watch(itemCategoriesListProvider);
     final itemsAsync = ref.watch(catalogItemsListProvider);
     return catsAsync.when(
+      skipLoadingOnReload: true,
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (_, __) => FriendlyLoadError(
         onRetry: () {
@@ -1209,6 +1210,7 @@ class _CategoriesTab extends ConsumerWidget {
       ),
       data: (cats) {
         return itemsAsync.when(
+          skipLoadingOnReload: true,
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (_, __) => FriendlyLoadError(
             onRetry: () {
@@ -1308,6 +1310,7 @@ class _ItemsTab extends ConsumerWidget {
     final catsAsync = ref.watch(itemCategoriesListProvider);
     final itemsAsync = ref.watch(catalogItemsListProvider);
     return catsAsync.when(
+      skipLoadingOnReload: true,
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (_, __) => FriendlyLoadError(
         onRetry: () {
@@ -1320,6 +1323,7 @@ class _ItemsTab extends ConsumerWidget {
           for (final x in cats) x['id'].toString(): x['name'].toString(),
         };
         return itemsAsync.when(
+          skipLoadingOnReload: true,
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (_, __) => FriendlyLoadError(
             onRetry: () {

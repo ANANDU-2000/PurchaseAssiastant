@@ -14,6 +14,7 @@ import '../auth/session_notifier.dart';
 /// Kept alive — categories change rarely; avoids cold-load on every catalog open.
 final itemCategoriesListProvider =
     FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  ref.keepAlive();
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   return ref

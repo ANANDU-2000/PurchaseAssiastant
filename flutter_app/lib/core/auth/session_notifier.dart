@@ -7,9 +7,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../api/hexa_api.dart';
 import '../models/session.dart';
 import '../providers/api_degraded_provider.dart';
+import '../providers/brokers_list_provider.dart';
 import '../providers/business_aggregates_invalidation.dart'
     show invalidateWorkspaceSeedData;
+import '../providers/catalog_providers.dart';
 import '../providers/prefs_provider.dart';
+import '../providers/suppliers_list_provider.dart';
 import 'google_sign_in_helper.dart';
 import 'secure_token_store.dart';
 import 'session_cache.dart';
@@ -173,6 +176,21 @@ class SessionNotifier extends Notifier<Session?> {
     unawaited(_deferredWorkspaceBootstrap());
   }
 
+  /// Fire-and-forget parallel fetches so party/catalog screens hit warm caches.
+  void _warmWorkspaceListCaches() {
+    Future<void>.microtask(() async {
+      if (_disposed || state == null) return;
+      try {
+        await Future.wait<void>([
+          ref.read(suppliersListProvider.future),
+          ref.read(brokersListProvider.future),
+          ref.read(itemCategoriesListProvider.future),
+          ref.read(catalogItemsListProvider.future),
+        ]);
+      } catch (_) {/* soft-fail */}
+    });
+  }
+
   Future<void> _deferredWorkspaceBootstrap() async {
     await Future<void>.delayed(Duration.zero);
     if (_disposed) return;
@@ -253,6 +271,7 @@ class SessionNotifier extends Notifier<Session?> {
       await _persistSession(session);
       authRefresh.value++;
       _scheduleWorkspaceBootstrap();
+      _warmWorkspaceListCaches();
     }
 
     try {
@@ -289,6 +308,8 @@ class SessionNotifier extends Notifier<Session?> {
           state = session;
           await _persistSession(session);
           authRefresh.value++;
+          _scheduleWorkspaceBootstrap();
+          _warmWorkspaceListCaches();
           return;
         } on DioException catch (re) {
           final rsc = re.response?.statusCode;
@@ -319,6 +340,7 @@ class SessionNotifier extends Notifier<Session?> {
               refreshToken: t.refresh!,
               businesses: cached);
           authRefresh.value++;
+          _warmWorkspaceListCaches();
           return;
         }
         state = null;
@@ -332,6 +354,7 @@ class SessionNotifier extends Notifier<Session?> {
             refreshToken: t.refresh!,
             businesses: cached);
         authRefresh.value++;
+        _warmWorkspaceListCaches();
         return;
       }
       state = null;
@@ -344,6 +367,7 @@ class SessionNotifier extends Notifier<Session?> {
             refreshToken: t.refresh!,
             businesses: cached);
         authRefresh.value++;
+        _warmWorkspaceListCaches();
         return;
       }
       state = null;
@@ -381,6 +405,7 @@ class SessionNotifier extends Notifier<Session?> {
     await _persistSession(session);
     authRefresh.value++;
     _scheduleWorkspaceBootstrap();
+    _warmWorkspaceListCaches();
   }
 
   Future<void> register(
@@ -422,6 +447,7 @@ class SessionNotifier extends Notifier<Session?> {
     await _persistSession(session);
     authRefresh.value++;
     _scheduleWorkspaceBootstrap();
+    _warmWorkspaceListCaches();
   }
 
   Future<void> signInWithGoogle({required String idToken}) =>
@@ -443,6 +469,7 @@ class SessionNotifier extends Notifier<Session?> {
     await _persistSession(session);
     authRefresh.value++;
     _scheduleWorkspaceBootstrap();
+    _warmWorkspaceListCaches();
   }
 
   /// Reload workspaces from API (e.g. after branding update).
