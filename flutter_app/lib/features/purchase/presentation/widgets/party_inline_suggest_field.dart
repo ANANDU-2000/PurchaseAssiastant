@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -5,9 +6,8 @@ import 'package:flutter/services.dart';
 
 import '../../../../shared/widgets/inline_search_field.dart';
 
-/// Party step only: suggestions render **below** the field (not a floating overlay),
-/// capped in height (`maxPanelAbs`, default 250) and further reduced when space is tight
-/// above the IME so lists stay scrollable inline instead of sitting under the keyboard.
+/// Party step only: dropdown suggestions below the field (not an overlay).
+/// Filters locally with optional debounce; panel caps at [maxPanelAbs] height.
 class PartyInlineSuggestField extends StatefulWidget {
   const PartyInlineSuggestField({
     super.key,
@@ -25,7 +25,7 @@ class PartyInlineSuggestField extends StatefulWidget {
     this.onAddRow,
     this.dense = false,
     this.prefixIcon,
-    this.maxPanelAbs = 250,
+    this.maxPanelAbs = 220,
   })  : assert(minQueryLength >= 0),
         assert(
           !showAddRow || (addRowLabel != null && onAddRow != null),
@@ -51,10 +51,10 @@ class PartyInlineSuggestField extends StatefulWidget {
   /// Tighter paddings when two columns sit side by side.
   final bool dense;
 
-  /// Optional leading icon inside the outlined field (parity with Material “party” UX).
+  /// Optional leading icon inside the outlined field.
   final Widget? prefixIcon;
 
-  /// Hard cap on suggestion panel height before keyboard-aware shrinking.
+  /// Hard cap on suggestion panel scroll height before keyboard shrinking.
   final double maxPanelAbs;
 
   @override
@@ -63,11 +63,23 @@ class PartyInlineSuggestField extends StatefulWidget {
 }
 
 class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
+  static const _filterDebounce = Duration(milliseconds: 400);
+
   bool _pickInProgress = false;
+
+  /// After a tap pick, hide panel until text changes or refocus (# subtitle matches).
+  bool _suppressPanelAfterPick = false;
+  String? _lastPickedLabel;
+
+  /// Lowercase trimmed query used for filtering (debounced from controller).
+  late String _debouncedQuery;
+
+  Timer? _debounceTimer;
 
   @override
   void initState() {
     super.initState();
+    _debouncedQuery = widget.controller.text.trim().toLowerCase();
     widget.controller.addListener(_listenCtrl);
     widget.focusNode.addListener(_listenFocus);
   }
@@ -87,34 +99,61 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
     widget.controller.removeListener(_listenCtrl);
     widget.focusNode.removeListener(_listenFocus);
     super.dispose();
   }
 
   void _listenCtrl() {
-    setState(() {});
-    if (widget.focusNode.hasFocus) {
-      final rows = _listRowsForUi();
-      final add = widget.showAddRow &&
-          widget.focusNode.hasFocus &&
-          widget.onAddRow != null;
-      if (rows.isNotEmpty || add) _scheduleRevealInScrollView();
+    final t = widget.controller.text;
+    if (_lastPickedLabel != null && t.trim() != _lastPickedLabel!.trim()) {
+      _lastPickedLabel = null;
+      if (_suppressPanelAfterPick && mounted) {
+        setState(() => _suppressPanelAfterPick = false);
+      }
     }
+
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(_filterDebounce, () {
+      if (!mounted) return;
+      setState(() {
+        _debouncedQuery = widget.controller.text.trim().toLowerCase();
+      });
+      _maybeRevealAfterFilter();
+    });
+  }
+
+  void _maybeRevealAfterFilter() {
+    if (!widget.focusNode.hasFocus) return;
+    final rows = _listRowsForUi();
+    final add = widget.showAddRow &&
+        widget.focusNode.hasFocus &&
+        widget.onAddRow != null;
+    if (rows.isNotEmpty || add) _scheduleRevealInScrollView();
   }
 
   void _listenFocus() {
     final nowFocused = widget.focusNode.hasFocus;
-    if (!nowFocused) _tryBlurExactPick();
+    if (nowFocused) {
+      _suppressPanelAfterPick = false;
+      _debounceTimer?.cancel();
+      _debouncedQuery = widget.controller.text.trim().toLowerCase();
+    } else {
+      _tryBlurExactPick();
+    }
+    if (!mounted) return;
     setState(() {});
-    if (nowFocused) _scheduleRevealInScrollView();
+    if (nowFocused) {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _maybeRevealAfterFilter());
+    }
   }
 
   double _effectiveMaxPanelHeight(BuildContext context) {
     final kb = MediaQuery.viewInsetsOf(context).bottom;
     final h = MediaQuery.sizeOf(context).height;
     final usableAboveKb = math.max(h - kb, h * 0.45);
-    // Keep list short when vertical space shrinks so it stays scrollable inline, not IME-covered.
     return math.min(
       widget.maxPanelAbs,
       math.max(
@@ -145,8 +184,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     Future<void>.delayed(const Duration(milliseconds: 320), run);
   }
 
-  List<InlineSearchItem> _filteredData() {
-    final qRaw = widget.controller.text.trim().toLowerCase();
+  List<InlineSearchItem> _filteredFromQuery(String qRaw) {
     final min = widget.minQueryLength.clamp(0, 64);
     if (min == 0 && qRaw.isEmpty) {
       return widget.items.take(widget.maxMatches).toList();
@@ -162,7 +200,12 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     return out;
   }
 
-  List<InlineSearchItem> _listRowsForUi() => _filteredData();
+  /// Rows shown under the debounced query (smooth typing).
+  List<InlineSearchItem> _listRowsForUi() => _filteredFromQuery(_debouncedQuery);
+
+  /// Rows for IME actions using live text (immediate).
+  List<InlineSearchItem> _filteredLive() =>
+      _filteredFromQuery(widget.controller.text.trim().toLowerCase());
 
   EdgeInsets _scrollPad(BuildContext context) {
     final kb = MediaQuery.viewInsetsOf(context).bottom;
@@ -189,6 +232,10 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
 
   void _pick(InlineSearchItem it, {bool keepFocus = true}) {
     _pickInProgress = true;
+    _debounceTimer?.cancel();
+    _debouncedQuery = it.label.trim().toLowerCase();
+    _suppressPanelAfterPick = true;
+    _lastPickedLabel = it.label.trim();
     widget.controller.text = it.label;
     widget.controller.selection = TextSelection.fromPosition(
       TextPosition(offset: widget.controller.text.length),
@@ -208,17 +255,15 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     }
   }
 
-  Widget _tilePadding(InlineSearchItem it, ColorScheme cs) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 10,
-        vertical: 10,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
+  Widget _buildSuggestionTile(ColorScheme cs, InlineSearchItem it) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _pick(it, keepFocus: false),
+      child: Material(
+        color: cs.surface,
+        child: ListTile(
+          dense: widget.dense,
+          title: Text(
             it.label,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -227,32 +272,18 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
               fontSize: 13,
             ),
           ),
-          if (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Text(
-                it.subtitle!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: cs.onSurfaceVariant,
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  /// [GestureDetector.opaque] so short taps aren't eaten by ancestor scroll views.
-  Widget _buildSuggestionTile(ColorScheme cs, InlineSearchItem it) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => _pick(it, keepFocus: false),
-      child: Material(
-        color: Colors.grey.shade50,
-        child: _tilePadding(it, cs),
+          subtitle: (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
+              ? Text(
+                  it.subtitle!.trim(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: cs.onSurfaceVariant,
+                  ),
+                )
+              : null,
+        ),
       ),
     );
   }
@@ -262,13 +293,10 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       behavior: HitTestBehavior.opaque,
       onTap: widget.onAddRow,
       child: Material(
-        color: Colors.grey.shade50,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 10,
-            vertical: 11,
-          ),
-          child: Text(
+        color: cs.surface,
+        child: ListTile(
+          dense: true,
+          title: Text(
             widget.addRowLabel ?? '',
             style: TextStyle(
               fontWeight: FontWeight.w600,
@@ -285,7 +313,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     if (event.logicalKey == LogicalKeyboardKey.enter ||
         event.logicalKey == LogicalKeyboardKey.numpadEnter) {
-      final data = _filteredData();
+      final data = _filteredLive();
       if (data.length == 1) {
         _pick(data.first);
         return KeyEventResult.handled;
@@ -295,7 +323,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   }
 
   void _onFieldSubmitted(String _) {
-    final data = _filteredData();
+    final data = _filteredLive();
     if (data.length == 1) {
       _pick(data.first);
       return;
@@ -310,9 +338,15 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     final showAddFocused = widget.showAddRow &&
         widget.focusNode.hasFocus &&
         widget.onAddRow != null;
-    final hasPanel =
-        widget.focusNode.hasFocus && (rows.isNotEmpty || showAddFocused);
-    final maxPanelH = _effectiveMaxPanelHeight(context);
+
+    final hasPanelSource = !_suppressPanelAfterPick &&
+        widget.focusNode.hasFocus &&
+        (rows.isNotEmpty || showAddFocused);
+
+    /// Max scroll viewport: cap at [maxPanelAbs] (default 220) and keyboard-shortened viewport.
+    final maxPanelCalc = _effectiveMaxPanelHeight(context);
+    final panelScrollH =
+        math.min(widget.maxPanelAbs.toDouble(), maxPanelCalc);
 
     final borderColor = Colors.grey.shade300;
     final focused = widget.focusNode.hasFocus;
@@ -385,6 +419,14 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
             ),
     );
 
+    final cardShadow = [
+      BoxShadow(
+        color: Colors.black.withValues(alpha: 0.08),
+        blurRadius: 6,
+        offset: const Offset(0, 2),
+      ),
+    ];
+
     return KeyedSubtree(
       key: _revealKey,
       child: Column(
@@ -392,35 +434,31 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           field,
-          if (hasPanel) ...[
-            const SizedBox(height: 4),
-            DecoratedBox(
+          if (hasPanelSource) ...[
+            const SizedBox(height: 8),
+            Container(
               decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: borderColor),
+                color: cs.surface,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: cardShadow,
+                border: Border.all(color: borderColor.withValues(alpha: 0.45)),
               ),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: maxPanelH),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(7),
-                  child: SingleChildScrollView(
-                    primary: false,
-                    physics: const ClampingScrollPhysics(),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        for (final it in rows) _buildSuggestionTile(cs, it),
-                        if (widget.showAddRow &&
-                            widget.onAddRow != null &&
-                            rows.isNotEmpty)
-                          Divider(height: 1, thickness: 1, color: borderColor),
-                        if (showAddFocused && widget.onAddRow != null)
-                          _buildAddRowTile(cs),
-                      ],
-                    ),
-                  ),
+              clipBehavior: Clip.antiAlias,
+              child: SizedBox(
+                height: panelScrollH,
+                child: ListView(
+                  padding: EdgeInsets.zero,
+                  physics: const ClampingScrollPhysics(),
+                  primary: false,
+                  children: [
+                    for (final it in rows) _buildSuggestionTile(cs, it),
+                    if (rows.isNotEmpty &&
+                        showAddFocused &&
+                        widget.onAddRow != null)
+                      Divider(height: 1, thickness: 1, color: borderColor),
+                    if (showAddFocused && widget.onAddRow != null)
+                      _buildAddRowTile(cs),
+                  ],
                 ),
               ),
             ),

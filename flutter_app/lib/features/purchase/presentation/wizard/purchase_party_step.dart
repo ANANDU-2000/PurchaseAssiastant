@@ -392,9 +392,9 @@ class PurchasePartyStep extends ConsumerWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(child: supplierCell),
+        Expanded(flex: 2, child: supplierCell),
         const SizedBox(width: 8),
-        Expanded(child: brokerCell),
+        Expanded(flex: 1, child: brokerCell),
       ],
     );
   }
