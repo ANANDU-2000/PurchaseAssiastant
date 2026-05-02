@@ -183,8 +183,15 @@ if not _sqlite:
     except Exception:  # noqa: BLE001
         pass
 
+def _sqlalchemy_echo() -> bool:
+    """SQL echo doubles log volume and slows Render; keep off in cloud unless explicitly enabled."""
+    if os.environ.get("RENDER", "").strip().lower() in ("true", "1", "yes"):
+        return os.environ.get("SQLALCHEMY_ECHO", "").strip().lower() in ("1", "true", "yes")
+    return settings.app_env == "development"
+
+
 _engine_kwargs: dict = {
-    "echo": settings.app_env == "development",
+    "echo": _sqlalchemy_echo(),
     "connect_args": _connect_args,
 }
 if not _sqlite:
@@ -203,6 +210,14 @@ if not _sqlite:
 
 engine = create_async_engine(_effective_url, **_engine_kwargs)
 if not _sqlite:
+    if (
+        os.environ.get("RENDER", "").strip().lower() in ("true", "1", "yes")
+        and not _engine_kwargs.get("echo")
+    ):
+        logger.info(
+            "Render: SQLAlchemy echo is off (set SQLALCHEMY_ECHO=1 to debug SQL). "
+            "Set APP_ENV=production for production safety checks."
+        )
     logger.info(
         "Database engine: pool_size=%s max_overflow=%s pool_timeout=%s recycle=%ss "
         "pre_ping=%r statement_cache=%r command_timeout=%r connect_timeout=%r",
