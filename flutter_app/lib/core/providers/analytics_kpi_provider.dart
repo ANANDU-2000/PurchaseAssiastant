@@ -3,16 +3,15 @@ import 'package:intl/intl.dart';
 
 import '../auth/session_notifier.dart';
 
-/// Selected date range for the Analytics tab (inclusive).
-/// For the same window as Home, set [from]/[to] to match the snapshot request
-/// Inclusive [from]/[to] — use the same YYYY-MM-DD range as the Home trade snapshot
-/// (`homeDashboardDataProvider` in `lib/core/providers/home_dashboard_provider.dart`).
+/// Selected date range for the Analytics tab (`from`/`to` inclusive calendar days).
+/// Default matches Home “Month”: last 30 days through today (`homePeriodRange`).
 final analyticsDateRangeProvider =
     StateProvider<({DateTime from, DateTime to})>((ref) {
   final n = DateTime.now();
+  final today = DateTime(n.year, n.month, n.day);
   return (
-    from: DateTime(n.year, n.month, 1),
-    to: DateTime(n.year, n.month, n.day)
+    from: today.subtract(const Duration(days: 29)),
+    to: today,
   );
 });
 

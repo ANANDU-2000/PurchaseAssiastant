@@ -1405,7 +1405,7 @@ async def catalog_item_lines(
     db: Annotated[AsyncSession, Depends(get_db)],
     from_date: date = Query(..., alias="from"),
     to_date: date = Query(..., alias="to"),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
 ):
     del _m

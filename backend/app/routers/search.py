@@ -15,6 +15,7 @@ from sqlalchemy.orm import selectinload
 
 from app.db_schema_compat import catalog_items_has_type_id_column
 from app.database import get_db
+from app.db_resilience import execute_with_retry
 from app.deps import require_membership
 from app.models import CatalogItem, CategoryType, Entry, EntryLineItem, ItemCategory, Membership, Supplier
 from app.schemas.entries import EntryLineOut, EntryOut
@@ -186,16 +187,18 @@ async def unified_search(
                 .order_by(func.lower(CatalogItem.name))
                 .limit(40)
             )
-        ir = await db.execute(sq_items)
+        ir = await execute_with_retry(lambda: db.execute(sq_items))
         catalog_rows = list(ir.all())
         if not has_type:
             catalog_rows = [(*r[:3], None, *r[3:]) for r in catalog_rows]
         fuzzy_catalog_used = False
         if not catalog_rows:
-            pairs_r = await db.execute(
-                select(CatalogItem.id, CatalogItem.name).where(
-                    CatalogItem.business_id == business_id
-                ).limit(_PAIR_CAP)
+            pairs_r = await execute_with_retry(
+                lambda: db.execute(
+                    select(CatalogItem.id, CatalogItem.name).where(
+                        CatalogItem.business_id == business_id
+                    ).limit(_PAIR_CAP)
+                )
             )
             pairs = [(row[0], row[1]) for row in pairs_r.all() if row[1]]
             fuzzy_cut = 40 if len(needle) < 2 else 52
@@ -227,7 +230,7 @@ async def unified_search(
                         .join(ic, ic.id == CatalogItem.category_id)
                         .where(CatalogItem.id.in_(ids))
                     )
-                hr = await db.execute(sq_h)
+                hr = await execute_with_retry(lambda: db.execute(sq_h))
                 by_id = {row[0]: row for row in hr.all()}
                 catalog_rows = []
                 for i in ids:
@@ -257,12 +260,16 @@ async def unified_search(
             .order_by(func.lower(Supplier.name))
             .limit(12)
         )
-        sr = await db.execute(sq_sup)
+        sr = await execute_with_retry(lambda: db.execute(sq_sup))
         sup_rows = list(sr.all())
         fuzzy_suppliers_used = False
         if not sup_rows:
-            pairs_r = await db.execute(
-                select(Supplier.id, Supplier.name).where(Supplier.business_id == business_id).limit(_PAIR_CAP)
+            pairs_r = await execute_with_retry(
+                lambda: db.execute(
+                    select(Supplier.id, Supplier.name)
+                        .where(Supplier.business_id == business_id)
+                        .limit(_PAIR_CAP),
+                )
             )
             pairs = [(row[0], row[1]) for row in pairs_r.all() if row[1]]
             sup_fuzzy_cut = 40 if len(needle) < 2 else 52
@@ -270,7 +277,9 @@ async def unified_search(
             if ranked:
                 fuzzy_suppliers_used = True
                 ids = [uid for uid, _sc in ranked]
-                hr = await db.execute(select(Supplier.id, Supplier.name).where(Supplier.id.in_(ids)))
+                hr = await execute_with_retry(
+                    lambda: db.execute(select(Supplier.id, Supplier.name).where(Supplier.id.in_(ids)))
+                )
                 by_id = {row[0]: row for row in hr.all()}
                 sup_rows = [by_id[i] for i in ids if i in by_id]
         suppliers = [{"id": str(row[0]), "name": row[1]} for row in sup_rows]
@@ -288,7 +297,7 @@ async def unified_search(
             .order_by(Entry.entry_date.desc(), Entry.created_at.desc())
             .limit(12)
         )
-        er = await db.execute(sq_ent)
+        er = await execute_with_retry(lambda: db.execute(sq_ent))
         entries = [e for e in er.scalars().unique().all()]
         entries_out = [_entry_to_out(e).model_dump(mode="json") for e in entries]
 

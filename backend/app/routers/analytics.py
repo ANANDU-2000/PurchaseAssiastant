@@ -10,6 +10,7 @@ from sqlalchemy import String, case, cast, desc, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.db_resilience import execute_with_retry
 from app.deps import require_membership
 from app.models import (
     Broker,
@@ -50,27 +51,33 @@ async def analytics_summary(
         Entry.entry_date >= from_date,
         Entry.entry_date <= to_date,
     )
-    purchase = await db.execute(
-        select(func.coalesce(func.sum(EntryLineItem.qty * EntryLineItem.buy_price), 0))
-        .select_from(EntryLineItem)
-        .join(Entry, Entry.id == EntryLineItem.entry_id)
-        .where(*base_filter)
+    purchase = await execute_with_retry(
+        lambda: db.execute(
+            select(func.coalesce(func.sum(EntryLineItem.qty * EntryLineItem.buy_price), 0))
+            .select_from(EntryLineItem)
+            .join(Entry, Entry.id == EntryLineItem.entry_id)
+            .where(*base_filter)
+        )
     )
-    profit = await db.execute(
-        select(func.coalesce(func.sum(EntryLineItem.profit), 0))
-        .select_from(EntryLineItem)
-        .join(Entry, Entry.id == EntryLineItem.entry_id)
-        .where(*base_filter)
+    profit = await execute_with_retry(
+        lambda: db.execute(
+            select(func.coalesce(func.sum(EntryLineItem.profit), 0))
+            .select_from(EntryLineItem)
+            .join(Entry, Entry.id == EntryLineItem.entry_id)
+            .where(*base_filter)
+        )
     )
-    qty = await db.execute(
-        select(func.coalesce(func.sum(func.coalesce(EntryLineItem.qty_base, EntryLineItem.qty)), 0))
-        .select_from(EntryLineItem)
-        .join(Entry, Entry.id == EntryLineItem.entry_id)
-        .where(*base_filter)
+    qty = await execute_with_retry(
+        lambda: db.execute(
+            select(
+                func.coalesce(func.sum(func.coalesce(EntryLineItem.qty_base, EntryLineItem.qty)), 0)
+            )
+            .select_from(EntryLineItem)
+            .join(Entry, Entry.id == EntryLineItem.entry_id)
+            .where(*base_filter)
+        )
     )
-    cnt = await db.execute(
-        select(func.count(Entry.id.distinct())).where(*base_filter)
-    )
+    cnt = await execute_with_retry(lambda: db.execute(select(func.count(Entry.id.distinct())).where(*base_filter)))
     return AnalyticsSummary(
         total_purchase=float(purchase.scalar() or 0),
         total_qty_base=float(qty.scalar() or 0),

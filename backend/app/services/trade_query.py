@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
-from sqlalchemy import and_, case, func
+from sqlalchemy import and_, case, func, literal, or_
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.models import TradePurchase, TradePurchaseLine
@@ -38,16 +38,43 @@ def trade_line_amount_expr() -> ColumnElement:
     return func.coalesce(TradePurchaseLine.line_total, computed)
 
 
+def trade_line_qty_when_unit_type(
+    *,
+    canonical: str,
+    legacy_like_patterns: tuple[str, ...],
+) -> ColumnElement:
+    """Qty counted toward bag/box/tin rollups using [unit_type] with LIKE fallback for unmigrated rows."""
+    ut = TradePurchaseLine.unit_type
+    legs = [func.upper(TradePurchaseLine.unit).like(pat) for pat in legacy_like_patterns]
+    legacy = legs[0] if len(legs) == 1 else or_(*legs)
+    matched = or_(ut == canonical, and_(ut.is_(None), legacy))
+    return case((matched, TradePurchaseLine.qty), else_=literal(0.0))
+
+
+def trade_line_qty_bags_expr() -> ColumnElement:
+    return trade_line_qty_when_unit_type(canonical="bag", legacy_like_patterns=("%SACK%", "%BAG%"))
+
+
+def trade_line_qty_boxes_expr() -> ColumnElement:
+    return trade_line_qty_when_unit_type(canonical="box", legacy_like_patterns=("%BOX%",))
+
+
+def trade_line_qty_tins_expr() -> ColumnElement:
+    return trade_line_qty_when_unit_type(canonical="tin", legacy_like_patterns=("%TIN%",))
+
+
 def trade_line_weight_expr() -> ColumnElement:
     """Physical kg movement for dashboards/reports."""
     kpu = func.coalesce(TradePurchaseLine.weight_per_unit, TradePurchaseLine.kg_per_unit)
     weight_ok = and_(kpu.isnot(None), kpu > 0)
+    utype = TradePurchaseLine.unit_type
+    kg_fallback = or_(
+        utype == literal("kg"),
+        and_(utype.is_(None), func.upper(TradePurchaseLine.unit).like("%KG%")),
+    )
     legacy = case(
         (weight_ok, TradePurchaseLine.qty * kpu),
-        else_=case(
-            (func.upper(TradePurchaseLine.unit).like("%KG%"), TradePurchaseLine.qty),
-            else_=0,
-        ),
+        else_=case((kg_fallback, TradePurchaseLine.qty), else_=literal(0)),
     )
     return func.coalesce(TradePurchaseLine.total_weight, legacy)
 

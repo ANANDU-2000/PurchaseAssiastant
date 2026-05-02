@@ -688,16 +688,37 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
       case 1:
         return _step1();
       case 2:
-        return _step2();
-      case 3:
-        return _step3();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Linked suppliers',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: const Color(0xFF0F172A),
+                  ),
+            ),
+            const SizedBox(height: 8),
+            _step2(),
+            const SizedBox(height: 20),
+            Text(
+              'Preferred items & categories',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: const Color(0xFF0F172A),
+                  ),
+            ),
+            const SizedBox(height: 8),
+            _step3(),
+          ],
+        );
       default:
         return _step4();
     }
   }
 
   Widget _footer() {
-    final finalStep = _step == 4;
+    final finalStep = _step == 3;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
       child: Row(
@@ -734,12 +755,11 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
     final titles = [
       'Basic Info',
       'Commission Setup',
-      'Supplier Mapping',
-      'Item Mapping',
+      'Mappings',
       'Review',
     ];
 
-    final viewInsetsBottom = MediaQuery.viewInsetsOf(context).bottom;
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
 
     return PopScope(
       canPop: false,
@@ -773,7 +793,7 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
                       left: 16,
                       right: 16,
                       top: 12,
-                      bottom: viewInsetsBottom + 20,
+                      bottom: safeBottom + 100,
                     ),
                     child: _body(),
                   ),

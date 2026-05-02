@@ -1,20 +1,24 @@
 import logging
+import re
 import time
+import uuid
 from contextlib import asynccontextmanager
-
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
-from starlette.requests import Request
-from starlette.responses import JSONResponse
-from starlette.exceptions import HTTPException as StarletteHTTPException
-from sqlalchemy import text
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError, ProgrammingError, SQLAlchemyError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from app.config import get_settings
+from app.db_resilience import is_sa_infrastructure_failure
 
 from app.database import async_session_factory, engine, is_sqlite_runtime
 from app.sqlite_bootstrap import apply_sqlite_bootstrap
@@ -41,6 +45,8 @@ from app.routers import (
 )
 
 logger = logging.getLogger(__name__)
+
+_BUSINESS_ROUTE_PREFIX_RE = re.compile(r"^/v1/businesses/([^/]+)/")
 
 
 @asynccontextmanager
@@ -77,7 +83,11 @@ async def lifespan(app: FastAPI):
                 await sess.execute(text("SELECT 1"))
             logger.info("Postgres warmup: SELECT 1 ok")
         except Exception as e:  # noqa: BLE001
-            logger.warning("Postgres warmup failed (non-fatal): %s", e)
+            logger.warning(
+                "Postgres warmup failed (non-fatal) | %s | %s",
+                type(e).__name__,
+                e,
+            )
 
     scheduler = None
     try:
@@ -113,27 +123,67 @@ app = FastAPI(title="Harisree Purchases API", lifespan=lifespan)
 
 @app.middleware("http")
 async def harisree_request_monitor_middleware(request: Request, call_next):
+    cfg = get_settings()
+    rid = ""
+    if cfg.http_propagate_request_id:
+        rid = request.headers.get("x-request-id", "").strip()
+        if not rid:
+            rid = str(uuid.uuid4())
+        elif len(rid) > 96:
+            rid = rid[:96]
+        setattr(request.state, "request_id", rid)
+    bid = ""
+    mpath = _BUSINESS_ROUTE_PREFIX_RE.match(request.url.path)
+    if mpath:
+        bid = mpath.group(1)
+
     start = time.perf_counter()
     response = await call_next(request)
     ms = int((time.perf_counter() - start) * 1000)
-    if response.status_code >= 500:
-        logger.error(
-            "HTTP %s | %s %s | %sms",
-            response.status_code,
+    if cfg.http_propagate_request_id and rid:
+        response.headers.setdefault("X-Request-Id", rid)
+        response.headers["X-Process-Time-Ms"] = str(ms)
+
+    slow_ms = getattr(cfg, "http_slow_request_warning_ms", None) or 0
+    if slow_ms > 0 and ms >= slow_ms:
+        logger.warning(
+            "SLOW_HTTP %sms | %s %s status=%s business_id=%s request_id=%s",
+            ms,
             request.method,
             request.url.path,
+            response.status_code,
+            bid or "-",
+            rid or "-",
+        )
+    if response.status_code >= 500:
+        logger.error(
+            "HTTP %s | %sms | %s %s business_id=%s request_id=%s",
+            response.status_code,
             ms,
+            request.method,
+            request.url.path,
+            bid or "-",
+            rid or "-",
         )
     elif response.status_code >= 400:
         logger.warning(
-            "HTTP %s | %s %s | %sms",
+            "HTTP %s | %sms | %s %s business_id=%s request_id=%s",
             response.status_code,
+            ms,
             request.method,
             request.url.path,
-            ms,
+            bid or "-",
+            rid or "-",
         )
     elif ms > 3000:
-        logger.warning("SLOW %sms | %s %s", ms, request.method, request.url.path)
+        logger.warning(
+            "VERY_SLOW_HTTP %sms | %s %s business_id=%s request_id=%s",
+            ms,
+            request.method,
+            request.url.path,
+            bid or "-",
+            rid or "-",
+        )
     return response
 
 
@@ -218,6 +268,135 @@ app.include_router(realtime.router)
 app.include_router(admin.router)
 app.include_router(billing.router)
 app.include_router(razorpay_webhook.router)
+
+
+_FAILSAFE_GET_TRADE_LIST = re.compile(r"^/v1/businesses/[^/]+/trade-purchases$")
+_FAILSAFE_GET_DASHBOARD = re.compile(r"^/v1/businesses/[^/]+/dashboard$")
+_FAILSAFE_GET_TRADE_SNAPSHOT = re.compile(r"^/v1/businesses/[^/]+/reports/trade-dashboard-snapshot$")
+_FAILSAFE_GET_HOME_OVERVIEW = re.compile(r"^/v1/businesses/[^/]+/reports/home-overview$")
+_FAILSAFE_GET_TRADE_SUMMARY = re.compile(r"^/v1/businesses/[^/]+/reports/trade-summary$")
+
+
+def _block_db_empty_shape_paths(path: str) -> bool:
+    """Avoid synthetic empty payloads for auth, membership, admin, health."""
+    return (
+        path.startswith("/v1/auth/")
+        or path.startswith("/v1/me")
+        or path.startswith("/v1/admin")
+        or path in ("/health", "/openapi.json")
+    )
+
+
+def _empty_trade_dashboard_snapshot_payload(request: Request) -> dict[str, Any]:
+    q = request.query_params
+    return {
+        "from": q.get("from") or "",
+        "to": q.get("to") or "",
+        "summary": {
+            "deals": 0,
+            "total_purchase": 0.0,
+            "total_landing": 0.0,
+            "total_selling": 0.0,
+            "total_profit": 0.0,
+            "profit_percent": None,
+            "total_qty": 0.0,
+        },
+        "unit_totals": {
+            "total_kg": 0.0,
+            "total_bags": 0.0,
+            "total_boxes": 0.0,
+            "total_tins": 0.0,
+        },
+        "categories": [],
+        "subcategories": [],
+        "item_slices": [],
+        "suppliers": [],
+        "recommendations": [],
+        "consistency": {"portfolio_score": None},
+    }
+
+
+def _get_db_failsafe_body(request: Request) -> dict[str, Any] | list[Any] | None:
+    path = request.url.path
+    if _FAILSAFE_GET_TRADE_LIST.match(path):
+        return []
+    if _FAILSAFE_GET_DASHBOARD.match(path):
+        return {
+            "month": "service-unavailable",
+            "total_purchase": 0.0,
+            "total_paid": 0.0,
+            "pending": 0.0,
+            "total_profit": 0.0,
+            "purchase_count": 0,
+            "categories": [],
+            "items": [],
+        }
+    if _FAILSAFE_GET_TRADE_SNAPSHOT.match(path):
+        return _empty_trade_dashboard_snapshot_payload(request)
+    if _FAILSAFE_GET_HOME_OVERVIEW.match(path):
+        return _empty_trade_dashboard_snapshot_payload(request)
+    if _FAILSAFE_GET_TRADE_SUMMARY.match(path):
+        return {
+            "deals": 0,
+            "total_purchase": 0.0,
+            "total_qty": 0.0,
+            "avg_cost": 0.0,
+            "unit_totals": {
+                "total_kg": 0.0,
+                "total_bags": 0.0,
+                "total_boxes": 0.0,
+                "total_tins": 0.0,
+            },
+        }
+    return None
+
+
+@app.exception_handler(SQLAlchemyError)
+async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
+    hdrs = {"X-Database-Unavailable": "1"}
+    cfg = get_settings()
+    path = request.url.path
+
+    if isinstance(exc, IntegrityError):
+        logger.warning(
+            "SQLAlchemy IntegrityError | %s %s",
+            request.method,
+            path,
+            exc_info=True,
+        )
+        return JSONResponse(status_code=409, content={"detail": "integrity_error"})
+
+    if isinstance(exc, ProgrammingError):
+        logger.exception(
+            "SQLAlchemy ProgrammingError | %s %s",
+            request.method,
+            path,
+        )
+        return JSONResponse(status_code=500, content={"error": "SERVER_TEMPORARY_ISSUE"})
+
+    if not is_sa_infrastructure_failure(exc):
+        logger.exception(
+            "SQLAlchemy logical error | %s %s",
+            request.method,
+            path,
+        )
+        return JSONResponse(status_code=500, content={"error": "SERVER_TEMPORARY_ISSUE"})
+
+    logger.warning(
+        "SQLAlchemy infrastructure | %s | %s %s",
+        type(exc).__name__,
+        request.method,
+        path,
+        exc_info=True,
+    )
+    payload = {"detail": "database_unavailable", "error": "SERVER_TEMPORARY_ISSUE"}
+    if request.method != "GET":
+        return JSONResponse(status_code=503, content=payload, headers=hdrs)
+    if cfg.database_get_read_failsafe and not _block_db_empty_shape_paths(path):
+        fb = _get_db_failsafe_body(request)
+        if fb is not None:
+            return JSONResponse(status_code=503, content=fb, headers=hdrs)
+    return JSONResponse(status_code=503, content=payload, headers=hdrs)
 
 
 @app.exception_handler(Exception)

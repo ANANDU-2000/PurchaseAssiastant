@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -60,7 +62,12 @@ final homeCustomDateRangeProvider =
             DateTime(t.year, t.month, t.day).subtract(const Duration(days: 6)),
         end: endOfDay,
       ),
-    HomePeriod.month => (start: DateTime(t.year, t.month, 1), end: endOfDay),
+    // Rolling 30 calendar days through today inclusive (half-open `[start, end)`).
+    HomePeriod.month => (
+        start: DateTime(t.year, t.month, t.day)
+            .subtract(const Duration(days: 29)),
+        end: endOfDay,
+      ),
     HomePeriod.year => (start: DateTime(t.year, 1, 1), end: endOfDay),
     HomePeriod.custom => (
         start: DateTime(t.year, t.month, 1),
@@ -220,9 +227,14 @@ HomeDashboardData homeDashboardDataFromApiSnapshot(
   HomePeriod period,
   Map<String, dynamic> snap,
 ) {
-  final summary = (snap['summary'] is Map) ? snap['summary']! as Map : const {};
-  final unitTotals =
-      (snap['unit_totals'] is Map) ? snap['unit_totals']! as Map : const {};
+  final clean = Map<String, dynamic>.from(snap)
+    ..remove('degraded')
+    ..remove('degraded_reason');
+  final summary =
+      (clean['summary'] is Map) ? clean['summary']! as Map : const {};
+  final unitTotals = (clean['unit_totals'] is Map)
+      ? clean['unit_totals']! as Map
+      : const {};
   final deals = (summary['deals'] as num?)?.toInt() ?? 0;
   final totalPurchase = (summary['total_purchase'] as num?)?.toDouble() ?? 0.0;
   final totalLanding = (summary['total_landing'] as num?)?.toDouble() ?? totalPurchase;
@@ -236,7 +248,7 @@ HomeDashboardData homeDashboardDataFromApiSnapshot(
   final totalBoxes = (unitTotals['total_boxes'] as num?)?.toDouble() ?? 0.0;
   final totalTins = (unitTotals['total_tins'] as num?)?.toDouble() ?? 0.0;
 
-  final rawCats = snap['categories'];
+  final rawCats = clean['categories'];
   final categories = <CategoryStat>[];
   if (rawCats is List) {
     for (final c in rawCats) {
@@ -284,7 +296,7 @@ HomeDashboardData homeDashboardDataFromApiSnapshot(
   categories.sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
 
   final subcategories = <SubcategoryStat>[];
-  final rawTypes = snap['subcategories'];
+  final rawTypes = clean['subcategories'];
   if (rawTypes is List) {
     for (final t in rawTypes) {
       if (t is! Map) continue;
@@ -306,7 +318,7 @@ HomeDashboardData homeDashboardDataFromApiSnapshot(
   subcategories.sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
 
   final itemSlices = <ItemSliceStat>[];
-  final rawItems = snap['item_slices'];
+  final rawItems = clean['item_slices'];
   if (rawItems is List) {
     for (final it in rawItems) {
       if (it is! Map) continue;
@@ -424,11 +436,14 @@ class HomeDashboardPayload {
     required this.data,
     this.banner,
     this.persistAlert = false,
+    this.stale = false,
   });
 
   final HomeDashboardData data;
   final String? banner;
   final bool persistAlert;
+  /// True when [data] was served from memory/disk before a fresh network response.
+  final bool stale;
 }
 
 class _DashboardFailureStats {
@@ -457,162 +472,280 @@ String _mapDashboardDioBanner(DioException e) {
       break;
   }
   final sc = e.response?.statusCode;
+  if (sc == 503) {
+    final h = e.response?.headers.value('x-database-unavailable');
+    if (h == '1') {
+      return 'Database temporarily unavailable';
+    }
+    return 'Service temporarily unavailable';
+  }
   if (sc != null && sc >= 500) return 'Temporary server issue';
   return 'Updating data...';
 }
 
-/// Aggregated snapshot: server [tradeDashboardSnapshot] — same numbers as report APIs.
-/// Uses **either** snapshot **or** client-side aggregate fallback — never both mixed.
+String _dashMemKey(String bid, String from, String to) => '$bid|$from|$to';
+
+final Map<String, Map<String, dynamic>> _homeOverviewSnapMemory = {};
+
+/// Server snapshot holder + outstanding refresh flag (SWR-friendly).
+class HomeDashboardDashState {
+  const HomeDashboardDashState({
+    required this.snapshot,
+    required this.refreshing,
+  });
+
+  final HomeDashboardPayload snapshot;
+  /// True until the current [_dashInflight] attempt finishes or short-circuits offline.
+  final bool refreshing;
+}
+
+Future<HomeDashboardPayload> _homeDashboardPullFresh({
+  required String dedupeKey,
+  required HexaApi api,
+  required HomePeriod period,
+  required ({DateTime start, DateTime endInclusive})? custom,
+  required String bid,
+  required String from,
+  required String to,
+  required DateTime rangeStart,
+  required DateTime lastInclusive,
+}) async {
+  HomeDashboardPayload ok(
+    HomeDashboardData d, {
+    String? readDegradedBanner,
+    bool readDegraded = false,
+  }) {
+    _DashboardFailureStats.reset(dedupeKey);
+    return HomeDashboardPayload(
+      data: d,
+      banner: readDegradedBanner,
+      stale: readDegraded,
+    );
+  }
+
+  HomeDashboardData? readCache() {
+    final raw = OfflineStore.getCachedTradeDashboardSnapshot(bid, from, to);
+    if (raw == null) return null;
+    try {
+      return homeDashboardDataFromApiSnapshot(period, raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  final cachedData = readCache();
+
+  final reachability = await Connectivity().checkConnectivity();
+  final looksOffline = reachability.isEmpty ||
+      reachability.every((c) => c == ConnectivityResult.none);
+  if (looksOffline) {
+    if (cachedData != null) {
+      return HomeDashboardPayload(
+        data: cachedData,
+        banner: 'No connection — showing last data',
+        stale: true,
+      );
+    }
+    return const HomeDashboardPayload(
+      data: HomeDashboardData.empty,
+      banner: 'No connection',
+    );
+  }
+
+  Future<void> healthPreflightBestEffort() async {
+    for (var attempt = 0; attempt <= 2; attempt++) {
+      try {
+        await api.health();
+        return;
+      } catch (_) {
+        if (kDebugMode && attempt < 2) {
+          debugPrint('homeDashboard: health preflight retry ${attempt + 1}/2');
+        }
+        if (attempt < 2) {
+          await Future<void>.delayed(const Duration(milliseconds: 500));
+        }
+      }
+    }
+  }
+
+  await healthPreflightBestEffort();
+
+  try {
+    final snap = await api.reportsHomeOverview(
+      businessId: bid,
+      from: from,
+      to: to,
+      compact: true,
+    );
+    final readDegraded = snap['degraded'] == true;
+    final readDegradedBanner =
+        readDegraded ? 'Showing last data — refresh delayed' : null;
+    await OfflineStore.cacheTradeDashboardSnapshot(
+      bid,
+      from,
+      to,
+      Map<String, dynamic>.from(snap),
+    );
+    _homeOverviewSnapMemory[dedupeKey] = Map<String, dynamic>.from(snap);
+
+    final fromSnapshot = homeDashboardDataFromApiSnapshot(period, snap);
+    if (_snapshotHasTradeActivity(fromSnapshot)) {
+      return ok(
+        fromSnapshot,
+        readDegradedBanner: readDegradedBanner,
+        readDegraded: readDegraded,
+      );
+    }
+
+    final purchases = await _fetchTradePurchasesForHomeRange(
+      api: api,
+      businessId: bid,
+      from: rangeStart,
+      toInclusive: lastInclusive,
+    );
+    if (purchases.isEmpty) {
+      return ok(
+        fromSnapshot,
+        readDegradedBanner: readDegradedBanner,
+        readDegraded: readDegraded,
+      );
+    }
+
+    final items = await api.listCatalogItems(businessId: bid);
+    final categories = await api.listItemCategories(businessId: bid);
+    return ok(
+      aggregateHomeDashboard(
+        period: period,
+        purchases: purchases,
+        items: items,
+        categories: categories,
+        now: DateTime.now(),
+        custom: custom,
+      ),
+      readDegradedBanner: readDegradedBanner,
+      readDegraded: readDegraded,
+    );
+  } on DioException catch (e) {
+    final streak = _DashboardFailureStats.bump(dedupeKey);
+    if (cachedData != null) {
+      return HomeDashboardPayload(
+        data: cachedData,
+        banner: '${_mapDashboardDioBanner(e)} — showing last data',
+        persistAlert: streak >= 3,
+        stale: true,
+      );
+    }
+    return HomeDashboardPayload(
+      data: HomeDashboardData.empty,
+      banner: _mapDashboardDioBanner(e),
+      persistAlert: streak >= 3,
+    );
+  } catch (_) {
+    final streak = _DashboardFailureStats.bump(dedupeKey);
+    if (cachedData != null) {
+      return HomeDashboardPayload(
+        data: cachedData,
+        banner: 'Offline mode — showing last data',
+        persistAlert: streak >= 3,
+        stale: true,
+      );
+    }
+    return HomeDashboardPayload(
+      data: HomeDashboardData.empty,
+      banner: 'Temporary server issue',
+      persistAlert: streak >= 3,
+    );
+  }
+}
+
+HomeDashboardPayload? _snapshotPayloadFromStoredJson(
+  HomePeriod period,
+  Map<String, dynamic> raw,
+) {
+  try {
+    return HomeDashboardPayload(
+      data: homeDashboardDataFromApiSnapshot(period, raw),
+      stale: true,
+    );
+  } catch (_) {
+    return null;
+  }
+}
+
+/// Aggregated snapshot: server [reportsHomeOverview] (+ compact trim) — bundled home read path.
 ///
 /// To match Analytics KPI for a period, align calendar `from`/`to` with
 /// the analytics date range in `lib/core/providers/analytics_kpi_provider.dart`.
 final homeDashboardDataProvider =
-    FutureProvider.autoDispose<HomeDashboardPayload>((ref) async {
-  ref.keepAlive();
-  final period = ref.watch(homePeriodProvider);
-  final custom = ref.watch(homeCustomDateRangeProvider);
-  final session = ref.watch(sessionProvider);
-  if (session == null) {
-    return const HomeDashboardPayload(data: HomeDashboardData.empty);
-  }
-  final api = ref.read(hexaApiProvider);
-  final range = homePeriodRange(period, now: DateTime.now(), custom: custom);
-  final lastInclusive =
-      range.end.subtract(const Duration(milliseconds: 1));
-  final from = _apiDate(range.start);
-  final to = _apiDate(lastInclusive);
-  final bid = session.primaryBusiness.id;
-  final dedupeKey = '$bid|$from|$to';
+    NotifierProvider.autoDispose<HomeDashboardDataNotifier, HomeDashboardDashState>(
+  HomeDashboardDataNotifier.new,
+);
 
-  Future<HomeDashboardPayload> work() async {
-    HomeDashboardPayload ok(HomeDashboardData d) {
-      _DashboardFailureStats.reset(dedupeKey);
-      return HomeDashboardPayload(data: d);
+class HomeDashboardDataNotifier extends AutoDisposeNotifier<HomeDashboardDashState> {
+  bool _dead = false;
+
+  @override
+  HomeDashboardDashState build() {
+    ref.keepAlive();
+    _dead = false;
+    ref.onDispose(() => _dead = true);
+    final period = ref.watch(homePeriodProvider);
+    final custom = ref.watch(homeCustomDateRangeProvider);
+    final session = ref.watch(sessionProvider);
+
+    if (session == null) {
+      return const HomeDashboardDashState(
+        snapshot: HomeDashboardPayload(data: HomeDashboardData.empty),
+        refreshing: false,
+      );
     }
 
-    HomeDashboardData? readCache() {
+    final bid = session.primaryBusiness.id;
+    final range = homePeriodRange(period, now: DateTime.now(), custom: custom);
+    final lastInclusive = range.end.subtract(const Duration(milliseconds: 1));
+    final from = _apiDate(range.start);
+    final to = _apiDate(lastInclusive);
+    final dedupeKey = _dashMemKey(bid, from, to);
+
+    final memRaw = _homeOverviewSnapMemory[dedupeKey];
+    HomeDashboardPayload? hydrated;
+    if (memRaw != null) {
+      hydrated = _snapshotPayloadFromStoredJson(period, memRaw);
+    }
+    hydrated ??= () {
       final raw = OfflineStore.getCachedTradeDashboardSnapshot(bid, from, to);
-      if (raw == null) return null;
+      return raw != null ? _snapshotPayloadFromStoredJson(period, raw) : null;
+    }();
+
+    final seed =
+        hydrated ?? const HomeDashboardPayload(data: HomeDashboardData.empty);
+
+    Future<void>.microtask(() async {
       try {
-        return homeDashboardDataFromApiSnapshot(period, raw);
+        final payload = await _dashInflight.putIfAbsent(
+          dedupeKey,
+          () => _homeDashboardPullFresh(
+                dedupeKey: dedupeKey,
+                api: ref.read(hexaApiProvider),
+                period: period,
+                custom: custom,
+                bid: bid,
+                from: from,
+                to: to,
+                rangeStart: range.start,
+                lastInclusive: lastInclusive,
+              ).whenComplete(() => _dashInflight.remove(dedupeKey)),
+        );
+        if (_dead) return;
+        state = HomeDashboardDashState(snapshot: payload, refreshing: false);
       } catch (_) {
-        return null;
+        if (_dead) return;
       }
-    }
+    });
 
-    final cachedData = readCache();
-
-    final reachability = await Connectivity().checkConnectivity();
-    final looksOffline = reachability.isEmpty ||
-        reachability.every((c) => c == ConnectivityResult.none);
-    if (looksOffline) {
-      if (cachedData != null) {
-        return HomeDashboardPayload(
-          data: cachedData,
-          banner: 'No connection — showing last data',
-        );
-      }
-      return const HomeDashboardPayload(
-        data: HomeDashboardData.empty,
-        banner: 'No connection',
-      );
-    }
-
-    Future<void> healthPreflightBestEffort() async {
-      for (var attempt = 0; attempt <= 2; attempt++) {
-        try {
-          await api.health();
-          return;
-        } catch (_) {
-          if (kDebugMode && attempt < 2) {
-            debugPrint('homeDashboard: health preflight retry ${attempt + 1}/2');
-          }
-          if (attempt < 2) {
-            await Future<void>.delayed(const Duration(milliseconds: 500));
-          }
-        }
-      }
-    }
-
-    await healthPreflightBestEffort();
-
-    try {
-      final snap = await api.tradeDashboardSnapshot(
-        businessId: bid,
-        from: from,
-        to: to,
-      );
-      await OfflineStore.cacheTradeDashboardSnapshot(
-        bid,
-        from,
-        to,
-        Map<String, dynamic>.from(snap),
-      );
-      final fromSnapshot = homeDashboardDataFromApiSnapshot(period, snap);
-      if (_snapshotHasTradeActivity(fromSnapshot)) {
-        return ok(fromSnapshot);
-      }
-
-      final purchases = await _fetchTradePurchasesForHomeRange(
-        api: api,
-        businessId: bid,
-        from: range.start,
-        toInclusive: lastInclusive,
-      );
-      if (purchases.isEmpty) {
-        return ok(fromSnapshot);
-      }
-
-      final items = await api.listCatalogItems(businessId: bid);
-      final categories = await api.listItemCategories(businessId: bid);
-      return ok(
-        aggregateHomeDashboard(
-          period: period,
-          purchases: purchases,
-          items: items,
-          categories: categories,
-          now: DateTime.now(),
-          custom: custom,
-        ),
-      );
-    } on DioException catch (e) {
-      final streak = _DashboardFailureStats.bump(dedupeKey);
-      if (cachedData != null) {
-        return HomeDashboardPayload(
-          data: cachedData,
-          banner: '${_mapDashboardDioBanner(e)} — showing last data',
-          persistAlert: streak >= 3,
-        );
-      }
-      return HomeDashboardPayload(
-        data: HomeDashboardData.empty,
-        banner: _mapDashboardDioBanner(e),
-        persistAlert: streak >= 3,
-      );
-    } catch (_) {
-      final streak = _DashboardFailureStats.bump(dedupeKey);
-      if (cachedData != null) {
-        return HomeDashboardPayload(
-          data: cachedData,
-          banner: 'Offline mode — showing last data',
-          persistAlert: streak >= 3,
-        );
-      }
-      return HomeDashboardPayload(
-        data: HomeDashboardData.empty,
-        banner: 'Temporary server issue',
-        persistAlert: streak >= 3,
-      );
-    }
+    return HomeDashboardDashState(snapshot: seed, refreshing: true);
   }
-
-  return _dashInflight.putIfAbsent(
-    dedupeKey,
-    () => work().whenComplete(() => _dashInflight.remove(dedupeKey)),
-  );
-});
-
-/// Pure function — safe to call from tests.
+}
 HomeDashboardData aggregateHomeDashboard({
   required HomePeriod period,
   required List<TradePurchase> purchases,

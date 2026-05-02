@@ -1781,7 +1781,8 @@ class _SupplierCreateWizardPageState
 
   @override
   Widget build(BuildContext context) {
-    final viewInsetsBottom = MediaQuery.viewInsetsOf(context).bottom;
+    final kb = MediaQuery.viewInsetsOf(context).bottom;
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
     final title = widget.supplierId != null ? 'Edit supplier' : 'New supplier';
     final subtitle = '${_stepTitles[_step]} · Step ${_step + 1} of 6';
     return PopScope(
@@ -1834,7 +1835,7 @@ class _SupplierCreateWizardPageState
                       left: 16,
                       right: 16,
                       top: 16,
-                      bottom: viewInsetsBottom + 20,
+                      bottom: kb + safeBottom + 100,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,

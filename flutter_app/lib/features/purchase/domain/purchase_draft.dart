@@ -155,6 +155,7 @@ class PurchaseLineDraft {
     this.weightPerTin,
     this.hsnCode,
     this.itemCode,
+    this.description,
   });
 
   final String? catalogItemId;
@@ -182,6 +183,7 @@ class PurchaseLineDraft {
   /// Carried for GST lines; from catalog or edited purchase line.
   final String? hsnCode;
   final String? itemCode;
+  final String? description;
 
   Map<String, dynamic> toLineMap() {
     final m = <String, dynamic>{
@@ -226,12 +228,15 @@ class PurchaseLineDraft {
     if (itemCode != null && itemCode!.trim().isNotEmpty) {
       m['item_code'] = itemCode!.trim();
     }
+    final descOut = description?.trim() ?? '';
+    if (descOut.isNotEmpty) m['description'] = descOut;
     return m;
   }
 
   static PurchaseLineDraft fromLineMap(Map<String, dynamic> e) {
     final rawHsn = e['hsn_code']?.toString().trim() ?? '';
     final rawIc = e['item_code']?.toString().trim() ?? '';
+    final rawDesc = e['description']?.toString().trim() ?? '';
     return PurchaseLineDraft(
       catalogItemId: e['catalog_item_id']?.toString(),
       itemName: e['item_name']?.toString() ?? '',
@@ -254,6 +259,7 @@ class PurchaseLineDraft {
       weightPerTin: _decimalToNullableDouble(e['weight_per_tin']),
       hsnCode: rawHsn.isEmpty ? null : rawHsn,
       itemCode: rawIc.isEmpty ? null : rawIc,
+      description: rawDesc.isEmpty ? null : rawDesc,
     );
   }
 }

@@ -24,6 +24,7 @@ import '../../../core/providers/home_dashboard_provider.dart';
 import '../../../core/providers/maintenance_payment_provider.dart';
 import '../../../widgets/spend_ring_chart.dart';
 import 'maintenance_home_card.dart';
+import '../home_pack_unit_word.dart';
 
 String _inr(num n) =>
     NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
@@ -34,14 +35,6 @@ final NumberFormat _qtyDecFmt = NumberFormat('#,##,##0.#', 'en_IN');
 
 String _fmtQty(double q) =>
     q == q.roundToDouble() ? _qtyIntFmt.format(q.round()) : _qtyDecFmt.format(q);
-
-String _unitWord(String unit, double qty) {
-  final upper = unit.toUpperCase();
-  if ((upper == 'BAG' || upper == 'BOX' || upper == 'TIN') && qty != 1) {
-    return '${upper}S';
-  }
-  return upper;
-}
 
 String _fmtDate(DateTime d) =>
     DateFormat.MMMd().format(d); // e.g. Apr 23
@@ -158,22 +151,22 @@ class _HomePageState extends ConsumerState<HomePage>
     final custom = ref.watch(homeCustomDateRangeProvider);
     final async = ref.watch(homeDashboardDataProvider);
     final peek = ref.watch(homeDashboardSyncCacheProvider);
-    final pay = async.valueOrNull;
-    final effectiveData =
-        pay?.data ?? peek ?? HomeDashboardData.empty;
+    final pay = async.snapshot;
+    final effectiveData = pay.data.isEmpty ? (peek ?? pay.data) : pay.data;
 
-    ref.listen<AsyncValue<HomeDashboardPayload>>(
+    ref.listen<HomeDashboardDashState>(
       homeDashboardDataProvider,
       (prev, next) {
-        if (!next.isLoading) {
-          _loadCapTimer?.cancel();
-          _loadCapTimer = null;
-          if (mounted && _loadCapReached) {
-            setState(() => _loadCapReached = false);
-          }
+        if (next.refreshing) {
+          return;
         }
-        final p = next.valueOrNull;
-        if (p == null || !p.persistAlert) {
+        _loadCapTimer?.cancel();
+        _loadCapTimer = null;
+        if (mounted && _loadCapReached) {
+          setState(() => _loadCapReached = false);
+        }
+        final p = next.snapshot;
+        if (!p.persistAlert) {
           _shownPersistDashboardSnack = false;
           return;
         }
@@ -194,10 +187,10 @@ class _HomePageState extends ConsumerState<HomePage>
       },
     );
 
-    final showBigLoader =
-        async.isLoading && peek == null && !_loadCapReached;
+    final shellSkeleton =
+        async.refreshing && peek == null && pay.data.isEmpty;
 
-    if (async.isLoading && peek == null && !_loadCapReached) {
+    if (shellSkeleton && !_loadCapReached) {
       _loadCapTimer ??= Timer(const Duration(seconds: 3), () {
         if (!mounted) return;
         setState(() {
@@ -206,15 +199,16 @@ class _HomePageState extends ConsumerState<HomePage>
           _loadCapTimer = null;
         });
       });
-    } else if (!async.isLoading || peek != null) {
+    } else if (!shellSkeleton ||
+        _loadCapReached ||
+        peek != null ||
+        !pay.data.isEmpty) {
       _loadCapTimer?.cancel();
       _loadCapTimer = null;
     }
 
-    final topBanner = pay?.banner ??
-        ((_loadCapReached && async.isLoading && peek == null)
-            ? 'Server waking up...'
-            : null);
+    final topBanner = pay.banner ??
+        ((_loadCapReached && shellSkeleton) ? 'Server waking up...' : null);
 
     return Scaffold(
       backgroundColor: HexaColors.brandBackground,
@@ -240,8 +234,7 @@ class _HomePageState extends ConsumerState<HomePage>
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (async.isLoading &&
-                      (peek != null || pay != null))
+                  if (async.refreshing)
                     const LinearProgressIndicator(minHeight: 3),
                   if (topBanner != null)
                     Material(
@@ -450,15 +443,14 @@ class _HomePageState extends ConsumerState<HomePage>
               child: MaintenanceHomeCard(),
             ),
             Expanded(
-              child: showBigLoader
-                  ? const Padding(
-                      padding: EdgeInsets.fromLTRB(16, 10, 16, 0),
-                      child: _LoadingPlaceholder(),
-                    )
-                  : _HomeFixedHeaderBody(
-                      data: effectiveData,
-                      categoryColors: _donutColors,
-                    ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                child: _HomeFixedHeaderBody(
+                  data: effectiveData,
+                  categoryColors: _donutColors,
+                  paintShellSkeleton: shellSkeleton,
+                ),
+              ),
             ),
           ],
         ),
@@ -609,65 +601,15 @@ class _PeriodChip extends StatelessWidget {
   }
 }
 
-class _LoadingPlaceholder extends StatelessWidget {
-  const _LoadingPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      color: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: HexaColors.brandBorder),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(
-              height: 14,
-              width: 120,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE2E8F0),
-                borderRadius: BorderRadius.circular(6),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              height: 32,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE2E8F0),
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const LinearProgressIndicator(minHeight: 3),
-            const SizedBox(height: 8),
-            Container(
-              height: 120,
-              decoration: BoxDecoration(
-                color: const Color(0xFFF1F5F9),
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 String _kpiUnitsLineUpper(HomeDashboardData data) {
   final tb = data.totalBags;
   final txb = data.totalBoxes;
   final ttn = data.totalTins;
   final tkg = data.totalKg;
   final parts = <String>[];
-  if (tb > 1e-9) parts.add('${_fmtQty(tb)} ${_unitWord('BAG', tb)}');
-  if (txb > 1e-9) parts.add('${_fmtQty(txb)} ${_unitWord('BOX', txb)}');
-  if (ttn > 1e-9) parts.add('${_fmtQty(ttn)} ${_unitWord('TIN', ttn)}');
+  if (tb > 1e-9) parts.add('${_fmtQty(tb)} ${homePackUnitWord('BAG', tb)}');
+  if (txb > 1e-9) parts.add('${_fmtQty(txb)} ${homePackUnitWord('BOX', txb)}');
+  if (ttn > 1e-9) parts.add('${_fmtQty(ttn)} ${homePackUnitWord('TIN', ttn)}');
   if (tkg > 1e-9) parts.add('${_fmtQty(tkg)} KG');
   if (parts.isNotEmpty) return parts.join(' • ');
   return '';
@@ -701,9 +643,9 @@ String _itemUpperQtyLine(Map<String, dynamic> m) {
   final ttn = (m['total_tins'] as num?)?.toDouble() ?? 0;
   final tkg = (m['total_kg'] as num?)?.toDouble() ?? 0;
   final parts = <String>[];
-  if (tb > 0) parts.add('${_fmtQty(tb)} BAG');
-  if (txb > 0) parts.add('${_fmtQty(txb)} BOX');
-  if (ttn > 0) parts.add('${_fmtQty(ttn)} TIN');
+  if (tb > 0) parts.add('${_fmtQty(tb)} ${homePackUnitWord('BAG', tb)}');
+  if (txb > 0) parts.add('${_fmtQty(txb)} ${homePackUnitWord('BOX', txb)}');
+  if (ttn > 0) parts.add('${_fmtQty(ttn)} ${homePackUnitWord('TIN', ttn)}');
   if (tkg > 0) parts.add('${_fmtQty(tkg)} KG');
   if (parts.isNotEmpty) return parts.join(' • ');
   final q = (m['total_qty'] as num?)?.toDouble() ?? 0;
@@ -713,9 +655,18 @@ String _itemUpperQtyLine(Map<String, dynamic> m) {
 
 String _categoryQtyLabel(CategoryStat c) {
   final parts = <String>[];
-  if (c.units.bags > 0) parts.add('${_fmtQty(c.units.bags)} BAG');
-  if (c.units.boxes > 0) parts.add('${_fmtQty(c.units.boxes)} BOX');
-  if (c.units.tins > 0) parts.add('${_fmtQty(c.units.tins)} TIN');
+  if (c.units.bags > 0) {
+    parts.add(
+        '${_fmtQty(c.units.bags)} ${homePackUnitWord('BAG', c.units.bags)}');
+  }
+  if (c.units.boxes > 0) {
+    parts.add(
+        '${_fmtQty(c.units.boxes)} ${homePackUnitWord('BOX', c.units.boxes)}');
+  }
+  if (c.units.tins > 0) {
+    parts.add(
+        '${_fmtQty(c.units.tins)} ${homePackUnitWord('TIN', c.units.tins)}');
+  }
   if (parts.isNotEmpty) return parts.join(' • ');
   if (c.items.isNotEmpty) {
     final u = c.items.first.unit.trim().toUpperCase();
@@ -740,16 +691,40 @@ const _chartEmptyCenter = Text(
   ),
 );
 
+const _chartSkeletonCenterInner = Column(
+  mainAxisAlignment: MainAxisAlignment.center,
+  mainAxisSize: MainAxisSize.min,
+  children: [
+    SizedBox(
+      height: 22,
+      width: 22,
+      child: CircularProgressIndicator(strokeWidth: 2),
+    ),
+    SizedBox(height: 8),
+    Text(
+      'Loading…',
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        fontWeight: FontWeight.w700,
+        fontSize: 12,
+        color: Color(0xFF64748B),
+      ),
+    ),
+  ],
+);
+
 bool _portfolioEmpty(HomeDashboardData d) => d.purchaseCount == 0;
 
 class _HomeFixedHeaderBody extends ConsumerStatefulWidget {
   const _HomeFixedHeaderBody({
     required this.data,
     required this.categoryColors,
+    this.paintShellSkeleton = false,
   });
 
   final HomeDashboardData data;
   final List<Color> categoryColors;
+  final bool paintShellSkeleton;
 
   @override
   ConsumerState<_HomeFixedHeaderBody> createState() =>
@@ -788,13 +763,16 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
     final data = widget.data;
     final colors = widget.categoryColors;
     if (_portfolioEmpty(data)) {
+      final Widget center = widget.paintShellSkeleton
+          ? _chartSkeletonCenterInner
+          : _chartEmptyCenter;
       return RepaintBoundary(
         child: SpendRingChart(
           diameter: previewSide,
           strokeWidth: 8,
           values: const [1],
           colors: const [Color(0xFFCBD5E1)],
-          centerChild: _chartEmptyCenter,
+          centerChild: center,
         ),
       );
     }
@@ -919,16 +897,30 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
                     return const SizedBox.shrink();
                   }
                 } else if (widget.data.categories.isEmpty) {
-                  return const Center(
-                    child: Text(
-                      'No purchases in this period',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Color(0xFF64748B),
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12,
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            'No purchases in this period',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Color(0xFF64748B),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          FilledButton.icon(
+                            onPressed: () => context.go('/purchase/new'),
+                            icon: const Icon(Icons.add_rounded, size: 18),
+                            label: const Text('Add a purchase'),
+                          ),
+                        ],
                       ),
                     ),
                   );
@@ -1060,27 +1052,44 @@ class _KpiTightBlock extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(
-                  child: Text(
-                    _inr(data.totalPurchase),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: HexaDsType.purchaseLineMoney.copyWith(
-                      fontSize: 26,
-                      height: 1.08,
+                  flex: 3,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        _inr(data.totalPurchase),
+                        maxLines: 1,
+                        style: HexaDsType.purchaseLineMoney.copyWith(
+                          fontSize: 26,
+                          height: 1.08,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-                Text(
-                  primaryUnits.trim().isEmpty ? '—' : primaryUnits,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 15,
-                    color: Color(0xFF0F172A),
+                Expanded(
+                  flex: 2,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        primaryUnits.trim().isEmpty ? '—' : primaryUnits,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 15,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ],

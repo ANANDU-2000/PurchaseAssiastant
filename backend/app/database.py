@@ -1,10 +1,12 @@
 import logging
 import os
 import ssl
+import time
 from collections.abc import AsyncGenerator
 
+
 # Use OS trust store (Ubuntu on Render) + certifi; fixes SSLCertVerificationError to Supabase/ AWS
-# when certifi alone sees "self-signed certificate in certificate chain".
+# when certifi alone sees "self-signed certificate in the certificate chain".
 try:
     import truststore
 
@@ -12,9 +14,9 @@ try:
 except ImportError:
     pass
 
+from sqlalchemy import event
 from sqlalchemy.engine.url import make_url
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import NullPool
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import get_settings
 
@@ -114,6 +116,9 @@ _connect_args: dict = {"check_same_thread": False} if _sqlite else {}
 if not _sqlite:
     _connect_args["statement_cache_size"] = 0
 
+if not _sqlite and settings.database_command_timeout_seconds and settings.database_command_timeout_seconds > 0:
+    _connect_args["command_timeout"] = float(settings.database_command_timeout_seconds)
+
 if not _sqlite and (
     "supabase.co" in _effective_url or "pooler.supabase.com" in _effective_url
 ):
@@ -142,7 +147,7 @@ if not _sqlite and (
             _connect_args["ssl"] = _ctx
         except Exception:  # noqa: BLE001
             _connect_args["ssl"] = True
-    _connect_args.setdefault("timeout", 120)
+_connect_args.setdefault("timeout", float(settings.database_connect_timeout_seconds))
 
 try:
     _diag = make_url(_effective_url)
@@ -156,6 +161,7 @@ try:
         logger.info("Pooler DB host=%s port=%s database=%s", _diag.host, _diag.port, _diag.database)
 except Exception:  # noqa: BLE001
     pass
+
 
 def is_sqlite_runtime() -> bool:
     """True when the API uses local SQLite (HEXA_USE_SQLITE or sqlite DATABASE_URL)."""
@@ -182,24 +188,91 @@ _engine_kwargs: dict = {
     "connect_args": _connect_args,
 }
 if not _sqlite:
-    if _pooler:
-        # With PgBouncer / Supabase transaction poolers, client-side pooling can keep
-        # stale asyncpg connection state around. NullPool is the safest production mode.
-        _engine_kwargs["poolclass"] = NullPool
-    else:
-        # Recycle before typical managed-Postgres idle timeouts; pre-ping drops dead conns.
-        _engine_kwargs["pool_pre_ping"] = True
-        _engine_kwargs["pool_recycle"] = 280
+    # QueuePool (default for create_async_engine + asyncpg): reuse client connections across requests.
+    # statement_cache_size=0 mitigates PgBouncer transaction pooling + async prepared statements.
+    _engine_kwargs.update(
+        pool_pre_ping=True,
+        pool_recycle=max(90, settings.database_pool_recycle_seconds),
+        pool_timeout=settings.database_pool_timeout_seconds,
+        pool_size=settings.database_pool_size,
+        max_overflow=settings.database_pool_max_overflow,
+    )
+
+    # Operational caveat: bounded pool_size + recycle + statement_cache_size=0 + pre_ping
+    # mitigates transaction-pooler + async prepared statement quirks; Session pooler is an infra fallback.
 
 engine = create_async_engine(_effective_url, **_engine_kwargs)
 if not _sqlite:
     logger.info(
-        "Database engine: asyncpg statement_cache_size=%r poolclass=%s pool_pre_ping=%s pool_recycle=%s",
-        _connect_args.get("statement_cache_size"),
-        _engine_kwargs.get("poolclass"),
+        "Database engine: pool_size=%s max_overflow=%s pool_timeout=%s recycle=%ss "
+        "pre_ping=%r statement_cache=%r command_timeout=%r connect_timeout=%r",
+        settings.database_pool_size,
+        settings.database_pool_max_overflow,
+        settings.database_pool_timeout_seconds,
+        settings.database_pool_recycle_seconds,
         _engine_kwargs.get("pool_pre_ping"),
-        _engine_kwargs.get("pool_recycle"),
+        _connect_args.get("statement_cache_size"),
+        _connect_args.get("command_timeout"),
+        _connect_args.get("timeout"),
     )
+
+
+def _slow_sql_logging_enabled(threshold_ms: int) -> bool:
+    """Avoid slow-SQL log spam locally unless DATABASE_SLOW_SQL_LOG=1/true."""
+    if threshold_ms <= 0:
+        return False
+    if settings.app_env in ("development", "test"):
+        return os.getenv("DATABASE_SLOW_SQL_LOG", "").strip().lower() in ("1", "true", "yes")
+    return True
+
+
+def _attach_slow_sql_listener(eng: AsyncEngine, threshold_ms: int) -> None:
+    if threshold_ms <= 0 or is_sqlite_runtime():
+        return
+    sync = eng.sync_engine
+
+    @event.listens_for(sync, "before_cursor_execute")
+    def _before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+        setattr(context, "_hexa_stmt_start", time.perf_counter())
+
+    @event.listens_for(sync, "after_cursor_execute")
+    def _after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+        started = getattr(context, "_hexa_stmt_start", None)
+        if started is None:
+            return
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        if elapsed_ms >= threshold_ms:
+            preview = (statement or "").strip().replace("\n", " ")[:480]
+            logger.warning("slow SQL %.0fms | %s", elapsed_ms, preview)
+
+
+def _attach_engine_error_logging(eng: AsyncEngine) -> None:
+    if is_sqlite_runtime():
+        return
+    sync = eng.sync_engine
+
+    @event.listens_for(sync, "handle_error")
+    def _on_handle_error(exception_context):  # type: ignore[no-untyped-def]
+        raw = getattr(exception_context, "original_exception", None) or getattr(
+            exception_context, "chained_exception", None
+        )
+        if raw is None:
+            return
+        msg = getattr(exception_context, "is_disconnect", None)
+        logger.warning(
+            "db operational failure | disconnect_hint=%s | %s | %s",
+            msg,
+            type(raw).__name__,
+            raw,
+        )
+
+
+if _slow_sql_logging_enabled(settings.database_slow_query_log_ms):
+    _attach_slow_sql_listener(engine, settings.database_slow_query_log_ms)
+
+if not _sqlite:
+    _attach_engine_error_logging(engine)
+
 async_session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 

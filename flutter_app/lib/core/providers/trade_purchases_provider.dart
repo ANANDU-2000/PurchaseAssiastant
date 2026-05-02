@@ -36,16 +36,18 @@ final purchaseHistorySecondaryFilterProvider =
 /// Unfiltered list for due/overdue alert derivation (ignores history tab filters).
 final tradePurchasesForAlertsProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.keepAlive();
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   return ref.read(hexaApiProvider).listTradePurchases(
         businessId: session.primaryBusiness.id,
-        limit: 200,
+        limit: 50,
       );
 });
 
 final tradePurchasesListProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.keepAlive();
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   final primary = ref.watch(purchaseHistoryPrimaryFilterProvider);
@@ -53,7 +55,7 @@ final tradePurchasesListProvider =
   final apiStatus = _tradeListApiStatus(primary, secondary);
   return ref.read(hexaApiProvider).listTradePurchases(
         businessId: session.primaryBusiness.id,
-        limit: 200,
+        limit: 50,
         status: apiStatus,
       );
 });

@@ -405,6 +405,13 @@ def _ensure_trade_purchase_line_columns(sync_conn):
             alters.append("ALTER TABLE trade_purchase_lines ADD COLUMN IF NOT EXISTS box_mode VARCHAR(24) NULL")
         else:
             alters.append("ALTER TABLE trade_purchase_lines ADD COLUMN box_mode VARCHAR(24) NULL")
+    if "unit_type" not in cols:
+        if dialect == "postgresql":
+            alters.append(
+                "ALTER TABLE trade_purchase_lines ADD COLUMN IF NOT EXISTS unit_type VARCHAR(16) NULL"
+            )
+        else:
+            alters.append("ALTER TABLE trade_purchase_lines ADD COLUMN unit_type VARCHAR(16) NULL")
     for sql in alters:
         try:
             sync_conn.exec_driver_sql(sql)

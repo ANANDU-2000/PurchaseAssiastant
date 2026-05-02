@@ -216,6 +216,7 @@ class TradePurchaseLineOut(DecimalModel):
     item_name: str
     qty: Decimal
     unit: str
+    unit_type: str | None = None
     landing_cost: Decimal
     purchase_rate: Decimal | None = None
     kg_per_unit: Decimal | None = None

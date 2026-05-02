@@ -12,6 +12,7 @@ import '../../../core/api/fastapi_error.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/calc_engine.dart';
+import '../../../core/strict_decimal.dart';
 import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart'
     show invalidatePurchaseWorkspace, invalidateWorkspaceSeedData;
@@ -26,7 +27,6 @@ import '../../purchase/state/purchase_draft_provider.dart';
 import '../../../shared/widgets/inline_search_field.dart';
 import 'widgets/add_item_entry_page.dart';
 import 'widgets/purchase_saved_sheet.dart';
-import 'purchase_summary_step.dart';
 
 class PurchaseEntryWizardV2 extends ConsumerStatefulWidget {
   const PurchaseEntryWizardV2({
@@ -47,12 +47,8 @@ class PurchaseEntryWizardV2 extends ConsumerStatefulWidget {
 }
 
 class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
-  /// Single-screen flow: details + items + collapsible charges; tap Review for summary.
-  bool _reviewMode = false;
-  /// Bumps [ExpansionTile] key so "Edit terms" from summary opens charges expanded.
-  int _chargesTileKey = 0;
-  bool _openChargesAfterSummaryJump = false;
   bool _isBootstrapping = false;
+  String? _editBootstrapError;
   bool _isSaving = false;
   bool _formDirty = false;
   String? _previewHumanId;
@@ -92,6 +88,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
   final _deliveredRateCtrl = TextEditingController();
   final _billtyRateCtrl = TextEditingController();
   final _freightCtrl = TextEditingController();
+  final _invoiceCtrl = TextEditingController();
   String _freightType = 'separate';
 
   @override
@@ -104,13 +101,33 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     final notifier = ref.read(purchaseDraftProvider.notifier);
     if (widget.editingId != null && widget.editingId!.isNotEmpty) {
       if (!mounted) return;
-      setState(() => _isBootstrapping = true);
-      final raw = await notifier.loadFromEdit(widget.editingId!);
-      if (raw != null) {
-        _editHumanId = raw['human_id']?.toString();
-        _loadedDerivedStatus = raw['derived_status']?.toString();
-        _loadedRemaining = (raw['remaining'] as num?)?.toDouble();
+      setState(() {
+        _isBootstrapping = true;
+        _editBootstrapError = null;
+      });
+      Map<String, dynamic>? raw;
+      try {
+        raw = await notifier.loadFromEdit(widget.editingId!);
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _editBootstrapError = friendlyApiError(e);
+          _isBootstrapping = false;
+        });
+        return;
       }
+      if (!mounted) return;
+      if (raw == null) {
+        setState(() {
+          _editBootstrapError = 'Could not load this purchase. '
+              'Check that you are signed in and try again.';
+          _isBootstrapping = false;
+        });
+        return;
+      }
+      _editHumanId = raw['human_id']?.toString();
+      _loadedDerivedStatus = raw['derived_status']?.toString();
+      _loadedRemaining = (raw['remaining'] as num?)?.toDouble();
       if (!mounted) return;
       _syncControllersFromDraft();
       setState(() => _isBootstrapping = false);
@@ -163,6 +180,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         d.billtyRate != null ? d.billtyRate!.toStringAsFixed(2) : '';
     _freightCtrl.text =
         d.freightAmount != null ? d.freightAmount!.toStringAsFixed(2) : '';
+    _invoiceCtrl.text = d.invoiceNumber ?? '';
   }
 
   Future<void> _ensureCatalogSeedIfEmpty() async {
@@ -364,6 +382,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     _deliveredRateCtrl.dispose();
     _billtyRateCtrl.dispose();
     _freightCtrl.dispose();
+    _invoiceCtrl.dispose();
     super.dispose();
   }
 
@@ -910,39 +929,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
   bool _isEditMode() =>
       widget.editingId != null && widget.editingId!.isNotEmpty;
 
-  void _openReview() {
-    final g = ref.read(purchaseStepGatesProvider);
-    if (!g.from0) {
-      setState(() {
-        _supplierFieldError =
-            'Pick a supplier from the suggestions list (typing alone is not enough).';
-        _inlineSaveError = null;
-      });
-      _scrollSupplierIntoView();
-      return;
-    }
-    if (!g.from1) {
-      setState(() {
-        _inlineSaveError =
-            'Add at least one item with name, quantity > 0, and landing cost > 0.';
-        _supplierFieldError = null;
-      });
-      _scrollItemsIntoView();
-      return;
-    }
-    setState(() {
-      _inlineSaveError = null;
-      _supplierFieldError = null;
-      _reviewMode = true;
-    });
-    HapticFeedback.selectionClick();
-  }
-
-  void _closeReview() {
-    setState(() => _reviewMode = false);
-    HapticFeedback.selectionClick();
-  }
-
   Future<void> _confirmDiscardIfNeeded() async {
     if (_isEditMode() || !_formDirty) return;
     final a = await showDialog<bool>(
@@ -956,6 +942,10 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
             child: const Text('Stay'),
           ),
           FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red.shade700,
+              foregroundColor: Colors.white,
+            ),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Discard'),
           ),
@@ -1010,22 +1000,23 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         if (isSupplier) {
           setState(() {
             _supplierFieldError = v.errorMessage;
-            _reviewMode = false;
+            _inlineSaveError = null;
           });
           _scrollSupplierIntoView();
         } else {
           setState(() {
             _inlineSaveError = v.errorMessage;
-            _reviewMode = false;
+            _supplierFieldError = null;
           });
           _scrollItemsIntoView();
         }
       } else if (v.lineErrors.isNotEmpty) {
+        final first = v.lineErrors.values.first;
         setState(() {
-          _inlineSaveError =
-              'Fix the highlighted lines in the summary before saving.';
-          _reviewMode = true;
+          _inlineSaveError = first;
+          _supplierFieldError = null;
         });
+        _scrollItemsIntoView();
       }
       return;
     }
@@ -1194,7 +1185,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       if (mounted) {
         final hint = fastApiPurchaseScrollHint(e.response?.data);
         if (hint != null && hint.supplierField) {
-          setState(() => _reviewMode = false);
+          // stay on single editor screen
         }
         setState(() {
           _isSaving = false;
@@ -1279,6 +1270,44 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
                   return const Center(child: CircularProgressIndicator());
                 }
 
+                if (_editBootstrapError != null) {
+                  final err = _editBootstrapError!;
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.cloud_off_rounded,
+                              size: 48,
+                              color: Colors.orange.shade800),
+                          const SizedBox(height: 16),
+                          Text(
+                            err,
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodyLarge,
+                          ),
+                          const SizedBox(height: 24),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              FilledButton(
+                                onPressed: () => _bootstrap(),
+                                child: const Text('Retry'),
+                              ),
+                              const SizedBox(width: 12),
+                              OutlinedButton(
+                                onPressed: () => context.pop(),
+                                child: const Text('Go back'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
                 final catalogAsync = ref.watch(catalogItemsListProvider);
                 final catalog = catalogAsync.valueOrNull ??
                     _lastCatalogSnapshot ??
@@ -1321,14 +1350,14 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         ),
         bottomNavigationBar: Builder(
           builder: (context) {
-            if (_isBootstrapping) {
+            if (_isBootstrapping || _editBootstrapError != null) {
               return const SizedBox.shrink();
             }
             final catalogAsync = ref.watch(catalogItemsListProvider);
             final catalog = catalogAsync.valueOrNull ??
                 _lastCatalogSnapshot ??
                 const <Map<String, dynamic>>[];
-            return _buildNavBar(catalog, isEdit);
+            return _buildPurchaseSaveBar(catalog, isEdit);
           },
         ),
       ),
@@ -1339,8 +1368,8 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     final viewInsets = MediaQuery.viewInsetsOf(context).bottom;
     final safeBottom = MediaQuery.paddingOf(context).bottom;
     final scrollBottom = viewInsets + safeBottom;
-    const scrollTail = 16.0;
-    final scrollBottomPad = scrollBottom + scrollTail;
+    const bottomBarReserve = 80.0;
+    final scrollBottomPad = scrollBottom + bottomBarReserve;
 
     Widget errorStrip() {
       if (_inlineSaveError == null) return const SizedBox.shrink();
@@ -1356,102 +1385,36 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       );
     }
 
-    if (_reviewMode) {
-      final canSave = ref.watch(purchaseSaveValidationProvider).isOk;
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          errorStrip(),
-          Expanded(
-            child: SingleChildScrollView(
-              keyboardDismissBehavior:
-                  ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: EdgeInsets.fromLTRB(16, 12, 16, scrollBottomPad),
-              child: PurchaseSummaryStep(
-                showEmbeddedSave: false,
-                onGoSupplier: () {
-                  _closeReview();
-                  _scrollSupplierIntoView();
-                },
-                onGoItems: () {
-                  _closeReview();
-                  _scrollItemsIntoView();
-                },
-                onGoTerms: () {
-                  setState(() {
-                    _reviewMode = false;
-                    _chargesTileKey++;
-                    _openChargesAfterSummaryJump = true;
-                  });
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted) {
-                      setState(() => _openChargesAfterSummaryJump = false);
-                    }
-                  });
-                },
-                onEditTerms: () {
-                  setState(() {
-                    _reviewMode = false;
-                    _chargesTileKey++;
-                    _openChargesAfterSummaryJump = true;
-                  });
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted) {
-                      setState(() => _openChargesAfterSummaryJump = false);
-                    }
-                  });
-                },
-                onSave: _validateAndSave,
-                isSaving: _isSaving,
-                canSave: canSave,
-                isEditMode: isEdit,
-                paymentDerivedStatus: _loadedDerivedStatus,
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         errorStrip(),
+        _buildFixedPurchaseHeader(catalog, isEdit),
         Expanded(
           child: SingleChildScrollView(
             keyboardDismissBehavior:
                 ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: EdgeInsets.fromLTRB(16, 12, 16, scrollBottomPad),
+            padding: EdgeInsets.fromLTRB(10, 6, 10, scrollBottomPad),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _buildStepSupplier(catalog, isEdit),
-                const Divider(height: 24),
-                Text(
-                  'Items',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                ),
-                const SizedBox(height: 6),
-                _buildStepItems(catalog, isEdit),
+                _buildItemsSection(catalog, isEdit),
                 const SizedBox(height: 10),
                 ExpansionTile(
-                  key: ValueKey(_chargesTileKey),
-                  initiallyExpanded: _openChargesAfterSummaryJump,
+                  initiallyExpanded: false,
                   tilePadding: EdgeInsets.zero,
                   title: Text(
-                    'Charges & terms',
+                    'Terms',
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w800,
                         ),
                   ),
                   shape: const Border(),
                   collapsedShape: const Border(),
                   children: [
                     Padding(
-                      padding: const EdgeInsets.only(top: 8, bottom: 4),
-                      child: _buildStepTerms(catalog, isEdit),
+                      padding: const EdgeInsets.only(top: 6, bottom: 8),
+                      child: _buildTermsFields(catalog, isEdit),
                     ),
                   ],
                 ),
@@ -1463,30 +1426,15 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     );
   }
 
-  InputDecoration _fieldDeco(String label, {String? hint}) {
+  static const double _kFieldHeight = 48;
+
+  InputDecoration _denseFieldDeco(String label,
+      {String? hint, String? prefixText}) {
     return InputDecoration(
       labelText: label,
       hintText: hint,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: BorderSide(color: Colors.grey[300]!),
-      ),
-      focusedBorder: const OutlineInputBorder(
-        borderRadius: BorderRadius.all(Radius.circular(8)),
-        borderSide: BorderSide(color: HexaColors.brandPrimary, width: 2),
-      ),
-      filled: true,
-      fillColor: Colors.grey[50],
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-    );
-  }
-
-  InputDecoration _compactFieldDeco(String label, {String? prefixText}) {
-    return InputDecoration(
-      labelText: label,
       prefixText: prefixText,
+      isDense: true,
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
@@ -1498,85 +1446,105 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       ),
       filled: true,
       fillColor: Colors.grey[50],
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
     );
   }
 
-  Widget _buildStepSupplier(List<Map<String, dynamic>> catalog, bool isEdit) {
+  Widget _buildFixedPurchaseHeader(
+      List<Map<String, dynamic>> catalog, bool isEdit) {
     final draft = ref.watch(purchaseDraftProvider);
-    return Column(
+    return Padding(
       key: _supplierSectionKey,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-          if (isEdit && _editHumanId != null) ...[
-            Text(
-              'Purchase ID: $_editHumanId',
-              style: const TextStyle(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 8),
-          ] else if (!isEdit && _previewHumanId != null) ...[
-            Text(
-              'Purchase ID (preview): $_previewHumanId',
-              style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                color: HexaColors.brandPrimary,
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
+      padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
           if (isEdit && _loadedDerivedStatus != null) ...[
             Text(
               'Payment: $_loadedDerivedStatus · Bal ₹${(_loadedRemaining ?? 0).toStringAsFixed(2)}',
               style: const TextStyle(fontSize: 11),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
           ],
-          Text('Date *', style: Theme.of(context).textTheme.labelLarge),
-          const SizedBox(height: 6),
-          GestureDetector(
-            onTap: () async {
-              final date = await showDatePicker(
-                context: context,
-                initialDate: draft.purchaseDate ?? DateTime.now(),
-                firstDate: DateTime(2020),
-                lastDate: DateTime.now(),
-              );
-              if (date != null) {
-                ref.read(purchaseDraftProvider.notifier).setPurchaseDate(date);
-                _onDraftChanged();
-                setState(() {});
-              }
-            },
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey[300]!),
-                borderRadius: BorderRadius.circular(8),
-                color: Colors.grey[50],
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.calendar_today,
-                      size: 18, color: HexaColors.brandPrimary),
-                  const SizedBox(width: 8),
-                  Text(
-                    DateFormat('dd MMM yyyy')
-                        .format(draft.purchaseDate ?? DateTime.now()),
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+          SizedBox(
+            height: _kFieldHeight,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () async {
+                      final date = await showDatePicker(
+                        context: context,
+                        initialDate: draft.purchaseDate ?? DateTime.now(),
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime.now(),
+                      );
+                      if (date != null) {
+                        ref
+                            .read(purchaseDraftProvider.notifier)
+                            .setPurchaseDate(date);
+                        _onDraftChanged();
+                        setState(() {});
+                      }
+                    },
+                    child: InputDecorator(
+                      decoration: _denseFieldDeco('Date'),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.calendar_today,
+                              size: 16, color: HexaColors.brandPrimary),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              DateFormat('dd MMM yyyy').format(
+                                  draft.purchaseDate ?? DateTime.now()),
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w600, fontSize: 14),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: InputDecorator(
+                    decoration: _denseFieldDeco(
+                      isEdit ? 'Purchase ID' : 'ID (preview)',
+                    ),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        isEdit
+                            ? (_editHumanId ?? '—')
+                            : (_previewHumanId ?? 'Auto'),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                          color: isEdit
+                              ? Colors.black87
+                              : HexaColors.brandPrimary,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 12),
-          const Text('Supplier *', style: TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
+          const Text('Supplier *',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+          const SizedBox(height: 4),
           _buildSupplierSearch(catalog),
           if (_supplierFieldError != null)
             Padding(
-              padding: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.only(top: 4),
               child: Text(
                 _supplierFieldError!,
                 style: TextStyle(color: Colors.red[800], fontSize: 12),
@@ -1585,7 +1553,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
           if (draft.supplierId != null && draft.supplierId!.isNotEmpty)
             Align(
               alignment: Alignment.centerLeft,
-              child: TextButton.icon(
+              child: TextButton(
                 onPressed: () {
                   ref.read(purchaseDraftProvider.notifier).clearSupplier();
                   _supplierCtrl.clear();
@@ -1593,12 +1561,223 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
                   setState(() {});
                   _onDraftChanged();
                 },
-                icon: const Icon(Icons.edit, size: 18),
-                label: const Text('Change supplier'),
+                style: TextButton.styleFrom(
+                  minimumSize: Size.zero,
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text('Change supplier',
+                    style: TextStyle(fontSize: 12)),
               ),
             ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 4),
           _buildBrokerBlock(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTermsFields(
+      List<Map<String, dynamic>> _, bool __) {
+    final draft = ref.watch(purchaseDraftProvider);
+    if (draft.supplierId == null || draft.supplierId!.isEmpty) {
+      return const Text(
+        'Select a supplier first.',
+        style: TextStyle(fontSize: 13, color: Colors.grey),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (draft.supplierName != null && draft.supplierName!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0D9488).withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: const Color(0xFF0D9488).withValues(alpha: 0.25),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.auto_fix_high,
+                      size: 14, color: Color(0xFF0D9488)),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Defaults from ${draft.supplierName} (editable)',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF0D9488),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        SizedBox(
+          height: _kFieldHeight + 18,
+          child: TextField(
+            controller: _paymentDaysCtrl,
+            keyboardType: TextInputType.number,
+            decoration: _denseFieldDeco('Payment days'),
+            onChanged: (s) {
+              ref.read(purchaseDraftProvider.notifier).setPaymentDaysText(s);
+              _onDraftChanged();
+            },
+          ),
+        ),
+        if (_paymentDaysCtrl.text.trim().isNotEmpty) ...[
+          const SizedBox(height: 2),
+          Text(
+            _duePreviewText(),
+            style: const TextStyle(
+              fontSize: 11,
+              color: Color(0xFF0D9488),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: _kFieldHeight + 18,
+                child: TextField(
+                  controller: _deliveredRateCtrl,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: _denseFieldDeco('Delivered rate'),
+                  onChanged: (s) {
+                    ref.read(purchaseDraftProvider.notifier).setDeliveredText(s);
+                    _onDraftChanged();
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: SizedBox(
+                height: _kFieldHeight + 18,
+                child: TextField(
+                  controller: _billtyRateCtrl,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: _denseFieldDeco('Billty rate'),
+                  onChanged: (s) {
+                    ref.read(purchaseDraftProvider.notifier).setBilltyText(s);
+                    _onDraftChanged();
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: _kFieldHeight + 18,
+                child: TextField(
+                  controller: _freightCtrl,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: _denseFieldDeco('Freight', prefixText: '₹ '),
+                  onChanged: (s) {
+                    ref.read(purchaseDraftProvider.notifier).setFreightText(s);
+                    _onDraftChanged();
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: SizedBox(
+                height: _kFieldHeight + 18,
+                child: InputDecorator(
+                  decoration: _denseFieldDeco('Freight type'),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _freightType,
+                      isExpanded: true,
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'separate',
+                          child: Text('Separate'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'included',
+                          child: Text('Included'),
+                        ),
+                      ],
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setState(() => _freightType = v);
+                        ref
+                            .read(purchaseDraftProvider.notifier)
+                            .setFreightType(v);
+                        _onDraftChanged();
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: _kFieldHeight + 18,
+          child: TextField(
+            controller: _commissionCtrl,
+            keyboardType:
+                const TextInputType.numberWithOptions(decimal: true),
+            decoration: _denseFieldDeco('Broker commission %'),
+            onChanged: (s) {
+              ref.read(purchaseDraftProvider.notifier).setCommissionText(s);
+              _onDraftChanged();
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: _kFieldHeight + 18,
+          child: TextField(
+            controller: _headerDiscCtrl,
+            keyboardType:
+                const TextInputType.numberWithOptions(decimal: true),
+            decoration:
+                _denseFieldDeco('Discount % (purchase)'),
+            onChanged: (s) {
+              ref
+                  .read(purchaseDraftProvider.notifier)
+                  .setHeaderDiscountFromText(s);
+              _onDraftChanged();
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: _kFieldHeight + 26,
+          child: TextField(
+            controller: _invoiceCtrl,
+            maxLines: 2,
+            minLines: 1,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: _denseFieldDeco('Memo / invoice ref'),
+            onChanged: (s) {
+              ref.read(purchaseDraftProvider.notifier).setInvoiceText(s);
+              _onDraftChanged();
+            },
+          ),
+        ),
       ],
     );
   }
@@ -1874,163 +2053,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     );
   }
 
-  Widget _buildStepTerms(
-    List<Map<String, dynamic>> catalog,
-    bool isEdit,
-  ) {
-    final draft = ref.watch(purchaseDraftProvider);
-    if (draft.supplierId == null || draft.supplierId!.isEmpty) {
-      return const Text('Select a supplier first.');
-    }
-    return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (draft.supplierName != null && draft.supplierName!.isNotEmpty)
-            Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0D9488).withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: const Color(0xFF0D9488).withValues(alpha: 0.3),
-                ),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.auto_fix_high, size: 16, color: Color(0xFF0D9488)),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'Defaults from supplier — ${draft.supplierName} (editable)',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF0D9488),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          TextField(
-            controller: _paymentDaysCtrl,
-            keyboardType: TextInputType.number,
-            decoration: _fieldDeco('Payment days'),
-            onChanged: (s) {
-              ref.read(purchaseDraftProvider.notifier).setPaymentDaysText(s);
-              setState(() {});
-              _onDraftChanged();
-            },
-          ),
-          if (_paymentDaysCtrl.text.trim().isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              _duePreviewText(),
-              style: const TextStyle(
-                fontSize: 12,
-                color: Color(0xFF0D9488),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _deliveredRateCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: _compactFieldDeco('Delivered rate'),
-                  onChanged: (s) {
-                    ref.read(purchaseDraftProvider.notifier).setDeliveredText(s);
-                    _onDraftChanged();
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: _billtyRateCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: _compactFieldDeco('Billty rate'),
-                  onChanged: (s) {
-                    ref.read(purchaseDraftProvider.notifier).setBilltyText(s);
-                    _onDraftChanged();
-                  },
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                flex: 2,
-                child: TextField(
-                  controller: _freightCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: _compactFieldDeco('Freight', prefixText: '₹ '),
-                  onChanged: (s) {
-                    ref.read(purchaseDraftProvider.notifier).setFreightText(s);
-                    _onDraftChanged();
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: InputDecorator(
-                  decoration: _compactFieldDeco('Freight type'),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: _freightType,
-                      isExpanded: true,
-                      items: const [
-                        DropdownMenuItem(
-                            value: 'separate', child: Text('Separate')),
-                        DropdownMenuItem(
-                            value: 'included', child: Text('Included')),
-                      ],
-                      onChanged: (v) {
-                        if (v == null) return;
-                        setState(() => _freightType = v);
-                        ref
-                            .read(purchaseDraftProvider.notifier)
-                            .setFreightType(v);
-                        _onDraftChanged();
-                      },
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _commissionCtrl,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: _compactFieldDeco('Broker commission %'),
-            onChanged: (s) {
-              ref.read(purchaseDraftProvider.notifier).setCommissionText(s);
-              _onDraftChanged();
-            },
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _headerDiscCtrl,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: _compactFieldDeco('Header discount % (optional)'),
-            onChanged: (s) {
-              ref.read(purchaseDraftProvider.notifier).setHeaderDiscountFromText(s);
-              setState(() {});
-              _onDraftChanged();
-            },
-          ),
-        ],
-    );
-  }
-
-  Widget _buildStepItems(
+  Widget _buildItemsSection(
     List<Map<String, dynamic>> catalog,
     bool isEdit,
   ) {
@@ -2040,20 +2063,41 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       key: _itemsSectionKey,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        FilledButton.icon(
-          onPressed: supplierId == null
-              ? null
-              : () => _openItemSheet(catalog),
-          icon: const Icon(Icons.add, size: 20),
-          label: const Text('Add item'),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(
+              'Items',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: supplierId == null || supplierId.isEmpty
+                  ? null
+                  : () => _openItemSheet(catalog),
+              style: TextButton.styleFrom(
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              ),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add Item'),
+            ),
+          ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         _buildSupplierHistoryHint(),
-        const SizedBox(height: 4),
         if (lines.isEmpty)
-          const Text(
-            'No items yet. Tap Add item.',
-            style: TextStyle(color: Colors.grey, fontSize: 13),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Text(
+              supplierId == null || supplierId.isEmpty
+                  ? 'Select a supplier first.'
+                  : 'No items yet.',
+              style: TextStyle(color: Colors.grey[600], fontSize: 13),
+            ),
           )
         else
           ...List.generate(lines.length, (i) {
@@ -2067,46 +2111,83 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
               discountPercent: it.lineDiscountPercent,
             );
             final total = lineMoney(line);
-            final sc = it.sellingPrice;
-            var profit = 0.0;
-            if (sc != null) {
-              profit = (sc - it.landingCost) * it.qty;
-            }
             final kpu = it.kgPerUnit;
             final lck = it.landingCostPerKg;
-            final sub = (kpu != null &&
-                    lck != null &&
-                    kpu > 0)
-                ? '${it.qty} ${it.unit} · ₹${lck.toStringAsFixed(2)}/kg → line ₹${total.toStringAsFixed(2)}'
-                : '${it.qty} ${it.unit} · landing ₹${it.landingCost.toStringAsFixed(2)} → line ₹${total.toStringAsFixed(2)}';
+            final rateUnit = (kpu != null && lck != null && kpu > 0 && lck > 0)
+                ? (kpu * lck)
+                : it.landingCost;
+            final qtyStr = StrictDecimal.fromObject(it.qty).format(3, trim: true);
+            final lineText =
+                '$qtyStr × ₹${rateUnit.toStringAsFixed(2)} = ₹${total.toStringAsFixed(2)} · ${it.unit.trim()}';
+
             return Padding(
               padding: const EdgeInsets.only(bottom: 6),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Colors.grey[50],
+              child: Material(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(8),
+                child: InkWell(
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey[300]!),
-                ),
-                child: ListTile(
-                  title: Text(it.itemName,
-                      maxLines: 2, overflow: TextOverflow.ellipsis),
-                  subtitle: Text(
-                    '$sub${profit != 0 ? ' · Profit ₹${profit.toStringAsFixed(2)}' : ''}',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextButton(
-                        onPressed: () => _openItemSheet(catalog, editIndex: i),
-                        child: const Text('Edit'),
-                      ),
-                      TextButton(
-                        onPressed: () => _removeLineAt(i),
-                        child: Text('Delete',
-                            style: TextStyle(color: Colors.red[800])),
-                      ),
-                    ],
+                  onTap: () => _openItemSheet(catalog, editIndex: i),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 6),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey[300]!),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                it.itemName,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                lineText,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[800],
+                                  height: 1.2,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Edit',
+                          iconSize: 20,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                              minHeight: _kFieldHeight,
+                              minWidth: _kFieldHeight),
+                          icon: const Icon(Icons.edit_outlined,
+                              color: HexaColors.brandPrimary),
+                          onPressed: () =>
+                              _openItemSheet(catalog, editIndex: i),
+                        ),
+                        IconButton(
+                          tooltip: 'Delete',
+                          iconSize: 20,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                              minHeight: _kFieldHeight,
+                              minWidth: _kFieldHeight),
+                          icon: Icon(Icons.delete_outline_rounded,
+                              color: Colors.red[700]),
+                          onPressed: () => _removeLineAt(i),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -2116,87 +2197,57 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     );
   }
 
-  Widget _buildNavBar(List<Map<String, dynamic>> catalog, bool isEdit) {
-    final g = ref.watch(purchaseStepGatesProvider);
-
-    if (_reviewMode) {
-      final saveVal = ref.watch(purchaseSaveValidationProvider);
-      final canSave = saveVal.isOk;
-      return SafeArea(
-        child: Material(
-          elevation: 6,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (!canSave)
-                Container(
-                  color: Colors.red.shade50,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  child: Text(
-                    saveVal.errorMessage ??
-                        'Complete supplier and at least one valid line to save.',
-                    style: TextStyle(color: Colors.red[800], fontSize: 12),
-                  ),
-                ),
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: SizedBox(
-                        height: 50,
-                        child: OutlinedButton(
-                          onPressed: _isSaving ? null : _closeReview,
-                          child: const Text('Edit details'),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: SizedBox(
-                        height: 50,
-                        child: FilledButton(
-                          onPressed: (!canSave || _isSaving)
-                              ? null
-                              : _validateAndSave,
-                          child: _isSaving
-                              ? const SizedBox(
-                                  height: 22,
-                                  width: 22,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : Text(
-                                  isEdit ? 'Save changes' : 'Save purchase',
-                                ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
+  Widget _buildPurchaseSaveBar(
+      List<Map<String, dynamic>> _, bool isEdit) {
+    final saveVal = ref.watch(purchaseSaveValidationProvider);
+    final canSave = saveVal.isOk;
     return SafeArea(
       child: Material(
         elevation: 6,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: SizedBox(
-            height: 50,
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: (g.from0 && g.from1) ? _openReview : null,
-              child: const Text('Review'),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (!canSave)
+              Container(
+                color: Colors.red.shade50,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                child: Text(
+                  saveVal.errorMessage ??
+                      (saveVal.lineErrors.isNotEmpty
+                          ? saveVal.lineErrors.values.first
+                          : 'Supplier and at least one valid line required.'),
+                  style: TextStyle(color: Colors.red[800], fontSize: 11),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+              child: SizedBox(
+                height: 48,
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: (!canSave || _isSaving) ? null : _validateAndSave,
+                  child: _isSaving
+                      ? const SizedBox(
+                          height: 22,
+                          width: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'Save Purchase',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 15),
+                        ),
+                ),
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );

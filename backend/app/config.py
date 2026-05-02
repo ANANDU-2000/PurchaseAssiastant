@@ -72,6 +72,28 @@ class Settings(BaseSettings):
     # Encrypted TLS to Postgres, but skip verifying the server certificate chain. Some PaaS (e.g. Render) + Supabase
     # pooler combinations fail SSL verify despite valid AWS certs; opt-in only. Prefer false once CA trust works.
     database_ssl_skip_verify: bool = False
+    # Async SQLAlchemy QueuePool knobs (PostgreSQL only; SQLite ignores).
+    database_pool_size: int = 5
+    database_pool_max_overflow: int = 10
+    database_pool_timeout_seconds: int = 30
+    database_pool_recycle_seconds: int = 285
+    # asyncpg statement timeout per executed command (seconds). 0 disables.
+    database_command_timeout_seconds: float = 60.0
+    # Initial connect handshake timeout already used in database.py connect_args timeout (legacy).
+    database_connect_timeout_seconds: float = 30.0
+    # Emit WARNING when a SQL round-trip exceeds this many ms on sync mirror engine. 0 disables.
+    database_slow_query_log_ms: int = 200
+    # GET-only degradation: SQLAlchemy may use default empty JSON for catastrophic reads (middleware).
+    database_get_read_failsafe: bool = True
+    # asyncio wait_for cap for curated heavy GET aggregates (snapshot, home-overview, month dashboard).
+    # 0 disables. Mutations rely on database_command_timeout_seconds instead.
+    api_read_budget_seconds: float = 4.0
+
+    # Log WARNING when HTTP round-trip exceeds this many ms (all routes). 0 disables slow-request WARN.
+    http_slow_request_warning_ms: int = 500
+    # Echo X-Request-Id through responses (reuse client-supplied UUID or allocate one).
+    http_propagate_request_id: bool = True
+
     redis_url: str | None = "redis://localhost:6379/0"
 
     jwt_secret: str = "change-me-min-32-chars-dev-only"

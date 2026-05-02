@@ -13,7 +13,9 @@ from sqlalchemy import delete, exists, not_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.db_resilience import execute_with_retry
 from app.models import CatalogItem, SupplierItemDefault, TradePurchase, TradePurchaseDraft, TradePurchaseLine
+from app.services.trade_unit_type import derive_trade_unit_type
 from app.schemas.trade_purchases import (
     TradeDuplicateCheckRequest,
     TradeDuplicateCheckResponse,
@@ -26,6 +28,7 @@ from app.schemas.trade_purchases import (
     TradePurchasePaymentPatch,
     TradePurchaseUpdateRequest,
 )
+from app.read_cache_generation import bump_trade_read_caches_for_business
 from app.services import decimal_precision as dp
 from app.services.purchase_status import compute_status
 
@@ -526,7 +529,7 @@ async def list_trade_purchases(
         )
     off = min(max(int(offset or 0), 0), 10_000)
     stmt = stmt.offset(off).limit(fetch_cap)
-    res = await db.execute(stmt)
+    res = await execute_with_retry(lambda: db.execute(stmt))
     rows = [trade_purchase_to_out(p) for p in res.scalars().unique().all()]
     sf = (status_filter or "all").strip().lower()
     if sf == "draft":
@@ -744,6 +747,7 @@ async def create_trade_purchase(
                 item_name=li.item_name,
                 qty=dp.qty(li.qty),
                 unit=li.unit,
+                unit_type=derive_trade_unit_type(li.unit),
                 purchase_rate=dp.rate(li.purchase_rate or li.landing_cost),
                 selling_rate=dp.rate(li.selling_rate) if li.selling_rate is not None else None,
                 freight_type=li.freight_type,
@@ -775,6 +779,7 @@ async def create_trade_purchase(
         )
     await _sync_purchase_memory(db, business_id, body)
     await db.commit()
+    bump_trade_read_caches_for_business(business_id)
     res = await db.execute(
         select(TradePurchase)
         .where(TradePurchase.id == tp.id)
@@ -864,6 +869,7 @@ async def update_trade_purchase(
                 item_name=li.item_name,
                 qty=dp.qty(li.qty),
                 unit=li.unit,
+                unit_type=derive_trade_unit_type(li.unit),
                 purchase_rate=dp.rate(li.purchase_rate or li.landing_cost),
                 selling_rate=dp.rate(li.selling_rate) if li.selling_rate is not None else None,
                 freight_type=li.freight_type,
@@ -901,6 +907,7 @@ async def update_trade_purchase(
     tp.updated_at = utcnow()
     await _sync_purchase_memory(db, business_id, body)
     await db.commit()
+    bump_trade_read_caches_for_business(business_id)
     res2 = await db.execute(
         select(TradePurchase)
         .where(TradePurchase.id == tp.id)
@@ -944,6 +951,7 @@ async def patch_trade_purchase_payment(
     if (tp.status or "").lower() not in ("draft", "cancelled"):
         tp.status = derived
     await db.commit()
+    bump_trade_read_caches_for_business(business_id)
     return await get_trade_purchase(db, business_id, purchase_id)
 
 
@@ -984,6 +992,7 @@ async def mark_trade_purchase_paid(
     )
     tp.status = derived
     await db.commit()
+    bump_trade_read_caches_for_business(business_id)
     return await get_trade_purchase(db, business_id, purchase_id)
 
 
@@ -1006,6 +1015,7 @@ async def cancel_trade_purchase(
     tp.status = "cancelled"
     tp.updated_at = utcnow()
     await db.commit()
+    bump_trade_read_caches_for_business(business_id)
     return await get_trade_purchase(db, business_id, purchase_id)
 
 
@@ -1026,6 +1036,7 @@ async def delete_trade_purchase(
     tp.status = "deleted"
     tp.updated_at = utcnow()
     await db.commit()
+    bump_trade_read_caches_for_business(business_id)
     return True
 
 
@@ -1116,6 +1127,12 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
         )
         purchase_rate = getattr(li, "purchase_rate", None) or li.landing_cost
         selling_rate = getattr(li, "selling_rate", None) or li.selling_cost
+        raw_ut = getattr(li, "unit_type", None)
+        out_ut = (
+            raw_ut.strip().lower()
+            if isinstance(raw_ut, str) and raw_ut.strip()
+            else derive_trade_unit_type(li.unit)
+        )
         lines.append(
             TradePurchaseLineOut(
                 id=li.id,
@@ -1123,6 +1140,7 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
                 item_name=li.item_name,
                 qty=dp.qty(li.qty),
                 unit=li.unit,
+                unit_type=out_ut,
                 landing_cost=dp.rate(li.landing_cost),
                 purchase_rate=dp.rate(purchase_rate),
                 kg_per_unit=kpu_val,

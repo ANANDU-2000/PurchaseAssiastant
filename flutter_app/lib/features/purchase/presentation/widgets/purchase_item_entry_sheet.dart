@@ -77,6 +77,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   final _weightPerItemCtrl = TextEditingController();
   final _kgPerBoxCtrl = TextEditingController();
   final _weightPerTinCtrl = TextEditingController();
+  final _lineNotesCtrl = TextEditingController();
 
   String? _catalogItemId;
   /// When true: bag/sack with kg snapshot — user enters landing & selling per kg.
@@ -100,7 +101,8 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   /// Ignore stale default fetches when the user selects another catalog row mid-flight.
   int _catalogPickSeq = 0;
   Timer? _defaultsDebounceTimer;
-  Timer? _previewDebounceTimer;
+
+  late final Listenable _lineTotalsListenable;
 
   /// Short hint driven by [_activeClassification()] after catalog/name changes.
   String? _unitDetectHint;
@@ -146,12 +148,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     });
   }
 
-  void _schedulePreviewRebuild() {
-    _previewDebounceTimer?.cancel();
-    _previewDebounceTimer = Timer(const Duration(milliseconds: 300), () {
-      if (mounted) setState(() {});
-    });
-  }
+  void _schedulePreviewRebuild() {}
 
   @override
   void initState() {
@@ -209,6 +206,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       _hsnCode = hsn.isEmpty ? null : hsn;
       final ic = init['item_code']?.toString().trim() ?? '';
       _itemCode = ic.isEmpty ? null : ic;
+      _lineNotesCtrl.text = init['description']?.toString() ?? '';
       final ft = init['freight_type']?.toString();
       if (ft == 'included' || ft == 'separate') _freightType = ft!;
       _freightCtrl.text = _fmtInput(init['freight_value'] ?? init['freight_amount'], 2);
@@ -221,6 +219,23 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       _boxFixedWeight = (init['box_mode']?.toString() != 'items_per_box');
     }
     _syncKgStateFromCatalogRow();
+    _lineTotalsListenable = Listenable.merge([
+      _qtyCtrl,
+      _unitCtrl,
+      _landingCtrl,
+      _discCtrl,
+      _taxCtrl,
+      _sellingCtrl,
+      _freightCtrl,
+      _deliveredCtrl,
+      _billtyCtrl,
+      _itemsPerBoxCtrl,
+      _weightPerItemCtrl,
+      _kgPerBoxCtrl,
+      _weightPerTinCtrl,
+      _kgPerBagCtrl,
+      _lineNotesCtrl,
+    ]);
   }
 
   void _syncKgStateFromCatalogRow() {
@@ -245,7 +260,6 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     _itemCtrl.removeListener(_onItemTextChanged);
     _kgPerBagCtrl.removeListener(_onKgPerBagChanged);
     _defaultsDebounceTimer?.cancel();
-    _previewDebounceTimer?.cancel();
     _scrollController.dispose();
     _itemCtrl.dispose();
     _itemFocus.dispose();
@@ -267,6 +281,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     _weightPerItemCtrl.dispose();
     _kgPerBoxCtrl.dispose();
     _weightPerTinCtrl.dispose();
+    _lineNotesCtrl.dispose();
     super.dispose();
   }
 
@@ -851,6 +866,8 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     if (hOut.isNotEmpty) m['hsn_code'] = hOut;
     final icOut = _itemCode?.trim() ?? '';
     if (icOut.isNotEmpty) m['item_code'] = icOut;
+    final note = _lineNotesCtrl.text.trim();
+    if (note.isNotEmpty) m['description'] = note;
     return m;
   }
 
@@ -885,6 +902,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       _errHsn = null;
       _hsnCode = null;
       _itemCode = null;
+      _lineNotesCtrl.clear();
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _itemFocus.requestFocus();
@@ -1470,16 +1488,6 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
           ),
         ),
         const SizedBox(height: 8),
-      ] else ...[
-        Text(
-          'Search an item, enter qty and rate. Use Discount / Tax for HSN and bag/sack lines.',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: Colors.blueGrey[700],
-            fontSize: 12,
-            height: 1.25,
-          ),
-        ),
-        const SizedBox(height: 8),
       ],
       KeyedSubtree(
         key: _itemKey,
@@ -1909,6 +1917,13 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                           ),
                         ],
                       ),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: _lineNotesCtrl,
+                        maxLines: 4,
+                        minLines: 1,
+                        decoration: _deco('Notes'),
+                      ),
                     ],
                   ),
                 ),
@@ -1946,7 +1961,10 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                 ),
               ],
               const SizedBox(height: 4),
-              _liveTotalsCard(theme),
+              ListenableBuilder(
+                listenable: _lineTotalsListenable,
+                builder: (context, _) => _liveTotalsCard(theme),
+              ),
               if (!widget.fullPage) const SizedBox(height: 8),
               if (!widget.fullPage)
                 if (widget.isEdit)
@@ -1985,7 +2003,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         top: widget.fullPage ? 8 : 4,
         right: widget.fullPage ? 16 : 10,
         bottom: keyboardBottom +
-            (widget.fullPage ? homeBottomInset + 12 : 10),
+            (widget.fullPage ? homeBottomInset + 76 : 10),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

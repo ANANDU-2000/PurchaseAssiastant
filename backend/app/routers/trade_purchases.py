@@ -110,7 +110,7 @@ async def list_trade_purchases(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
     _m: Annotated[Membership, Depends(require_membership)],
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0, le=10_000),
     status: str | None = Query(
         None,
@@ -130,7 +130,7 @@ async def list_trade_purchases(
     ),
 ):
     del user
-    limit_v = max(1, min(limit, 200))
+    limit_v = max(1, min(limit, 50))
     offset_v = max(0, min(offset, 10_000))
     status_norm = _normalize_trade_list_status(status)
     _log.debug(

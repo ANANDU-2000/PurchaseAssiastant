@@ -7,6 +7,7 @@ import '../services/offline_store.dart';
 /// Server-ensured row + computed flags (`show_alert`, `paid_up`, `history`, …).
 final cloudCostProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+  ref.keepAlive();
   final session = ref.watch(sessionProvider);
   if (session == null) return {};
   final bid = session.primaryBusiness.id;

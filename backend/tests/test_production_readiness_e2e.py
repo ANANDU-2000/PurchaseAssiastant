@@ -92,10 +92,10 @@ def test_flow_purchase_update_delete_and_summary_matches_snapshot():
         "item_name": "PreItem",
         "qty": 5,
         "unit": "bag",
-        "landing_cost": 100.0,
-        "kg_per_unit": 50,
-        "landing_cost_per_kg": 2.0,
-        "tax_percent": 0,
+        "landing_cost": "100",
+        "kg_per_unit": "50",
+        "landing_cost_per_kg": "2",
+        "tax_percent": "0",
     }
     body = {
         "purchase_date": date.today().isoformat(),
@@ -140,6 +140,10 @@ def test_flow_purchase_update_delete_and_summary_matches_snapshot():
     row = g.json()
     line = row["lines"][0]
     line["qty"] = 10
+    lc = line.get("landing_cost", 100)
+    kgun = line.get("kg_per_unit")
+    lcpk = line.get("landing_cost_per_kg")
+    tp = line.get("tax_percent", 0)
     put = {
         "purchase_date": row["purchase_date"],
         "supplier_id": row["supplier_id"],
@@ -147,12 +151,12 @@ def test_flow_purchase_update_delete_and_summary_matches_snapshot():
             {
                 "catalog_item_id": line.get("catalog_item_id"),
                 "item_name": line.get("item_name", "PreItem"),
-                "qty": 10.0,
+                "qty": 10,
                 "unit": line.get("unit", "bag"),
-                "landing_cost": float(line.get("landing_cost", 100)),
-                "kg_per_unit": line.get("kg_per_unit"),
-                "landing_cost_per_kg": line.get("landing_cost_per_kg"),
-                "tax_percent": line.get("tax_percent"),
+                "landing_cost": str(lc),
+                **({"kg_per_unit": str(kgun)} if kgun is not None else {}),
+                **({"landing_cost_per_kg": str(lcpk)} if lcpk is not None else {}),
+                "tax_percent": str(tp),
             }
         ],
     }
@@ -186,8 +190,8 @@ def test_cancelled_purchase_excluded_from_line_reports():
         "item_name": "PreItem",
         "qty": 2,
         "unit": "kg",
-        "landing_cost": 50.0,
-        "tax_percent": 0,
+        "landing_cost": "50",
+        "tax_percent": "0",
     }
     body = {
         "purchase_date": date.today().isoformat(),

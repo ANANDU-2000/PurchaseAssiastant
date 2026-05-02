@@ -628,9 +628,12 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                               key: PageStorageKey<String>('hist_${primary}_${secondary ?? ''}_${ref.watch(purchaseHistorySearchProvider)}'),
                               controller: _scroll,
                               padding: EdgeInsets.fromLTRB(
-                                  16, 8, 16, 96 + MediaQuery.of(context).padding.bottom),
-                              itemCount: visible.length,
-                              separatorBuilder: (_, __) => const SizedBox(height: 6),
+                                  16,
+                                  8,
+                                  16,
+                                  80 + MediaQuery.of(context).padding.bottom),
+                      itemCount: visible.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 4),
                               itemBuilder: (context, i) {
                                 final p = visible[i];
                                 return _PurchaseRow(
@@ -733,7 +736,7 @@ class _PurchaseRow extends StatelessWidget {
                 color: selected ? HexaColors.brandPrimary : HexaColors.brandBorder,
                 width: selected ? 2 : 1),
           ),
-          padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
+          padding: const EdgeInsets.fromLTRB(7, 5, 7, 5),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -756,7 +759,7 @@ class _PurchaseRow extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: HexaDsType.purchaseQtyUnit.copyWith(
-                        fontSize: 14,
+                        fontSize: 13,
                         fontWeight: FontWeight.w900,
                         color: const Color(0xFF0F172A),
                       ),
@@ -834,7 +837,7 @@ class _PurchaseRow extends StatelessWidget {
                   Text(
                     _inr(p.totalAmount.round()),
                     style: HexaDsType.purchaseLineMoney.copyWith(
-                      fontSize: 17,
+                      fontSize: 16,
                       letterSpacing: -0.3,
                     ),
                   ),

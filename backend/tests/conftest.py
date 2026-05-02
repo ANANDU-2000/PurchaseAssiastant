@@ -20,6 +20,8 @@ os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_test_db_path.as_posix()}"
 os.environ["DATABASE_POOLER_URL"] = ""
 # Disable dev shortcut so async engine uses DATABASE_URL (same file as bootstrap sync seed).
 os.environ["HEXA_USE_SQLITE"] = "0"
+# Aggregation read budgets use 0 under tests (no asyncio.wait_for cap).
+os.environ["API_READ_BUDGET_SECONDS"] = "0"
 # Isolate tests from developer .env LLM keys (avoids flaky / suspended API calls).
 for _k in ("GOOGLE_AI_API_KEY", "GROQ_API_KEY", "OPENAI_API_KEY"):
     os.environ[_k] = ""

@@ -83,6 +83,7 @@ class TradePurchaseLine(Base):
     item_name: Mapped[str] = mapped_column(String(512))
     qty: Mapped[Decimal] = mapped_column(Numeric(12, 3))
     unit: Mapped[str] = mapped_column(String(32))
+    unit_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # Canonical purchase-accounting fields. Legacy aliases below are kept during
     # rollout so older clients can still read/write the same purchase lines.
     purchase_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)

@@ -213,8 +213,8 @@ def test_catalog_item_trade_supplier_prices_from_trade_purchases():
                 "item_name": "PriceTest Rice",
                 "qty": 1,
                 "unit": "kg",
-                "landing_cost": 100.0,
-                "tax_percent": 0,
+                "landing_cost": "100",
+                "tax_percent": "0",
             }
         ],
     }
@@ -227,8 +227,8 @@ def test_catalog_item_trade_supplier_prices_from_trade_purchases():
                 "item_name": "PriceTest Rice",
                 "qty": 1,
                 "unit": "kg",
-                "landing_cost": 80.0,
-                "tax_percent": 0,
+                "landing_cost": "80",
+                "tax_percent": "0",
             }
         ],
     }

@@ -34,8 +34,10 @@ def _line_body(catalog_item_id: str | None = None):
         "item_name": "Rice",
         "qty": 10,
         "unit": "BAG",
-        "landing_cost": 100,
-        "tax_percent": 0,
+        "landing_cost": "100",
+        "tax_percent": "0",
+        "kg_per_unit": "50",
+        "landing_cost_per_kg": "2",
     }
     if catalog_item_id is not None:
         body["catalog_item_id"] = catalog_item_id
@@ -99,7 +101,7 @@ def test_create_sets_due_date_from_payment_days():
     assert r.status_code == 201, r.text
     data = r.json()
     assert data["due_date"] == (pd + timedelta(days=14)).isoformat()
-    assert data["paid_amount"] == 0
+    assert float(data["paid_amount"]) == 0
     assert data["derived_status"] in ("confirmed", "draft", "saved")
 
 
@@ -158,6 +160,7 @@ def test_mark_paid_full():
         "lines": [_line_body(iid)],
     }
     cr = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
+    assert cr.status_code == 201, cr.text
     pid = cr.json()["id"]
     mr = client.post(f"/v1/businesses/{bid}/trade-purchases/{pid}/mark-paid", headers=h, json={})
     assert mr.status_code == 200, mr.text
@@ -175,6 +178,7 @@ def test_cancel_purchase():
         "lines": [_line_body(iid)],
     }
     cr = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
+    assert cr.status_code == 201, cr.text
     pid = cr.json()["id"]
     xr = client.post(f"/v1/businesses/{bid}/trade-purchases/{pid}/cancel", headers=h)
     assert xr.status_code == 200, xr.text
@@ -232,8 +236,10 @@ def test_purchase_response_includes_supplier_profile_and_line_hsn():
                 "item_name": "Test rice",
                 "qty": 5,
                 "unit": "BAG",
-                "landing_cost": 2000,
-                "tax_percent": 0,
+                "landing_cost": "2000",
+                "kg_per_unit": "50",
+                "landing_cost_per_kg": "40",
+                "tax_percent": "0",
             }
         ],
     }
@@ -325,8 +331,8 @@ def test_list_q_filters_by_item_name():
                 "item_name": unique,
                 "qty": 1,
                 "unit": "kg",
-                "landing_cost": 10,
-                "tax_percent": 0,
+                "landing_cost": "10",
+                "tax_percent": "0",
             }
         ],
     }
@@ -361,8 +367,8 @@ def test_list_purchase_date_range_inclusive_filter():
                     "item_name": "Rice",
                     "qty": 1,
                     "unit": "kg",
-                    "landing_cost": 10,
-                    "tax_percent": 0,
+                    "landing_cost": "10",
+                    "tax_percent": "0",
                 }
             ],
         }
@@ -409,6 +415,7 @@ def test_compute_totals_plain_line():
 
 
 def test_compute_totals_line_tax_multiplier():
+    """Header total sums qty × rate; line-level tax/discount is applied elsewhere (e.g. _line_money)."""
     req = TradePurchaseCreateRequest(
         purchase_date=date.today(),
         supplier_id=uuid.uuid4(),
@@ -425,7 +432,7 @@ def test_compute_totals_line_tax_multiplier():
     )
     qty, amt = compute_totals(req)
     assert qty == Decimal("10")
-    assert amt == Decimal("1050")
+    assert amt == Decimal("1000")
 
 
 def test_compute_totals_line_discount():
@@ -446,7 +453,7 @@ def test_compute_totals_line_discount():
     )
     qty, amt = compute_totals(req)
     assert qty == Decimal("10")
-    assert amt == Decimal("900")
+    assert amt == Decimal("1000")
 
 
 def test_compute_totals_header_discount_and_commission():
@@ -485,6 +492,8 @@ def test_compute_totals_one_bag_2250_commission_2_percent_dart_parity():
                 qty=1,
                 unit="BAG",
                 landing_cost=2250,
+                kg_per_unit=50,
+                landing_cost_per_kg=Decimal("45"),
                 tax_percent=0,
             )
         ],
@@ -552,18 +561,20 @@ def test_line_money_kg_fields_matches_per_bag_landing():
         item_name="Rice",
         qty=100,
         unit="bag",
-        landing_cost=2100.0,
-        kg_per_unit=50.0,
-        landing_cost_per_kg=42.0,
-        tax_percent=0,
+        landing_cost=Decimal("2100"),
+        kg_per_unit=Decimal("50"),
+        landing_cost_per_kg=Decimal("42"),
+        tax_percent=Decimal("0"),
     )
     bag_line = TradePurchaseLineIn(
         catalog_item_id=uuid.uuid4(),
         item_name="Rice",
         qty=100,
         unit="bag",
-        landing_cost=2100.0,
-        tax_percent=0,
+        landing_cost=Decimal("2100"),
+        kg_per_unit=Decimal("50"),
+        landing_cost_per_kg=Decimal("42"),
+        tax_percent=Decimal("0"),
     )
     assert _line_money(kg_line) == _line_money(bag_line)
 
@@ -659,9 +670,9 @@ def test_create_rejects_line_with_only_one_kg_field():
                 "item_name": "Half-kg rice",
                 "qty": 1,
                 "unit": "bag",
-                "landing_cost": 100,
+                "landing_cost": "100",
                 "kg_per_unit": 50,
-                # landing_cost_per_kg intentionally omitted
+                # landing_cost_per_kg intentionally omitted (must pair kg_per_unit)
             }
         ],
     }

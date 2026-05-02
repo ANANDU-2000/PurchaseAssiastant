@@ -115,7 +115,7 @@ class SpendRingChart extends StatelessWidget {
     return FittedBox(
       fit: BoxFit.scaleDown,
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: diameter * 0.62),
+        constraints: BoxConstraints(maxWidth: diameter * 0.72),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

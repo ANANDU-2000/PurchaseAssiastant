@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/hexa_api.dart';
 import '../models/session.dart';
+import '../providers/api_degraded_provider.dart';
 import '../providers/business_aggregates_invalidation.dart'
     show invalidateWorkspaceSeedData;
 import '../providers/prefs_provider.dart';
@@ -96,6 +97,23 @@ final hexaApiProvider = Provider<HexaApi>((ref) {
             }
           },
         ),
+    onConnectivityBanner: (degraded, hint) {
+      if (disposed) return;
+      try {
+        final n = ref.read(apiDegradedProvider.notifier);
+        if (degraded) {
+          if (hint != null && hint.isNotEmpty) {
+            n.notifyDegraded(hint);
+          } else {
+            n.notifyDegraded();
+          }
+        } else {
+          n.clear();
+        }
+      } catch (_) {
+        /* ref/container disposed */
+      }
+    },
   );
   return api;
 });
@@ -450,6 +468,9 @@ class SessionNotifier extends Notifier<Session?> {
     await store.clear();
     await cache.clear();
     api.setAuthToken(null);
+    try {
+      ref.read(apiDegradedProvider.notifier).clear();
+    } catch (_) {}
     state = null;
     authRefresh.value++;
   }

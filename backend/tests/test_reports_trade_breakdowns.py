@@ -73,9 +73,9 @@ def test_trade_items_suppliers_categories_endpoints():
                 "item_name": "RTItem",
                 "qty": 10,
                 "unit": "bag",
-                "landing_cost": 50.0,
+                "landing_cost": "50",
                 "kg_per_unit": 50,
-                "landing_cost_per_kg": 40.0,
+                "landing_cost_per_kg": "40",
                 "tax_percent": 0,
             },
         ],
@@ -90,7 +90,7 @@ def test_trade_items_suppliers_categories_endpoints():
     assert len(items) >= 1
     row = next(x for x in items if x.get("item_name") == "RTItem")
     assert row["total_qty"] == 10.0
-    assert abs(float(row["total_purchase"]) - 20000.0) < 0.01  # 10 * 50 * 40
+    assert abs(float(row["total_purchase"]) - 500.0) < 0.01  # qty * landing_cost line amount
 
     sr = client.get(f"/v1/businesses/{bid}/reports/trade-suppliers?{q}", headers=h)
     assert sr.status_code == 200, sr.text
@@ -135,6 +135,32 @@ def test_trade_items_suppliers_categories_endpoints():
         for it in c.get("items") or []:
             assert "catalog_item_id" in it
     assert "recommendations" in sd
+
+    ho = client.get(
+        f"/v1/businesses/{bid}/reports/home-overview?{q}", headers=h
+    )
+    assert ho.status_code == 200, ho.text
+    hod = ho.json()
+    assert float(hod["summary"]["total_purchase"]) == float(
+        sd["summary"]["total_purchase"]
+    )
+
+    ho_compact = client.get(
+        f"/v1/businesses/{bid}/reports/home-overview?{q}&compact=true",
+        headers=h,
+    )
+    assert ho_compact.status_code == 200, ho_compact.text
+    hcompact = ho_compact.json()
+    assert hcompact["item_slices"] == []
+    assert hcompact["recommendations"] == []
+    assert hcompact["consistency"]["portfolio_score"] is None
+
+    wider = f"from={(d1 - timedelta(days=40)).isoformat()}&to={d1.isoformat()}"
+    too_long = client.get(
+        f"/v1/businesses/{bid}/reports/home-overview?{wider}&max_span_days=10",
+        headers=h,
+    )
+    assert too_long.status_code == 422, too_long.text
 
     mpr = client.get(
         f"/v1/businesses/{bid}/reports/trade-supplier-broker-map?{q}", headers=h

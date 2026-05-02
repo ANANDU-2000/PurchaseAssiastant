@@ -13,12 +13,13 @@ void main() {
   test('month preset: home snapshot dates align with reports range for same "today"', () {
     final n = DateTime(2026, 4, 15, 14, 30);
     final today = DateTime(n.year, n.month, n.day);
+    final rollingMonthFrom = today.subtract(const Duration(days: 29));
     final container = ProviderContainer(overrides: [
       homePeriodProvider.overrideWith((ref) => HomePeriod.month),
       homeCustomDateRangeProvider.overrideWith((ref) => null),
       analyticsDateRangeProvider.overrideWith(
         (ref) => (
-          from: DateTime(n.year, n.month, 1),
+          from: rollingMonthFrom,
           to: today,
         ),
       ),

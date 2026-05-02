@@ -28,13 +28,57 @@ bool _isAuthEndpoint(String path) {
       path.contains('/auth/reset-password');
 }
 
+class _BusinessConnectivityBannerInterceptor extends Interceptor {
+  _BusinessConnectivityBannerInterceptor(this._fn);
+
+  final void Function(bool degraded, String? hint)? _fn;
+
+  static bool _biz(String p) => p.contains('/v1/businesses/');
+
+  @override
+  void onResponse(Response response, ResponseInterceptorHandler handler) {
+    final fn = _fn;
+    final path = response.requestOptions.uri.path;
+    if (fn != null &&
+        _biz(path) &&
+        response.statusCode != null &&
+        response.statusCode! >= 200 &&
+        response.statusCode! < 300) {
+      fn(false, null);
+    }
+    return handler.next(response);
+  }
+
+  @override
+  void onError(DioException err, ErrorInterceptorHandler handler) {
+    final fn = _fn;
+    final path = err.requestOptions.uri.path;
+    if (fn != null && _biz(path) && !_isAuthEndpoint(path)) {
+      final sc = err.response?.statusCode;
+      if (sc == 503) {
+        final h = err.response?.headers.value('x-database-unavailable');
+        fn(true, h == '1' ? 'Database temporarily unavailable' : null);
+      } else if (err.type == DioExceptionType.connectionError ||
+          err.type == DioExceptionType.receiveTimeout ||
+          err.type == DioExceptionType.connectionTimeout ||
+          err.type == DioExceptionType.sendTimeout ||
+          (sc != null && sc >= 502 && sc <= 504)) {
+        fn(true, null);
+      }
+    }
+    return handler.next(err);
+  }
+}
+
 class HexaApi {
   HexaApi({
     String? baseUrl,
     Future<bool> Function()? onUnauthorizedRefresh,
     Future<String?> Function()? resolveAccessToken,
+    void Function(bool degraded, String? hint)? onConnectivityBanner,
   })  : _onUnauthorizedRefresh = onUnauthorizedRefresh,
         _resolveAccessToken = resolveAccessToken,
+        _onConnectivityBanner = onConnectivityBanner,
         _dio = Dio(
           BaseOptions(
             baseUrl: baseUrl ?? AppConfig.resolvedApiBaseUrl,
@@ -129,12 +173,17 @@ class HexaApi {
       ),
     );
     _dio.interceptors.add(DioAutoRetryInterceptor(_dio, maxAttempts: 2));
+    final banner = _onConnectivityBanner;
+    if (banner != null) {
+      _dio.interceptors.add(_BusinessConnectivityBannerInterceptor(banner));
+    }
   }
 
   final Dio _dio;
   final Dio _plain;
   final Future<bool> Function()? _onUnauthorizedRefresh;
   final Future<String?> Function()? _resolveAccessToken;
+  final void Function(bool degraded, String? hint)? _onConnectivityBanner;
 
   Dio get raw => _dio;
 
@@ -460,7 +509,7 @@ class HexaApi {
   /// Trade purchases (wholesale PUR-YYYY-XXXX flow).
   Future<List<Map<String, dynamic>>> listTradePurchases({
     required String businessId,
-    int limit = 50,
+    int limit = 20,
     int offset = 0,
     String? status,
     String? q,
@@ -774,6 +823,27 @@ class HexaApi {
     final res = await _dio.get<Map<String, dynamic>>(
       '/v1/businesses/$businessId/reports/trade-dashboard-snapshot',
       queryParameters: {'from': from, 'to': to},
+    );
+    return Map<String, dynamic>.from(res.data ?? {});
+  }
+
+  /// Bundled dashboard snapshot for home (`compact` omits heavy keys server-side).
+  Future<Map<String, dynamic>> reportsHomeOverview({
+    required String businessId,
+    required String from,
+    required String to,
+    bool compact = false,
+    int? maxSpanDays,
+  }) async {
+    final qp = <String, dynamic>{
+      'from': from,
+      'to': to,
+      if (compact) 'compact': true,
+      if (maxSpanDays != null) 'max_span_days': maxSpanDays,
+    };
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/reports/home-overview',
+      queryParameters: qp,
     );
     return Map<String, dynamic>.from(res.data ?? {});
   }

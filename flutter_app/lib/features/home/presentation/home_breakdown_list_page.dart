@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../../core/providers/home_breakdown_tab_providers.dart';
 import '../../../core/providers/home_dashboard_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../home_pack_unit_word.dart';
 
 String _inr(num n) =>
     NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
@@ -20,9 +21,9 @@ String _itemUpperQtyLine(Map<String, dynamic> m) {
   final ttn = (m['total_tins'] as num?)?.toDouble() ?? 0;
   final tkg = (m['total_kg'] as num?)?.toDouble() ?? 0;
   final parts = <String>[];
-  if (tb > 0) parts.add('${_fmtQty(tb)} BAG');
-  if (txb > 0) parts.add('${_fmtQty(txb)} BOX');
-  if (ttn > 0) parts.add('${_fmtQty(ttn)} TIN');
+  if (tb > 0) parts.add('${_fmtQty(tb)} ${homePackUnitWord('BAG', tb)}');
+  if (txb > 0) parts.add('${_fmtQty(txb)} ${homePackUnitWord('BOX', txb)}');
+  if (ttn > 0) parts.add('${_fmtQty(ttn)} ${homePackUnitWord('TIN', ttn)}');
   if (tkg > 0) parts.add('${_fmtQty(tkg)} KG');
   if (parts.isNotEmpty) return parts.join(' • ');
   final q = (m['total_qty'] as num?)?.toDouble() ?? 0;
@@ -32,9 +33,18 @@ String _itemUpperQtyLine(Map<String, dynamic> m) {
 
 String _categoryQtyLabel(CategoryStat c) {
   final parts = <String>[];
-  if (c.units.bags > 0) parts.add('${_fmtQty(c.units.bags)} BAG');
-  if (c.units.boxes > 0) parts.add('${_fmtQty(c.units.boxes)} BOX');
-  if (c.units.tins > 0) parts.add('${_fmtQty(c.units.tins)} TIN');
+  if (c.units.bags > 0) {
+    parts.add(
+        '${_fmtQty(c.units.bags)} ${homePackUnitWord('BAG', c.units.bags)}');
+  }
+  if (c.units.boxes > 0) {
+    parts.add(
+        '${_fmtQty(c.units.boxes)} ${homePackUnitWord('BOX', c.units.boxes)}');
+  }
+  if (c.units.tins > 0) {
+    parts.add(
+        '${_fmtQty(c.units.tins)} ${homePackUnitWord('TIN', c.units.tins)}');
+  }
   if (parts.isNotEmpty) return parts.join(' • ');
   if (c.items.isNotEmpty) {
     final u = c.items.first.unit.trim().toUpperCase();
@@ -47,11 +57,20 @@ String _categoryQtyLabel(CategoryStat c) {
 
 String _dashboardUnitsLine(HomeDashboardData d) {
   final parts = <String>[];
-  if (d.totalBags > 0) parts.add('${_fmtQty(d.totalBags)} BAG');
-  if (d.totalBoxes > 0) parts.add('${_fmtQty(d.totalBoxes)} BOX');
-  if (d.totalTins > 0) parts.add('${_fmtQty(d.totalTins)} TIN');
+  if (d.totalBags > 0) {
+    parts.add(
+        '${_fmtQty(d.totalBags)} ${homePackUnitWord('BAG', d.totalBags)}');
+  }
+  if (d.totalBoxes > 0) {
+    parts.add(
+        '${_fmtQty(d.totalBoxes)} ${homePackUnitWord('BOX', d.totalBoxes)}');
+  }
+  if (d.totalTins > 0) {
+    parts.add(
+        '${_fmtQty(d.totalTins)} ${homePackUnitWord('TIN', d.totalTins)}');
+  }
   if (d.totalKg > 0) parts.add('${_fmtQty(d.totalKg)} KG');
-  if (parts.isNotEmpty) return parts.join(' â€¢ ');
+  if (parts.isNotEmpty) return parts.join(' • ');
   return '0 KG';
 }
 
@@ -76,9 +95,9 @@ class HomeBreakdownListPage extends ConsumerWidget {
     final asyncDash = ref.watch(homeDashboardDataProvider);
     final peekDash = ref.watch(homeDashboardSyncCacheProvider);
     final asyncShell = ref.watch(homeShellReportsProvider);
-    final dashboard = asyncDash.valueOrNull?.data ??
-        peekDash ??
-        HomeDashboardData.empty;
+    final pay = asyncDash.snapshot;
+    final dashboard =
+        pay.data.isEmpty ? (peekDash ?? pay.data) : pay.data;
 
     return Scaffold(
       backgroundColor: HexaColors.brandBackground,
@@ -93,9 +112,9 @@ class HomeBreakdownListPage extends ConsumerWidget {
       ),
       body: switch (tab) {
         HomeBreakdownTab.category => () {
-              if (asyncDash.isLoading &&
-                  asyncDash.valueOrNull == null &&
-                  peekDash == null) {
+              if (asyncDash.refreshing &&
+                  peekDash == null &&
+                  pay.data.isEmpty) {
                 return const Center(child: CircularProgressIndicator());
               }
               final rows = dashboard.categories
