@@ -208,6 +208,79 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     }
   }
 
+  Widget _tilePadding(InlineSearchItem it, ColorScheme cs) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 10,
+        vertical: 10,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            it.label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
+          if (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                it.subtitle!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// [GestureDetector.opaque] so short taps aren't eaten by ancestor scroll views.
+  Widget _buildSuggestionTile(ColorScheme cs, InlineSearchItem it) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _pick(it, keepFocus: false),
+      child: Material(
+        color: Colors.grey.shade50,
+        child: _tilePadding(it, cs),
+      ),
+    );
+  }
+
+  Widget _buildAddRowTile(ColorScheme cs) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: widget.onAddRow,
+      child: Material(
+        color: Colors.grey.shade50,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 10,
+            vertical: 11,
+          ),
+          child: Text(
+            widget.addRowLabel ?? '',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+              color: cs.primary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     if (event.logicalKey == LogicalKeyboardKey.enter ||
@@ -331,87 +404,22 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
                 constraints: BoxConstraints(maxHeight: maxPanelH),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(7),
-                  child: ListView(
-                    shrinkWrap: true,
+                  child: SingleChildScrollView(
+                    primary: false,
                     physics: const ClampingScrollPhysics(),
-                    padding: EdgeInsets.zero,
-                    children: [
-                      for (final it in rows)
-                        Material(
-                          color: Colors.grey.shade50,
-                          child: InkWell(
-                            onTap: () => WidgetsBinding.instance
-                                .addPostFrameCallback((_) {
-                              if (!mounted) return;
-                              _pick(it);
-                            }),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 10,
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    it.label,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                  if (it.subtitle != null &&
-                                      it.subtitle!.trim().isNotEmpty)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 2),
-                                      child: Text(
-                                        it.subtitle!,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: cs.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      if (widget.showAddRow &&
-                          widget.onAddRow != null &&
-                          rows.isNotEmpty)
-                        Divider(height: 1, thickness: 1, color: borderColor),
-                      if (showAddFocused && widget.onAddRow != null)
-                        Material(
-                          color: Colors.grey.shade50,
-                          child: InkWell(
-                            onTap: () => WidgetsBinding.instance
-                                .addPostFrameCallback((_) {
-                              if (!mounted) return;
-                              widget.onAddRow!.call();
-                            }),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 11,
-                              ),
-                              child: Text(
-                                widget.addRowLabel ?? '',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13,
-                                  color: cs.primary,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (final it in rows) _buildSuggestionTile(cs, it),
+                        if (widget.showAddRow &&
+                            widget.onAddRow != null &&
+                            rows.isNotEmpty)
+                          Divider(height: 1, thickness: 1, color: borderColor),
+                        if (showAddFocused && widget.onAddRow != null)
+                          _buildAddRowTile(cs),
+                      ],
+                    ),
                   ),
                 ),
               ),

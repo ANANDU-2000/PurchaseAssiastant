@@ -1376,18 +1376,35 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
 
   Widget _wizardFooterChrome(List<Map<String, dynamic>> catalog, bool isEdit) {
     if (_wizStep == 0 && !isEdit && (widget.editingId == null)) {
+      final hintStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontSize: 11,
+            height: 1.25,
+          );
       return Padding(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-        child: SizedBox(
-          width: double.infinity,
-          height: 46,
-          child: OutlinedButton(
-            onPressed: _saveDraftNow,
-            child: const Text(
-              'Save draft',
-              style: TextStyle(fontWeight: FontWeight.w700),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: double.infinity,
+              height: 46,
+              child: OutlinedButton(
+                onPressed: _saveDraftNow,
+                child: const Text(
+                  'Save draft',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
             ),
-          ),
+            const SizedBox(height: 8),
+            Text(
+              'Draft stays on this device until you tap Save draft or finish the wizard. Saving the purchase syncs to the server.',
+              textAlign: TextAlign.center,
+              style: hintStyle,
+            ),
+          ],
         ),
       );
     }
