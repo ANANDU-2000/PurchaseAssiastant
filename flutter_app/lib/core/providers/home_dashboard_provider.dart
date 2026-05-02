@@ -740,6 +740,8 @@ class HomeDashboardDataNotifier extends AutoDisposeNotifier<HomeDashboardDashSta
         state = HomeDashboardDashState(snapshot: payload, refreshing: false);
       } catch (_) {
         if (_dead) return;
+        // Never leave `refreshing: true` — empty catch used to strand the shell spinner.
+        state = HomeDashboardDashState(snapshot: seed, refreshing: false);
       }
     });
 
