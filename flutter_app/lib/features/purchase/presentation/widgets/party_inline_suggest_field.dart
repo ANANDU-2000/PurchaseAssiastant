@@ -135,14 +135,20 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     if (nowFocused) {
       _suppressPanelAfterPick = false;
       _revealDebounceTimer?.cancel();
-    } else {
-      _tryBlurExactPick();
-    }
-    if (!mounted) return;
-    setState(() {});
-    if (nowFocused) {
+      if (!mounted) return;
+      setState(() {});
       WidgetsBinding.instance.addPostFrameCallback((_) => _maybeRevealAfterFilter());
+      return;
     }
+    // Losing focus: do not setState immediately. Tapping a suggestion unfocuses the
+    // field before ListTile.onTap runs; an immediate rebuild drops the list and the
+    // tap is lost. Defer blur handling + rebuild until after the gesture completes.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || widget.focusNode.hasFocus) return;
+      _tryBlurExactPick();
+      if (!mounted) return;
+      setState(() {});
+    });
   }
 
   double _effectiveMaxPanelHeight(BuildContext context) {
