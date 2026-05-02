@@ -39,5 +39,9 @@ flutter_app/**/ephemeral/
 Thumbs.db
 .DS_Store
 
+# Local agent / Codex runner logs (never commit)
+backend/.codex-backend.err.log
+backend/.codex-backend.out.log
+
 # Accidental local archives (add intentionally if you need them in git)
 purhcaseappss.zip
