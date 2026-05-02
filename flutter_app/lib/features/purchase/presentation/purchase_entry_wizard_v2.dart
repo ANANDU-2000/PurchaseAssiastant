@@ -1392,6 +1392,18 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(
+              height: 48,
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _isSaving ? null : _wizNext,
+                child: const Text(
+                  'Continue',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
               width: double.infinity,
               height: 46,
               child: OutlinedButton(
@@ -1404,7 +1416,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Draft stays on this device until you tap Save draft or finish the wizard. Saving the purchase syncs to the server.',
+              'Continue picks supplier & broker then adds lines. Save draft keeps this header on-device; saving syncs to the server.',
               textAlign: TextAlign.center,
               style: hintStyle,
             ),
@@ -1413,10 +1425,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       );
     }
 
-    // Edit mode step 0: no separate draft row (same parity as legacy).
-    if (_wizStep == 0) {
-      return const SizedBox.shrink();
-    }
+    // Edit / resume flows on party step fall through below so Continue appears here too.
     final gates = ref.watch(purchaseStepGatesProvider);
     final saveVal = ref.watch(purchaseSaveValidationProvider);
     final canAddItem = gates.from0 && !_isSaving;

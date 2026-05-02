@@ -253,16 +253,11 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   }
 
   Widget _buildSuggestionTile(ColorScheme cs, InlineSearchItem it) {
-    void pickDeferred() => WidgetsBinding.instance
-        .addPostFrameCallback((_) => _pick(it, keepFocus: false));
-
     return Material(
       color: cs.surface,
-      child: InkWell(
-        onTap: () {
-          FocusManager.instance.primaryFocus?.unfocus();
-          pickDeferred();
-        },
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _pick(it, keepFocus: false),
         child: Padding(
           padding: EdgeInsets.symmetric(
             horizontal: 16,
@@ -304,13 +299,9 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   Widget _buildAddRowTile(ColorScheme cs) {
     return Material(
       color: cs.surface,
-      child: InkWell(
-        onTap: () {
-          FocusManager.instance.primaryFocus?.unfocus();
-          final cb = widget.onAddRow;
-          if (cb == null) return;
-          WidgetsBinding.instance.addPostFrameCallback((_) => cb());
-        },
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onAddRow,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Align(
