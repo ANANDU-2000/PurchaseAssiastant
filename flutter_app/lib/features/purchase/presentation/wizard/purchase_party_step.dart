@@ -8,7 +8,6 @@ import '../../../../core/providers/brokers_list_provider.dart';
 import '../../../../core/providers/suppliers_list_provider.dart';
 import '../../../../shared/widgets/inline_search_field.dart';
 import '../../state/purchase_draft_provider.dart';
-import 'purchase_wizard_shared.dart';
 
 /// Step 1 — date, human id, supplier, broker. Bottom CTA is parent's bar.
 class PurchasePartyStep extends ConsumerWidget {
@@ -241,12 +240,274 @@ class PurchasePartyStep extends ConsumerWidget {
     );
   }
 
+  Widget _compactDateIdRow(BuildContext context, WidgetRef ref) {
+    final draft = ref.watch(purchaseDraftProvider);
+    final idLabel = isEdit ? 'Purchase ID' : 'ID (preview)';
+    final idVal = isEdit ? (editHumanId ?? '—') : (previewHumanId ?? 'Auto');
+    final dateTxt = DateFormat('dd MMM yy')
+        .format(draft.purchaseDate ?? DateTime.now());
+    final subStyle = Theme.of(context).colorScheme.onSurfaceVariant;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text(
+                idLabel,
+                style: TextStyle(
+                  fontSize: 10,
+                  height: 1.2,
+                  color: subStyle,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                idVal,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  height: 1.2,
+                  color: isEdit ? Colors.black87 : HexaColors.brandPrimary,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              'Date',
+              style: TextStyle(
+                fontSize: 10,
+                height: 1.2,
+                color: subStyle,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 2),
+            InkWell(
+              borderRadius: BorderRadius.circular(4),
+              onTap: () => _pickDate(context, ref),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 1, horizontal: 2),
+                child: Text(
+                  dateTxt,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    height: 1.2,
+                    color: HexaColors.brandPrimary,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _supplierAndBroker(BuildContext context, WidgetRef ref) {
+    final draft = ref.watch(purchaseDraftProvider);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text(
+          'Supplier *',
+          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+        ),
+        const SizedBox(height: 4),
+        ref.watch(suppliersListProvider).when(
+              data: (list) {
+                final full =
+                    list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+                final filtered =
+                    filterSuppliersByCatalog(full, catalog);
+                final sig =
+                    '${ref.read(purchaseDraftProvider).lines.map((l) => l.catalogItemId ?? "").join(",")}|${filtered.length}|${full.length}';
+                if (filtered.length == 1 &&
+                    full.isNotEmpty &&
+                    (ref.read(purchaseDraftProvider).supplierId == null ||
+                        ref.read(purchaseDraftProvider).supplierId!.isEmpty)) {
+                  if (lastAutoSupplierFromCatalogSig != sig) {
+                    onLastAutoSupplierFromCatalogSigChanged(sig);
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      final d = ref.read(purchaseDraftProvider);
+                      if (d.supplierId != null && d.supplierId!.isNotEmpty) {
+                        return;
+                      }
+                      if (filtered.length != 1) return;
+                      final row = filtered.first;
+                      if (supplierRowId(row).isEmpty) return;
+                      onSupplierSelectedSync(
+                        full,
+                        InlineSearchItem(
+                          id: supplierRowId(row),
+                          label: supplierMapLabel(row),
+                          subtitle: supplierSubtitleFor(row),
+                        ),
+                      );
+                    });
+                  }
+                }
+                return _supplierColumn(
+                  context,
+                  ref,
+                  list: filtered,
+                  lookupList: full,
+                  narrowed: filtered.length < full.length,
+                );
+              },
+              error: (_, __) {
+                if (lastGoodSuppliers != null) {
+                  final full = lastGoodSuppliers!
+                      .map((e) => Map<String, dynamic>.from(e as Map))
+                      .toList();
+                  return _supplierColumn(
+                    context,
+                    ref,
+                    list: filterSuppliersByCatalog(full, catalog),
+                    lookupList: full,
+                    narrowed: false,
+                  );
+                }
+                return const Text('Could not load suppliers');
+              },
+              loading: () {
+                if (lastGoodSuppliers != null) {
+                  final full = lastGoodSuppliers!
+                      .map((e) => Map<String, dynamic>.from(e as Map))
+                      .toList();
+                  return _supplierColumn(
+                    context,
+                    ref,
+                    list: filterSuppliersByCatalog(full, catalog),
+                    lookupList: full,
+                    narrowed: false,
+                  );
+                }
+                return const LinearProgressIndicator();
+              },
+            ),
+        if (supplierFieldError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              supplierFieldError!,
+              style: TextStyle(color: Colors.red[800], fontSize: 12),
+            ),
+          ),
+        if (draft.supplierId != null && draft.supplierId!.isNotEmpty)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: onSupplierClear,
+              style: TextButton.styleFrom(
+                minimumSize: Size.zero,
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text(
+                'Change supplier',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+          ),
+        const SizedBox(height: 12),
+        const Text(
+          'Broker (optional)',
+          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+        ),
+        const SizedBox(height: 6),
+        Builder(
+          builder: (bx) {
+            final supplierRow = draft.supplierId != null &&
+                    draft.supplierId!.isNotEmpty
+                ? supplierRowById(draft.supplierId!)
+                : null;
+            final defaultBid = supplierRow?['broker_id']?.toString();
+            final hasDefault = defaultBid != null &&
+                defaultBid.isNotEmpty &&
+                (draft.brokerId == null || draft.brokerId!.isEmpty);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (hasDefault)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: OutlinedButton.icon(
+                      onPressed: applyBrokerFromSupplierRow,
+                      icon: const Icon(Icons.link, size: 18),
+                      label: const Text('Use supplier’s default broker'),
+                    ),
+                  ),
+                if (draft.brokerId != null &&
+                    draft.brokerId!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            (draft.brokerName != null &&
+                                    draft.brokerName!.trim().isNotEmpty)
+                                ? draft.brokerName!.trim()
+                                : 'Broker',
+                            style: const TextStyle(
+                                fontSize: 13, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            ref.read(purchaseDraftProvider.notifier).setBroker(null, null);
+                            brokerCtrl.clear();
+                            onDraftChanged();
+                          },
+                          child: const Text('Clear'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ref.watch(brokersListProvider).when(
+                      data: (list) => _brokerColumn(context, list),
+                      error: (_, __) => const Text('Could not load brokers'),
+                      loading: () => const LinearProgressIndicator(),
+                    ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final draft = ref.watch(purchaseDraftProvider);
-    return LayoutBuilder(
-      builder: (context, cts) {
-        return Column(
+    final viewInset = MediaQuery.viewInsetsOf(context).bottom;
+    final keyboardOpen = viewInset > 0;
+
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 4,
+        right: 4,
+        bottom: viewInset,
+      ),
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (isEdit && loadedDerivedStatus != null) ...[
@@ -254,251 +515,28 @@ class PurchasePartyStep extends ConsumerWidget {
                 'Payment: $loadedDerivedStatus · Bal ₹${(loadedRemaining ?? 0).toStringAsFixed(2)}',
                 style: const TextStyle(fontSize: 11),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 8),
             ],
-            SizedBox(
-              height: kPurchaseFieldHeight,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(8),
-                      onTap: () => _pickDate(context, ref),
-                      child: InputDecorator(
-                        decoration:
-                            densePurchaseFieldDecoration('Date'),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.calendar_today,
-                                size: 16, color: HexaColors.brandPrimary),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                DateFormat('dd MMM yyyy').format(
-                                    draft.purchaseDate ?? DateTime.now()),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: InputDecorator(
-                      decoration: densePurchaseFieldDecoration(
-                        isEdit ? 'Purchase ID' : 'ID (preview)',
-                      ),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          isEdit ? (editHumanId ?? '—') : (previewHumanId ?? 'Auto'),
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13,
-                            color:
-                                isEdit ? Colors.black87 : HexaColors.brandPrimary,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            _compactDateIdRow(context, ref),
+            const SizedBox(height: 12),
             Expanded(
-              child: Center(
-                child: SingleChildScrollView(
-                  physics: MediaQuery.of(context).viewInsets.bottom > 0
-                      ? null
-                      : const NeverScrollableScrollPhysics(),
-                  padding: EdgeInsets.only(
-                      top:
-                          MediaQuery.of(context).viewInsets.bottom > 0 ? 0 : 8),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const SizedBox(height: 8),
-                      const Text('Supplier *',
-                          style:
-                              TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
-                      const SizedBox(height: 4),
-                      ref.watch(suppliersListProvider).when(
-                            data: (list) {
-                              final full =
-                                  list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-                              final filtered =
-                                  filterSuppliersByCatalog(full, catalog);
-                              final sig =
-                                  '${ref.read(purchaseDraftProvider).lines.map((l) => l.catalogItemId ?? "").join(",")}|${filtered.length}|${full.length}';
-                              if (filtered.length == 1 &&
-                                  full.isNotEmpty &&
-                                  (ref.read(purchaseDraftProvider).supplierId == null ||
-                                      ref.read(purchaseDraftProvider).supplierId!.isEmpty)) {
-                                if (lastAutoSupplierFromCatalogSig != sig) {
-                                  onLastAutoSupplierFromCatalogSigChanged(sig);
-                                  WidgetsBinding.instance
-                                      .addPostFrameCallback((_) {
-                                    final d = ref.read(purchaseDraftProvider);
-                                    if (d.supplierId != null &&
-                                        d.supplierId!.isNotEmpty) {
-                                      return;
-                                    }
-                                    if (filtered.length != 1) return;
-                                    final row = filtered.first;
-                                    if (supplierRowId(row).isEmpty) return;
-                                    onSupplierSelectedSync(
-                                      full,
-                                      InlineSearchItem(
-                                        id: supplierRowId(row),
-                                        label: supplierMapLabel(row),
-                                        subtitle:
-                                            supplierSubtitleFor(row),
-                                      ),
-                                    );
-                                  });
-                                }
-                              }
-                              return _supplierColumn(context, ref,
-                                  list: filtered,
-                                  lookupList: full,
-                                  narrowed: filtered.length < full.length);
-                            },
-                            error: (_, __) {
-                              if (lastGoodSuppliers != null) {
-                                final full = lastGoodSuppliers!
-                                    .map((e) =>
-                                        Map<String, dynamic>.from(e as Map))
-                                    .toList();
-                                return _supplierColumn(context, ref,
-                                    list:
-                                        filterSuppliersByCatalog(full, catalog),
-                                    lookupList: full,
-                                    narrowed: false);
-                              }
-                              return const Text('Could not load suppliers');
-                            },
-                            loading: () {
-                              if (lastGoodSuppliers != null) {
-                                final full = lastGoodSuppliers!
-                                    .map((e) =>
-                                        Map<String, dynamic>.from(e as Map))
-                                    .toList();
-                                return _supplierColumn(context, ref,
-                                    list:
-                                        filterSuppliersByCatalog(full, catalog),
-                                    lookupList: full,
-                                    narrowed: false);
-                              }
-                              return const LinearProgressIndicator();
-                            },
-                          ),
-                      if (supplierFieldError != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            supplierFieldError!,
-                            style: TextStyle(color: Colors.red[800], fontSize: 12),
-                          ),
-                        ),
-                      if (draft.supplierId != null &&
-                          draft.supplierId!.isNotEmpty)
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: TextButton(
-                            onPressed: onSupplierClear,
-                            style: TextButton.styleFrom(
-                              minimumSize: Size.zero,
-                              padding: const EdgeInsets.symmetric(vertical: 4),
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                            child: const Text('Change supplier',
-                                style: TextStyle(fontSize: 12)),
-                          ),
-                        ),
-                      const SizedBox(height: 12),
-                      const Text('Broker (optional)',
-                          style:
-                              TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
-                      const SizedBox(height: 6),
-                      Builder(
-                        builder: (bx) {
-                        final supplierRow =
-                            draft.supplierId != null && draft.supplierId!.isNotEmpty
-                                ? supplierRowById(draft.supplierId!)
-                                : null;
-                        final defaultBid = supplierRow?['broker_id']?.toString();
-                        final hasDefault = defaultBid != null &&
-                            defaultBid.isNotEmpty &&
-                            (draft.brokerId == null || draft.brokerId!.isEmpty);
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            if (hasDefault)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 6),
-                                child: OutlinedButton.icon(
-                                  onPressed: applyBrokerFromSupplierRow,
-                                  icon: const Icon(Icons.link, size: 18),
-                                  label: const Text('Use supplier’s default broker'),
-                                ),
-                              ),
-                            if (draft.brokerId != null &&
-                                draft.brokerId!.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 6),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        (draft.brokerName != null &&
-                                                draft.brokerName!.trim().isNotEmpty)
-                                            ? draft.brokerName!.trim()
-                                            : 'Broker',
-                                        style: const TextStyle(
-                                            fontSize: 13, fontWeight: FontWeight.w600),
-                                      ),
-                                    ),
-                                    TextButton(
-                                      onPressed: () {
-                                        ref
-                                            .read(purchaseDraftProvider.notifier)
-                                            .setBroker(null, null);
-                                        brokerCtrl.clear();
-                                        onDraftChanged();
-                                      },
-                                      child: const Text('Clear'),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ref.watch(brokersListProvider).when(
-                                  data: (list) =>
-                                      _brokerColumn(context, list),
-                                  error: (_, __) =>
-                                      const Text('Could not load brokers'),
-                                  loading: () =>
-                                      const LinearProgressIndicator(),
-                                ),
-                          ],
-                        );
-                      }),
-                    ],
-                  ),
-                ),
-              ),
+              child: keyboardOpen
+                  ? SingleChildScrollView(
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      child: _supplierAndBroker(context, ref),
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _supplierAndBroker(context, ref),
+                        const Spacer(),
+                      ],
+                    ),
             ),
           ],
-        );
-      },
+        ),
+      ),
     );
   }
 }
