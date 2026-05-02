@@ -53,13 +53,19 @@ class FullScreenFormScaffold extends StatelessWidget {
         ),
         actions: actions,
       ),
-      body: KeyboardSafeFormViewport(
-        dismissKeyboardOnTap: true,
-        fields: body,
-        footer: Material(
-          elevation: 8,
-          color: surface,
-          child: bottom,
+      body: SafeArea(
+        top: false,
+        bottom: false,
+        left: true,
+        right: true,
+        child: KeyboardSafeFormViewport(
+          dismissKeyboardOnTap: true,
+          fields: body,
+          footer: Material(
+            elevation: 8,
+            color: surface,
+            child: bottom,
+          ),
         ),
       ),
     );

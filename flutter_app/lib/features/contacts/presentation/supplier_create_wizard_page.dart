@@ -22,9 +22,6 @@ import '../../../shared/widgets/keyboard_safe_form_viewport.dart';
 
 const _kDraftKey = 'supplier_create_wizard_draft_v1';
 
-/// Keeps focused fields visible above the keyboard when scrolling.
-const EdgeInsets _kTextFieldScrollPadding = EdgeInsets.only(bottom: 120);
-
 const _stepTitles = <String>[
   'Basic details',
   'Business details',
@@ -167,19 +164,27 @@ class _SupplierCreateWizardPageState
     });
   }
 
-  /// Scrolls the focused field into view above the keyboard / bottom bar.
+  /// Scrolls the focused field into view after the keyboard begins animating.
   void _scrollFocusedFieldIntoView(FocusNode node) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await Future<void>.delayed(const Duration(milliseconds: 85));
       if (!mounted || !node.hasFocus) return;
       final ctx = node.context;
-      if (ctx == null) return;
+      if (ctx == null || !ctx.mounted) return;
+      final ro = ctx.findRenderObject();
+      if (ro == null || !ro.attached) return;
       Scrollable.ensureVisible(
         ctx,
         duration: const Duration(milliseconds: 280),
         curve: Curves.easeOutCubic,
-        alignment: 0.14,
+        alignment: 0.2,
       );
     });
+  }
+
+  EdgeInsets _fieldScrollPad(BuildContext context) {
+    final kb = MediaQuery.viewInsetsOf(context).bottom;
+    return EdgeInsets.only(bottom: 24 + kb);
   }
 
   void _focusAfterCustomPay() {
@@ -716,12 +721,12 @@ class _SupplierCreateWizardPageState
           children: [
             TextField(
               controller: name,
-              scrollPadding: _kTextFieldScrollPadding,
+              scrollPadding: _fieldScrollPad(context),
               decoration: const InputDecoration(labelText: 'Name *'),
             ),
             TextField(
               controller: comm,
-              scrollPadding: _kTextFieldScrollPadding,
+              scrollPadding: _fieldScrollPad(context),
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
                 labelText: 'Commission % (optional)',
@@ -851,7 +856,7 @@ class _SupplierCreateWizardPageState
         TextField(
           controller: _name,
           focusNode: _nameFocus,
-          scrollPadding: _kTextFieldScrollPadding,
+          scrollPadding: _fieldScrollPad(context),
           textCapitalization: TextCapitalization.words,
           decoration: _dec('Supplier name *', error: _nameError),
           textInputAction: TextInputAction.next,
@@ -865,7 +870,7 @@ class _SupplierCreateWizardPageState
         TextField(
           controller: _phone,
           focusNode: _phoneFocus,
-          scrollPadding: _kTextFieldScrollPadding,
+          scrollPadding: _fieldScrollPad(context),
           keyboardType: TextInputType.phone,
           decoration: _dec('Phone *', error: _phoneError),
           textInputAction: TextInputAction.next,
@@ -879,7 +884,7 @@ class _SupplierCreateWizardPageState
         TextField(
           controller: _wa,
           focusNode: _waFocus,
-          scrollPadding: _kTextFieldScrollPadding,
+          scrollPadding: _fieldScrollPad(context),
           keyboardType: TextInputType.phone,
           decoration: _dec(
             'WhatsApp',
@@ -893,7 +898,7 @@ class _SupplierCreateWizardPageState
         TextField(
           controller: _loc,
           focusNode: _locFocus,
-          scrollPadding: _kTextFieldScrollPadding,
+          scrollPadding: _fieldScrollPad(context),
           textCapitalization: TextCapitalization.sentences,
           decoration: _dec('Location', hint: 'Optional'),
           textInputAction: TextInputAction.done,
@@ -912,7 +917,7 @@ class _SupplierCreateWizardPageState
         TextField(
           controller: _gst,
           focusNode: _gstFocus,
-          scrollPadding: _kTextFieldScrollPadding,
+          scrollPadding: _fieldScrollPad(context),
           textCapitalization: TextCapitalization.characters,
           decoration: _dec('GST number', hint: 'Important for invoices', error: _gstError),
           textInputAction: TextInputAction.next,
@@ -926,7 +931,7 @@ class _SupplierCreateWizardPageState
         TextField(
           controller: _addr,
           focusNode: _addrFocus,
-          scrollPadding: _kTextFieldScrollPadding,
+          scrollPadding: _fieldScrollPad(context),
           maxLines: 2,
           decoration: _dec('Address', hint: 'Optional'),
           textInputAction: TextInputAction.next,
@@ -937,7 +942,7 @@ class _SupplierCreateWizardPageState
         TextField(
           controller: _notes,
           focusNode: _notesFocus,
-          scrollPadding: _kTextFieldScrollPadding,
+          scrollPadding: _fieldScrollPad(context),
           maxLines: 3,
           decoration: _dec('Notes', hint: 'Optional'),
           textInputAction: TextInputAction.done,
@@ -1038,7 +1043,7 @@ class _SupplierCreateWizardPageState
           TextField(
             controller: _customPay,
             focusNode: _customPayFocus,
-            scrollPadding: _kTextFieldScrollPadding,
+            scrollPadding: _fieldScrollPad(context),
             keyboardType: TextInputType.number,
             decoration: _dec('Custom payment days'),
             textInputAction: TextInputAction.next,
@@ -1055,7 +1060,7 @@ class _SupplierCreateWizardPageState
           TextField(
             controller: _customDisc,
             focusNode: _customDiscFocus,
-            scrollPadding: _kTextFieldScrollPadding,
+            scrollPadding: _fieldScrollPad(context),
             keyboardType: TextInputType.number,
             decoration: _dec('Custom discount %'),
             textInputAction: TextInputAction.next,
@@ -1067,7 +1072,7 @@ class _SupplierCreateWizardPageState
         TextField(
           controller: _delivered,
           focusNode: _deliveredFocus,
-          scrollPadding: _kTextFieldScrollPadding,
+          scrollPadding: _fieldScrollPad(context),
           keyboardType: TextInputType.number,
           decoration: _dec('Default delivered rate', hint: 'Optional'),
           textInputAction: TextInputAction.next,
@@ -1078,7 +1083,7 @@ class _SupplierCreateWizardPageState
         TextField(
           controller: _billty,
           focusNode: _billtyFocus,
-          scrollPadding: _kTextFieldScrollPadding,
+          scrollPadding: _fieldScrollPad(context),
           keyboardType: TextInputType.number,
           decoration: _dec('Default billty rate', hint: 'Optional'),
           textInputAction: TextInputAction.done,
@@ -1270,7 +1275,7 @@ class _SupplierCreateWizardPageState
         TextField(
           controller: _itemSearch,
           focusNode: _itemSearchFocus,
-          scrollPadding: _kTextFieldScrollPadding,
+          scrollPadding: _fieldScrollPad(context),
           decoration: _dec('Search items or categories', hint: 'Type 2+ letters'),
           textInputAction: TextInputAction.next,
           onChanged: _runItemSearch,

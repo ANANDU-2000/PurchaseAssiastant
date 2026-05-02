@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 
 /// Single-scroll form body under [Scaffold] with [resizeToAvoidBottomInset].
 ///
-/// By default omits [MediaQuery.viewInsets.bottom] from padding (parent scaffold
-/// already shrinks the body), avoiding a double IME gap.
+/// **Bottom padding:** with [useViewInsetBottom] false (default), uses
+/// [bottomExtraInset] + [MediaQuery.paddingOf] bottom only — the scaffold already
+/// shrinks the body for the IME, so adding [viewInsets] here would double-count.
+/// Set [useViewInsetBottom] true for parents that keep [resizeToAvoidBottomInset]: false
+/// (e.g. [AuthPageShell]).
 class KeyboardSafeFormViewport extends StatelessWidget {
   const KeyboardSafeFormViewport({
     super.key,
@@ -14,7 +17,7 @@ class KeyboardSafeFormViewport extends StatelessWidget {
     this.scrollController,
     this.horizontalPadding = 16,
     this.topPadding = 12,
-    this.bottomExtraInset = 20,
+    this.bottomExtraInset = 24,
     /// When > 0, wraps [fields] so nested [Expanded]/[Spacer] get bounded height.
     this.minFieldsHeight = 0,
     this.dismissKeyboardOnTap = false,

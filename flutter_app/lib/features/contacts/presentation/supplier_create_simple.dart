@@ -58,7 +58,6 @@ class _SupplierCreateSimpleState extends ConsumerState<SupplierCreateSimple> {
             dismissKeyboardOnTap: true,
             horizontalPadding: 16,
             topPadding: 16,
-            bottomExtraInset: 16,
             minFieldsHeight: c.hasBoundedHeight ? minFields : 220,
             fields: Form(
               key: _formKey,

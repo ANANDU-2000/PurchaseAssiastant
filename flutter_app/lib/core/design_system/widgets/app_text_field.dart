@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../shared/widgets/ensure_visible_on_focus.dart';
 import '../../theme/hexa_colors.dart';
 import '../../theme/hexa_outline_input_border.dart';
 import '../hexa_ds_tokens.dart';
@@ -26,6 +27,7 @@ class AppTextField extends StatefulWidget {
     this.enabled = true,
     this.autofillHints,
     this.onFocusChanged,
+    this.focusNode,
   });
 
   final TextEditingController controller;
@@ -48,12 +50,20 @@ class AppTextField extends StatefulWidget {
   final Iterable<String>? autofillHints;
   final ValueChanged<bool>? onFocusChanged;
 
+  /// When omitted, an internal node is created and disposed by this widget.
+  final FocusNode? focusNode;
+
   @override
   State<AppTextField> createState() => _AppTextFieldState();
 }
 
 class _AppTextFieldState extends State<AppTextField> {
-  late final FocusNode _focus;
+  FocusNode? _ownedFocus;
+
+  FocusNode get _effectiveFocus =>
+      widget.focusNode ?? _ownedFocus!;
+
+  bool get _ownsFocus => widget.focusNode == null;
 
   void _onControllerTick() => setState(() {});
 
@@ -65,15 +75,19 @@ class _AppTextFieldState extends State<AppTextField> {
     return null;
   }
 
+  void _onFocusListen() {
+    widget.onFocusChanged?.call(_effectiveFocus.hasFocus);
+    setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
     widget.controller.addListener(_onControllerTick);
-    _focus = FocusNode()
-      ..addListener(() {
-        widget.onFocusChanged?.call(_focus.hasFocus);
-        setState(() {});
-      });
+    if (widget.focusNode == null) {
+      _ownedFocus = FocusNode();
+    }
+    _effectiveFocus.addListener(_onFocusListen);
   }
 
   @override
@@ -83,19 +97,34 @@ class _AppTextFieldState extends State<AppTextField> {
       oldWidget.controller.removeListener(_onControllerTick);
       widget.controller.addListener(_onControllerTick);
     }
+    if (oldWidget.focusNode != widget.focusNode) {
+      final oldNode = oldWidget.focusNode ?? _ownedFocus;
+      oldNode?.removeListener(_onFocusListen);
+      if (oldWidget.focusNode == null) {
+        _ownedFocus?.dispose();
+        _ownedFocus = null;
+      }
+      if (widget.focusNode == null) {
+        _ownedFocus = FocusNode();
+      }
+      _effectiveFocus.addListener(_onFocusListen);
+    }
   }
 
   @override
   void dispose() {
     widget.controller.removeListener(_onControllerTick);
-    _focus.dispose();
+    _effectiveFocus.removeListener(_onFocusListen);
+    if (_ownsFocus) {
+      _ownedFocus?.dispose();
+    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final hx = context.hx;
-    final focused = _focus.hasFocus;
+    final focused = _effectiveFocus.hasFocus;
     final hasError = widget.errorText != null && widget.errorText!.trim().isNotEmpty;
     final success = widget.showSuccess && !hasError && widget.enabled;
     final shadow = !widget.enabled
@@ -137,22 +166,24 @@ class _AppTextFieldState extends State<AppTextField> {
       borderSide: BorderSide(color: borderColor, width: focused ? borderWidth : 1),
     );
 
-    return AnimatedScale(
-      scale: focused && widget.enabled ? 1.004 : 1.0,
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOutCubic,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 280),
+    return EnsureVisibleOnFocus(
+      focusNode: _effectiveFocus,
+      child: AnimatedScale(
+        scale: focused && widget.enabled ? 1.004 : 1.0,
+        duration: const Duration(milliseconds: 260),
         curve: Curves.easeOutCubic,
-        decoration: BoxDecoration(
-          borderRadius: HexaDsRadii.fieldShell,
-          boxShadow: shadow,
-        ),
-        child: ClipRRect(
-          borderRadius: HexaDsRadii.fieldShell,
-          child: TextField(
-            controller: widget.controller,
-            focusNode: _focus,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+          decoration: BoxDecoration(
+            borderRadius: HexaDsRadii.fieldShell,
+            boxShadow: shadow,
+          ),
+          child: ClipRRect(
+            borderRadius: HexaDsRadii.fieldShell,
+            child: TextField(
+              controller: widget.controller,
+              focusNode: _effectiveFocus,
             enabled: widget.enabled,
             obscureText: widget.obscureText,
             keyboardType: widget.keyboardType,
@@ -258,6 +289,7 @@ class _AppTextFieldState extends State<AppTextField> {
           ),
         ),
       ),
+    ),
     );
   }
 }

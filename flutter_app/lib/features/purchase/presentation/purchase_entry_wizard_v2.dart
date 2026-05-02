@@ -22,8 +22,9 @@ import '../../../core/services/offline_store.dart';
 import '../../../core/notifications/local_notifications_service.dart';
 import '../../purchase/domain/purchase_draft.dart';
 import '../../purchase/state/purchase_draft_provider.dart';
-import '../../../shared/widgets/inline_search_field.dart';
+
 import '../../../shared/widgets/keyboard_safe_form_viewport.dart';
+import '../../../shared/widgets/inline_search_field.dart';
 import 'wizard/purchase_items_step.dart';
 import 'wizard/purchase_party_step.dart';
 import 'wizard/purchase_summary_step.dart';
@@ -81,6 +82,8 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
 
   final _supplierCtrl = TextEditingController();
   final _brokerCtrl = TextEditingController();
+  final _partySupplierFocus = FocusNode();
+  final _partyBrokerFocus = FocusNode();
   final _paymentDaysCtrl = TextEditingController();
   final _headerDiscCtrl = TextEditingController();
   final _commissionCtrl = TextEditingController();
@@ -381,6 +384,8 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     _billtyRateCtrl.dispose();
     _freightCtrl.dispose();
     _invoiceCtrl.dispose();
+    _partySupplierFocus.dispose();
+    _partyBrokerFocus.dispose();
     super.dispose();
   }
 
@@ -744,41 +749,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
           it.id,
           it.label,
           fromSupplier: false,
-        );
-    setState(() {});
-    _onDraftChanged();
-  }
-
-  Map<String, dynamic>? _supplierRowById(String supplierId) {
-    final list = _lastGoodSuppliers ??
-        ref.read(suppliersListProvider).valueOrNull ??
-        const <Map<String, dynamic>>[];
-    final want = supplierId.trim().toLowerCase();
-    for (final m in list) {
-      if (_supplierRowId(m).toLowerCase() == want) return m;
-    }
-    return null;
-  }
-
-  void _applyBrokerFromSupplierRow() {
-    final draft = ref.read(purchaseDraftProvider);
-    final sid = draft.supplierId;
-    if (sid == null || sid.isEmpty) return;
-    final row = _supplierRowById(sid);
-    final bid = row?['broker_id']?.toString();
-    if (bid == null || bid.isEmpty) return;
-    final brokers = ref.read(brokersListProvider).valueOrNull ?? const [];
-    String? name;
-    for (final b in brokers) {
-      if (_brokerRowId(b).toLowerCase() == bid.toLowerCase()) {
-        name = _brokerMapLabel(b);
-        break;
-      }
-    }
-    ref.read(purchaseDraftProvider.notifier).setBroker(
-          bid,
-          name ?? 'Broker',
-          fromSupplier: true,
         );
     setState(() {});
     _onDraftChanged();
@@ -1192,21 +1162,30 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     await _confirmDiscardIfNeeded();
   }
 
-  void _wizNext() {
+  void _partyAdvanceIfValid() {
+    final g = ref.read(purchaseStepGatesProvider);
+    setState(() => _inlineSaveError = null);
+    if (!g.from0) {
+      setState(() {
+        _supplierFieldError = 'Select a supplier.';
+      });
+      return;
+    }
+    setState(() {
+      _supplierFieldError = null;
+      _wizStep = 1;
+    });
     FocusScope.of(context).unfocus();
+  }
+
+  void _wizNext() {
+    if (_wizStep != 0) {
+      FocusScope.of(context).unfocus();
+    }
     final g = ref.read(purchaseStepGatesProvider);
     setState(() => _inlineSaveError = null);
     if (_wizStep == 0) {
-      if (!g.from0) {
-        setState(() {
-          _supplierFieldError = 'Select a supplier.';
-        });
-        return;
-      }
-      setState(() {
-        _supplierFieldError = null;
-        _wizStep = 1;
-      });
+      _partyAdvanceIfValid();
       return;
     }
     if (_wizStep == 1) {
@@ -1251,9 +1230,11 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
           editHumanId: _editHumanId,
           supplierCtrl: _supplierCtrl,
           brokerCtrl: _brokerCtrl,
+          supplierFocusNode: _partySupplierFocus,
+          brokerFocusNode: _partyBrokerFocus,
+          onProceedFromParty: _partyAdvanceIfValid,
           supplierFieldError: _supplierFieldError,
           catalog: catalog,
-          supplierLastPurchaseById: _supplierLastPurchaseById,
           lastGoodSuppliers: _lastGoodSuppliers,
           lastAutoSupplierFromCatalogSig: _lastAutoSupplierFromCatalogSig,
           onLastAutoSupplierFromCatalogSigChanged: (sig) {
@@ -1274,8 +1255,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
             _onDraftChanged();
             setState(() {});
           },
-          supplierRowById: _supplierRowById,
-          applyBrokerFromSupplierRow: _applyBrokerFromSupplierRow,
           applyBrokerSelection: _applyBrokerSelection,
           openQuickBrokerCreate: _openQuickBrokerCreate,
           brokerRowId: _brokerRowId,
@@ -1312,26 +1291,44 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       }
     }
 
-    return LayoutBuilder(
-      builder: (context, cts) {
-        final minFields = math.max(220.0, cts.maxHeight - 280);
-        final surfaceColor = Theme.of(context).colorScheme.surface;
-        return KeyboardSafeFormViewport(
-          horizontalPadding: 12,
-          minFieldsHeight:
-              cts.hasBoundedHeight ? minFields : 220,
-          fields: stepSlot(),
-          footer: Material(
-            elevation: 8,
-            color: surfaceColor,
-            child: _wizardFooterChrome(catalog, isEdit),
-          ),
+    return Builder(
+      builder: (context) {
+        final step = stepSlot();
+        if (_wizStep == 0) {
+          final bottomSafe = MediaQuery.paddingOf(context).bottom + 24;
+          return SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            keyboardDismissBehavior:
+                ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.fromLTRB(12, 8, 12, bottomSafe),
+            child: step,
+          );
+        }
+
+        return LayoutBuilder(
+          builder: (context, cts) {
+            final minFields = math.max(220.0, cts.maxHeight - 280);
+            final surfaceColor = Theme.of(context).colorScheme.surface;
+            return KeyboardSafeFormViewport(
+              horizontalPadding: 12,
+              minFieldsHeight: cts.hasBoundedHeight ? minFields : 220,
+              fields: step,
+              footer: Material(
+                elevation: 8,
+                color: surfaceColor,
+                child: _wizardFooterChrome(catalog, isEdit),
+              ),
+            );
+          },
         );
       },
     );
   }
 
   Widget _wizardFooterChrome(List<Map<String, dynamic>> catalog, bool isEdit) {
+    if (_wizStep == 0) {
+      return const SizedBox.shrink();
+    }
     final gates = ref.watch(purchaseStepGatesProvider);
     final saveVal = ref.watch(purchaseSaveValidationProvider);
     final canAddItem =
@@ -1502,6 +1499,99 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       },
     );
     final isEdit = _isEditMode();
+    final appBarTitle = isEdit
+        ? 'Edit purchase'
+        : (_wizStep == 0 ? 'New Purchase' : 'New purchase');
+    Widget purchaseWizardSafeBody() {
+      return SafeArea(
+        bottom: false,
+        child: Builder(
+          builder: (context) {
+            if (_isBootstrapping) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (_editBootstrapError != null) {
+              final err = _editBootstrapError!;
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.cloud_off_rounded,
+                          size: 48, color: Colors.orange.shade800),
+                      const SizedBox(height: 16),
+                      Text(
+                        err,
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodyLarge,
+                      ),
+                      const SizedBox(height: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          FilledButton(
+                            onPressed: () => _bootstrap(),
+                            child: const Text('Retry'),
+                          ),
+                          const SizedBox(width: 12),
+                          OutlinedButton(
+                            onPressed: () => context.pop(),
+                            child: const Text('Go back'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            final catalogAsync = ref.watch(catalogItemsListProvider);
+            final catalog = catalogAsync.valueOrNull ??
+                _lastCatalogSnapshot ??
+                const <Map<String, dynamic>>[];
+            final emptyCache = catalog.isEmpty;
+            final showTopLoad =
+                catalogAsync.isLoading && emptyCache;
+            final showCatalogErrorStrip =
+                catalogAsync.hasError && emptyCache;
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (showTopLoad)
+                  const SizedBox(
+                    height: 3,
+                    child: LinearProgressIndicator(minHeight: 3),
+                  ),
+                if (showCatalogErrorStrip)
+                  Material(
+                    color: Colors.orange.shade50,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      child: Text(
+                        'Catalog could not refresh. ${catalogAsync.error}',
+                        style: TextStyle(
+                            color: Colors.orange.shade900, fontSize: 12),
+                      ),
+                    ),
+                  ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: _wizBody(catalog, isEdit),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    }
+
     return PopScope(
       canPop: isEdit || !_formDirty,
       onPopInvokedWithResult: (didPop, _) async {
@@ -1516,105 +1606,20 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       child: Scaffold(
         resizeToAvoidBottomInset: true,
         appBar: AppBar(
-          title: Text(isEdit ? 'Edit purchase' : 'New purchase'),
+          title: Text(appBarTitle),
           elevation: 0,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: _isSaving ? null : () => _wizBack(),
           ),
         ),
-        body: GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onTap: () => FocusScope.of(context).unfocus(),
-          child: SafeArea(
-            bottom: false,
-            child: Builder(
-              builder: (context) {
-                if (_isBootstrapping) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                if (_editBootstrapError != null) {
-                  final err = _editBootstrapError!;
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.cloud_off_rounded,
-                              size: 48,
-                              color: Colors.orange.shade800),
-                          const SizedBox(height: 16),
-                          Text(
-                            err,
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.bodyLarge,
-                          ),
-                          const SizedBox(height: 24),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              FilledButton(
-                                onPressed: () => _bootstrap(),
-                                child: const Text('Retry'),
-                              ),
-                              const SizedBox(width: 12),
-                              OutlinedButton(
-                                onPressed: () => context.pop(),
-                                child: const Text('Go back'),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }
-
-                final catalogAsync = ref.watch(catalogItemsListProvider);
-                final catalog = catalogAsync.valueOrNull ??
-                    _lastCatalogSnapshot ??
-                    const <Map<String, dynamic>>[];
-                final emptyCache = catalog.isEmpty;
-                final showTopLoad =
-                    catalogAsync.isLoading && emptyCache;
-                final showCatalogErrorStrip =
-                    catalogAsync.hasError && emptyCache;
-
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (showTopLoad)
-                      const SizedBox(
-                        height: 3,
-                        child: LinearProgressIndicator(minHeight: 3),
-                      ),
-                    if (showCatalogErrorStrip)
-                      Material(
-                        color: Colors.orange.shade50,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
-                          child: Text(
-                            'Catalog could not refresh. ${catalogAsync.error}',
-                            style: TextStyle(
-                                color: Colors.orange.shade900, fontSize: 12),
-                          ),
-                        ),
-                      ),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: _wizBody(catalog, isEdit),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-        ),
+        body: _wizStep == 0
+            ? purchaseWizardSafeBody()
+            : GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: () => FocusScope.of(context).unfocus(),
+                child: purchaseWizardSafeBody(),
+              ),
       ),
     );
   }

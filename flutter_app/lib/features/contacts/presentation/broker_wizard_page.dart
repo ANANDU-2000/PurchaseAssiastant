@@ -759,8 +759,6 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
       'Review',
     ];
 
-    final safeBottom = MediaQuery.paddingOf(context).bottom;
-
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
@@ -777,31 +775,7 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
             unawaited(_exit());
           }
         },
-        body: GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onTap: () => FocusScope.of(context).unfocus(),
-          child: SafeArea(
-            bottom: false,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: SingleChildScrollView(
-                    keyboardDismissBehavior:
-                        ScrollViewKeyboardDismissBehavior.onDrag,
-                    padding: EdgeInsets.only(
-                      left: 16,
-                      right: 16,
-                      top: 12,
-                      bottom: safeBottom + 100,
-                    ),
-                    child: _body(),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+        body: _body(),
         bottom: SafeArea(
           minimum: const EdgeInsets.only(bottom: 8),
           child: _footer(),

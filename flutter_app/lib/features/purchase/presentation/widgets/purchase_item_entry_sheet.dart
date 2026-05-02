@@ -2114,7 +2114,6 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                 scrollController: _scrollController,
                 horizontalPadding: 16,
                 topPadding: 4,
-                bottomExtraInset: 8,
                 minFieldsHeight:
                     c.hasBoundedHeight ? minFields : 200,
                 fields: Column(
