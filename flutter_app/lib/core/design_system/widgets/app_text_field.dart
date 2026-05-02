@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../shared/widgets/ensure_visible_on_focus.dart';
 import '../../theme/hexa_colors.dart';
 import '../../theme/hexa_outline_input_border.dart';
 import '../hexa_ds_tokens.dart';
@@ -33,8 +32,10 @@ class AppTextField extends StatefulWidget {
   final TextEditingController controller;
   final String label;
   final String? helper;
+
   /// Shown under the field; also used for semantics error announcement.
   final String? errorText;
+
   /// When true (and [errorText] is null), shows a calm success border + optional [successMessage].
   final bool showSuccess;
   final String? successMessage;
@@ -60,8 +61,7 @@ class AppTextField extends StatefulWidget {
 class _AppTextFieldState extends State<AppTextField> {
   FocusNode? _ownedFocus;
 
-  FocusNode get _effectiveFocus =>
-      widget.focusNode ?? _ownedFocus!;
+  FocusNode get _effectiveFocus => widget.focusNode ?? _ownedFocus!;
 
   bool get _ownsFocus => widget.focusNode == null;
 
@@ -125,7 +125,8 @@ class _AppTextFieldState extends State<AppTextField> {
   Widget build(BuildContext context) {
     final hx = context.hx;
     final focused = _effectiveFocus.hasFocus;
-    final hasError = widget.errorText != null && widget.errorText!.trim().isNotEmpty;
+    final hasError =
+        widget.errorText != null && widget.errorText!.trim().isNotEmpty;
     final success = widget.showSuccess && !hasError && widget.enabled;
     final shadow = !widget.enabled
         ? hx.inputRestShadow
@@ -163,27 +164,26 @@ class _AppTextFieldState extends State<AppTextField> {
     );
     final successBorder = OutlineInputBorder(
       borderRadius: HexaDsRadii.input,
-      borderSide: BorderSide(color: borderColor, width: focused ? borderWidth : 1),
+      borderSide:
+          BorderSide(color: borderColor, width: focused ? borderWidth : 1),
     );
 
-    return EnsureVisibleOnFocus(
-      focusNode: _effectiveFocus,
-      child: AnimatedScale(
-        scale: focused && widget.enabled ? 1.004 : 1.0,
-        duration: const Duration(milliseconds: 260),
+    return AnimatedScale(
+      scale: focused && widget.enabled ? 1.004 : 1.0,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 280),
         curve: Curves.easeOutCubic,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 280),
-          curve: Curves.easeOutCubic,
-          decoration: BoxDecoration(
-            borderRadius: HexaDsRadii.fieldShell,
-            boxShadow: shadow,
-          ),
-          child: ClipRRect(
-            borderRadius: HexaDsRadii.fieldShell,
-            child: TextField(
-              controller: widget.controller,
-              focusNode: _effectiveFocus,
+        decoration: BoxDecoration(
+          borderRadius: HexaDsRadii.fieldShell,
+          boxShadow: shadow,
+        ),
+        child: ClipRRect(
+          borderRadius: HexaDsRadii.fieldShell,
+          child: TextField(
+            controller: widget.controller,
+            focusNode: _effectiveFocus,
             enabled: widget.enabled,
             obscureText: widget.obscureText,
             keyboardType: widget.keyboardType,
@@ -233,7 +233,8 @@ class _AppTextFieldState extends State<AppTextField> {
               ),
               labelStyle: HexaDsType.label(14, color: hx.textMuted)
                   .copyWith(fontWeight: FontWeight.w500),
-              floatingLabelStyle: HexaDsType.label(13, color: hx.textPrimary).copyWith(
+              floatingLabelStyle:
+                  HexaDsType.label(13, color: hx.textPrimary).copyWith(
                 fontWeight: FontWeight.w700,
                 color: hasError
                     ? HexaDsColors.error
@@ -244,7 +245,8 @@ class _AppTextFieldState extends State<AppTextField> {
                             : hx.textPrimary,
               ),
               helperStyle: helperStyle,
-              errorStyle: HexaDsType.body(12, color: HexaDsColors.error.withValues(alpha: 0.92)),
+              errorStyle: HexaDsType.body(12,
+                  color: HexaDsColors.error.withValues(alpha: 0.92)),
               floatingLabelBehavior: FloatingLabelBehavior.auto,
               border: success ? successBorder : normalBorder,
               enabledBorder: success ? successBorder : normalBorder,
@@ -289,7 +291,6 @@ class _AppTextFieldState extends State<AppTextField> {
           ),
         ),
       ),
-    ),
     );
   }
 }

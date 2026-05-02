@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'ensure_visible_on_focus.dart';
-
 /// A selectable option for [InlineSearchField].
 class InlineSearchItem {
   const InlineSearchItem({
@@ -17,8 +15,7 @@ class InlineSearchItem {
 
   @override
   bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is InlineSearchItem && other.id == id;
+      identical(this, other) || other is InlineSearchItem && other.id == id;
 
   @override
   int get hashCode => id.hashCode;
@@ -59,8 +56,8 @@ class InlineSearchField extends StatefulWidget {
 }
 
 class _InlineSearchFieldState extends State<InlineSearchField> {
-  late final TextEditingController _ctrl =
-      widget.controller ?? TextEditingController(text: widget.initialLabel ?? '');
+  late final TextEditingController _ctrl = widget.controller ??
+      TextEditingController(text: widget.initialLabel ?? '');
   late final FocusNode _ownedFocus = FocusNode();
   FocusNode get _focus => widget.focusNode ?? _ownedFocus;
   bool get _disposeFocus => widget.focusNode == null;
@@ -167,150 +164,146 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        EnsureVisibleOnFocus(
+        RawAutocomplete<InlineSearchItem>(
           focusNode: _focus,
-          child: RawAutocomplete<InlineSearchItem>(
-            focusNode: _focus,
-            textEditingController: _ctrl,
-            displayStringForOption: (InlineSearchItem o) => o.label,
-            optionsBuilder: (TextEditingValue tev) {
-              return _optionsForQuery(tev.text);
-            },
-            onSelected: (InlineSearchItem it) => _pick(it),
-            fieldViewBuilder: (
-              BuildContext context,
-              TextEditingController textEditingController,
-              FocusNode focusNode,
-              VoidCallback onFieldSubmitted,
-            ) {
-              return Focus(
-                onKeyEvent: _onKey,
-                child: TextField(
-                  controller: textEditingController,
-                  focusNode: focusNode,
-                  textInputAction:
-                      widget.textInputAction ?? TextInputAction.search,
-                  onSubmitted: (_) {
-                    final opts =
-                        _optionsForQuery(textEditingController.text).toList();
-                    if (opts.length == 1) {
-                      _pick(opts.first);
-                    } else {
-                      onFieldSubmitted();
-                    }
-                  },
-                  decoration: InputDecoration(
-                    hintText: widget.placeholder,
-                    prefixIcon: widget.prefixIcon,
-                    suffixIcon: textEditingController.text.isEmpty
-                        ? const Icon(Icons.search_rounded, size: 22)
-                        : IconButton(
-                            tooltip: 'Clear',
-                            icon:
-                                const Icon(Icons.close_rounded, size: 20),
-                            onPressed: () {
-                              textEditingController.clear();
-                              setState(() {});
-                            },
-                          ),
-                    isDense: true,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: Colors.grey[300]!),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: cs.primary, width: 2),
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey[50],
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 10,
-                    ),
+          textEditingController: _ctrl,
+          displayStringForOption: (InlineSearchItem o) => o.label,
+          optionsBuilder: (TextEditingValue tev) {
+            return _optionsForQuery(tev.text);
+          },
+          onSelected: (InlineSearchItem it) => _pick(it),
+          fieldViewBuilder: (
+            BuildContext context,
+            TextEditingController textEditingController,
+            FocusNode focusNode,
+            VoidCallback onFieldSubmitted,
+          ) {
+            return Focus(
+              onKeyEvent: _onKey,
+              child: TextField(
+                controller: textEditingController,
+                focusNode: focusNode,
+                textInputAction:
+                    widget.textInputAction ?? TextInputAction.search,
+                onSubmitted: (_) {
+                  final opts =
+                      _optionsForQuery(textEditingController.text).toList();
+                  if (opts.length == 1) {
+                    _pick(opts.first);
+                  } else {
+                    onFieldSubmitted();
+                  }
+                },
+                decoration: InputDecoration(
+                  hintText: widget.placeholder,
+                  prefixIcon: widget.prefixIcon,
+                  suffixIcon: textEditingController.text.isEmpty
+                      ? const Icon(Icons.search_rounded, size: 22)
+                      : IconButton(
+                          tooltip: 'Clear',
+                          icon: const Icon(Icons.close_rounded, size: 20),
+                          onPressed: () {
+                            textEditingController.clear();
+                            setState(() {});
+                          },
+                        ),
+                  isDense: true,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: Colors.grey[300]!),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: cs.primary, width: 2),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey[50],
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 10,
                   ),
                 ),
-              );
-            },
-            optionsViewBuilder: (
-                BuildContext context,
-                AutocompleteOnSelected<InlineSearchItem> onSelected,
-                Iterable<InlineSearchItem> options,
-              ) {
-                final opts = options.toList();
-                if (opts.isEmpty) return const SizedBox.shrink();
-                return Align(
-                  alignment: Alignment.topLeft,
-                  child: Material(
-                    elevation: 8,
-                    borderRadius: BorderRadius.circular(12),
-                    clipBehavior: Clip.antiAlias,
-                    color: Colors.white,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 200),
-                      child: ListView.separated(
-                        shrinkWrap: true,
-                        padding: EdgeInsets.zero,
-                        physics: const ClampingScrollPhysics(),
-                        itemCount: opts.length,
-                        separatorBuilder: (_, __) => Divider(
-                          height: 1,
-                          thickness: 1,
-                          color: Colors.grey[200],
-                        ),
-                        itemBuilder: (BuildContext ctx, int i) {
-                          final it = opts[i];
-                          return InkWell(
-                            onTap: () => onSelected(it),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 10,
+              ),
+            );
+          },
+          optionsViewBuilder: (
+            BuildContext context,
+            AutocompleteOnSelected<InlineSearchItem> onSelected,
+            Iterable<InlineSearchItem> options,
+          ) {
+            final opts = options.toList();
+            if (opts.isEmpty) return const SizedBox.shrink();
+            return Align(
+              alignment: Alignment.topLeft,
+              child: Material(
+                elevation: 8,
+                borderRadius: BorderRadius.circular(12),
+                clipBehavior: Clip.antiAlias,
+                color: Colors.white,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 200),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    physics: const ClampingScrollPhysics(),
+                    itemCount: opts.length,
+                    separatorBuilder: (_, __) => Divider(
+                      height: 1,
+                      thickness: 1,
+                      color: Colors.grey[200],
+                    ),
+                    itemBuilder: (BuildContext ctx, int i) {
+                      final it = opts[i];
+                      return InkWell(
+                        onTap: () => onSelected(it),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                it.label,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                ),
                               ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    it.label,
-                                    maxLines: 2,
+                              if (it.subtitle != null &&
+                                  it.subtitle!.trim().isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Text(
+                                    it.subtitle!,
+                                    maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 14,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Theme.of(ctx)
+                                          .colorScheme
+                                          .onSurfaceVariant,
                                     ),
                                   ),
-                                  if (it.subtitle != null &&
-                                      it.subtitle!.trim().isNotEmpty)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 2),
-                                      child: Text(
-                                        it.subtitle!,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Theme.of(ctx)
-                                              .colorScheme
-                                              .onSurfaceVariant,
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
-            ),
-          ),
+                ),
+              ),
+            );
+          },
+        ),
       ],
     );
   }
