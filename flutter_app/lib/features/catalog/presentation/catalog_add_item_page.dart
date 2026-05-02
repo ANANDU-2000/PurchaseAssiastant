@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -19,6 +20,7 @@ import '../../../core/widgets/form_feedback.dart';
 import '../../../core/widgets/form_field_scroll.dart';
 import '../../../shared/widgets/bag_default_unit_hint.dart';
 import '../../../shared/widgets/inline_search_field.dart';
+import '../../../shared/widgets/keyboard_safe_form_viewport.dart';
 
 const _kUnits = <String>['bag', 'box', 'kg', 'tin', 'piece'];
 
@@ -676,11 +678,6 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
           orElse: () => <Map<String, dynamic>>[],
         );
 
-    /// Bottom strip (review + create) sits in [Scaffold.bottomNavigationBar]; pad the scroll view
-    /// so fields stay above it, the home indicator, and the keyboard.
-    final bottomOverlay =
-        MediaQuery.paddingOf(context).bottom + 200 + MediaQuery.viewInsetsOf(context).bottom;
-
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
@@ -690,6 +687,7 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
         Navigator.of(context).pop(false);
       },
       child: Scaffold(
+        resizeToAvoidBottomInset: true,
         appBar: AppBar(
           title: Column(
             mainAxisSize: MainAxisSize.min,
@@ -714,16 +712,24 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                   },
           ),
         ),
-        body: Column(
-          children: [
-            Expanded(
-              child: SafeArea(
-                bottom: false,
-                child: ListView(
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-            padding: EdgeInsets.fromLTRB(16, 8, 16, 12 + bottomOverlay),
-            children: [
+        body: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: SafeArea(
+            bottom: false,
+            child: LayoutBuilder(
+              builder: (context, cts) {
+                final minFields = math.max(240.0, cts.maxHeight - 280);
+                return KeyboardSafeFormViewport(
+                  dismissKeyboardOnTap: false,
+                  horizontalPadding: 16,
+                  topPadding: 8,
+                  minFieldsHeight:
+                      cts.hasBoundedHeight ? minFields : 240,
+                  fields: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
               if (_step == 0) ...[
               Text('Category & subcategory', style: HexaDsType.formSectionLabel),
               const SizedBox(height: 6),
@@ -1188,17 +1194,11 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
               ],
             ],
           ),
-        ),
-      ),
-    ],
-  ),
-        bottomNavigationBar: Material(
+                  footer: Material(
           color: Theme.of(context).colorScheme.surface,
           surfaceTintColor: Theme.of(context).colorScheme.surfaceTint,
           elevation: 2,
-          child: SafeArea(
-            top: false,
-            child: Padding(
+                        child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
               child: _step < 5
                   ? Row(
@@ -1257,6 +1257,10 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                       ],
                     ),
             ),
+                     ),
+                     );
+                  },
+                ),
           ),
         ),
       ),

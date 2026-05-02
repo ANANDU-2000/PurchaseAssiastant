@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,6 +10,7 @@ import '../../../../core/strict_decimal.dart';
 import '../../../../core/theme/hexa_colors.dart';
 import '../../../../core/utils/unit_classifier.dart';
 import '../../../../shared/widgets/inline_search_field.dart';
+import '../../../../shared/widgets/keyboard_safe_form_viewport.dart';
 
 /// One purchase line: catalog search, qty/unit, landing, selling, optional
 /// tax/discount (per kg for bag/sack with a catalog kg snapshot, else per unit).
@@ -2020,7 +2022,75 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     );
 
     if (widget.fullPage) {
-      final inset = keyboardBottom;
+      final footerPad = const EdgeInsets.fromLTRB(0, 6, 0, 10);
+      final footer = widget.isEdit
+          ? Padding(
+              padding: footerPad,
+              child: FilledButton(
+                onPressed: () => _commit(closeSheet: true),
+                style: FilledButton.styleFrom(
+                  backgroundColor: teal,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  minimumSize: const Size(double.infinity, 50),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text(
+                  'Save',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            )
+          : Padding(
+              padding: footerPad,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => _commit(closeSheet: false),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: teal,
+                        side: BorderSide(color: teal),
+                        minimumSize: const Size(double.infinity, 50),
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text('Save & add more'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => _commit(closeSheet: true),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: teal,
+                        minimumSize: const Size(double.infinity, 50),
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        'Save',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+
       return Theme(
         data: sheetTheme,
         child: Scaffold(
@@ -2036,114 +2106,25 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
               onPressed: () => Navigator.of(context).maybePop(),
             ),
           ),
-          body: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onTap: () => FocusScope.of(context).unfocus(),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, bx) {
-                      return SingleChildScrollView(
-                        controller: _scrollController,
-                        physics: const ClampingScrollPhysics(),
-                        keyboardDismissBehavior:
-                            ScrollViewKeyboardDismissBehavior.onDrag,
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(minHeight: bx.maxHeight),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            mainAxisAlignment: MainAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: formChildren,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+          body: LayoutBuilder(
+            builder: (context, c) {
+              final minFields = math.max(200.0, c.maxHeight - 260);
+              return KeyboardSafeFormViewport(
+                dismissKeyboardOnTap: true,
+                scrollController: _scrollController,
+                horizontalPadding: 16,
+                topPadding: 4,
+                bottomExtraInset: 8,
+                minFieldsHeight:
+                    c.hasBoundedHeight ? minFields : 200,
+                fields: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: formChildren,
                 ),
-              ],
-            ),
-          ),
-          bottomNavigationBar: AnimatedPadding(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            padding: EdgeInsets.only(bottom: inset),
-            child: widget.isEdit
-                ? SafeArea(
-                    minimum: const EdgeInsets.only(bottom: 8),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
-                      child: FilledButton(
-                        onPressed: () => _commit(closeSheet: true),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: teal,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          minimumSize: const Size(double.infinity, 50),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text(
-                          'Save',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ),
-                  )
-                : SafeArea(
-                    minimum: const EdgeInsets.only(bottom: 8),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () => _commit(closeSheet: false),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: teal,
-                                side: const BorderSide(color: teal),
-                                minimumSize: const Size(double.infinity, 50),
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              child: const Text('Save & add more'),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: FilledButton(
-                              onPressed: () => _commit(closeSheet: true),
-                              style: FilledButton.styleFrom(
-                                backgroundColor: teal,
-                                minimumSize: const Size(double.infinity, 50),
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              child: const Text(
-                                'Save',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                footer: footer,
+              );
+            },
           ),
         ),
       );

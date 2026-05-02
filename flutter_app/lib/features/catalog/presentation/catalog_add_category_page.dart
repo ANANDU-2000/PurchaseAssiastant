@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +10,7 @@ import '../../../core/providers/catalog_providers.dart';
 import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/form_feedback.dart';
+import '../../../shared/widgets/keyboard_safe_form_viewport.dart';
 
 /// Full-screen create category (single field).
 class CatalogAddCategoryPage extends ConsumerStatefulWidget {
@@ -113,59 +116,70 @@ class _CatalogAddCategoryPageState extends ConsumerState<CatalogAddCategoryPage>
             onPressed: _saving ? null : () => context.pop(false),
           ),
         ),
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                TextField(
-                  controller: _name,
-                  autofocus: true,
-                  textCapitalization: TextCapitalization.words,
-                decoration: InputDecoration(
-                  labelText: 'Name',
-                  hintText: 'e.g. Rice, Oil',
-                  errorText: err ? 'Enter a name' : null,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: err
-                          ? HexaColors.loss
-                          : Theme.of(context).colorScheme.outlineVariant,
+        resizeToAvoidBottomInset: true,
+        body: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: SafeArea(
+            bottom: false,
+            child: LayoutBuilder(
+              builder: (context, c) {
+                final minFields = math.max(200.0, c.maxHeight - 200);
+                return KeyboardSafeFormViewport(
+                  dismissKeyboardOnTap: false,
+                  horizontalPadding: 16,
+                  topPadding: 16,
+                  minFieldsHeight: c.hasBoundedHeight ? minFields : 200,
+                  fields: TextField(
+                    controller: _name,
+                    autofocus: true,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: InputDecoration(
+                      labelText: 'Name',
+                      hintText: 'e.g. Rice, Oil',
+                      errorText: err ? 'Enter a name' : null,
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: err
+                              ? HexaColors.loss
+                              : Theme.of(context).colorScheme.outlineVariant,
+                        ),
+                      ),
                     ),
+                    onChanged: (_) {
+                      if (_touched) setState(() {});
+                    },
                   ),
-                ),
-                  onChanged: (_) {
-                    if (_touched) setState(() {});
-                  },
-                ),
-                const Spacer(),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: _saving ? null : () => context.pop(false),
-                        child: const Text('Cancel'),
+                  footer: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed:
+                              _saving ? null : () => context.pop(false),
+                          child: const Text('Cancel'),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: _saving ? null : _create,
-                        child: _saving
-                            ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Text('Create'),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: _saving ? null : _create,
+                          child: _saving
+                              ? const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Text('Create'),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                );
+              },
             ),
           ),
         ),

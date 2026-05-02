@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -17,6 +18,7 @@ import '../../../core/providers/purchase_prefill_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
 import '../../../core/widgets/form_feedback.dart';
+import '../../../shared/widgets/keyboard_safe_form_viewport.dart';
 
 const _kDraftKey = 'supplier_create_wizard_draft_v1';
 
@@ -1698,12 +1700,10 @@ class _SupplierCreateWizardPageState
 
   Widget _wizardBottomBar() {
     final isSummary = _step == 5;
-    return SafeArea(
-      minimum: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-        child: Row(
-          children: [
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+      child: Row(
+        children: [
             if (isSummary) ...[
               Expanded(
                 child: TextButton(
@@ -1744,8 +1744,7 @@ class _SupplierCreateWizardPageState
             ],
           ],
         ),
-      ),
-    );
+      );
   }
 
   @override
@@ -1781,8 +1780,6 @@ class _SupplierCreateWizardPageState
 
   @override
   Widget build(BuildContext context) {
-    final kb = MediaQuery.viewInsetsOf(context).bottom;
-    final safeBottom = MediaQuery.paddingOf(context).bottom;
     final title = widget.supplierId != null ? 'Edit supplier' : 'New supplier';
     final subtitle = '${_stepTitles[_step]} · Step ${_step + 1} of 6';
     return PopScope(
@@ -1824,36 +1821,32 @@ class _SupplierCreateWizardPageState
           onTap: () => FocusScope.of(context).unfocus(),
           child: SafeArea(
             bottom: false,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: SingleChildScrollView(
-                    keyboardDismissBehavior:
-                        ScrollViewKeyboardDismissBehavior.onDrag,
-                    padding: EdgeInsets.only(
-                      left: 16,
-                      right: 16,
-                      top: 16,
-                      bottom: kb + safeBottom + 100,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _bodyForStep(),
-                      ],
-                    ),
+            child: LayoutBuilder(
+              builder: (context, cts) {
+                final minFields = math.max(220.0, cts.maxHeight - 280);
+                return KeyboardSafeFormViewport(
+                  dismissKeyboardOnTap: false,
+                  horizontalPadding: 16,
+                  topPadding: 16,
+                  minFieldsHeight:
+                      cts.hasBoundedHeight ? minFields : 220,
+                  fields: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _bodyForStep(),
+                    ],
                   ),
-                ),
-              ],
+                  footer: Material(
+                    elevation: 8,
+                    surfaceTintColor: Colors.transparent,
+                    color: Theme.of(context).colorScheme.surface,
+                    child: _wizardBottomBar(),
+                  ),
+                );
+              },
             ),
           ),
-        ),
-        bottomNavigationBar: Material(
-          elevation: 8,
-          surfaceTintColor: Colors.transparent,
-          color: Theme.of(context).colorScheme.surface,
-          child: _wizardBottomBar(),
         ),
       ),
     );

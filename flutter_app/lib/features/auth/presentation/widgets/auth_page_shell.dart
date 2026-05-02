@@ -50,6 +50,8 @@ class AuthPageShell extends StatelessWidget {
           child: Align(
             alignment: Alignment.topCenter,
             child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              physics: const ClampingScrollPhysics(),
               padding: EdgeInsets.fromLTRB(16, 8, 16, 24 + bottom),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 420),

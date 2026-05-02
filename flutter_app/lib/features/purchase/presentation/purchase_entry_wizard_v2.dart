@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -22,6 +23,7 @@ import '../../../core/notifications/local_notifications_service.dart';
 import '../../purchase/domain/purchase_draft.dart';
 import '../../purchase/state/purchase_draft_provider.dart';
 import '../../../shared/widgets/inline_search_field.dart';
+import '../../../shared/widgets/keyboard_safe_form_viewport.dart';
 import 'wizard/purchase_items_step.dart';
 import 'wizard/purchase_party_step.dart';
 import 'wizard/purchase_summary_step.dart';
@@ -1238,13 +1240,10 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     final session = ref.read(sessionProvider);
     final bid = session?.primaryBusiness.id;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: IndexedStack(
-      index: _wizStep,
-      alignment: Alignment.topCenter,
-      children: [
-        PurchasePartyStep(
+    Widget stepSlot() {
+      switch (_wizStep) {
+        case 0:
+          return PurchasePartyStep(
           isEdit: isEdit,
           loadedDerivedStatus: _loadedDerivedStatus,
           loadedRemaining: _loadedRemaining,
@@ -1281,14 +1280,16 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
           openQuickBrokerCreate: _openQuickBrokerCreate,
           brokerRowId: _brokerRowId,
           brokerMapLabel: _brokerMapLabel,
-        ),
-        PurchaseItemsStep(
+        );
+        case 1:
+          return PurchaseItemsStep(
           onOpenItem: ({editIndex, initialOverride}) =>
               _openItemSheet(catalog, editIndex: editIndex, initialOverride: initialOverride),
           fetchSupplierHistoryHints: _fetchSupplierHistoryHintsForCatalogs,
           hexaBusinessIdOrNull: bid,
-        ),
-        PurchaseTermsStep(
+        );
+        case 2:
+          return PurchaseTermsStep(
           paymentDaysCtrl: _paymentDaysCtrl,
           deliveredRateCtrl: _deliveredRateCtrl,
           billtyRateCtrl: _billtyRateCtrl,
@@ -1303,26 +1304,40 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
             _onDraftChanged();
           },
           onDraftChanged: _onDraftChanged,
-        ),
-        const PurchaseSummaryStep(),
-      ],
-    ),
+        );
+        case 3:
+          return const PurchaseSummaryStep();
+        default:
+          return const PurchaseSummaryStep();
+      }
+    }
+
+    return LayoutBuilder(
+      builder: (context, cts) {
+        final minFields = math.max(220.0, cts.maxHeight - 280);
+        final surfaceColor = Theme.of(context).colorScheme.surface;
+        return KeyboardSafeFormViewport(
+          horizontalPadding: 12,
+          minFieldsHeight:
+              cts.hasBoundedHeight ? minFields : 220,
+          fields: stepSlot(),
+          footer: Material(
+            elevation: 8,
+            color: surfaceColor,
+            child: _wizardFooterChrome(catalog, isEdit),
+          ),
+        );
+      },
     );
   }
 
-  Widget _wizardBottomChrome(List<Map<String, dynamic>> catalog, bool isEdit) {
+  Widget _wizardFooterChrome(List<Map<String, dynamic>> catalog, bool isEdit) {
     final gates = ref.watch(purchaseStepGatesProvider);
     final saveVal = ref.watch(purchaseSaveValidationProvider);
-    final inset = MediaQuery.viewInsetsOf(context).bottom;
     final canAddItem =
-        gates.from0 && !_isSaving; // supplier picked
+        gates.from0 && !_isSaving;
 
-    return SafeArea(
-      child: Material(
-        elevation: 8,
-        child: Padding(
-          padding: EdgeInsets.only(bottom: inset),
-          child: Column(
+    return Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -1439,9 +1454,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
                       ),
               ),
             ],
-          ),
-        ),
-      ),
     );
   }
 
@@ -1602,18 +1614,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
               },
             ),
           ),
-        ),
-        bottomNavigationBar: Builder(
-          builder: (context) {
-            if (_isBootstrapping || _editBootstrapError != null) {
-              return const SizedBox.shrink();
-            }
-            final catalogAsync = ref.watch(catalogItemsListProvider);
-            final catalog = catalogAsync.valueOrNull ??
-                _lastCatalogSnapshot ??
-                const <Map<String, dynamic>>[];
-            return _wizardBottomChrome(catalog, isEdit);
-          },
         ),
       ),
     );

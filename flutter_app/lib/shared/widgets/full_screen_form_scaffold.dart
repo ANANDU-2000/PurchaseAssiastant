@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
-/// One primary body region + fixed bottom CTA (avoids nested scroll in flows).
+import 'keyboard_safe_form_viewport.dart';
+
+/// Full-screen form with keyboard-safe scroll body and footer CTAs merged into the scroll lane.
 class FullScreenFormScaffold extends StatelessWidget {
   const FullScreenFormScaffold({
     super.key,
@@ -14,15 +16,18 @@ class FullScreenFormScaffold extends StatelessWidget {
 
   final String title;
   final String? subtitle;
+  /// Form fields region (above the pinned scroll footer lane).
   final Widget body;
+  /// Primary CTAs rendered above bottom safe area inside the scroll view.
   final Widget bottom;
   final List<Widget>? actions;
+
   /// When set, used for the leading control (e.g. intercept back for drafts).
   final VoidCallback? onBackPressed;
 
   @override
   Widget build(BuildContext context) {
-    final kb = MediaQuery.viewInsetsOf(context).bottom;
+    final surface = Theme.of(context).colorScheme.surface;
     return Scaffold(
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
@@ -48,21 +53,14 @@ class FullScreenFormScaffold extends StatelessWidget {
         ),
         actions: actions,
       ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(bottom: kb),
-              child: body,
-            ),
-          ),
-          Material(
-            elevation: 8,
-            color: Theme.of(context).colorScheme.surface,
-            child: SafeArea(top: false, child: bottom),
-          ),
-        ],
+      body: KeyboardSafeFormViewport(
+        dismissKeyboardOnTap: true,
+        fields: body,
+        footer: Material(
+          elevation: 8,
+          color: surface,
+          child: bottom,
+        ),
       ),
     );
   }
