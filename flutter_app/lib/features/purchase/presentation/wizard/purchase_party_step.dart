@@ -10,7 +10,7 @@ import '../../../../shared/widgets/inline_search_field.dart';
 import '../../state/purchase_draft_provider.dart';
 import '../widgets/party_inline_suggest_field.dart';
 
-/// Party step — minimal two-column supplier / broker layout (keyboard-driven flow).
+/// Party step — full-width supplier, then broker, stacked vertically.
 class PurchasePartyStep extends ConsumerWidget {
   const PurchasePartyStep({
     super.key,
@@ -209,8 +209,8 @@ class PurchasePartyStep extends ConsumerWidget {
     ];
   }
 
-  /// Single row: supplier | broker (+ inline lists).
-  Widget _partyFieldsRow(BuildContext context, WidgetRef ref) {
+  /// Full-width supplier (with suggestions under field), spacing, full-width broker.
+  Widget _partyFieldsColumn(BuildContext context, WidgetRef ref) {
     Widget supplierCell = ref.watch(suppliersListProvider).when(
       data: (list) {
         final full =
@@ -389,12 +389,13 @@ class PurchasePartyStep extends ConsumerWidget {
       },
     );
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Expanded(flex: 2, child: supplierCell),
-        const SizedBox(width: 8),
-        Expanded(flex: 1, child: brokerCell),
+        supplierCell,
+        const SizedBox(height: 16),
+        brokerCell,
       ],
     );
   }
@@ -420,7 +421,7 @@ class PurchasePartyStep extends ConsumerWidget {
         ],
         _compactMeta(context, ref),
         const SizedBox(height: 6),
-        _partyFieldsRow(context, ref),
+        _partyFieldsColumn(context, ref),
         if (showClearSupplier)
           Padding(
             padding: const EdgeInsets.only(top: 6),

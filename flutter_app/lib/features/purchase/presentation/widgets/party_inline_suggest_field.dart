@@ -6,8 +6,9 @@ import 'package:flutter/services.dart';
 
 import '../../../../shared/widgets/inline_search_field.dart';
 
-/// Party step only: dropdown suggestions below the field (not an overlay).
-/// Filters locally with optional debounce; panel caps at [maxPanelAbs] height.
+/// Party step only: suggestions render below the field (not an overlay).
+/// Filters locally from [controller.text] on every rebuild; [_revealDebounce]
+/// coalesces [Scrollable.ensureVisible] so parent scroll stays smooth while typing.
 class PartyInlineSuggestField extends StatefulWidget {
   const PartyInlineSuggestField({
     super.key,
@@ -48,7 +49,7 @@ class PartyInlineSuggestField extends StatefulWidget {
   final String? addRowLabel;
   final VoidCallback? onAddRow;
 
-  /// Tighter paddings when two columns sit side by side.
+  /// Tighter paddings for compact fields.
   final bool dense;
 
   /// Optional leading icon inside the outlined field.
@@ -63,7 +64,7 @@ class PartyInlineSuggestField extends StatefulWidget {
 }
 
 class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
-  static const _filterDebounce = Duration(milliseconds: 400);
+  static const _revealDebounce = Duration(milliseconds: 400);
 
   bool _pickInProgress = false;
 
@@ -71,15 +72,12 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   bool _suppressPanelAfterPick = false;
   String? _lastPickedLabel;
 
-  /// Lowercase trimmed query used for filtering (debounced from controller).
-  late String _debouncedQuery;
-
-  Timer? _debounceTimer;
+  /// Coalesces scroll-into-view work while the user is typing.
+  Timer? _revealDebounceTimer;
 
   @override
   void initState() {
     super.initState();
-    _debouncedQuery = widget.controller.text.trim().toLowerCase();
     widget.controller.addListener(_listenCtrl);
     widget.focusNode.addListener(_listenFocus);
   }
@@ -99,7 +97,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
 
   @override
   void dispose() {
-    _debounceTimer?.cancel();
+    _revealDebounceTimer?.cancel();
     widget.controller.removeListener(_listenCtrl);
     widget.focusNode.removeListener(_listenFocus);
     super.dispose();
@@ -109,17 +107,16 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     final t = widget.controller.text;
     if (_lastPickedLabel != null && t.trim() != _lastPickedLabel!.trim()) {
       _lastPickedLabel = null;
-      if (_suppressPanelAfterPick && mounted) {
-        setState(() => _suppressPanelAfterPick = false);
+      if (_suppressPanelAfterPick) {
+        _suppressPanelAfterPick = false;
       }
     }
+    if (!mounted) return;
+    setState(() {});
 
-    _debounceTimer?.cancel();
-    _debounceTimer = Timer(_filterDebounce, () {
+    _revealDebounceTimer?.cancel();
+    _revealDebounceTimer = Timer(_revealDebounce, () {
       if (!mounted) return;
-      setState(() {
-        _debouncedQuery = widget.controller.text.trim().toLowerCase();
-      });
       _maybeRevealAfterFilter();
     });
   }
@@ -137,16 +134,14 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     final nowFocused = widget.focusNode.hasFocus;
     if (nowFocused) {
       _suppressPanelAfterPick = false;
-      _debounceTimer?.cancel();
-      _debouncedQuery = widget.controller.text.trim().toLowerCase();
+      _revealDebounceTimer?.cancel();
     } else {
       _tryBlurExactPick();
     }
     if (!mounted) return;
     setState(() {});
     if (nowFocused) {
-      WidgetsBinding.instance
-          .addPostFrameCallback((_) => _maybeRevealAfterFilter());
+      WidgetsBinding.instance.addPostFrameCallback((_) => _maybeRevealAfterFilter());
     }
   }
 
@@ -200,11 +195,8 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     return out;
   }
 
-  /// Rows shown under the debounced query (smooth typing).
-  List<InlineSearchItem> _listRowsForUi() => _filteredFromQuery(_debouncedQuery);
-
-  /// Rows for IME actions using live text (immediate).
-  List<InlineSearchItem> _filteredLive() =>
+  /// Rows from live controller text — matches appear as soon as typing updates the field.
+  List<InlineSearchItem> _listRowsForUi() =>
       _filteredFromQuery(widget.controller.text.trim().toLowerCase());
 
   EdgeInsets _scrollPad(BuildContext context) {
@@ -232,8 +224,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
 
   void _pick(InlineSearchItem it, {bool keepFocus = true}) {
     _pickInProgress = true;
-    _debounceTimer?.cancel();
-    _debouncedQuery = it.label.trim().toLowerCase();
+    _revealDebounceTimer?.cancel();
     _suppressPanelAfterPick = true;
     _lastPickedLabel = it.label.trim();
     widget.controller.text = it.label;
@@ -256,55 +247,49 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   }
 
   Widget _buildSuggestionTile(ColorScheme cs, InlineSearchItem it) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => _pick(it, keepFocus: false),
-      child: Material(
-        color: cs.surface,
-        child: ListTile(
-          dense: widget.dense,
-          title: Text(
-            it.label,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 13,
-            ),
+    return Material(
+      color: cs.surface,
+      child: ListTile(
+        dense: widget.dense,
+        title: Text(
+          it.label,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
           ),
-          subtitle: (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
-              ? Text(
-                  it.subtitle!.trim(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: cs.onSurfaceVariant,
-                  ),
-                )
-              : null,
         ),
+        subtitle: (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
+            ? Text(
+                it.subtitle!.trim(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: cs.onSurfaceVariant,
+                ),
+              )
+            : null,
+        onTap: () => _pick(it, keepFocus: false),
       ),
     );
   }
 
   Widget _buildAddRowTile(ColorScheme cs) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: widget.onAddRow,
-      child: Material(
-        color: cs.surface,
-        child: ListTile(
-          dense: true,
-          title: Text(
-            widget.addRowLabel ?? '',
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 13,
-              color: cs.primary,
-            ),
+    return Material(
+      color: cs.surface,
+      child: ListTile(
+        dense: true,
+        title: Text(
+          widget.addRowLabel ?? '',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+            color: cs.primary,
           ),
         ),
+        onTap: widget.onAddRow,
       ),
     );
   }
@@ -313,7 +298,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     if (event.logicalKey == LogicalKeyboardKey.enter ||
         event.logicalKey == LogicalKeyboardKey.numpadEnter) {
-      final data = _filteredLive();
+      final data = _listRowsForUi();
       if (data.length == 1) {
         _pick(data.first);
         return KeyEventResult.handled;
@@ -323,7 +308,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   }
 
   void _onFieldSubmitted(String _) {
-    final data = _filteredLive();
+    final data = _listRowsForUi();
     if (data.length == 1) {
       _pick(data.first);
       return;
@@ -343,7 +328,6 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
         widget.focusNode.hasFocus &&
         (rows.isNotEmpty || showAddFocused);
 
-    /// Max scroll viewport: cap at [maxPanelAbs] (default 220) and keyboard-shortened viewport.
     final maxPanelCalc = _effectiveMaxPanelHeight(context);
     final panelScrollH =
         math.min(widget.maxPanelAbs.toDouble(), maxPanelCalc);
