@@ -913,12 +913,19 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     final line = _validateAndBuildLine();
     if (line == null) return;
     widget.onCommitted(line);
-    if (closeSheet) {
-      if (Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
+    if (!widget.fullPage) {
+      if (closeSheet) {
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+      } else {
+        _resetAfterAdd();
       }
-    } else {
-      _resetAfterAdd();
+      return;
+    }
+    // Full-screen page: caller may chain another add via pop result.
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop<bool>(!closeSheet);
     }
   }
 
@@ -2013,6 +2020,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     );
 
     if (widget.fullPage) {
+      final inset = keyboardBottom;
       return Theme(
         data: sheetTheme,
         child: Scaffold(
@@ -2024,91 +2032,119 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
             elevation: 0,
             title: Text(widget.isEdit ? 'Edit item' : 'Add item'),
             leading: IconButton(
-              icon: const Icon(Icons.close),
+              icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
               onPressed: () => Navigator.of(context).maybePop(),
             ),
           ),
           body: GestureDetector(
             behavior: HitTestBehavior.translucent,
             onTap: () => FocusScope.of(context).unfocus(),
-            child: SafeArea(
-              bottom: false,
-              child: scroll,
-            ),
-          ),
-          bottomNavigationBar: widget.isEdit
-              ? SafeArea(
-                  minimum: const EdgeInsets.only(bottom: 8),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
-                    child: FilledButton(
-                      onPressed: () => _commit(closeSheet: true),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: teal,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        minimumSize: const Size(double.infinity, 50),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text(
-                        'SAVE',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                  ),
-                )
-              : SafeArea(
-                  minimum: const EdgeInsets.only(bottom: 8),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => _commit(closeSheet: false),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: teal,
-                              side: const BorderSide(color: teal),
-                              minimumSize: const Size(double.infinity, 50),
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: const Text('SAVE & ADD MORE'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, bx) {
+                      return SingleChildScrollView(
+                        controller: _scrollController,
+                        physics: const ClampingScrollPhysics(),
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(minHeight: bx.maxHeight),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            mainAxisAlignment: MainAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: formChildren,
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: FilledButton(
-                            onPressed: () => _commit(closeSheet: true),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: teal,
-                              minimumSize: const Size(double.infinity, 50),
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: const Text(
-                              'SAVE',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
                 ),
+              ],
+            ),
+          ),
+          bottomNavigationBar: AnimatedPadding(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            padding: EdgeInsets.only(bottom: inset),
+            child: widget.isEdit
+                ? SafeArea(
+                    minimum: const EdgeInsets.only(bottom: 8),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+                      child: FilledButton(
+                        onPressed: () => _commit(closeSheet: true),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: teal,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          minimumSize: const Size(double.infinity, 50),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text(
+                          'Save',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                : SafeArea(
+                    minimum: const EdgeInsets.only(bottom: 8),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => _commit(closeSheet: false),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: teal,
+                                side: const BorderSide(color: teal),
+                                minimumSize: const Size(double.infinity, 50),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Text('Save & add more'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: () => _commit(closeSheet: true),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: teal,
+                                minimumSize: const Size(double.infinity, 50),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Text(
+                                'Save',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+          ),
         ),
       );
     }
