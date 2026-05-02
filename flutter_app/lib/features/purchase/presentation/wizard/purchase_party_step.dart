@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/models/session.dart';
+import '../../../../core/auth/session_notifier.dart';
 import '../../../../core/theme/hexa_colors.dart';
 import '../../../../core/providers/brokers_list_provider.dart';
 import '../../../../core/providers/suppliers_list_provider.dart';
@@ -209,10 +211,104 @@ class PurchasePartyStep extends ConsumerWidget {
     ];
   }
 
+  /// Silent empty lists hide why autocomplete never opens—surface session / API / IDs.
+  Widget _supplierListNotice(
+    BuildContext context,
+    WidgetRef ref, {
+    required Session? session,
+    required Widget supplierField,
+    required List<InlineSearchItem> items,
+    required List<Map<String, dynamic>> fullRaw,
+  }) {
+    if (session != null && items.isNotEmpty) return supplierField;
+    final sub = Theme.of(context).colorScheme.onSurfaceVariant;
+    final msg = session == null
+        ? 'Sign in to load suppliers.'
+        : fullRaw.isEmpty
+            ? 'No suppliers loaded yet. Reload below—or focus this field, then New supplier…'
+            : 'Suppliers arrived but couldn’t be shown (missing IDs). Reload or check your data.';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        supplierField,
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            msg,
+            style: TextStyle(fontSize: 11, height: 1.25, color: sub),
+          ),
+        ),
+        if (session != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: () => ref.invalidate(suppliersListProvider),
+              child: const Text('Reload suppliers'),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _brokerListNotice(
+    BuildContext context,
+    WidgetRef ref, {
+    required Session? session,
+    required Widget brokerField,
+    required List<InlineSearchItem> items,
+    required List<Map<String, dynamic>> brokersRaw,
+  }) {
+    if (session != null && items.isNotEmpty) return brokerField;
+    final sub = Theme.of(context).colorScheme.onSurfaceVariant;
+    final msg = session == null
+        ? 'Sign in to load brokers.'
+        : brokersRaw.isEmpty
+            ? 'No brokers loaded yet. Reload—or focus this field, then New broker…'
+            : 'Brokers arrived but couldn’t be shown (missing IDs). Reload or check your data.';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        brokerField,
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            msg,
+            style: TextStyle(fontSize: 11, height: 1.25, color: sub),
+          ),
+        ),
+        if (session != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: () => ref.invalidate(brokersListProvider),
+              child: const Text('Reload brokers'),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _partyAutocompleteFocusReminder(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Text(
+        'Suggestions appear only under the field that has focus (tap Supplier or Broker first).',
+        style: TextStyle(
+          fontSize: 11,
+          height: 1.25,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+
   /// Full-width supplier (with suggestions under field), spacing, full-width broker.
   Widget _partyFieldsColumn(BuildContext context, WidgetRef ref) {
     Widget supplierCell = ref.watch(suppliersListProvider).when(
       data: (list) {
+        final session = ref.watch(sessionProvider);
         final full =
             list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
         final filtered = filterSuppliersByCatalog(full, catalog);
@@ -246,7 +342,7 @@ class PurchasePartyStep extends ConsumerWidget {
         }
 
         final items = _supplierItems(filtered);
-        return PartyInlineSuggestField(
+        final field = PartyInlineSuggestField(
           controller: supplierCtrl,
           focusNode: supplierFocusNode,
           hintText: 'Supplier',
@@ -257,7 +353,7 @@ class PurchasePartyStep extends ConsumerWidget {
           textInputAction: TextInputAction.next,
           onSubmitted: () => brokerFocusNode.requestFocus(),
           items: items,
-          showAddRow: full.isNotEmpty,
+          showAddRow: session != null,
           addRowLabel: 'New supplier…',
           onAddRow: () => openQuickSupplierCreate(full),
           onSelected: (it) {
@@ -265,15 +361,24 @@ class PurchasePartyStep extends ConsumerWidget {
             onSupplierSelectedSync(full, it);
           },
         );
+        return _supplierListNotice(
+          context,
+          ref,
+          session: session,
+          supplierField: field,
+          items: items,
+          fullRaw: full,
+        );
       },
       error: (_, __) {
         if (lastGoodSuppliers != null) {
+          final session = ref.watch(sessionProvider);
           final full = lastGoodSuppliers!
               .map((e) => Map<String, dynamic>.from(e as Map))
               .toList();
           final filtered = filterSuppliersByCatalog(full, catalog);
           final items = _supplierItems(filtered);
-          return PartyInlineSuggestField(
+          final field = PartyInlineSuggestField(
             controller: supplierCtrl,
             focusNode: supplierFocusNode,
             hintText: 'Supplier',
@@ -284,7 +389,7 @@ class PurchasePartyStep extends ConsumerWidget {
             textInputAction: TextInputAction.next,
             onSubmitted: () => brokerFocusNode.requestFocus(),
             items: items,
-            showAddRow: true,
+            showAddRow: session != null,
             addRowLabel: 'New supplier…',
             onAddRow: () => openQuickSupplierCreate(full),
             onSelected: (it) {
@@ -292,23 +397,40 @@ class PurchasePartyStep extends ConsumerWidget {
               onSupplierSelectedSync(full, it);
             },
           );
+          return _supplierListNotice(
+            context,
+            ref,
+            session: session,
+            supplierField: field,
+            items: items,
+            fullRaw: full,
+          );
         }
-        return Text(
-          'Could not load suppliers',
-          style: TextStyle(
-            fontSize: 12,
-            color: Theme.of(context).colorScheme.error,
-          ),
+        final cs = Theme.of(context).colorScheme;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Could not load suppliers.',
+              style: TextStyle(fontSize: 12, color: cs.error),
+            ),
+            TextButton(
+              onPressed: () => ref.invalidate(suppliersListProvider),
+              child: const Text('Retry'),
+            ),
+          ],
         );
       },
       loading: () {
         if (lastGoodSuppliers != null) {
+          final session = ref.watch(sessionProvider);
           final full = lastGoodSuppliers!
               .map((e) => Map<String, dynamic>.from(e as Map))
               .toList();
           final filtered = filterSuppliersByCatalog(full, catalog);
           final items = _supplierItems(filtered);
-          return PartyInlineSuggestField(
+          final field = PartyInlineSuggestField(
             controller: supplierCtrl,
             focusNode: supplierFocusNode,
             hintText: 'Supplier',
@@ -319,13 +441,21 @@ class PurchasePartyStep extends ConsumerWidget {
             textInputAction: TextInputAction.next,
             onSubmitted: () => brokerFocusNode.requestFocus(),
             items: items,
-            showAddRow: true,
+            showAddRow: session != null,
             addRowLabel: 'New supplier…',
             onAddRow: () => openQuickSupplierCreate(full),
             onSelected: (it) {
               if (it.id.isEmpty) return;
               onSupplierSelectedSync(full, it);
             },
+          );
+          return _supplierListNotice(
+            context,
+            ref,
+            session: session,
+            supplierField: field,
+            items: items,
+            fullRaw: full,
           );
         }
         return const LinearProgressIndicator(minHeight: 2);
@@ -353,11 +483,12 @@ class PurchasePartyStep extends ConsumerWidget {
       builder: (cx) {
         return ref.watch(brokersListProvider).when(
               data: (brokersRaw) {
+                final session = ref.watch(sessionProvider);
                 final brokers = brokersRaw
                     .map((e) => Map<String, dynamic>.from(e as Map))
                     .toList();
                 final items = _brokerItems(brokers);
-                return PartyInlineSuggestField(
+                final field = PartyInlineSuggestField(
                   controller: brokerCtrl,
                   focusNode: brokerFocusNode,
                   hintText: 'Broker',
@@ -368,7 +499,7 @@ class PurchasePartyStep extends ConsumerWidget {
                   textInputAction: TextInputAction.next,
                   onSubmitted: onProceedFromParty,
                   items: items,
-                  showAddRow: brokers.isNotEmpty,
+                  showAddRow: session != null,
                   addRowLabel: 'New broker…',
                   onAddRow: () => openQuickBrokerCreate(brokers),
                   onSelected: (it) {
@@ -376,13 +507,31 @@ class PurchasePartyStep extends ConsumerWidget {
                     applyBrokerSelection(brokers, it);
                   },
                 );
+                return _brokerListNotice(
+                  context,
+                  ref,
+                  session: session,
+                  brokerField: field,
+                  items: items,
+                  brokersRaw: brokers,
+                );
               },
-              error: (_, __) => Text(
-                'Could not load brokers',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Theme.of(cx).colorScheme.error,
-                ),
+              error: (_, __) => Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Could not load brokers.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(cx).colorScheme.error,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => ref.invalidate(brokersListProvider),
+                    child: const Text('Retry'),
+                  ),
+                ],
               ),
               loading: () => const LinearProgressIndicator(minHeight: 2),
             );
@@ -421,6 +570,7 @@ class PurchasePartyStep extends ConsumerWidget {
         ],
         _compactMeta(context, ref),
         const SizedBox(height: 6),
+        _partyAutocompleteFocusReminder(context),
         _partyFieldsColumn(context, ref),
         if (showClearSupplier)
           Padding(
