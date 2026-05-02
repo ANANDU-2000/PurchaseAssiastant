@@ -508,6 +508,8 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
   Future<void> _openQuickSupplierCreate(
     List<Map<String, dynamic>> lookupList,
   ) async {
+    await Future<void>.delayed(Duration.zero);
+    if (!mounted) return;
     final result = await context.push<Map<String, dynamic>?>(
       '/suppliers/quick-create',
     );
@@ -541,6 +543,8 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
   Future<void> _openQuickBrokerCreate(
     List<Map<String, dynamic>> lookupList,
   ) async {
+    await Future<void>.delayed(Duration.zero);
+    if (!mounted) return;
     final result = await context.push<Map<String, dynamic>?>(
       '/brokers/quick-create',
     );

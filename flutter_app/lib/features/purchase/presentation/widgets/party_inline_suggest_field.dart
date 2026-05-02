@@ -253,31 +253,50 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   }
 
   Widget _buildSuggestionTile(ColorScheme cs, InlineSearchItem it) {
+    void pickDeferred() => WidgetsBinding.instance
+        .addPostFrameCallback((_) => _pick(it, keepFocus: false));
+
     return Material(
       color: cs.surface,
-      child: ListTile(
-        dense: widget.dense,
-        title: Text(
-          it.label,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 13,
+      child: InkWell(
+        onTap: () {
+          FocusManager.instance.primaryFocus?.unfocus();
+          pickDeferred();
+        },
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: widget.dense ? 10 : 12,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                it.label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+              if (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    it.subtitle!.trim(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
-        subtitle: (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
-            ? Text(
-                it.subtitle!.trim(),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: cs.onSurfaceVariant,
-                ),
-              )
-            : null,
-        onTap: () => _pick(it, keepFocus: false),
       ),
     );
   }
@@ -285,17 +304,27 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   Widget _buildAddRowTile(ColorScheme cs) {
     return Material(
       color: cs.surface,
-      child: ListTile(
-        dense: true,
-        title: Text(
-          widget.addRowLabel ?? '',
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 13,
-            color: cs.primary,
+      child: InkWell(
+        onTap: () {
+          FocusManager.instance.primaryFocus?.unfocus();
+          final cb = widget.onAddRow;
+          if (cb == null) return;
+          WidgetsBinding.instance.addPostFrameCallback((_) => cb());
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              widget.addRowLabel ?? '',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                color: cs.primary,
+              ),
+            ),
           ),
         ),
-        onTap: widget.onAddRow,
       ),
     );
   }

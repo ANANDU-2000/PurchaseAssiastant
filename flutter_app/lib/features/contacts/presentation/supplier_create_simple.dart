@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
@@ -381,7 +382,8 @@ class _SupplierCreateSimpleState extends ConsumerState<SupplierCreateSimple> {
             duration: Duration(seconds: 2),
           ),
         );
-        Navigator.pop(context, sid.isNotEmpty ? {'id': sid, 'name': nm} : null);
+        context.pop<Map<String, dynamic>?>(
+            sid.isNotEmpty ? {'id': sid, 'name': nm} : null);
       }
     } catch (e) {
       if (mounted) {
