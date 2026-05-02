@@ -1,3 +1,5 @@
+import 'dart:math' show min;
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:http_parser/http_parser.dart';
@@ -506,12 +508,14 @@ class HexaApi {
     return res.data ?? {};
   }
 
-  /// Trade purchases (wholesale PUR-YYYY-XXXX flow).
-  Future<List<Map<String, dynamic>>> listTradePurchases({
+  /// GET `/trade-purchases` caps `limit` at 50; larger values are fetched in pages.
+  static const int _kTradePurchasesApiMaxLimit = 50;
+
+  Future<List<Map<String, dynamic>>> _listTradePurchasesPage({
     required String businessId,
-    int limit = 20,
-    int offset = 0,
-    String? status,
+    required int limit,
+    required int offset,
+    String? statusParam,
     String? q,
     String? supplierId,
     String? brokerId,
@@ -519,18 +523,6 @@ class HexaApi {
     String? purchaseFrom,
     String? purchaseTo,
   }) async {
-    final s = status?.trim().toLowerCase();
-    final statusNorm = (s == null ||
-            s.isEmpty ||
-            s == 'all' ||
-            s == 'undefined' ||
-            s == 'null')
-        ? null
-        : s;
-    const allowed = {'draft', 'due_soon', 'overdue', 'paid'};
-    final statusParam =
-        statusNorm != null && allowed.contains(statusNorm) ? statusNorm : null;
-
     final path = '/v1/businesses/$businessId/trade-purchases';
     final queryParameters = <String, dynamic>{
       'limit': limit,
@@ -571,6 +563,59 @@ class HexaApi {
       }
       rethrow;
     }
+  }
+
+  /// Trade purchases (wholesale PUR-YYYY-XXXX flow).
+  Future<List<Map<String, dynamic>>> listTradePurchases({
+    required String businessId,
+    int limit = 20,
+    int offset = 0,
+    String? status,
+    String? q,
+    String? supplierId,
+    String? brokerId,
+    String? catalogItemId,
+    String? purchaseFrom,
+    String? purchaseTo,
+  }) async {
+    final s = status?.trim().toLowerCase();
+    final statusNorm = (s == null ||
+            s.isEmpty ||
+            s == 'all' ||
+            s == 'undefined' ||
+            s == 'null')
+        ? null
+        : s;
+    const allowed = {'draft', 'due_soon', 'overdue', 'paid'};
+    final statusParam =
+        statusNorm != null && allowed.contains(statusNorm) ? statusNorm : null;
+
+    final want = limit < 1 ? 1 : limit;
+    var remaining = want;
+    var nextOffset = offset;
+    final out = <Map<String, dynamic>>[];
+
+    while (remaining > 0) {
+      final pageSize = min(remaining, _kTradePurchasesApiMaxLimit);
+      final page = await _listTradePurchasesPage(
+        businessId: businessId,
+        limit: pageSize,
+        offset: nextOffset,
+        statusParam: statusParam,
+        q: q,
+        supplierId: supplierId,
+        brokerId: brokerId,
+        catalogItemId: catalogItemId,
+        purchaseFrom: purchaseFrom,
+        purchaseTo: purchaseTo,
+      );
+      if (page.isEmpty) break;
+      out.addAll(page);
+      if (page.length < pageSize) break;
+      nextOffset += page.length;
+      remaining -= page.length;
+    }
+    return out;
   }
 
   Future<Map<String, dynamic>?> getTradePurchaseDraft({
