@@ -526,7 +526,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
             ),
     );
 
-    if (locked && lockLabel != null) {
+    if (locked) {
       final clearCb = widget.onLockedSelectionClear;
       innerInput = AnimatedContainer(
         duration: const Duration(milliseconds: 180),
