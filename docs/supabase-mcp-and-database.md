@@ -25,14 +25,35 @@ postgresql://postgres:[YOUR-PASSWORD]@db.xrkwlixlntujkhsaepbh.supabase.co:5432/p
 
 ## Cursor — Supabase MCP (optional)
 
-Official server: `@supabase/mcp-server-supabase`. It talks to Supabase APIs using a **personal access token** (not the DB password):
+Official server: `@supabase/mcp-server-supabase`. It calls Supabase **management / project APIs** using:
 
-1. Create a token: [Supabase account → Access tokens](https://supabase.com/dashboard/account/tokens).
-2. Copy [`config/supabase.mcp.template.json`](../config/supabase.mcp.template.json) to **`.cursor/mcp.json`** in this repo (**`.cursor/mcp.json` is gitignored**).
-3. Replace `REPLACE_WITH_PERSONAL_ACCESS_TOKEN_FROM_SUPABASE_DASHBOARD` with your token.
-4. Restart Cursor → **Settings → Features → MCP** and enable the server.
+| Variable | What to paste |
+|----------|----------------|
+| **`SUPABASE_ACCESS_TOKEN`** | A **[personal access token](https://supabase.com/dashboard/account/tokens)** from **Account Settings → Access Tokens** (your Supabase login), not project API keys. |
 
-If your team shares the repo, each developer keeps their own `.cursor/mcp.json` locally; only the template is tracked.
+**Do not use**
+
+- **`anon`** / **`service_role`** keys under **Project Settings → API** (those are for the Data/Auth REST client, not this MCP server).
+- The **database password**.
+- Putting real secrets in **`config/supabase.mcp.template.json`** — it is tracked by git.
+
+If the dashboard shows prefixed keys (e.g. `sb_publishable_*`, `sb_secret_*`), verify in Supabase docs that the value you copied is documented as **`SUPABASE_ACCESS_TOKEN`** / account access token for MCP—not a Postgres or client key.
+
+### Local setup
+
+1. Create a token: [Supabase → Access tokens](https://supabase.com/dashboard/account/tokens).
+2. Copy the template → **`.cursor/mcp.json`** (gitignored), e.g. PowerShell:
+
+   ```powershell
+   Copy-Item "config\supabase.mcp.template.json" ".cursor\mcp.json" -Force
+   ```
+
+3. Replace **`REPLACE_WITH_PERSONAL_ACCESS_TOKEN_FROM_SUPABASE_DASHBOARD`** in **`.cursor/mcp.json`** only.
+4. Restart Cursor → **Settings → Features → MCP** — enable **`supabase`**.
+
+Keep **`--project-ref=xrkwlixlntujkhsaepbh`** in `args` to scope MCP to this project.
+
+If your team shares the repo, only **`.cursor/mcp.json`** (local) holds the token.
 
 ### Supabase Agent Skills (optional)
 
