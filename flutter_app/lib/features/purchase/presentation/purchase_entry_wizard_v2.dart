@@ -22,6 +22,8 @@ import '../../../core/notifications/local_notifications_service.dart';
 import '../../purchase/domain/purchase_draft.dart';
 import '../../purchase/state/purchase_draft_provider.dart';
 
+import '../../contacts/presentation/broker_wizard_page.dart';
+import '../../contacts/presentation/supplier_create_simple.dart';
 import '../../../shared/widgets/inline_search_field.dart';
 import 'wizard/purchase_fast_items_step.dart';
 import 'wizard/purchase_review_step.dart';
@@ -90,9 +92,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
 
   /// 0 party → 1 fast items → 2 review (+ terms edit).
   int _wizStep = 0;
-
-  final GlobalKey<PurchaseFastItemsStepState> _fastItemsKey =
-      GlobalKey<PurchaseFastItemsStepState>();
 
   final _supplierCtrl = TextEditingController();
   final _brokerCtrl = TextEditingController();
@@ -586,8 +585,12 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     if (!mounted) return;
     Map<String, dynamic>? result;
     try {
-      result = await GoRouter.of(context).push<Map<String, dynamic>?>(
-        '/suppliers/quick-create',
+      result = await Navigator.of(context, rootNavigator: true)
+          .push<Map<String, dynamic>?>(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => const SupplierCreateSimple(),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -625,8 +628,13 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     if (!mounted) return;
     Map<String, dynamic>? result;
     try {
-      result = await GoRouter.of(context).push<Map<String, dynamic>?>(
-        '/brokers/quick-create',
+      result = await Navigator.of(context, rootNavigator: true)
+          .push<Map<String, dynamic>?>(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) =>
+              const BrokerWizardPage(selectionReturnOnSave: true),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -819,7 +827,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     });
     _onDraftChanged();
     HapticFeedback.selectionClick();
-    _maybeAutoAdvanceFromParty();
     unawaited(_openCatalogLinePrefillIfNeeded());
   }
 
@@ -878,7 +885,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     });
     _onDraftChanged();
     HapticFeedback.selectionClick();
-    _maybeAutoAdvanceFromParty();
   }
 
   Future<void> _openItemSheet(
@@ -1316,19 +1322,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     }
   }
 
-  void _maybeAutoAdvanceFromParty() {
-    if (!mounted || _wizStep != 0) return;
-    final g = ref.read(purchaseStepGatesProvider);
-    if (!g.from0) return;
-    setState(() {
-      _wizStep = 1;
-      _supplierFieldError = null;
-      _brokerFieldError = null;
-      _inlineSaveError = null;
-    });
-    FocusScope.of(context).unfocus();
-  }
-
   void _partyAdvanceIfValid() {
     final d = ref.read(purchaseDraftProvider);
     final hasS = d.supplierId != null && d.supplierId!.trim().isNotEmpty;
@@ -1375,19 +1368,10 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
   }
 
   Widget _wizBody(BuildContext context, List<Map<String, dynamic>> catalog, bool isEdit) {
-    final session = ref.read(sessionProvider);
-    final bid = session?.primaryBusiness.id;
-    final api = ref.read(hexaApiProvider);
-
     Widget step;
     switch (_wizStep) {
       case 0:
-        step = SingleChildScrollView(
-          physics: const ClampingScrollPhysics(),
-          keyboardDismissBehavior:
-              ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: const EdgeInsets.only(top: 8, bottom: 12),
-          child: PurchasePartyStep(
+        step = PurchasePartyStep(
             isEdit: isEdit,
             loadedDerivedStatus: _loadedDerivedStatus,
             loadedRemaining: _loadedRemaining,
@@ -1432,39 +1416,11 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
             openQuickBrokerCreate: _openQuickBrokerCreate,
             brokerRowId: _brokerRowId,
             brokerMapLabel: _brokerMapLabel,
-          ),
-        );
+          );
         break;
       case 1:
         step = PurchaseFastItemsStep(
-          key: _fastItemsKey,
-          catalog: catalog,
-          businessIdOrNull: bid,
-          resolveLastTradeDefaults: (cid) async {
-            if (bid == null) return {'source': 'none'};
-            final d = ref.read(purchaseDraftProvider);
-            return api.lastTradePurchaseDefaults(
-              businessId: bid,
-              catalogItemId: cid,
-              supplierId: d.supplierId,
-              brokerId: d.brokerId,
-            );
-          },
-          resolveCatalogItemRow: (cid) async {
-            if (bid == null || cid.isEmpty) return {};
-            try {
-              return await api.getCatalogItem(
-                businessId: bid,
-                itemId: cid,
-              );
-            } catch (_) {
-              return {};
-            }
-          },
           onDraftChanged: _onDraftChanged,
-          defaultsSideEffect: session == null
-              ? null
-              : _applyHeaderDefaultsFromLastTrade,
           openAdvancedItemEditor: ({editIndex, initialOverride}) =>
               _openItemSheet(
                 catalog,
@@ -1475,6 +1431,9 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         break;
       case 2:
         step = PurchaseReviewStep(
+          isEdit: isEdit,
+          previewHumanId: _previewHumanId,
+          editHumanId: _editHumanId,
           paymentDaysCtrl: _paymentDaysCtrl,
           deliveredRateCtrl: _deliveredRateCtrl,
           billtyRateCtrl: _billtyRateCtrl,
@@ -1495,19 +1454,14 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         step = const SizedBox.shrink();
     }
 
-    final insetBottom = MediaQuery.viewInsetsOf(context).bottom;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 200),
-        switchInCurve: Curves.easeOut,
-        switchOutCurve: Curves.easeIn,
-        child: Padding(
-          key: ValueKey<int>(_wizStep),
-          padding: EdgeInsets.only(bottom: insetBottom > 0 ? 8 : 0),
-          child: step,
-        ),
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 200),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      child: Padding(
+        key: ValueKey<int>(_wizStep),
+        padding: EdgeInsets.zero,
+        child: step,
       ),
     );
   }
@@ -1515,7 +1469,8 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
   Widget _wizardFooterChrome(List<Map<String, dynamic>> catalog, bool isEdit) {
     final gates = ref.watch(purchaseStepGatesProvider);
     final saveVal = ref.watch(purchaseSaveValidationProvider);
-    final canAddItem = gates.from0 && !_isSaving;
+    final linesEmpty =
+        ref.watch(purchaseDraftProvider.select((d) => d.lines.isEmpty));
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -1539,36 +1494,26 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
             child: FilledButton(
               onPressed: (_isSaving || !gates.from0) ? null : _wizNext,
               child: const Text(
-                'Continue',
+                'Continue →',
                 style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
               ),
             ),
           ),
         ],
         if (_wizStep == 1) ...[
-          SizedBox(
-            height: 48,
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed:
-                  (_isSaving || !canAddItem) ? null : () => _fastItemsKey.currentState?.resetQuickAddRow(),
-              child: const Text(
-                'Add more items',
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            height: 56,
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: (_isSaving || !gates.from1)
-                  ? null
-                  : _wizNext,
-              child: const Text(
-                'Done',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+          Opacity(
+            opacity:
+                !_isSaving && linesEmpty && !gates.from1 ? 0.4 : 1.0,
+            child: SizedBox(
+              height: 56,
+              width: double.infinity,
+              child: FilledButton(
+                onPressed:
+                    (_isSaving || !gates.from1) ? null : _wizNext,
+                child: const Text(
+                  'Done →',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                ),
               ),
             ),
           ),
@@ -1601,7 +1546,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
                       ),
                     )
                   : const Text(
-                      'Save purchase',
+                      'Save Purchase',
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 16,
@@ -1699,93 +1644,120 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
               _ => 'Edit purchase — Review',
             };
 
-    Widget purchaseWizardSafeBody() {
-      return SafeArea(
-        bottom: false,
-        child: Builder(
-          builder: (context) {
-            if (_isBootstrapping) {
-              return const Center(child: CircularProgressIndicator());
-            }
-
-            if (_editBootstrapError != null) {
-              final err = _editBootstrapError!;
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.cloud_off_rounded,
-                          size: 48, color: Colors.orange.shade800),
-                      const SizedBox(height: 16),
-                      Text(
-                        err,
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyLarge,
-                      ),
-                      const SizedBox(height: 24),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          FilledButton(
-                            onPressed: () => _bootstrap(),
-                            child: const Text('Retry'),
-                          ),
-                          const SizedBox(width: 12),
-                          OutlinedButton(
-                            onPressed: () => context.pop(),
-                            child: const Text('Go back'),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }
-
-            final emptyCache = catalog.isEmpty;
-            final showTopLoad = catalogAsync.isLoading && emptyCache;
-            final showCatalogErrorStrip = catalogAsync.hasError && emptyCache;
-
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (showTopLoad)
-                  const SizedBox(
-                    height: 3,
-                    child: LinearProgressIndicator(minHeight: 3),
-                  ),
-                if (showCatalogErrorStrip)
-                  Material(
-                    color: Colors.orange.shade50,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      child: Text(
-                        'Catalog could not refresh. ${catalogAsync.error}',
-                        style: TextStyle(
-                            color: Colors.orange.shade900, fontSize: 12),
-                      ),
-                    ),
-                  ),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: _wizBody(context, catalog, isEdit),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-      );
-    }
-
     final theme = Theme.of(context);
     final showWizardFooter =
         !_isBootstrapping && _editBootstrapError == null;
+
+    Widget purchaseWizardMainContent() {
+      return Builder(
+        builder: (bodyContext) {
+          if (_isBootstrapping) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (_editBootstrapError != null) {
+            final err = _editBootstrapError!;
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.cloud_off_rounded,
+                        size: 48, color: Colors.orange.shade800),
+                    const SizedBox(height: 16),
+                    Text(
+                      err,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(bodyContext).textTheme.bodyLarge,
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        FilledButton(
+                          onPressed: () => _bootstrap(),
+                          child: const Text('Retry'),
+                        ),
+                        const SizedBox(width: 12),
+                        OutlinedButton(
+                          onPressed: () => bodyContext.pop(),
+                          child: const Text('Go back'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          final emptyCache = catalog.isEmpty;
+          final showTopLoad = catalogAsync.isLoading && emptyCache;
+          final showCatalogErrorStrip =
+              catalogAsync.hasError && emptyCache;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (showTopLoad)
+                const SizedBox(
+                  height: 3,
+                  child: LinearProgressIndicator(minHeight: 3),
+                ),
+              if (showCatalogErrorStrip)
+                Material(
+                  color: Colors.orange.shade50,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
+                    child: Text(
+                      'Catalog could not refresh. ${catalogAsync.error}',
+                      style: TextStyle(
+                          color: Colors.orange.shade900, fontSize: 12),
+                    ),
+                  ),
+                ),
+              Expanded(
+                child: SingleChildScrollView(
+                  physics: const ClampingScrollPhysics(),
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: _wizBody(bodyContext, catalog, isEdit),
+                ),
+              ),
+              if (showWizardFooter)
+                AnimatedPadding(
+                  duration: const Duration(milliseconds: 140),
+                  curve: Curves.easeOut,
+                  padding: EdgeInsets.only(
+                    left: 16,
+                    right: 16,
+                    bottom:
+                        MediaQuery.viewInsetsOf(bodyContext).bottom + 16,
+                    top: 8,
+                  ),
+                  child: Material(
+                    elevation: 8,
+                    surfaceTintColor: Colors.transparent,
+                    color: theme.colorScheme.surface,
+                    child: SafeArea(
+                      top: false,
+                      child: Padding(
+                        padding:
+                            const EdgeInsets.fromLTRB(8, 4, 8, 6),
+                        child:
+                            _wizardFooterChrome(catalog, isEdit),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
+      );
+    }
 
     return PopScope(
       canPop: isEdit || !_formDirty,
@@ -1799,7 +1771,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         await _handleWizardExitFromRoot();
       },
       child: Scaffold(
-        resizeToAvoidBottomInset: true,
+        resizeToAvoidBottomInset: false,
         appBar: AppBar(
           title: Text(appBarTitle),
           elevation: 0,
@@ -1808,26 +1780,14 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
             onPressed: _isSaving ? null : () => _wizBack(),
           ),
         ),
-        body: GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onTap: () => FocusScope.of(context).unfocus(),
-          child: purchaseWizardSafeBody(),
+        body: SafeArea(
+          bottom: false,
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: () => FocusScope.of(context).unfocus(),
+            child: purchaseWizardMainContent(),
+          ),
         ),
-        bottomNavigationBar: showWizardFooter
-            ? Material(
-                elevation: 8,
-                surfaceTintColor: Colors.transparent,
-                color: theme.colorScheme.surface,
-                child: SafeArea(
-                  top: false,
-                  minimum: const EdgeInsets.only(bottom: 6),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
-                    child: _wizardFooterChrome(catalog, isEdit),
-                  ),
-                ),
-              )
-            : null,
       ),
     );
   }

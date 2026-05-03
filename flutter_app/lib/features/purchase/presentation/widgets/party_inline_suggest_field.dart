@@ -300,33 +300,32 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     _lastPickedLabel = it.label.trim();
     _filterQuery = it.label.trim().toLowerCase();
 
+    // Sync controller update first — use .value to avoid double-trigger of text listeners
     widget.controller.value = TextEditingValue(
       text: it.label,
       selection: TextSelection.collapsed(offset: it.label.length),
     );
 
-    try {
+    // Call parent SYNCHRONOUSLY before any unfocus or setState.
+    // This commits the Riverpod draft while the widget tree is stable.
+    if (widget.onSelected != null) {
       _pickInProgress = true;
-      widget.onSelected?.call(it);
-    } catch (e, st) {
-      FlutterError.reportError(
-        FlutterErrorDetails(
-          exception: e,
-          stack: st,
-          library: 'party_inline_suggest_field',
-          context: ErrorDescription('onSelected callback'),
-        ),
-      );
-    } finally {
-      _pickInProgress = false;
+      try {
+        widget.onSelected!.call(it);
+      } finally {
+        _pickInProgress = false;
+      }
     }
 
+    // Rebuild to hide the panel
     if (mounted) setState(() {});
 
+    // Unfocus AFTER parent is notified, deferred to avoid gesture arena conflicts
     if (!keepFocus) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         widget.focusNode.unfocus();
+        FocusManager.instance.primaryFocus?.unfocus();
       });
     }
   }
@@ -383,9 +382,12 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
         onTap: cb == null
             ? null
             : () {
-                widget.focusNode.unfocus();
-                FocusManager.instance.primaryFocus?.unfocus();
-                WidgetsBinding.instance.addPostFrameCallback((_) => cb());
+                // Unfocus deferred so the keyboard dismisses cleanly before navigation
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  widget.focusNode.unfocus();
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  Future.delayed(const Duration(milliseconds: 80), () => cb());
+                });
               },
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
@@ -595,6 +597,9 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
           if (hasPanelSource) ...[
             const SizedBox(height: 8),
             Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(context).height * 0.35,
+              ),
               decoration: BoxDecoration(
                 color: cs.surface,
                 borderRadius: BorderRadius.circular(12),
@@ -602,19 +607,21 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
                 border: Border.all(color: borderColor.withValues(alpha: 0.45)),
               ),
               clipBehavior: Clip.antiAlias,
-              constraints: BoxConstraints(maxHeight: widget.maxPanelAbs),
-              child: ListView(
-                shrinkWrap: true,
+              child: SingleChildScrollView(
                 physics: const ClampingScrollPhysics(),
-                children: [
-                  for (final it in rows) _buildSuggestionTile(cs, it),
-                  if (rows.isNotEmpty &&
-                      showAddFocused &&
-                      widget.onAddRow != null)
-                    Divider(height: 1, thickness: 1, color: borderColor),
-                  if (showAddFocused && widget.onAddRow != null)
-                    _buildAddRowTile(cs),
-                ],
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (final it in rows) _buildSuggestionTile(cs, it),
+                    if (rows.isNotEmpty &&
+                        showAddFocused &&
+                        widget.onAddRow != null)
+                      Divider(height: 1, thickness: 1, color: borderColor),
+                    if (showAddFocused && widget.onAddRow != null)
+                      _buildAddRowTile(cs),
+                  ],
+                ),
               ),
             ),
           ],

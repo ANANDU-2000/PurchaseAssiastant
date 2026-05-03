@@ -992,8 +992,12 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     }
   }
 
-  void _onCatalogPick(InlineSearchItem it) {
-    unawaited(_onCatalogPickAsync(it));
+  void _onItemSelected(String id, String name) {
+    if (id.isEmpty) return;
+    unawaited(_onCatalogPickAsync(InlineSearchItem(id: id, label: name)));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) FocusScope.of(context).requestFocus(_qtyFocus);
+    });
   }
 
   /// Seeds ₹/kg + bag totals from catalog default landing/selling vs [kg].
@@ -1501,51 +1505,33 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       ],
       KeyedSubtree(
         key: _itemKey,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: PartyInlineSuggestField(
-                controller: _itemCtrl,
-                focusNode: _itemFocus,
-                hintText: 'Search item (name, code, HSN)…',
-                prefixIcon:
-                    const Icon(Icons.inventory_2_outlined, size: 18),
-                items: searchItems,
-                minQueryLength: 1,
-                maxMatches: 16,
-                dense: true,
-                textInputAction: TextInputAction.next,
-                onSubmitted: () => FocusScope.of(context).requestFocus(_qtyFocus),
-                onSelected: _onCatalogPick,
-                showAddRow: false,
-              ),
-            ),
-            if (widget.navigateCatalogQuickAddItem != null) ...[
-              const SizedBox(width: 4),
-              IconButton(
-                tooltip: 'New catalog item',
-                icon: const Icon(Icons.add_circle_outline,
-                    color: Color(0xFF17A8A7)),
-                onPressed: () async {
-                  try {
-                    final res = await widget.navigateCatalogQuickAddItem!();
-                    if (!mounted || res == null) return;
-                    final id = res['id']?.toString() ?? '';
-                    if (id.isEmpty) return;
-                    unawaited(
-                      _onCatalogPickAsync(
-                        InlineSearchItem(
-                          id: id,
-                          label: res['name']?.toString() ?? 'Item',
-                        ),
-                      ),
-                    );
-                  } catch (_) {}
+        child: PartyInlineSuggestField(
+          controller: _itemCtrl,
+          focusNode: _itemFocus,
+          hintText: 'Search item (name, code, HSN)…',
+          prefixIcon: const Icon(Icons.inventory_2_outlined),
+          minQueryLength: 1,
+          maxMatches: 8,
+          dense: true,
+          items: searchItems,
+          textInputAction: TextInputAction.next,
+          onSubmitted: () =>
+              FocusScope.of(context).requestFocus(_qtyFocus),
+          showAddRow: widget.navigateCatalogQuickAddItem != null,
+          addRowLabel: 'New catalog item…',
+          onAddRow: widget.navigateCatalogQuickAddItem == null
+              ? null
+              : () async {
+                  final r = await widget.navigateCatalogQuickAddItem!();
+                  if (r != null && mounted) {
+                    final id = r['id']?.toString() ?? '';
+                    final nm = r['name']?.toString() ?? '';
+                    if (id.isNotEmpty) _onItemSelected(id, nm);
+                  }
                 },
-              ),
-            ],
-          ],
+          onSelected: (it) {
+            _onItemSelected(it.id, it.label);
+          },
         ),
       ),
               if (_errItem != null)

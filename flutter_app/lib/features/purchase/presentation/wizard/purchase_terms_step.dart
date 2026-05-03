@@ -19,6 +19,7 @@ class PurchaseTermsStep extends ConsumerStatefulWidget {
     required this.freightType,
     required this.onFreightTypeChanged,
     required this.onDraftChanged,
+    this.hidePaymentDaysAndCommission = false,
   });
 
   final TextEditingController paymentDaysCtrl;
@@ -31,6 +32,7 @@ class PurchaseTermsStep extends ConsumerStatefulWidget {
   final String freightType;
   final ValueChanged<String> onFreightTypeChanged;
   final VoidCallback onDraftChanged;
+  final bool hidePaymentDaysAndCommission;
 
   @override
   ConsumerState<PurchaseTermsStep> createState() => _PurchaseTermsStepState();
@@ -124,6 +126,7 @@ class _PurchaseTermsStepState extends ConsumerState<PurchaseTermsStep> {
                   ),
                 ),
               ),
+            if (!widget.hidePaymentDaysAndCommission) ...[
             SizedBox(
               height: kPurchaseFieldHeight + 18,
               child: TextField(
@@ -148,6 +151,7 @@ class _PurchaseTermsStepState extends ConsumerState<PurchaseTermsStep> {
               ),
             ],
             const SizedBox(height: 10),
+            ],
             Row(
               children: [
                 Expanded(
@@ -232,6 +236,7 @@ class _PurchaseTermsStepState extends ConsumerState<PurchaseTermsStep> {
                 ),
               ],
             ),
+            if (!widget.hidePaymentDaysAndCommission) ...[
             const SizedBox(height: 10),
             SizedBox(
               height: kPurchaseFieldHeight + 18,
@@ -247,6 +252,7 @@ class _PurchaseTermsStepState extends ConsumerState<PurchaseTermsStep> {
                 },
               ),
             ),
+            ],
             const SizedBox(height: 10),
             SizedBox(
               height: kPurchaseFieldHeight + 18,

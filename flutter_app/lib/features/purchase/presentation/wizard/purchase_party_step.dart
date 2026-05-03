@@ -732,12 +732,13 @@ class PurchasePartyStep extends ConsumerWidget {
         ),
         const SizedBox(height: 8),
         supplierCell,
-        const SizedBox(height: 16),
+        const SizedBox(height: 20),
         Text(
           'Broker (optional)',
-          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+          style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Colors.black54),
         ),
         const SizedBox(height: 8),
         brokerCell,
@@ -747,6 +748,12 @@ class PurchasePartyStep extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final showClearSupplier = ref.watch(
+      purchaseDraftProvider.select(
+        (d) => d.supplierId != null && d.supplierId!.trim().isNotEmpty,
+      ),
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -759,8 +766,24 @@ class PurchasePartyStep extends ConsumerWidget {
           const SizedBox(height: 4),
         ],
         _compactMeta(context, ref),
-        const SizedBox(height: 6),
+        const SizedBox(height: 24),
         _partyFieldsColumn(context, ref),
+        if (showClearSupplier)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: GestureDetector(
+              onTap: onSupplierClear,
+              child: Text(
+                'Clear supplier',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Theme.of(context).colorScheme.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        const SizedBox(height: 260),
       ],
     );
   }
