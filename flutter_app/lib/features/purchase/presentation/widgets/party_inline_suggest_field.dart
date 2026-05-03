@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 import '../../../../shared/widgets/inline_search_field.dart';
 
 /// True if [qLower] is empty or matches [label] by **whole-label prefix** or
@@ -45,7 +46,14 @@ class PartyInlineSuggestField extends StatefulWidget {
     this.onAddRow,
     this.dense = false,
     this.prefixIcon,
-    this.maxPanelAbs = 200,
+    this.maxPanelAbs = 260,
+    this.fieldBorderRadius = 8,
+    this.idleOutlineColor,
+    this.focusedOutlineColor,
+    this.fillColor,
+    this.minFieldHeight = 0,
+    this.lockedSelectionLabel,
+    this.onLockedSelectionClear,
   })  : assert(minQueryLength >= 0),
         assert(
           !showAddRow || (addRowLabel != null && onAddRow != null),
@@ -73,6 +81,25 @@ class PartyInlineSuggestField extends StatefulWidget {
 
   /// Hard cap on suggestion panel height (default 200).
   final double maxPanelAbs;
+
+  /// Rounded rectangle around the input (wizard party step uses 12).
+  final double fieldBorderRadius;
+
+  /// Outline when unfocused; defaults to neutral grey per theme.
+  final Color? idleOutlineColor;
+
+  /// Outline when focused; defaults to [ColorScheme.primary].
+  final Color? focusedOutlineColor;
+
+  final Color? fillColor;
+
+  /// When > 0, field row is given at least this height (wizard uses 56).
+  final double minFieldHeight;
+
+  /// Non-empty shows a compact “picked” strip until the user taps to search again.
+  final String? lockedSelectionLabel;
+
+  final VoidCallback? onLockedSelectionClear;
 
   @override
   State<PartyInlineSuggestField> createState() =>
@@ -233,8 +260,9 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   }
 
   EdgeInsets _scrollPad(BuildContext context) {
+    final kb = MediaQuery.viewInsetsOf(context).bottom;
     final safe = MediaQuery.paddingOf(context).bottom;
-    return EdgeInsets.only(bottom: 96 + safe);
+    return EdgeInsets.only(bottom: kb + 240 + safe);
   }
 
   void _tryBlurExactPick() {
@@ -272,51 +300,41 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     _lastPickedLabel = it.label.trim();
     _filterQuery = it.label.trim().toLowerCase();
 
-    // Always sync the visible field immediately — deferring this allowed the IME /
-    // one frame of rebuild to leave the old query visible so it looked like tap did nothing.
-    widget.controller.text = it.label;
-    widget.controller.selection = TextSelection.fromPosition(
-      TextPosition(offset: widget.controller.text.length),
+    widget.controller.value = TextEditingValue(
+      text: it.label,
+      selection: TextSelection.collapsed(offset: it.label.length),
     );
+
+    try {
+      _pickInProgress = true;
+      widget.onSelected?.call(it);
+    } catch (e, st) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: e,
+          stack: st,
+          library: 'party_inline_suggest_field',
+          context: ErrorDescription('onSelected callback'),
+        ),
+      );
+    } finally {
+      _pickInProgress = false;
+    }
+
     if (mounted) setState(() {});
 
-    void notifyParent() {
-      if (!mounted) return;
-      _pickInProgress = true;
-      try {
-        widget.onSelected?.call(it);
-      } catch (e, st) {
-        FlutterError.reportError(
-          FlutterErrorDetails(
-            exception: e,
-            stack: st,
-            library: 'party_inline_suggest_field',
-            context: ErrorDescription('onSelected callback'),
-          ),
-        );
-      } finally {
-        _pickInProgress = false;
-      }
-      if (mounted) setState(() {});
-    }
-
-    // Unfocus first, then notify on the next frame. Calling [onSelected] synchronously
-    // inside the tap handler (before unfocus) can break on some devices — parent
-    // setState + Riverpod during the gesture caused "tap does nothing" / stuck panel.
     if (!keepFocus) {
-      widget.focusNode.unfocus();
-      FocusManager.instance.primaryFocus?.unfocus();
-      WidgetsBinding.instance.addPostFrameCallback((_) => notifyParent());
-      return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        widget.focusNode.unfocus();
+      });
     }
-    notifyParent();
   }
 
   Widget _buildSuggestionTile(ColorScheme cs, InlineSearchItem it) {
     return Material(
       color: cs.surface,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
+      child: InkWell(
         onTap: () => _pick(it, keepFocus: false),
         child: Padding(
           padding: EdgeInsets.symmetric(
@@ -361,8 +379,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     final cb = widget.onAddRow;
     return Material(
       color: cs.surface,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
+      child: InkWell(
         onTap: cb == null
             ? null
             : () {
@@ -420,11 +437,17 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
         widget.focusNode.hasFocus &&
         widget.onAddRow != null;
 
-    final hasPanelSource = !_suppressPanelAfterPick &&
+    final lockLabel = widget.lockedSelectionLabel?.trim();
+    final locked = lockLabel != null &&
+        lockLabel.isNotEmpty &&
+        !widget.focusNode.hasFocus;
+
+    final hasPanelSource = !locked &&
+        !_suppressPanelAfterPick &&
         widget.focusNode.hasFocus &&
         (rows.isNotEmpty || showAddFocused);
 
-    final borderColor = Colors.grey.shade300;
+    final borderColor = widget.idleOutlineColor ?? Colors.grey.shade200;
     final focused = widget.focusNode.hasFocus;
 
     final vPad = widget.dense ? 12.0 : 14.0;
@@ -437,7 +460,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
         child: IconTheme.merge(
           data: IconThemeData(
             size: widget.dense ? 18 : 22,
-            color: cs.primary.withValues(alpha: 0.75),
+            color: HexaColors.brandPrimary.withValues(alpha: 0.82),
           ),
           child: widget.prefixIcon!,
         ),
@@ -461,7 +484,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
           isDense: true,
           hintStyle: TextStyle(
             fontSize: widget.dense ? 13 : 14,
-            color: Colors.grey.shade600,
+            color: Colors.grey.shade500,
           ),
           border: InputBorder.none,
           isCollapsed: false,
@@ -470,17 +493,25 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       ),
     );
 
-    field = AnimatedContainer(
+    final outlineClr = focused
+        ? (widget.focusedOutlineColor ?? HexaColors.brandPrimary)
+        : borderColor;
+
+    Widget innerInput = AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeOut,
+      constraints: widget.minFieldHeight > 0
+          ? BoxConstraints(minHeight: widget.minFieldHeight)
+          : null,
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(8),
+        color: widget.fillColor ?? Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(widget.fieldBorderRadius),
         border: Border.all(
-          color: focused ? cs.primary : borderColor,
+          color: outlineClr,
           width: focused ? 2 : 1,
         ),
       ),
+      alignment: Alignment.centerLeft,
       child: leading == null
           ? field
           : Padding(
@@ -494,6 +525,57 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
               ),
             ),
     );
+
+    if (locked && lockLabel != null) {
+      final clearCb = widget.onLockedSelectionClear;
+      innerInput = AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        constraints: BoxConstraints(minHeight: widget.minFieldHeight > 0 ? widget.minFieldHeight : 52),
+        decoration: BoxDecoration(
+          color: widget.fillColor ?? Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(widget.fieldBorderRadius),
+          border: Border.all(color: borderColor, width: 1),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(widget.fieldBorderRadius),
+          onTap: () => widget.focusNode.requestFocus(),
+          child: Padding(
+            padding: EdgeInsets.only(left: hPad, right: 2),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.check_circle,
+                  color: HexaColors.brandPrimary,
+                  size: widget.dense ? 20 : 22,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    lockLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: widget.dense ? 14 : 15,
+                      color: cs.onSurface,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Clear',
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(Icons.close, color: Colors.grey.shade700, size: 20),
+                  onPressed: clearCb,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final fieldWrapped = innerInput;
 
     final cardShadow = [
       BoxShadow(
@@ -509,7 +591,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          field,
+          fieldWrapped,
           if (hasPanelSource) ...[
             const SizedBox(height: 8),
             Container(
@@ -520,11 +602,10 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
                 border: Border.all(color: borderColor.withValues(alpha: 0.45)),
               ),
               clipBehavior: Clip.antiAlias,
-              // Single scroll ancestor: expanded Column (no nested ListView).
-              // Parent wizard `SingleChildScrollView` handles overflow; taps reach tiles reliably.
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+              constraints: BoxConstraints(maxHeight: widget.maxPanelAbs),
+              child: ListView(
+                shrinkWrap: true,
+                physics: const ClampingScrollPhysics(),
                 children: [
                   for (final it in rows) _buildSuggestionTile(cs, it),
                   if (rows.isNotEmpty &&

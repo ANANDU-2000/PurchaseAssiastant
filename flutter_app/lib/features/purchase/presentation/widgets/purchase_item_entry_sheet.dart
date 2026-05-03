@@ -11,6 +11,7 @@ import '../../../../core/theme/hexa_colors.dart';
 import '../../../../core/utils/unit_classifier.dart';
 import '../../../../shared/widgets/inline_search_field.dart';
 import '../../../../shared/widgets/keyboard_safe_form_viewport.dart';
+import 'party_inline_suggest_field.dart';
 
 /// One purchase line: catalog search, qty/unit, landing, selling, optional
 /// tax/discount (per kg for bag/sack with a catalog kg snapshot, else per unit).
@@ -1504,16 +1505,20 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: InlineSearchField(
+              child: PartyInlineSuggestField(
                 controller: _itemCtrl,
                 focusNode: _itemFocus,
-                placeholder: 'Search item (name, code, HSN)…',
+                hintText: 'Search item (name, code, HSN)…',
                 prefixIcon:
                     const Icon(Icons.inventory_2_outlined, size: 18),
                 items: searchItems,
                 minQueryLength: 1,
-                focusAfterSelection: _qtyFocus,
+                maxMatches: 16,
+                dense: true,
+                textInputAction: TextInputAction.next,
+                onSubmitted: () => FocusScope.of(context).requestFocus(_qtyFocus),
                 onSelected: _onCatalogPick,
+                showAddRow: false,
               ),
             ),
             if (widget.navigateCatalogQuickAddItem != null) ...[

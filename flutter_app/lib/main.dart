@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,6 +16,7 @@ import 'core/notifications/local_notifications_service.dart';
 import 'core/platform/remove_boot_overlay.dart';
 import 'core/providers/prefs_provider.dart'
     show kNotificationsOptInKey, sharedPreferencesProvider;
+import 'core/providers/api_degraded_provider.dart';
 import 'core/maintenance/maintenance_payment_repository.dart';
 import 'core/services/offline_store.dart';
 
@@ -75,14 +77,6 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
         overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
       );
 
-      unawaited(() async {
-        try {
-          final api = container.read(hexaApiProvider);
-          await ApiWarmupService.pingHealth(api);
-          ApiWarmupService.startPeriodicHealth(api);
-        } catch (_) {}
-      }());
-
       try {
         await container.read(sessionProvider.notifier).restore().timeout(
               kIsWeb ? const Duration(seconds: 20) : const Duration(seconds: 25),
@@ -90,6 +84,23 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
       } catch (_) {
         // Offline / timeout — splash/login handle retry.
       }
+
+      unawaited(() async {
+        try {
+          final api = container.read(hexaApiProvider);
+          await ApiWarmupService.pingHealth(api);
+          ApiWarmupService.startPeriodicHealth(api);
+          try {
+            await api.healthReady().timeout(const Duration(seconds: 8));
+          } on DioException catch (e) {
+            if (e.response?.statusCode == 503) {
+              container.read(apiDegradedProvider.notifier).notifyDegraded(
+                    'Database is still starting — we will retry reads automatically.',
+                  );
+            }
+          }
+        } catch (_) {}
+      }());
 
       if (!mounted) return;
       setState(() => _container = container);

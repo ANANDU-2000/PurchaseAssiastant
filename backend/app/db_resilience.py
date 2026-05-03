@@ -44,9 +44,10 @@ def _transient(exc: BaseException) -> bool:
     return False
 
 
-async def execute_with_retry(coro_factory: Callable[[], Awaitable[T]], *, attempts: int = 3) -> T:
+async def execute_with_retry(coro_factory: Callable[[], Awaitable[T]], *, attempts: int = 4) -> T:
     """Run coroutine_factory() up to [attempts] times on transient connection/timeout failures."""
     last: BaseException | None = None
+    schedule = (0.1, 0.3, 0.9)
     for attempt in range(attempts):
         try:
             return await coro_factory()
@@ -54,7 +55,8 @@ async def execute_with_retry(coro_factory: Callable[[], Awaitable[T]], *, attemp
             last = e
             if attempt == attempts - 1 or not _transient(e):
                 raise
-            backoff = 0.05 * (2**attempt) + random.uniform(0, 0.05)
+            base = schedule[min(attempt, len(schedule) - 1)]
+            backoff = base + random.uniform(0, 0.06)
             logger.warning(
                 "db transient retry | attempt=%s/%s sleep=%.3fs | %s",
                 attempt + 1,

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -12,6 +13,7 @@ import '../../../core/config/app_config.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
+import '../../../core/services/offline_store.dart';
 import '../../../core/providers/cloud_expense_provider.dart';
 import '../../../core/providers/purchase_post_save_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart'
@@ -219,6 +221,10 @@ class _HomePageState extends ConsumerState<HomePage>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: _ResumePurchaseDraftRow(),
+            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: _PeriodStrip(
@@ -495,8 +501,81 @@ class _HomePageState extends ConsumerState<HomePage>
       scrolledUnderElevation: 0,
       title: const SizedBox.shrink(),
       actions: [
+        IconButton(
+          tooltip: 'Scan bill',
+          icon: const Icon(Icons.document_scanner_outlined),
+          onPressed: () => context.pushNamed('purchase_scan'),
+        ),
         ShellQuickRefActions(onRefresh: _refresh),
       ],
+    );
+  }
+}
+
+class _ResumePurchaseDraftRow extends ConsumerWidget {
+  const _ResumePurchaseDraftRow();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(sessionProvider);
+    if (s == null) return const SizedBox.shrink();
+    final raw = OfflineStore.getPurchaseWizardDraft(s.primaryBusiness.id);
+    if (raw == null || raw.isEmpty) return const SizedBox.shrink();
+
+    var subtitle = 'Continue where you left off';
+    try {
+      final o = jsonDecode(raw);
+      if (o is Map) {
+        final meta = o['draftWizardMeta'];
+        if (meta is Map && meta['savedAt'] != null) {
+          final dt = DateTime.tryParse(meta['savedAt'].toString());
+          if (dt != null) {
+            subtitle = 'Saved ${DateFormat('MMM d · h:mm a').format(dt)}';
+          }
+        }
+      }
+    } catch (_) {}
+
+    return Material(
+      color: const Color(0xFFE8F9F7),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => context.pushNamed(
+          'purchase_new',
+          extra: <String, dynamic>{'resumeDraft': true},
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              const Icon(Icons.edit_note_rounded, color: HexaColors.brandPrimary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Resume purchase draft',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: Colors.grey.shade700,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: Colors.grey.shade600),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

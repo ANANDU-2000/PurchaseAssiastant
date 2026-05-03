@@ -211,7 +211,7 @@ class HexaApi {
         },
       ),
     );
-    _dio.interceptors.add(DioAutoRetryInterceptor(_dio, maxAttempts: 3));
+    _dio.interceptors.add(DioAutoRetryInterceptor(_dio, maxAttempts: 4));
     final banner = _onConnectivityBanner;
     if (banner != null) {
       _dio.interceptors.add(_BusinessConnectivityBannerInterceptor(banner));
@@ -229,6 +229,12 @@ class HexaApi {
   /// Public health check (no auth). Used for AI status indicator.
   Future<Map<String, dynamic>> health() async {
     final res = await _plain.get<Map<String, dynamic>>('/health');
+    return res.data ?? <String, dynamic>{};
+  }
+
+  /// DB readiness probe (503 when DB unreachable).
+  Future<Map<String, dynamic>> healthReady() async {
+    final res = await _plain.get<Map<String, dynamic>>('/health/ready');
     return res.data ?? <String, dynamic>{};
   }
 

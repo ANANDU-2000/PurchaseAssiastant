@@ -48,7 +48,6 @@ class PurchasePartyStep extends ConsumerWidget {
     required this.openQuickBrokerCreate,
     required this.brokerRowId,
     required this.brokerMapLabel,
-    this.onOpenScanBill,
   });
 
   final bool isEdit;
@@ -100,9 +99,6 @@ class PurchasePartyStep extends ConsumerWidget {
   final Future<void> Function(List<Map<String, dynamic>>) openQuickBrokerCreate;
   final String Function(Map<String, dynamic>) brokerRowId;
   final String Function(Map<String, dynamic>) brokerMapLabel;
-
-  /// Optional: open inline bill scanner (wizard hosts bottom sheet).
-  final VoidCallback? onOpenScanBill;
 
   Future<void> _pickDate(BuildContext context, WidgetRef ref) async {
     final draft = ref.read(purchaseDraftProvider);
@@ -308,6 +304,34 @@ class PurchasePartyStep extends ConsumerWidget {
 
   /// Full-width supplier (with suggestions under field), spacing, full-width broker.
   Widget _partyFieldsColumn(BuildContext context, WidgetRef ref) {
+    final draftParty = ref.watch(purchaseDraftProvider);
+    String? supplierLockedLabel() {
+      final sid = draftParty.supplierId?.trim();
+      if (sid == null || sid.isEmpty) return null;
+      final n = (draftParty.supplierName ?? '').trim();
+      if (n.isNotEmpty) return n;
+      final t = supplierCtrl.text.trim();
+      return t.isNotEmpty ? t : 'Supplier';
+    }
+
+    String? brokerLockedLabel() {
+      final bid = draftParty.brokerId?.trim();
+      if (bid == null || bid.isEmpty) return null;
+      final n = (draftParty.brokerName ?? '').trim();
+      if (n.isNotEmpty) return n;
+      final t = brokerCtrl.text.trim();
+      return t.isNotEmpty ? t : 'Broker';
+    }
+
+    final supplierLock = supplierLockedLabel();
+    final brokerLock = brokerLockedLabel();
+
+    void clearBrokerOnly() {
+      brokerCtrl.clear();
+      ref.read(purchaseDraftProvider.notifier).setBroker(null, null);
+      onDraftChanged();
+    }
+
     Widget supplierCell = ref.watch(suppliersListProvider).when(
       skipLoadingOnReload: true,
       data: (list) {
@@ -354,8 +378,13 @@ class PurchasePartyStep extends ConsumerWidget {
           hintText: 'Search supplier by name…',
           prefixIcon: const Icon(Icons.store_rounded),
           minQueryLength: 1,
-          maxMatches: 8,
+          maxMatches: 6,
           dense: true,
+          fieldBorderRadius: 12,
+          minFieldHeight: 56,
+          idleOutlineColor: Colors.grey.shade200,
+          lockedSelectionLabel: supplierLock,
+          onLockedSelectionClear: onSupplierClear,
           textInputAction: TextInputAction.next,
           onSubmitted: () => brokerFocusNode.requestFocus(),
           items: items,
@@ -390,8 +419,13 @@ class PurchasePartyStep extends ConsumerWidget {
             hintText: 'Search supplier by name…',
             prefixIcon: const Icon(Icons.store_rounded),
             minQueryLength: 1,
-            maxMatches: 8,
+            maxMatches: 6,
             dense: true,
+            fieldBorderRadius: 12,
+            minFieldHeight: 56,
+            idleOutlineColor: Colors.grey.shade200,
+            lockedSelectionLabel: supplierLock,
+            onLockedSelectionClear: onSupplierClear,
             textInputAction: TextInputAction.next,
             onSubmitted: () => brokerFocusNode.requestFocus(),
             items: items,
@@ -442,8 +476,13 @@ class PurchasePartyStep extends ConsumerWidget {
             hintText: 'Search supplier by name…',
             prefixIcon: const Icon(Icons.store_rounded),
             minQueryLength: 1,
-            maxMatches: 8,
+            maxMatches: 6,
             dense: true,
+            fieldBorderRadius: 12,
+            minFieldHeight: 56,
+            idleOutlineColor: Colors.grey.shade200,
+            lockedSelectionLabel: supplierLock,
+            onLockedSelectionClear: onSupplierClear,
             textInputAction: TextInputAction.next,
             onSubmitted: () => brokerFocusNode.requestFocus(),
             items: items,
@@ -501,8 +540,13 @@ class PurchasePartyStep extends ConsumerWidget {
                   hintText: 'Search broker by name…',
                   prefixIcon: const Icon(Icons.person_outline_rounded),
                   minQueryLength: 0,
-                  maxMatches: 8,
+                  maxMatches: 6,
                   dense: true,
+                  fieldBorderRadius: 12,
+                  minFieldHeight: 56,
+                  idleOutlineColor: Colors.grey.shade200,
+                  lockedSelectionLabel: brokerLock,
+                  onLockedSelectionClear: clearBrokerOnly,
                   textInputAction: TextInputAction.next,
                   onSubmitted: onProceedFromParty,
                   items: items,
@@ -536,8 +580,13 @@ class PurchasePartyStep extends ConsumerWidget {
                     hintText: 'Search broker by name…',
                     prefixIcon: const Icon(Icons.person_outline_rounded),
                     minQueryLength: 0,
-                    maxMatches: 8,
+                    maxMatches: 6,
                     dense: true,
+                    fieldBorderRadius: 12,
+                    minFieldHeight: 56,
+                    idleOutlineColor: Colors.grey.shade200,
+                    lockedSelectionLabel: brokerLock,
+                    onLockedSelectionClear: clearBrokerOnly,
                     textInputAction: TextInputAction.next,
                     onSubmitted: onProceedFromParty,
                     items: items,
@@ -614,8 +663,13 @@ class PurchasePartyStep extends ConsumerWidget {
                     hintText: 'Search broker by name…',
                     prefixIcon: const Icon(Icons.person_outline_rounded),
                     minQueryLength: 0,
-                    maxMatches: 8,
+                    maxMatches: 6,
                     dense: true,
+                    fieldBorderRadius: 12,
+                    minFieldHeight: 56,
+                    idleOutlineColor: Colors.grey.shade200,
+                    lockedSelectionLabel: brokerLock,
+                    onLockedSelectionClear: clearBrokerOnly,
                     textInputAction: TextInputAction.next,
                     onSubmitted: onProceedFromParty,
                     items: items,
@@ -670,19 +724,19 @@ class PurchasePartyStep extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
+        Text(
+          'Supplier',
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+        const SizedBox(height: 8),
         supplierCell,
         const SizedBox(height: 16),
         Text(
           'Broker (optional)',
           style: Theme.of(context).textTheme.labelLarge?.copyWith(
                 fontWeight: FontWeight.w700,
-              ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          'When set: payment days, freight, delivered/billty, commission defaults apply.',
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
         ),
         const SizedBox(height: 8),
@@ -693,14 +747,6 @@ class PurchasePartyStep extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final showClearSupplier = ref.watch(
-      purchaseDraftProvider.select(
-        (d) =>
-            d.supplierId != null &&
-            d.supplierId!.isNotEmpty,
-      ),
-    );
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -713,31 +759,8 @@ class PurchasePartyStep extends ConsumerWidget {
           const SizedBox(height: 4),
         ],
         _compactMeta(context, ref),
-        if (onOpenScanBill != null) ...[
-          const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: onOpenScanBill,
-            icon: const Icon(Icons.document_scanner_outlined),
-            label: const Text('Scan bill (camera)'),
-          ),
-        ],
         const SizedBox(height: 6),
         _partyFieldsColumn(context, ref),
-        if (showClearSupplier)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: GestureDetector(
-              onTap: onSupplierClear,
-              child: Text(
-                'Clear supplier',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Theme.of(context).colorScheme.error,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
       ],
     );
   }

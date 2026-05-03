@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.db_resilience import execute_with_retry
 from app.deps import get_current_user, require_membership
 from app.models import Membership, User
 from app.schemas.trade_purchases import (
@@ -52,7 +53,7 @@ async def read_trade_draft(
     db: Annotated[AsyncSession, Depends(get_db)],
     _m: Annotated[Membership, Depends(require_membership)],
 ):
-    d = await tps.get_draft(db, business_id, user.id)
+    d = await execute_with_retry(lambda: tps.get_draft(db, business_id, user.id))
     if not d:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="No draft")
     return d
@@ -100,7 +101,7 @@ async def next_trade_human_id(
     _m: Annotated[Membership, Depends(require_membership)],
 ):
     del user
-    hid = await tps.next_human_id(db, business_id)
+    hid = await execute_with_retry(lambda: tps.next_human_id(db, business_id))
     return TradeNextHumanIdOut(human_id=hid)
 
 
@@ -144,7 +145,8 @@ async def list_trade_purchases(
         status_norm,
         (q or "").strip()[:80] or None,
     )
-    return await tps.list_trade_purchases(
+    return await execute_with_retry(
+        lambda: tps.list_trade_purchases(
         db,
         business_id,
         limit=limit_v,
@@ -156,6 +158,7 @@ async def list_trade_purchases(
         catalog_item_id=catalog_item_id,
         purchase_from=purchase_from,
         purchase_to=purchase_to,
+    ),
     )
 
 
@@ -170,12 +173,14 @@ async def last_trade_purchase_defaults(
     broker_id: uuid.UUID | None = Query(None),
 ):
     del user, _m
-    return await tps.last_purchase_defaults(
-        db,
-        business_id,
-        catalog_item_id=catalog_item_id,
-        supplier_id=supplier_id,
-        broker_id=broker_id,
+    return await execute_with_retry(
+        lambda: tps.last_purchase_defaults(
+            db,
+            business_id,
+            catalog_item_id=catalog_item_id,
+            supplier_id=supplier_id,
+            broker_id=broker_id,
+        ),
     )
 
 
@@ -313,7 +318,9 @@ async def get_trade_purchase(
     _m: Annotated[Membership, Depends(require_membership)],
 ):
     del user
-    out = await tps.get_trade_purchase(db, business_id, purchase_id)
+    out = await execute_with_retry(
+        lambda: tps.get_trade_purchase(db, business_id, purchase_id),
+    )
     if not out:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Purchase not found")
     return out

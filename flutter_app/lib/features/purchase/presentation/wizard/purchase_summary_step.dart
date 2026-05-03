@@ -2,7 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/hexa_colors.dart';
+import '../../domain/purchase_draft.dart';
 import '../../state/purchase_draft_provider.dart';
+
+double _approxBuyLine(PurchaseLineDraft l) {
+  final kpu = l.kgPerUnit;
+  final pk = l.landingCostPerKg;
+  if (kpu != null && pk != null && kpu > 0 && pk > 0) {
+    return l.qty * kpu * pk;
+  }
+  return l.qty * l.landingCost;
+}
 
 /// Read-only recap + totals — use inside parent scroll views.
 class PurchaseSummarySections extends ConsumerWidget {
@@ -78,8 +88,14 @@ class PurchaseSummarySections extends ConsumerWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${ln.qty} ${ln.unit} · landing ₹${ln.landingCost.toStringAsFixed(2)}'
-                  '${ln.sellingPrice != null ? ' · sell ₹${ln.sellingPrice!.toStringAsFixed(2)}' : ''}',
+                  () {
+                    final buy = _approxBuyLine(ln);
+                    final sp = ln.sellingPrice;
+                    if (sp != null && sp > 0) {
+                      return '${ln.qty} ${ln.unit} · buy ₹${buy.toStringAsFixed(2)} · sell ₹${(sp * ln.qty).toStringAsFixed(2)}';
+                    }
+                    return '${ln.qty} ${ln.unit} · buy ₹${buy.toStringAsFixed(2)}';
+                  }(),
                   style: TextStyle(fontSize: 12, color: Colors.grey[800]),
                 ),
               ],
@@ -87,6 +103,16 @@ class PurchaseSummarySections extends ConsumerWidget {
           ),
         ),
       );
+    }
+
+    double estRetailMargin = 0;
+    var hasRetailMargin = false;
+    for (final l in draft.lines) {
+      final sp = l.sellingPrice;
+      if (sp == null || sp <= 0) continue;
+      final buy = _approxBuyLine(l);
+      estRetailMargin += sp * l.qty - buy;
+      hasRetailMargin = true;
     }
 
     chunks.add(
@@ -109,6 +135,11 @@ class PurchaseSummarySections extends ConsumerWidget {
               row(
                 'Broker commission',
                 '− ₹${bd.commission.toStringAsFixed(2)}',
+              ),
+            if (hasRetailMargin)
+              row(
+                'Est. retail margin (lines)',
+                '₹${estRetailMargin.toStringAsFixed(2)}',
               ),
             const Divider(height: 20),
             row(

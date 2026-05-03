@@ -1,6 +1,7 @@
 import os
 from functools import lru_cache
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -73,14 +74,29 @@ class Settings(BaseSettings):
     # pooler combinations fail SSL verify despite valid AWS certs; opt-in only. Prefer false once CA trust works.
     database_ssl_skip_verify: bool = False
     # Async SQLAlchemy QueuePool knobs (PostgreSQL only; SQLite ignores).
-    database_pool_size: int = 5
-    database_pool_max_overflow: int = 10
-    database_pool_timeout_seconds: int = 30
+    database_pool_size: int = Field(
+        default=3,
+        validation_alias=AliasChoices("DATABASE_POOL_SIZE", "DB_POOL_SIZE"),
+    )
+    database_pool_max_overflow: int = Field(
+        default=8,
+        validation_alias=AliasChoices("DATABASE_MAX_OVERFLOW", "DB_MAX_OVERFLOW"),
+    )
+    database_pool_timeout_seconds: int = Field(
+        default=20,
+        validation_alias=AliasChoices("DATABASE_POOL_TIMEOUT", "DB_POOL_TIMEOUT"),
+    )
     database_pool_recycle_seconds: int = 285
     # asyncpg statement timeout per executed command (seconds). 0 disables.
-    database_command_timeout_seconds: float = 60.0
+    database_command_timeout_seconds: float = Field(
+        default=45.0,
+        validation_alias=AliasChoices("DATABASE_COMMAND_TIMEOUT", "DB_CMD_TIMEOUT"),
+    )
     # Initial connect handshake timeout already used in database.py connect_args timeout (legacy).
-    database_connect_timeout_seconds: float = 30.0
+    database_connect_timeout_seconds: float = Field(
+        default=15.0,
+        validation_alias=AliasChoices("DATABASE_CONNECT_TIMEOUT", "DB_CONNECT_TIMEOUT"),
+    )
     # Emit WARNING when a SQL round-trip exceeds this many ms on sync mirror engine. 0 disables.
     database_slow_query_log_ms: int = 200
     # GET-only degradation: SQLAlchemy may use default empty JSON for catastrophic reads (middleware).

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 
@@ -78,7 +79,7 @@ async def health_ready(db: AsyncSession = Depends(get_db)):
     """
     t0 = time.perf_counter()
     try:
-        await db.execute(text("SELECT 1"))
+        await asyncio.wait_for(db.execute(text("SELECT 1")), timeout=3.0)
     except Exception:  # noqa: BLE001
         logger.exception("health_ready: SELECT 1 failed")
         ms = int((time.perf_counter() - t0) * 1000)

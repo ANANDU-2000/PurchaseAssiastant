@@ -358,16 +358,31 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) {
           final cid = state.uri.queryParameters['catalogItemId']?.trim();
           PurchaseDraft? seed;
+          bool resumeDraft = state.uri.queryParameters['resumeDraft'] ==
+                  'true' ||
+              state.uri.queryParameters['resume'] == '1';
           final ex = state.extra;
-          if (ex is PurchaseDraft) seed = ex;
+          if (ex is PurchaseDraft) {
+            seed = ex;
+          } else if (ex is Map) {
+            try {
+              final m = Map<String, dynamic>.from(ex);
+              final rd = m['resumeDraft'];
+              resumeDraft |=
+                  rd == true || '$rd'.toLowerCase() == 'true';
+              final d = m['initialDraft'];
+              if (d is PurchaseDraft) seed = d;
+            } catch (_) {}
+          }
           return iosPushPage(
             key: ValueKey(
-              'purchase_new_${seed != null ? 'seed' : ((cid != null && cid.isNotEmpty) ? cid : 'none')}',
+              'purchase_new_${seed != null ? 'seed' : resumeDraft ? 'resume' : ((cid != null && cid.isNotEmpty) ? cid : 'none')}',
             ),
             child: PurchaseEntryWizardV2(
               initialCatalogItemId:
                   (cid != null && cid.isNotEmpty) ? cid : null,
               initialDraft: seed,
+              resumeDraft: resumeDraft && seed == null,
             ),
           );
         },

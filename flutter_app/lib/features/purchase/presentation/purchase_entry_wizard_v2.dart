@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,9 +26,10 @@ import '../../../shared/widgets/inline_search_field.dart';
 import 'wizard/purchase_fast_items_step.dart';
 import 'wizard/purchase_review_step.dart';
 import 'wizard/purchase_party_step.dart';
-import 'widgets/purchase_bill_scan_panel.dart';
 import 'widgets/add_item_entry_page.dart';
 import 'widgets/purchase_saved_sheet.dart';
+
+enum _WizardExitDraftChoice { keepEditing, saveDraft, discard }
 
 class PurchaseEntryWizardV2 extends ConsumerStatefulWidget {
   const PurchaseEntryWizardV2({
@@ -35,6 +37,7 @@ class PurchaseEntryWizardV2 extends ConsumerStatefulWidget {
     this.editingId,
     this.initialCatalogItemId,
     this.initialDraft,
+    this.resumeDraft = false,
   });
 
   final String? editingId;
@@ -42,6 +45,9 @@ class PurchaseEntryWizardV2 extends ConsumerStatefulWidget {
 
   /// Seeds the wizard after OCR / external flows (skipped when editing).
   final PurchaseDraft? initialDraft;
+
+  /// When true after [reset], restore Hive/prefs draft (explicit “resume” flow).
+  final bool resumeDraft;
 
   @override
   ConsumerState<PurchaseEntryWizardV2> createState() =>
@@ -84,6 +90,9 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
 
   /// 0 party → 1 fast items → 2 review (+ terms edit).
   int _wizStep = 0;
+
+  final GlobalKey<PurchaseFastItemsStepState> _fastItemsKey =
+      GlobalKey<PurchaseFastItemsStepState>();
 
   final _supplierCtrl = TextEditingController();
   final _brokerCtrl = TextEditingController();
@@ -146,13 +155,13 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     } else {
       if (!mounted) return;
       notifier.reset();
-      if (widget.initialDraft != null) {
-        ref
-            .read(purchaseDraftProvider.notifier)
-            .replaceDraft(widget.initialDraft!);
-      } else {
-        await _maybeRestoreDraft();
-      }
+        if (widget.initialDraft != null) {
+          ref
+              .read(purchaseDraftProvider.notifier)
+              .replaceDraft(widget.initialDraft!);
+        } else if (widget.resumeDraft) {
+          await _maybeRestoreDraft();
+        }
       if (!mounted) return;
       ref.read(purchaseDraftProvider.notifier).setInvoiceText('');
       _syncControllersFromDraft();
@@ -320,7 +329,9 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     if (s0 == null || k == null) return;
     final bid = s0.primaryBusiness.id;
     final fromHive = OfflineStore.getPurchaseWizardDraft(bid);
-    Future<void> applyMap(Map<String, dynamic> o) async {
+    Future<void> applyMap(Map<String, dynamic> raw) async {
+      final o = Map<String, dynamic>.from(raw);
+      o.remove('draftWizardMeta');
       ref.read(purchaseDraftProvider.notifier).applyFromPrefsMap(o);
       if (!mounted) return;
       _syncControllersFromDraft();
@@ -370,6 +381,15 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     });
   }
 
+  Map<String, dynamic> _draftJsonForPersistence() {
+    return {
+      ...ref.read(purchaseDraftProvider.notifier).toPrefsMap(),
+      'draftWizardMeta': {
+        'savedAt': DateTime.now().toIso8601String(),
+      },
+    };
+  }
+
   void _flushDraftToPrefs() {
     if (widget.editingId != null && widget.editingId!.isNotEmpty) return;
     final k = _draftPrefsKey();
@@ -377,8 +397,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     if (s == null || k == null) return;
     final bid = s.primaryBusiness.id;
     final p = ref.read(sharedPreferencesProvider);
-    final json =
-        jsonEncode(ref.read(purchaseDraftProvider.notifier).toPrefsMap());
+    final json = jsonEncode(_draftJsonForPersistence());
     unawaited(p.setString(k, json));
     unawaited(OfflineStore.putPurchaseWizardDraft(bid, json));
   }
@@ -413,7 +432,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         final bid = s.primaryBusiness.id;
         final p = ref.read(sharedPreferencesProvider);
         final json =
-            jsonEncode(ref.read(purchaseDraftProvider.notifier).toPrefsMap());
+            jsonEncode(_draftJsonForPersistence());
         unawaited(p.setString(k, json));
         unawaited(OfflineStore.putPurchaseWizardDraft(bid, json));
       }
@@ -654,69 +673,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     if (mounted) setState(() {});
   }
 
-  /// Append scanned/freeform lines without dropping an already-picked supplier.
-  void _mergeScannedDraft(PurchaseDraft scan) {
-    final cur = ref.read(purchaseDraftProvider);
-    final notifier = ref.read(purchaseDraftProvider.notifier);
-    final mergedLines = [...cur.lines, ...scan.lines];
-    var next = cur.copyWith(lines: mergedLines);
-    final sn = scan.supplierName?.trim();
-    if ((cur.supplierId == null || cur.supplierId!.isEmpty) &&
-        sn != null &&
-        sn.isNotEmpty) {
-      next = next.copyWith(supplierName: sn);
-      if (_supplierCtrl.text.trim().isEmpty) {
-        _supplierCtrl.text = sn;
-      }
-    }
-    notifier.replaceDraft(next);
-    _syncControllersFromDraft();
-    _onDraftChanged();
-  }
-
-  Future<void> _openScanBillSheet() async {
-    FocusManager.instance.primaryFocus?.unfocus();
-    FocusScope.of(context).unfocus();
-    if (!mounted) return;
-    final h = MediaQuery.sizeOf(context).height * 0.92;
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (ctx) {
-        return SizedBox(
-          height: h,
-          child: Scaffold(
-            appBar: AppBar(
-              automaticallyImplyLeading: false,
-              title: const Text('Scan bill'),
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.close_rounded),
-                  onPressed: () => Navigator.of(ctx).pop(),
-                ),
-              ],
-            ),
-            body: PurchaseBillScanPanel(
-              compactHeading: true,
-              onApplyDraft: (d) {
-                Navigator.of(ctx).pop();
-                _mergeScannedDraft(d);
-                if (mounted) {
-                  setState(() => _wizStep = 1);
-                }
-              },
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-
-
-  /// Restricts supplier pick to intersection of [default_supplier_ids] on every line
   /// that has a catalog item with non-empty defaults. If any such line has no defaults,
   /// fall back to the full list. Empty intersection falls back to full list.
   List<Map<String, dynamic>> _filterSuppliersByCatalogLineDefaults(
@@ -1042,34 +998,68 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
   bool _isEditMode() =>
       widget.editingId != null && widget.editingId!.isNotEmpty;
 
-  Future<void> _confirmDiscardIfNeeded() async {
-    if (_isEditMode() || !_formDirty) return;
-    final a = await showDialog<bool>(
+  Future<void> _discardDraftAndPop() async {
+    ref.read(purchaseDraftProvider.notifier).reset();
+    await _clearDraftInPrefs();
+    if (!mounted) return;
+    setState(() => _formDirty = false);
+    if (context.canPop()) context.pop();
+  }
+
+  Future<void> _handleWizardExitFromRoot() async {
+    if (_isEditMode()) {
+      if (context.canPop()) context.pop();
+      return;
+    }
+    if (!_formDirty) {
+      if (context.canPop()) context.pop();
+      return;
+    }
+    final choice = await showCupertinoDialog<_WizardExitDraftChoice>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Discard draft?'),
-        content: const Text('You have unsaved changes. Leave without saving?'),
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('Save your progress?'),
+        content: const Text(
+          'You have an unsaved purchase draft. Save it locally, discard it, or keep editing.',
+        ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Stay'),
+          CupertinoDialogAction(
+            onPressed: () =>
+                Navigator.pop(ctx, _WizardExitDraftChoice.keepEditing),
+            child: const Text('Keep editing'),
           ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red.shade700,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => Navigator.of(ctx).pop(true),
+          CupertinoDialogAction(
+            onPressed: () =>
+                Navigator.pop(ctx, _WizardExitDraftChoice.saveDraft),
+            child: const Text('Save draft'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () =>
+                Navigator.pop(ctx, _WizardExitDraftChoice.discard),
             child: const Text('Discard'),
           ),
         ],
       ),
     );
-    if (a == true) {
-      await _clearDraftInPrefs();
-      if (!mounted) return;
+    if (!mounted || choice == null) return;
+    if (choice == _WizardExitDraftChoice.keepEditing) return;
+    if (choice == _WizardExitDraftChoice.saveDraft) {
+      _saveDraftNow();
       if (context.canPop()) context.pop();
+      return;
     }
+    await _discardDraftAndPop();
+  }
+
+  Future<void> _wizBack() async {
+    FocusScope.of(context).unfocus();
+    if (_wizStep > 0) {
+      setState(() => _wizStep -= 1);
+      return;
+    }
+    if (!mounted) return;
+    await _handleWizardExitFromRoot();
   }
 
   bool _isDuplicatePurchase409(DioException e) {
@@ -1326,24 +1316,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     }
   }
 
-  Future<void> _wizBack() async {
-    FocusScope.of(context).unfocus();
-    if (_wizStep > 0) {
-      setState(() => _wizStep -= 1);
-      return;
-    }
-    if (!mounted) return;
-    if (_isEditMode()) {
-      if (context.canPop()) context.pop();
-      return;
-    }
-    if (!_formDirty) {
-      if (context.canPop()) context.pop();
-      return;
-    }
-    await _confirmDiscardIfNeeded();
-  }
-
   void _maybeAutoAdvanceFromParty() {
     if (!mounted || _wizStep != 0) return;
     final g = ref.read(purchaseStepGatesProvider);
@@ -1402,7 +1374,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     }
   }
 
-  Widget _wizBody(List<Map<String, dynamic>> catalog, bool isEdit) {
+  Widget _wizBody(BuildContext context, List<Map<String, dynamic>> catalog, bool isEdit) {
     final session = ref.read(sessionProvider);
     final bid = session?.primaryBusiness.id;
     final api = ref.read(hexaApiProvider);
@@ -1460,12 +1432,12 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
             openQuickBrokerCreate: _openQuickBrokerCreate,
             brokerRowId: _brokerRowId,
             brokerMapLabel: _brokerMapLabel,
-            onOpenScanBill: _openScanBillSheet,
           ),
         );
         break;
       case 1:
         step = PurchaseFastItemsStep(
+          key: _fastItemsKey,
           catalog: catalog,
           businessIdOrNull: bid,
           resolveLastTradeDefaults: (cid) async {
@@ -1523,9 +1495,20 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         step = const SizedBox.shrink();
     }
 
+    final insetBottom = MediaQuery.viewInsetsOf(context).bottom;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: step,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 200),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        child: Padding(
+          key: ValueKey<int>(_wizStep),
+          padding: EdgeInsets.only(bottom: insetBottom > 0 ? 8 : 0),
+          child: step,
+        ),
+      ),
     );
   }
 
@@ -1551,65 +1534,43 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
           ),
         if (_wizStep == 0) ...[
           SizedBox(
-            height: 48,
+            height: 56,
             width: double.infinity,
             child: FilledButton(
-              onPressed: _isSaving ? null : _wizNext,
+              onPressed: (_isSaving || !gates.from0) ? null : _wizNext,
               child: const Text(
                 'Continue',
-                style: TextStyle(fontWeight: FontWeight.w700),
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
               ),
             ),
           ),
-          if (!isEdit && widget.editingId == null) ...[
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              height: 46,
-              child: OutlinedButton(
-                onPressed: _isSaving ? null : _saveDraftNow,
-                child: const Text(
-                  'Save draft',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
-            ),
-          ],
         ],
         if (_wizStep == 1) ...[
           SizedBox(
             height: 48,
             width: double.infinity,
-            child: FilledButton(
+            child: OutlinedButton(
               onPressed:
-                  canAddItem ? () => _openItemSheet(catalog) : null,
+                  (_isSaving || !canAddItem) ? null : () => _fastItemsKey.currentState?.resetQuickAddRow(),
               child: const Text(
-                'Advanced add…',
-                style: TextStyle(fontWeight: FontWeight.w700),
+                'Add more items',
+                style: TextStyle(fontWeight: FontWeight.w600),
               ),
             ),
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _isSaving ? null : () => _wizBack(),
-                  child: const Text('Back'),
-                ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 56,
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: (_isSaving || !gates.from1)
+                  ? null
+                  : _wizNext,
+              child: const Text(
+                'Done',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 2,
-                child: FilledButton(
-                  onPressed: _isSaving ? null : _wizNext,
-                  child: const Text(
-                    'Continue',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         ],
         if (_wizStep == 2) ...[
@@ -1625,7 +1586,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
               ),
             ),
           SizedBox(
-            height: 48,
+            height: 60,
             width: double.infinity,
             child: FilledButton(
               onPressed:
@@ -1643,17 +1604,9 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
                       'Save purchase',
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
-                        fontSize: 15,
+                        fontSize: 16,
                       ),
                     ),
-            ),
-          ),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: _isSaving ? null : () => _wizBack(),
-              icon: const Icon(Icons.arrow_back),
-              label: const Text('Back'),
             ),
           ),
         ],
@@ -1820,7 +1773,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.only(top: 4),
-                    child: _wizBody(catalog, isEdit),
+                    child: _wizBody(context, catalog, isEdit),
                   ),
                 ),
               ],
@@ -1843,7 +1796,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
           setState(() => _wizStep -= 1);
           return;
         }
-        await _confirmDiscardIfNeeded();
+        await _handleWizardExitFromRoot();
       },
       child: Scaffold(
         resizeToAvoidBottomInset: true,

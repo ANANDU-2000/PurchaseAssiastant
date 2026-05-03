@@ -1,9 +1,11 @@
+import 'dart:math' as math;
+
 import 'package:dio/dio.dart';
 
 /// Retries safe, idempotent requests up to [maxAttempts] on transient failures.
 /// Register on the main [Dio] after other interceptors; [onError] order is last-registered first.
 class DioAutoRetryInterceptor extends Interceptor {
-  DioAutoRetryInterceptor(this._dio, {this.maxAttempts = 2});
+  DioAutoRetryInterceptor(this._dio, {this.maxAttempts = 4});
 
   final Dio _dio;
   /// Counts automatic refetches after the first failure (bounded by [maxAttempts]).
@@ -34,7 +36,12 @@ class DioAutoRetryInterceptor extends Interceptor {
     while (n < maxAttempts) {
       n += 1;
       current.requestOptions.extra['dio_auto_retry'] = n;
-      await Future<void>.delayed(Duration(milliseconds: 1000 * (1 << (n - 1))));
+      await Future<void>.delayed(
+        Duration(
+          milliseconds:
+              const [100, 300, 900][math.min(n - 1, 2)],
+        ),
+      );
       try {
         final res = await _dio.fetch(current.requestOptions);
         return handler.resolve(res);
