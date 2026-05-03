@@ -55,6 +55,33 @@ Keep **`--project-ref=xrkwlixlntujkhsaepbh`** in `args` to scope MCP to this pro
 
 If your team shares the repo, only **`.cursor/mcp.json`** (local) holds the token.
 
+---
+
+## Cursor — Render MCP (optional)
+
+Official docs: **[Render MCP Server](https://render.com/docs/mcp-server)**.
+
+Create an **[API key](https://dashboard.render.com/u/settings#api-keys)** (Account Settings). Keys often look like `rnd_...`.
+
+**Never** commit keys. Use **`config/render.mcp.template.json`** (placeholder only), or merge this block into **`mcpServers`** in **`.cursor/mcp.json`**:
+
+```json
+"render": {
+  "url": "https://mcp.render.com/mcp",
+  "headers": {
+    "Authorization": "Bearer REPLACE_WITH_RENDER_ACCOUNT_API_KEY"
+  }
+}
+```
+
+Then **Settings → Features → MCP** → enable **`render`** (and **`supabase`** if configured). Restart Cursor if the server stays grey.
+
+Alternative (stdin transport): docs also show **`npx mcp-remote https://mcp.render.com/mcp`** with **`RENDER_API_KEY`** in `env`; use that if Cursor does not accept the `url` form on your OS.
+
+### Combined `mcp.json`
+
+Keep **`supabase`** and **`render`** as two keys under **`mcpServers`** in the same `.cursor/mcp.json` file (still gitignored). Do not overwrite one with the other.
+
 ### Supabase Agent Skills (optional)
 
 From the repo root:
