@@ -35,6 +35,9 @@ flutter_app/**/ephemeral/
 .idea/
 .vscode/
 
+# Cursor — local MCP secrets (use committed config/supabase.mcp.template.json as source)
+.cursor/mcp.json
+
 # OS
 Thumbs.db
 .DS_Store
