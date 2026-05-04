@@ -19,6 +19,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Revision IDs for this chain exceed VARCHAR(32); widen before Alembic writes version_num.
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        op.execute(
+            sa.text("ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(128)")
+        )
     op.add_column(
         "trade_purchases",
         sa.Column("commission_mode", sa.String(length=24), nullable=True),
