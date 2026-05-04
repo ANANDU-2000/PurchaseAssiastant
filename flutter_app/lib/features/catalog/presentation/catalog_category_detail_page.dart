@@ -10,6 +10,7 @@ import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/search/search_highlight.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
+import '../../../shared/widgets/trade_intel_cards.dart';
 
 class CatalogCategoryDetailPage extends ConsumerStatefulWidget {
   const CatalogCategoryDetailPage({super.key, required this.categoryId});
@@ -53,6 +54,7 @@ class _CatalogCategoryDetailPageState
     ref.invalidate(categoryTypesListProvider(widget.categoryId));
     ref.invalidate(itemCategoriesListProvider);
     ref.invalidate(catalogItemsListProvider);
+    ref.invalidate(categoryTradeSummaryProvider(widget.categoryId));
     await ref.read(itemCategoriesListProvider.future);
   }
 
@@ -71,12 +73,15 @@ class _CatalogCategoryDetailPageState
       if (prev != null && next > prev) {
         ref.invalidate(categoryTypesListProvider(widget.categoryId));
         ref.invalidate(catalogItemsListProvider);
+        ref.invalidate(categoryTradeSummaryProvider(widget.categoryId));
       }
     });
 
     final catsAsync = ref.watch(itemCategoriesListProvider);
     final itemsAsync = ref.watch(catalogItemsListProvider);
     final typesAsync = ref.watch(categoryTypesListProvider(widget.categoryId));
+    final tradeSummaryAsync =
+        ref.watch(categoryTradeSummaryProvider(widget.categoryId));
 
     final title = catsAsync.maybeWhen(
       data: (cats) {
@@ -136,7 +141,149 @@ class _CatalogCategoryDetailPageState
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
+            tradeSummaryAsync.when(
+              skipLoadingOnReload: true,
+              loading: () => const SizedBox.shrink(),
+              error: (_, __) => const SizedBox.shrink(),
+              data: (sum) {
+                final itemCount = (sum['item_count'] as num?)?.toInt() ?? 0;
+                if (itemCount == 0) return const SizedBox.shrink();
+                final tot = tradeIntelToDouble(sum['total_line_amount']);
+                final kg = tradeIntelToDouble(sum['total_weight_kg']);
+                final bags = tradeIntelToDouble(sum['total_qty_bags']);
+                final volParts = <String>[];
+                if (kg != null && kg > 1e-6) {
+                  volParts.add('${tradeIntelFormatQty(kg)} KG');
+                }
+                if (bags != null && bags > 1e-6) {
+                  volParts.add('${tradeIntelFormatQty(bags)} BAGS');
+                }
+                final volLine =
+                    volParts.isEmpty ? '' : 'Trade volume: ${volParts.join(' • ')}';
+                return Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    side: BorderSide(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .outlineVariant
+                          .withValues(alpha: 0.85),
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Trade pulse (confirmed bills)',
+                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                        ),
+                        if (tot != null && tot > 1e-6) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            tradeIntelFormatInr(tot),
+                            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                  fontWeight: FontWeight.w900,
+                                ),
+                          ),
+                        ],
+                        if (volLine.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            volLine,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+            tradeSummaryAsync.when(
+              skipLoadingOnReload: true,
+              loading: () => const SizedBox.shrink(),
+              error: (_, __) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'Could not load trade summary.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                ),
+              ),
+              data: (sum) {
+                final raw = sum['items'];
+                if (raw is! List || raw.isEmpty) {
+                  return const SizedBox.shrink();
+                }
+                final rows = <Map<String, dynamic>>[];
+                for (final e in raw) {
+                  if (e is Map) rows.add(Map<String, dynamic>.from(e));
+                }
+                if (rows.isEmpty) return const SizedBox.shrink();
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Items (newest snapshot)',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
+                    const SizedBox(height: 6),
+                    Card(
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        side: BorderSide(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .outlineVariant
+                              .withValues(alpha: 0.85),
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
+                        child: Column(
+                          children: [
+                            for (var i = 0; i < rows.length; i++) ...[
+                              if (i > 0)
+                                Divider(
+                                  height: 1,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .outlineVariant
+                                      .withValues(alpha: 0.6),
+                                ),
+                              TradeIntelCategoryItemTile(
+                                row: rows[i],
+                                onTap: () {
+                                  final id =
+                                      rows[i]['catalog_item_id']?.toString();
+                                  if (id == null || id.isEmpty) return;
+                                  context.push('/catalog/item/$id');
+                                },
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                );
+              },
+            ),
             TextField(
               controller: _searchCtrl,
               decoration: InputDecoration(

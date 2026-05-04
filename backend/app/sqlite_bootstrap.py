@@ -288,6 +288,20 @@ def _ensure_catalog_item_trade_columns(sync_conn):
         alters.append("ALTER TABLE catalog_items ADD COLUMN default_items_per_box NUMERIC(12, 3)")
     if "default_weight_per_tin" not in cols:
         alters.append("ALTER TABLE catalog_items ADD COLUMN default_weight_per_tin NUMERIC(12, 3)")
+    if "last_selling_rate" not in cols:
+        alters.append("ALTER TABLE catalog_items ADD COLUMN last_selling_rate NUMERIC(12, 2)")
+    if "last_supplier_id" not in cols:
+        alters.append("ALTER TABLE catalog_items ADD COLUMN last_supplier_id VARCHAR(36)")
+    if "last_broker_id" not in cols:
+        alters.append("ALTER TABLE catalog_items ADD COLUMN last_broker_id VARCHAR(36)")
+    if "last_trade_purchase_id" not in cols:
+        alters.append("ALTER TABLE catalog_items ADD COLUMN last_trade_purchase_id VARCHAR(36)")
+    if "last_line_qty" not in cols:
+        alters.append("ALTER TABLE catalog_items ADD COLUMN last_line_qty NUMERIC(12, 3)")
+    if "last_line_unit" not in cols:
+        alters.append("ALTER TABLE catalog_items ADD COLUMN last_line_unit VARCHAR(32)")
+    if "last_line_weight_kg" not in cols:
+        alters.append("ALTER TABLE catalog_items ADD COLUMN last_line_weight_kg NUMERIC(14, 3)")
     for sql in alters:
         try:
             sync_conn.exec_driver_sql(sql)

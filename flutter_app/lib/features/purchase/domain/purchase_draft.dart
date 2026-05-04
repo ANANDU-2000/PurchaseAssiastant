@@ -30,6 +30,126 @@ const String kPurchaseCommissionModeFlatKg = 'flat_kg';
 const String kPurchaseCommissionModeFlatBag = 'flat_bag';
 const String kPurchaseCommissionModeFlatTin = 'flat_tin';
 
+/// Picks a fixed-rupee commission basis from line units so users switch to
+/// **Fixed ₹** with one less manual choice (broker still editable).
+String suggestedBrokerFigureModeFromLines(List<PurchaseLineDraft> lines) {
+  if (lines.isEmpty) return kPurchaseCommissionModeFlatInvoice;
+  var tinQty = 0.0;
+  var bagFamilyQty = 0.0;
+  var hasKgLikeUnit = false;
+  for (final l in lines) {
+    final u = l.unit.trim().toLowerCase();
+    if (u == 'tin') {
+      tinQty += l.qty;
+    } else if (u == 'bag' || u == 'sack' || u == 'box') {
+      bagFamilyQty += l.qty;
+    }
+    if (u.contains('kg') ||
+        u == 'kgs' ||
+        u == 'kilogram' ||
+        u == 'g' ||
+        u == 'gram' ||
+        u == 'quintal' ||
+        u == 'qtl') {
+      hasKgLikeUnit = true;
+    }
+  }
+  if (tinQty >= bagFamilyQty && tinQty > 0) {
+    return kPurchaseCommissionModeFlatTin;
+  }
+  if (bagFamilyQty >= tinQty && bagFamilyQty > 0) {
+    return kPurchaseCommissionModeFlatBag;
+  }
+  if (hasKgLikeUnit) return kPurchaseCommissionModeFlatKg;
+  return kPurchaseCommissionModeFlatInvoice;
+}
+
+/// Hint under figure basis chips (what the bill will multiply by).
+String? brokerFigureBasisLineHint(List<PurchaseLineDraft> lines, String mode) {
+  final m = PurchaseDraft.normalizeCommissionMode(mode);
+  if (m == kPurchaseCommissionModeFlatTin) {
+    var t = 0.0;
+    for (final l in lines) {
+      if (l.unit.trim().toLowerCase() == 'tin') t += l.qty;
+    }
+    if (t <= 0) {
+      return 'No tin lines yet — add “tin” lines or pick another basis.';
+    }
+    return 'This bill: ${t.toStringAsFixed(3)} tin qty';
+  }
+  if (m == kPurchaseCommissionModeFlatBag) {
+    var b = 0.0;
+    for (final l in lines) {
+      final u = l.unit.trim().toLowerCase();
+      if (u == 'bag' || u == 'sack' || u == 'box') b += l.qty;
+    }
+    if (b <= 0) {
+      return 'No bag / box / sack lines — add those units or use per kg / once per bill.';
+    }
+    return 'This bill: ${b.toStringAsFixed(3)} bag · box · sack qty';
+  }
+  if (m == kPurchaseCommissionModeFlatKg) {
+    return 'Uses total kg from line weights (items + qty).';
+  }
+  return null;
+}
+
+/// Fixed-₹ UI choices from **actual line units** (no tin chip if there are no
+/// tin lines, etc.). Before any lines: **[once / bill]** only — Terms runs
+/// before Items in the wizard.
+List<(String mode, String label)> brokerFigureUiOptions(
+    List<PurchaseLineDraft> lines) {
+  const once = (
+    kPurchaseCommissionModeFlatInvoice,
+    'Once / bill',
+  );
+  if (lines.isEmpty) {
+    return const [once];
+  }
+  var tinQty = 0.0;
+  var bagQty = 0.0;
+  var kgLike = false;
+  for (final l in lines) {
+    final u = l.unit.trim().toLowerCase();
+    if (u == 'tin') tinQty += l.qty;
+    if (u == 'bag' || u == 'sack' || u == 'box') bagQty += l.qty;
+    if (u.contains('kg') ||
+        u == 'kgs' ||
+        u == 'kilogram' ||
+        u == 'g' ||
+        u == 'gram' ||
+        u == 'quintal' ||
+        u == 'qtl') {
+      kgLike = true;
+    }
+  }
+  final tail = <(String, String)>[];
+  if (tinQty > 0) {
+    tail.add((kPurchaseCommissionModeFlatTin, 'Per tin'));
+  }
+  if (bagQty > 0) {
+    tail.add((kPurchaseCommissionModeFlatBag, 'Per bag · box'));
+  }
+  if (kgLike) {
+    tail.add((kPurchaseCommissionModeFlatKg, 'Per kg'));
+  }
+  if (tail.isEmpty) {
+    return const [once];
+  }
+  return [once, ...tail];
+}
+
+/// If [current] fixed mode is not allowed for [lines], pick a sensible default.
+String clampFigureModeToUiOptions(String current, List<PurchaseLineDraft> lines) {
+  final opts = brokerFigureUiOptions(lines);
+  final allowed = {for (final o in opts) o.$1};
+  final c = PurchaseDraft.normalizeCommissionMode(current);
+  if (allowed.contains(c)) return c;
+  final s = suggestedBrokerFigureModeFromLines(lines);
+  if (allowed.contains(s)) return s;
+  return opts.first.$1;
+}
+
 /// API-aligned: `included` or `separate`.
 @immutable
 class PurchaseDraft {

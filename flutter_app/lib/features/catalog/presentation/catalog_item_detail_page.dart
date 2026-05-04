@@ -22,6 +22,7 @@ import '../../../core/services/reports_pdf.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../core/widgets/list_skeleton.dart';
 import '../../../shared/widgets/bag_default_unit_hint.dart';
+import '../../../shared/widgets/trade_intel_cards.dart';
 import '../../../shared/widgets/search_picker_sheet.dart';
 
 class CatalogItemDetailPage extends ConsumerStatefulWidget {
@@ -351,13 +352,6 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
     }
   }
 
-  void _openPurchasesForThisItem() {
-    context.pushNamed(
-      'purchase_new',
-      queryParameters: {'catalogItemId': widget.itemId},
-    );
-  }
-
   @override
   void initState() {
     super.initState();
@@ -410,15 +404,6 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
           ),
         ],
       ),
-      floatingActionButton: itemAsync.hasValue
-          ? FloatingActionButton.extended(
-              onPressed: _openPurchasesForThisItem,
-              backgroundColor: const Color(0xFF17A8A7),
-              foregroundColor: Colors.white,
-              icon: const Icon(Icons.add_shopping_cart_rounded),
-              label: const Text('Add purchase'),
-            )
-          : null,
       body: itemAsync.when(
         skipLoadingOnReload: true,
         skipLoadingOnRefresh: true,
@@ -475,8 +460,21 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                         ),
                   ),
                 ),
+                _ItemTradeHeroCard(item: item),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: () => context.push(
+                    '/purchase/new?catalogItemId=${Uri.encodeComponent(widget.itemId)}',
+                  ),
+                  icon: const Icon(Icons.add_shopping_cart_rounded),
+                  label: const Text('New purchase'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF17A8A7),
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 12),
                 if (hsn != null && hsn.isNotEmpty) ...[
-                  const SizedBox(height: 6),
                   Text(
                     'HSN $hsn',
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
@@ -484,6 +482,7 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                               Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                   ),
+                  const SizedBox(height: 8),
                 ],
                 _CatalogItemDefaultParties(item: item, ref: ref),
                 const SizedBox(height: 12),
@@ -849,6 +848,64 @@ class _TradeHistoryLedgerTable extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
       child: child,
+    );
+  }
+}
+
+class _ItemTradeHeroCard extends StatelessWidget {
+  const _ItemTradeHeroCard({required this.item});
+
+  final Map<String, dynamic> item;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final qty = tradeIntelQtySummaryLine(item);
+    final rates = tradeIntelRatePairLine(item);
+    final src = tradeIntelSourceLine(item);
+    if (qty.isEmpty && rates.isEmpty && src.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Material(
+      color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (qty.isNotEmpty)
+              Text(
+                qty,
+                style: tt.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  height: 1.2,
+                ),
+              ),
+            if (rates.isNotEmpty) ...[
+              if (qty.isNotEmpty) const SizedBox(height: 6),
+              Text(
+                rates,
+                style: tt.bodyLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  height: 1.2,
+                ),
+              ),
+            ],
+            if (src.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                src,
+                style: tt.bodySmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  height: 1.25,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

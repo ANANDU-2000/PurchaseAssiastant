@@ -1482,6 +1482,17 @@ class HexaApi {
     return res.data ?? {};
   }
 
+  /// Confirmed trade aggregates per item in a category (decision dashboard).
+  Future<Map<String, dynamic>> categoryTradeSummary({
+    required String businessId,
+    required String categoryId,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/item-categories/$categoryId/trade-summary',
+    );
+    return res.data ?? {};
+  }
+
   Future<List<Map<String, dynamic>>> catalogItemLines({
     required String businessId,
     required String itemId,

@@ -117,6 +117,17 @@ final catalogItemDetailProvider = FutureProvider.autoDispose
       );
 });
 
+/// Confirmed-trade aggregates per item in a category (server SSOT).
+final categoryTradeSummaryProvider = FutureProvider.autoDispose
+    .family<Map<String, dynamic>, String>((ref, categoryId) async {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return {};
+  return ref.read(hexaApiProvider).categoryTradeSummary(
+        businessId: session.primaryBusiness.id,
+        categoryId: categoryId,
+      );
+});
+
 /// Latest trade price per supplier + last 5 landing prices (trade purchases only).
 final catalogItemTradeSupplierPricesProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, itemId) async {

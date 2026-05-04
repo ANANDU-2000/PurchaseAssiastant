@@ -39,6 +39,7 @@ class LedgerLineRow {
     required this.unit,
     required this.kg,
     required this.rateInr,
+    this.sellingRateInr,
     required this.amountInr,
     required this.commissionInr,
   });
@@ -53,6 +54,7 @@ class LedgerLineRow {
   final String unit;
   final double kg;
   final double rateInr;
+  final double? sellingRateInr;
   final double amountInr;
   final double commissionInr;
 }
@@ -120,6 +122,7 @@ LedgerLineRow ledgerRowFromPurchaseLine({
     unit: l.unit.trim(),
     kg: kg,
     rateInr: rate,
+    sellingRateInr: l.sellingRate,
     amountInr: amount,
     commissionInr: allocateCommission ? tradePurchaseLineCommissionInr(p, l) : 0,
   );

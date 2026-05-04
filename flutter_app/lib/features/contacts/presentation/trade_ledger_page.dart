@@ -19,6 +19,8 @@ import '../../../core/services/supplier_statement_pdf.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/utils/trade_purchase_commission.dart';
 import '../../../shared/widgets/hexa_empty_state.dart';
+import '../../../shared/widgets/trade_intel_cards.dart';
+import '../../../shared/widgets/trade_purchase_ledger_cards.dart';
 
 enum TradeLedgerKind { supplier, broker, catalogItem }
 
@@ -550,48 +552,44 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            for (final label in <String>[
-                              'This Month',
-                              '3 Months',
-                              '6 Months',
-                              'All',
-                              'Custom',
-                            ])
-                              Padding(
-                                padding: const EdgeInsets.only(right: 8),
-                                child: ChoiceChip(
-                                  label: Text(
-                                    label,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: _dateChip == label
-                                          ? FontWeight.w800
-                                          : FontWeight.w600,
-                                      color: _dateChip == label
-                                          ? Colors.white
-                                          : chipText,
-                                    ),
-                                  ),
-                                  selected: _dateChip == label,
-                                  onSelected: (_) {
-                                    if (label == 'Custom') {
-                                      unawaited(_pickCustomRange());
-                                    } else {
-                                      _applyDateChip(label);
-                                    }
-                                  },
-                                  selectedColor: chipTeal,
-                                  backgroundColor: cs.surfaceContainerHighest
-                                      .withValues(alpha: 0.6),
-                                  side: BorderSide.none,
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final label in <String>[
+                            'This Month',
+                            '3 Months',
+                            '6 Months',
+                            'All',
+                            'Custom',
+                          ])
+                            ChoiceChip(
+                              label: Text(
+                                label,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: _dateChip == label
+                                      ? FontWeight.w800
+                                      : FontWeight.w600,
+                                  color: _dateChip == label
+                                      ? Colors.white
+                                      : chipText,
                                 ),
                               ),
-                          ],
-                        ),
+                              selected: _dateChip == label,
+                              onSelected: (_) {
+                                if (label == 'Custom') {
+                                  unawaited(_pickCustomRange());
+                                } else {
+                                  _applyDateChip(label);
+                                }
+                              },
+                              selectedColor: chipTeal,
+                              backgroundColor: cs.surfaceContainerHighest
+                                  .withValues(alpha: 0.6),
+                              side: BorderSide.none,
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 8),
                       TextField(
@@ -726,25 +724,72 @@ class _LedgerPurchaseCard extends StatelessWidget {
               const SizedBox(height: 6),
               for (final ln in p.lines)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: Text(
-                          ln.itemName,
-                          style: tt.bodySmall?.copyWith(
-                            fontWeight: FontWeight.w600,
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHighest.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            ln.itemName,
+                            style: tt.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                          const SizedBox(height: 4),
+                          Builder(
+                            builder: (ctx) {
+                              final kg = lineKgEstimate(ln);
+                              final intel = <String, dynamic>{
+                                'last_line_qty': ln.qty,
+                                'last_line_unit': ln.unit,
+                                'last_line_weight_kg': kg,
+                                'last_purchase_price': ln.landingCost,
+                                'last_selling_rate': ln.sellingRate,
+                              };
+                              final q = tradeIntelQtySummaryLine(intel);
+                              final r = tradeIntelRatePairLine(intel);
+                              final lineAmt =
+                                  ln.lineTotal ?? (ln.qty * ln.landingCost);
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (q.isNotEmpty)
+                                    Text(
+                                      q,
+                                      style: tt.bodySmall?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  if (r.isNotEmpty) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      r,
+                                      style: tt.bodySmall?.copyWith(
+                                        fontWeight: FontWeight.w600,
+                                        color: cs.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Line ${_inr(lineAmt.round())}',
+                                    style: tt.labelSmall?.copyWith(
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                        ],
                       ),
-                      Text(
-                        '${ln.qty % 1 == 0 ? ln.qty.toInt() : ln.qty.toStringAsFixed(1)} ${ln.unit}',
-                        style: tt.labelSmall,
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               const SizedBox(height: 4),

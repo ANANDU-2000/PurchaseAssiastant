@@ -7,6 +7,16 @@ import 'package:intl/intl.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/widgets/friendly_load_error.dart';
+import '../../../shared/widgets/trade_intel_cards.dart';
+
+const Duration _unifiedSearchTtl = Duration(seconds: 12);
+const int _unifiedSearchCacheMaxEntries = 40;
+
+final Map<String, ({DateTime at, Map<String, dynamic> data})> _unifiedSearchCache =
+    {};
+
+String _unifiedSearchCacheKey(String businessId, String query) =>
+    '$businessId|${query.trim().toLowerCase()}';
 
 /// Server-backed unified search (catalog items, catalog types, trade bills, suppliers).
 final unifiedSearchProvider =
@@ -21,10 +31,30 @@ final unifiedSearchProvider =
         'recent_purchases': <dynamic>[],
       };
     }
-    return ref.read(hexaApiProvider).unifiedSearch(
-          businessId: session.primaryBusiness.id,
+    final bid = session.primaryBusiness.id;
+    final key = _unifiedSearchCacheKey(bid, q);
+    final now = DateTime.now();
+    final hit = _unifiedSearchCache[key];
+    if (hit != null && now.difference(hit.at) < _unifiedSearchTtl) {
+      return hit.data;
+    }
+    final data = await ref.read(hexaApiProvider).unifiedSearch(
+          businessId: bid,
           q: q.trim(),
         );
+    _unifiedSearchCache[key] = (at: now, data: data);
+    while (_unifiedSearchCache.length > _unifiedSearchCacheMaxEntries) {
+      String? oldestK;
+      DateTime? oldestT;
+      for (final e in _unifiedSearchCache.entries) {
+        if (oldestT == null || e.value.at.isBefore(oldestT)) {
+          oldestT = e.value.at;
+          oldestK = e.key;
+        }
+      }
+      if (oldestK != null) _unifiedSearchCache.remove(oldestK);
+    }
+    return data;
   },
 );
 
@@ -59,27 +89,6 @@ List<Map<String, dynamic>> _asMapListSkipBad(String key, Map<String, dynamic> da
     if (e is Map) out.add(Map<String, dynamic>.from(e));
   }
   return out;
-}
-
-String _catalogItemMetaLines(Map<String, dynamic> m) {
-  final bits = <String>[];
-  final hsn = m['hsn_code']?.toString().trim();
-  if (hsn != null && hsn.isNotEmpty) bits.add('HSN $hsn');
-  final ic = m['item_code']?.toString().trim();
-  if (ic != null && ic.isNotEmpty) bits.add('Code $ic');
-  final du = m['default_unit']?.toString().trim();
-  if (du != null && du.isNotEmpty) bits.add('Unit $du');
-  final kpb = _toD(m['default_kg_per_bag']);
-  if (kpb != null && kpb > 0) bits.add('${_fmtQty(kpb)} kg/bag');
-  final last = _toD(m['last_purchase_price']);
-  final def = _toD(m['default_landing_cost']);
-  if (last != null && last > 0) {
-    bits.add('Last buy ${_fmtInr(last)}');
-  }
-  if (def != null && def > 0) {
-    bits.add('Default ${_fmtInr(def)}');
-  }
-  return bits.join(' · ');
 }
 
 Map<String, dynamic>? _pickPurchaseLine(Map<String, dynamic> p, String q) {
@@ -370,47 +379,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                       else
                         ...items.map((m) {
                           final id = m['id']?.toString() ?? '';
-                          final name = m['name']?.toString() ?? 'Item';
-                          final cat = m['category_name']?.toString();
-                          final typ = m['type_name']?.toString();
-                          final path = [cat, typ]
-                              .whereType<String>()
-                              .where((s) => s.isNotEmpty)
-                              .join(' · ');
-                          final meta = _catalogItemMetaLines(m);
-                          return ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            isThreeLine: meta.isNotEmpty,
-                            leading: Icon(Icons.inventory_2_outlined,
-                                color: cs.primary),
-                            title: Text(name),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (path.isNotEmpty)
-                                  Text(
-                                    path,
-                                    style: tt.bodySmall?.copyWith(
-                                      color: cs.onSurfaceVariant,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                if (meta.isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 2),
-                                    child: Text(
-                                      meta,
-                                      style: tt.bodySmall?.copyWith(
-                                        color: cs.onSurfaceVariant,
-                                        height: 1.3,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            trailing:
-                                const Icon(Icons.chevron_right_rounded),
+                          return TradeIntelCatalogSearchTile(
+                            item: m,
                             onTap: id.isEmpty
                                 ? null
                                 : () => context.push('/catalog/item/$id'),

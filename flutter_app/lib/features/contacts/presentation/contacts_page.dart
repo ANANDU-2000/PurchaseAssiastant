@@ -985,6 +985,79 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
     }
   }
 
+  Widget _contactsHubCountsStrip() {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final sup = ref.watch(suppliersListProvider);
+    final bro = ref.watch(brokersListProvider);
+    final cats = ref.watch(itemCategoriesListProvider);
+    final items = ref.watch(catalogItemsListProvider);
+    final loading =
+        sup.isLoading || bro.isLoading || cats.isLoading || items.isLoading;
+    final sN = sup.valueOrNull?.length ?? 0;
+    final bN = bro.valueOrNull?.length ?? 0;
+    final cN = cats.valueOrNull?.length ?? 0;
+    final itemList = items.valueOrNull ?? const <Map<String, dynamic>>[];
+    final iN = itemList.length;
+    final typeIds = <String>{};
+    for (final it in itemList) {
+      final t = it['type_id']?.toString();
+      if (t != null && t.isNotEmpty) typeIds.add(t);
+    }
+    final tN = typeIds.length;
+
+    Widget chip(String label, int n) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withValues(alpha: 0.65),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: HexaColors.borderSubtle),
+        ),
+        child: Text(
+          loading ? '$label …' : '$label $n',
+          style: tt.labelMedium?.copyWith(
+            fontWeight: FontWeight.w800,
+            fontSize: 12,
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Workspace',
+            style: tt.labelSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: cs.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 6),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                chip('Suppliers', sN),
+                const SizedBox(width: 8),
+                chip('Brokers', bN),
+                const SizedBox(width: 8),
+                chip('Categories', cN),
+                const SizedBox(width: 8),
+                chip('Types in use', tN),
+                const SizedBox(width: 8),
+                chip('Items', iN),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _addForCurrentTab() {
     switch (_tabController.index) {
       case 0:
@@ -1101,6 +1174,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
               ),
             ),
           ),
+          _contactsHubCountsStrip(),
           Expanded(
             child: _isSearching
                 ? (_searchLoading

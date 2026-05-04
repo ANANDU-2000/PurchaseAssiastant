@@ -293,7 +293,7 @@ StrictDecimal headerCommissionAddOnDecimal({
       var bags = StrictDecimal.zero();
       for (final l in basisLines) {
         final u = l.unit.trim().toLowerCase();
-        if (u == 'bag' || u == 'sack') {
+        if (u == 'bag' || u == 'sack' || u == 'box') {
           bags += _dec(l.qty);
         }
       }

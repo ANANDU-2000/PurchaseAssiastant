@@ -15,6 +15,7 @@ import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/search/search_highlight.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../shared/widgets/search_picker_sheet.dart';
+import '../../../shared/widgets/trade_intel_cards.dart';
 
 /// Items under a subcategory (category type).
 class CatalogTypeItemsPage extends ConsumerStatefulWidget {
@@ -77,6 +78,7 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
   Future<void> _refresh() async {
     ref.invalidate(categoryTypesListProvider(widget.categoryId));
     ref.invalidate(catalogItemsListProvider);
+    ref.invalidate(categoryTradeSummaryProvider(widget.categoryId));
     await ref.read(catalogItemsListProvider.future);
   }
 
@@ -428,6 +430,23 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
   Widget build(BuildContext context) {
     final typesAsync = ref.watch(categoryTypesListProvider(widget.categoryId));
     final itemsAsync = ref.watch(catalogItemsListProvider);
+    final tradeSumAsync =
+        ref.watch(categoryTradeSummaryProvider(widget.categoryId));
+    final summaryByItemId = tradeSumAsync.maybeWhen(
+      data: (m) {
+        final raw = m['items'];
+        if (raw is! List) return <String, Map<String, dynamic>>{};
+        final out = <String, Map<String, dynamic>>{};
+        for (final e in raw) {
+          if (e is! Map) continue;
+          final mm = Map<String, dynamic>.from(e);
+          final id = mm['catalog_item_id']?.toString();
+          if (id != null && id.isNotEmpty) out[id] = mm;
+        }
+        return out;
+      },
+      orElse: () => <String, Map<String, dynamic>>{},
+    );
 
     final typeName = typesAsync.maybeWhen(
       data: (types) {
@@ -566,6 +585,18 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
                 final pu = (it['default_purchase_unit'] ?? it['default_unit'])?.toString() ?? '—';
                 final last = _num(it['last_purchase_price']);
                 final selected = _selected.contains(id);
+                final sumRow = summaryByItemId[id];
+                final merged = Map<String, dynamic>.from(it);
+                merged['name'] = name;
+                if (sumRow != null) {
+                  merged['period_line_total'] = sumRow['period_line_total'];
+                  merged['period_weight_kg'] = sumRow['period_weight_kg'];
+                  merged['period_qty_bags'] = sumRow['period_qty_bags'];
+                  merged['last_purchase_price'] = sumRow['last_purchase_price'];
+                  merged['last_selling_rate'] = sumRow['last_selling_rate'];
+                  merged['last_supplier_name'] = sumRow['last_supplier_name'];
+                  merged['last_broker_name'] = sumRow['last_broker_name'];
+                }
                 return RepaintBoundary(
                   child: Card(
                     margin: const EdgeInsets.only(bottom: 10),
@@ -591,53 +622,70 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
                           },
                     borderRadius: BorderRadius.circular(12),
                     child: Padding(
-                      padding: const EdgeInsets.all(14),
+                      padding: EdgeInsets.fromLTRB(
+                        _selectionMode ? 10 : 4,
+                        4,
+                        4,
+                        4,
+                      ),
                       child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           if (_selectionMode)
                             Padding(
-                              padding: const EdgeInsets.only(right: 10),
+                              padding: const EdgeInsets.only(right: 6, top: 10),
                               child: Icon(
                                 selected ? Icons.check_circle : Icons.circle_outlined,
                                 color: selected ? HexaColors.brandPrimary : Colors.grey,
                               ),
                             ),
                           Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text.rich(
-                                  TextSpan(
-                                    children: highlightSearchQuery(
-                                      name,
-                                      _searchQuery.trim(),
-                                      baseStyle: const TextStyle(
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 16,
+                            child: _selectionMode
+                                ? Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text.rich(
+                                        TextSpan(
+                                          children: highlightSearchQuery(
+                                            name,
+                                            _searchQuery.trim(),
+                                            baseStyle: const TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                              fontSize: 16,
+                                            ),
+                                            highlightStyle: TextStyle(
+                                              fontWeight: FontWeight.w900,
+                                              fontSize: 16,
+                                              color: Theme.of(context).colorScheme.primary,
+                                              backgroundColor: Theme.of(context)
+                                                  .colorScheme
+                                                  .primaryContainer
+                                                  .withValues(alpha: 0.4),
+                                            ),
+                                          ),
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                      highlightStyle: TextStyle(
-                                        fontWeight: FontWeight.w900,
-                                        fontSize: 16,
-                                        color: Theme.of(context).colorScheme.primary,
-                                        backgroundColor: Theme.of(context)
-                                            .colorScheme
-                                            .primaryContainer
-                                            .withValues(alpha: 0.4),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Unit: ${pu.toUpperCase()} · Last ${_inr(last)}',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.copyWith(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurfaceVariant,
+                                            ),
                                       ),
-                                    ),
+                                    ],
+                                  )
+                                : TradeIntelCategoryItemTile(
+                                    row: merged,
+                                    onTap: null,
+                                    showChevron: false,
                                   ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Unit: ${pu.toUpperCase()} · Last ${_inr(last)}',
-                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                      ),
-                                ),
-                              ],
-                            ),
                           ),
                           if (!_selectionMode) ...[
                             PopupMenuButton<String>(
@@ -663,7 +711,6 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
                                 ),
                               ],
                             ),
-                            const Icon(Icons.chevron_right_rounded),
                           ],
                         ],
                       ),

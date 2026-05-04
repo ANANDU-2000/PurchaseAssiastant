@@ -143,7 +143,7 @@ class PurchaseReviewTallyStep extends ConsumerWidget {
           kPurchaseCommissionModeFlatKg =>
             'Commission: ₹${cMoney.toStringAsFixed(2)} / kg × line kg',
           kPurchaseCommissionModeFlatBag =>
-            'Commission: ₹${cMoney.toStringAsFixed(2)} / bag × line bags',
+            'Commission: ₹${cMoney.toStringAsFixed(2)} / bag · box × qty',
           kPurchaseCommissionModeFlatTin =>
             'Commission: ₹${cMoney.toStringAsFixed(2)} / tin × line tins',
           _ => null,

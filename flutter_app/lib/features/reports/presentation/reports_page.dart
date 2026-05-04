@@ -11,6 +11,7 @@ import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/providers/analytics_kpi_provider.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/business_profile_provider.dart';
+import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/home_dashboard_provider.dart';
 import '../../../core/providers/reports_provider.dart';
 import '../../../core/reporting/trade_report_aggregate.dart';
@@ -44,7 +45,7 @@ String _presetLabel(_DatePreset p) => switch (p) {
       _DatePreset.custom => 'Custom',
     };
 
-enum ReportsMainTab { items, suppliers, brokers }
+enum ReportsMainTab { overview, categories, items, suppliers, brokers }
 
 typedef FullReportsPage = ReportsPage;
 
@@ -193,6 +194,8 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
           },
         ReportsMainTab.suppliers => ReportsFullListKind.suppliers,
         ReportsMainTab.brokers => ReportsFullListKind.brokers,
+        ReportsMainTab.overview => ReportsFullListKind.itemsBag,
+        ReportsMainTab.categories => ReportsFullListKind.itemsBag,
       };
 
   Future<void> _exportCsv({
@@ -212,6 +215,16 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
       );
 
       switch (_mainTab) {
+        case ReportsMainTab.overview:
+        case ReportsMainTab.categories:
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Use Items, Suppliers, or Brokers tab to export CSV rows.'),
+              ),
+            );
+          }
+          return;
         case ReportsMainTab.items:
           final rows = switch (_unit) {
             ReportPackKind.bag => agg.itemsBag,
@@ -459,10 +472,102 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
     );
   }
 
-  Widget _listBody(TradeReportAgg agg) {
+  Widget _overviewBody(TradeReportTotals t) {
+    final tt = Theme.of(context).textTheme;
+    final packBits = <String>[
+      if (t.bags > 1e-9) 'Bags ${_qtyReadable(t.bags)}',
+      if (t.kg > 1e-9) 'Kg ${_kgReadable(t.kg)}',
+      if (t.boxes > 1e-9) 'Box ${_qtyReadable(t.boxes)}',
+      if (t.tins > 1e-9) 'Tin ${_qtyReadable(t.tins)}',
+    ];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'All pack kinds',
+            style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            packBits.isEmpty
+                ? 'No classified bag/box/tin lines in this period.'
+                : packBits.join(' · '),
+            style: tt.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: HexaColors.textBody,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Switch to Items to filter by bag, box, or tin. Categories ranks spend under each catalog category.',
+            style: tt.bodySmall?.copyWith(color: HexaColors.textBody, height: 1.35),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _listBody(
+    TradeReportAgg agg,
+    TradeReportAgg aggAll,
+    List<TradeReportCategoryRow> categoryRows,
+  ) {
     final q = _debouncedQuery.trim().toLowerCase();
 
     switch (_mainTab) {
+      case ReportsMainTab.overview:
+        return _overviewBody(aggAll.totals);
+      case ReportsMainTab.categories:
+        final all = q.isEmpty
+            ? categoryRows
+            : categoryRows
+                .where((r) => r.name.toLowerCase().contains(q))
+                .toList();
+        if (all.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              categoryRows.isEmpty
+                  ? 'Load catalog categories to group spend, or record lines linked to catalog items.'
+                  : 'No category matches this search.',
+              style: TextStyle(color: HexaColors.textBody),
+            ),
+          );
+        }
+        final cap = _visibleCap < all.length ? _visibleCap : all.length;
+        final rowWidgets = <Widget>[];
+        for (var i = 0; i < cap; i++) {
+          final r = all[i];
+          rowWidgets.add(
+            InkWell(
+              onTap: r.categoryKey == '_uncategorized'
+                  ? null
+                  : () => context.push('/catalog/category/${r.categoryKey}'),
+              child: _compactRow(context, r.name, [
+                (label: 'Amount', value: _inr0(r.amountInr.round())),
+                (label: 'Kg', value: _kgReadable(r.kg)),
+                (label: 'Bags', value: _qtyReadable(r.bagQty)),
+                (label: 'Bills', value: '${r.dealIds.length}'),
+              ]),
+            ),
+          );
+          if (i < cap - 1) {
+            rowWidgets.add(Divider(height: 1, color: HexaColors.brandBorder));
+          }
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ...rowWidgets,
+            if (cap < all.length)
+              TextButton(
+                onPressed: () => setState(() => _visibleCap = all.length),
+                child: const Text('Show all categories'),
+              ),
+          ],
+        );
       case ReportsMainTab.items:
         final rows = switch (_unit) {
           ReportPackKind.bag => agg.itemsBag,
@@ -672,7 +777,28 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
     final rangeFmt =
         '${DateFormat('d MMM').format(range.from)} → ${DateFormat('d MMM').format(range.to)}';
 
+    final aggAll = buildTradeReportAgg(merged);
     final agg = buildTradeReportAgg(merged, onlyKind: _unit);
+
+    final itemCats = ref.watch(itemCategoriesListProvider).valueOrNull ?? [];
+    final catItems = ref.watch(catalogItemsListProvider).valueOrNull ?? [];
+    final idToCat = <String, String>{};
+    for (final it in catItems) {
+      final iid = it['id']?.toString();
+      final cid = it['category_id']?.toString();
+      if (iid != null && cid != null) idToCat[iid] = cid;
+    }
+    final catNames = <String, String>{};
+    for (final c in itemCats) {
+      final id = c['id']?.toString();
+      final nm = c['name']?.toString();
+      if (id != null && nm != null) catNames[id] = nm;
+    }
+    final categoryRows = buildTradeReportCategoryRows(
+      merged,
+      catalogItemIdToCategoryId: idToCat,
+      categoryIdToName: catNames,
+    );
 
     final session = ref.watch(sessionProvider);
     final showSkeleton =
@@ -891,47 +1017,61 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  _totalsTop(agg.totals),
+                  _totalsTop(aggAll.totals),
                   const SizedBox(height: 8),
-                  SegmentedButton<ReportsMainTab>(
-                    segments: const [
-                      ButtonSegment(
-                          value: ReportsMainTab.items, label: Text('Items')),
-                      ButtonSegment(
-                          value: ReportsMainTab.suppliers,
-                          label: Text('Suppliers')),
-                      ButtonSegment(
-                          value: ReportsMainTab.brokers,
-                          label: Text('Brokers')),
-                    ],
-                    selected: {_mainTab},
-                    onSelectionChanged: (s) {
-                      if (s.isEmpty) return;
-                      setState(() {
-                        _mainTab = s.first;
-                        _visibleCap = 5;
-                      });
-                    },
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final tab in ReportsMainTab.values) ...[
+                          if (tab != ReportsMainTab.values.first)
+                            const SizedBox(width: 6),
+                          ChoiceChip(
+                            label: Text(
+                              switch (tab) {
+                                ReportsMainTab.overview => 'Overview',
+                                ReportsMainTab.categories => 'Categories',
+                                ReportsMainTab.items => 'Items',
+                                ReportsMainTab.suppliers => 'Suppliers',
+                                ReportsMainTab.brokers => 'Brokers',
+                              },
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            selected: _mainTab == tab,
+                            onSelected: (_) => setState(() {
+                              _mainTab = tab;
+                              _visibleCap = 5;
+                            }),
+                            showCheckmark: false,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 8),
-                  SegmentedButton<ReportPackKind>(
-                    segments: const [
-                      ButtonSegment(
-                          value: ReportPackKind.bag, label: Text('Bag')),
-                      ButtonSegment(
-                          value: ReportPackKind.box, label: Text('Box')),
-                      ButtonSegment(
-                          value: ReportPackKind.tin, label: Text('Tin')),
-                    ],
-                    selected: {_unit},
-                    onSelectionChanged: (s) {
-                      if (s.isEmpty) return;
-                      setState(() {
-                        _unit = s.first;
-                        _visibleCap = 5;
-                      });
-                    },
-                  ),
+                  if (_mainTab == ReportsMainTab.items)
+                    SegmentedButton<ReportPackKind>(
+                      segments: const [
+                        ButtonSegment(
+                            value: ReportPackKind.bag, label: Text('Bag')),
+                        ButtonSegment(
+                            value: ReportPackKind.box, label: Text('Box')),
+                        ButtonSegment(
+                            value: ReportPackKind.tin, label: Text('Tin')),
+                      ],
+                      selected: {_unit},
+                      onSelectionChanged: (s) {
+                        if (s.isEmpty) return;
+                        setState(() {
+                          _unit = s.first;
+                          _visibleCap = 5;
+                        });
+                      },
+                    ),
                   const SizedBox(height: 10),
                   TextField(
                     controller: _searchCtl,
@@ -974,9 +1114,9 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _listBody(agg),
+                        _listBody(agg, aggAll, categoryRows),
                         const SizedBox(height: 16),
-                        _reportsFooterTotals(agg.totals),
+                        _reportsFooterTotals(aggAll.totals),
                       ],
                     ),
                 ],

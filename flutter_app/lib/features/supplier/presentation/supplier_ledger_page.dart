@@ -8,6 +8,7 @@ import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/router/navigation_ext.dart';
+import '../../../shared/widgets/trade_intel_cards.dart';
 import '../../purchase/state/purchase_providers.dart';
 
 final _supplierLedgerHeaderProvider =
@@ -25,19 +26,21 @@ class SupplierLedgerPage extends ConsumerWidget {
 
   final String supplierId;
 
-  TextStyle _numStyle(BuildContext context) => Theme.of(context).textTheme.bodySmall!.copyWith(
-        fontFeatures: const [FontFeature.tabularFigures()],
-        fontWeight: FontWeight.w700,
-        fontFamily: 'monospace',
-      );
-
   String _inr(num n) => NumberFormat.currency(
         locale: 'en_IN',
         symbol: '₹',
         decimalDigits: n % 1 == 0 ? 0 : 2,
       ).format(n);
 
-  String _qty(num n) => n % 1 == 0 ? n.toInt().toString() : n.toStringAsFixed(2);
+  Map<String, dynamic> _rowIntel(LedgerLineRow row) {
+    return {
+      'last_purchase_price': row.rateInr,
+      'last_selling_rate': row.sellingRateInr,
+      'last_line_qty': row.qty,
+      'last_line_unit': row.unit,
+      'last_line_weight_kg': row.kg,
+    };
+  }
 
   Future<void> _openRowActions(BuildContext context, WidgetRef ref, LedgerLineRow row) async {
     if (!context.mounted) return;
@@ -203,105 +206,103 @@ class SupplierLedgerPage extends ConsumerWidget {
                 const Expanded(child: Center(child: CircularProgressIndicator()))
               else ...[
                 Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, lc) {
-                      final tableW = lc.maxWidth < 720 ? 720.0 : lc.maxWidth;
-                      return Scrollbar(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: SizedBox(
-                            width: tableW,
-                            height: lc.maxHeight,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                const Divider(height: 1),
-                                Table(
-                                  columnWidths: const {
-                                    0: FixedColumnWidth(100),
-                                    1: FixedColumnWidth(160),
-                                    2: FixedColumnWidth(72),
-                                    3: FixedColumnWidth(56),
-                                    4: FixedColumnWidth(76),
-                                    5: FixedColumnWidth(88),
-                                    6: FixedColumnWidth(88),
-                                  },
-                                  children: [
-                                    TableRow(
-                                      children: [
-                                        _h(context, 'Date'),
-                                        _h(context, 'Item'),
-                                        _h(context, 'Qty'),
-                                        _h(context, 'Unit'),
-                                        _h(context, 'Kg'),
-                                        _h(context, 'Rate'),
-                                        _h(context, 'Amt'),
-                                      ],
-                                    ),
-                                  ],
+                  child: state.visibleRows().isEmpty
+                      ? const Center(child: Text('No matching lines'))
+                      : ListView.separated(
+                          padding: const EdgeInsets.only(top: 4),
+                          itemCount: state.visibleRows().length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 10),
+                          itemBuilder: (ctx, i) {
+                            final row = state.visibleRows()[i];
+                            final intel = _rowIntel(row);
+                            final qtyLine = tradeIntelQtySummaryLine(intel);
+                            final rateLine = tradeIntelRatePairLine(intel);
+                            final tt = Theme.of(context).textTheme;
+                            final cs = Theme.of(context).colorScheme;
+                            return Card(
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                side: BorderSide(
+                                  color: cs.outlineVariant.withValues(alpha: 0.85),
                                 ),
-                                const Divider(height: 1),
-                                Expanded(
-                                  child: state.visibleRows().isEmpty
-                                      ? const Center(child: Text('No matching lines'))
-                                      : ListView.builder(
-                                          itemExtent: 40,
-                                          itemCount: state.visibleRows().length,
-                                          itemBuilder: (ctx, i) {
-                                            final row = state.visibleRows()[i];
-                                            final num = _numStyle(context);
-                                            return InkWell(
-                                              onTap: () => context
-                                                  .push('/purchase/detail/${row.purchaseId}'),
-                                              onLongPress: () =>
-                                                  _openRowActions(context, ref, row),
-                                              child: Table(
-                                                columnWidths: const {
-                                                  0: FixedColumnWidth(100),
-                                                  1: FixedColumnWidth(160),
-                                                  2: FixedColumnWidth(72),
-                                                  3: FixedColumnWidth(56),
-                                                  4: FixedColumnWidth(76),
-                                                  5: FixedColumnWidth(88),
-                                                  6: FixedColumnWidth(88),
-                                                },
-                                                children: [
-                                                  TableRow(
-                                                    children: [
-                                                      _c(context,
-                                                          Text(fmt.format(row.purchaseDate), style: num)),
-                                                      _c(
-                                                        context,
-                                                        Text(
-                                                          row.itemName,
-                                                          maxLines: 1,
-                                                          overflow: TextOverflow.ellipsis,
-                                                        ),
-                                                      ),
-                                                      _c(context, Text(_qty(row.qty), style: num)),
-                                                      _c(context, Text(row.unit, style: num)),
-                                                      _c(context, Text(_qty(row.kg), style: num)),
-                                                      _c(
-                                                          context,
-                                                          Text(_inr(row.rateInr), style: num)),
-                                                      _c(
-                                                          context,
-                                                          Text(_inr(row.amountInr), style: num)),
-                                                    ],
-                                                  ),
-                                                ],
+                              ),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(14),
+                                onTap: () =>
+                                    context.push('/purchase/detail/${row.purchaseId}'),
+                                onLongPress: () =>
+                                    _openRowActions(context, ref, row),
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      Row(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              row.itemName,
+                                              style: tt.titleSmall?.copyWith(
+                                                fontWeight: FontWeight.w800,
+                                                height: 1.2,
                                               ),
-                                            );
-                                          },
+                                            ),
+                                          ),
+                                          Text(
+                                            _inr(row.amountInr),
+                                            style: tt.titleSmall?.copyWith(
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${fmt.format(row.purchaseDate)} · '
+                                        '${row.humanId ?? row.purchaseId}',
+                                        style: tt.bodySmall?.copyWith(
+                                          color: cs.onSurfaceVariant,
+                                          fontWeight: FontWeight.w600,
                                         ),
+                                      ),
+                                      if (qtyLine.isNotEmpty) ...[
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          qtyLine,
+                                          style: tt.bodyMedium?.copyWith(
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ],
+                                      if (rateLine.isNotEmpty) ...[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          rateLine,
+                                          style: tt.bodySmall?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                            color: cs.onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ],
+                                      if (row.supplierName.isNotEmpty) ...[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'From: ${row.supplierName}',
+                                          style: tt.bodySmall?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                            color: cs.onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
                                 ),
-                              ],
-                            ),
-                          ),
+                              ),
+                            );
+                          },
                         ),
-                      );
-                    },
-                  ),
                 ),
                 if (showLoadMore)
                   Padding(
@@ -329,21 +330,4 @@ class SupplierLedgerPage extends ConsumerWidget {
       ),
     );
   }
-
-  Widget _h(BuildContext context, String t) =>
-      Padding(
-        padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
-        child: Text(
-          t,
-          style:
-              Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w800),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-      );
-
-  Widget _c(BuildContext context, Widget child) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-        child: Align(alignment: Alignment.centerLeft, child: child),
-      );
 }

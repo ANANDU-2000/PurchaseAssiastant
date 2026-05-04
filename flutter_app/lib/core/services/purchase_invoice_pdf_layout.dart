@@ -347,7 +347,7 @@ String _brokerCommissionPdfLabel(TradePurchase p) {
   return switch (mode) {
     'flat_invoice' => 'Broker commission (fixed, bill)',
     'flat_kg' => 'Broker commission (per kg × total kg)',
-    'flat_bag' => 'Broker commission (per bag/sack × qty)',
+    'flat_bag' => 'Broker commission (per bag · box · sack × qty)',
     'flat_tin' => 'Broker commission (per tin × qty)',
     _ => 'Broker commission',
   };

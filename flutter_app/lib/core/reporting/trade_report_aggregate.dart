@@ -322,6 +322,62 @@ TradeReportAgg buildTradeReportAgg(
   );
 }
 
+/// Classified-line spend grouped by catalog category (for Reports → Categories).
+class TradeReportCategoryRow {
+  TradeReportCategoryRow({
+    required this.categoryKey,
+    required this.name,
+  });
+
+  final String categoryKey;
+  final String name;
+  double amountInr = 0;
+  double kg = 0;
+  double bagQty = 0;
+  final Set<String> dealIds = {};
+}
+
+/// Maps each catalog item id to its category id, and category id → display name.
+List<TradeReportCategoryRow> buildTradeReportCategoryRows(
+  List<TradePurchase> purchases, {
+  required Map<String, String> catalogItemIdToCategoryId,
+  required Map<String, String> categoryIdToName,
+}) {
+  const unc = '_uncategorized';
+  final m = <String, TradeReportCategoryRow>{};
+
+  for (final p in purchases) {
+    for (final l in p.lines) {
+      final pk = reportClassifyPackKind(l);
+      if (pk == null) continue;
+      final cid = (l.catalogItemId ?? '').trim();
+      final catId =
+          cid.isEmpty ? unc : (catalogItemIdToCategoryId[cid] ?? unc);
+      final nm = catId == unc
+          ? 'Uncategorized'
+          : (categoryIdToName[catId] ?? 'Category');
+      final row = m.putIfAbsent(
+        catId,
+        () => TradeReportCategoryRow(categoryKey: catId, name: nm),
+      );
+      row.dealIds.add(p.id);
+      row.amountInr += reportLineAmountInr(l);
+      row.kg += reportLineKg(l);
+      if (pk == ReportPackKind.bag) {
+        row.bagQty += l.qty;
+      }
+    }
+  }
+
+  final list = m.values.toList()
+    ..sort((a, b) {
+      final c = b.amountInr.compareTo(a.amountInr);
+      if (c != 0) return c;
+      return a.name.compareTo(b.name);
+    });
+  return list;
+}
+
 /// Statement row for PDF/export (every classified line).
 class TradeReportStatementLine {
   TradeReportStatementLine({

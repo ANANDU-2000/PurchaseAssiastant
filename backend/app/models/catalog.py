@@ -66,6 +66,20 @@ class CatalogItem(Base):
     default_purchase_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
     default_sale_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
     last_purchase_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    # Snapshot from last **confirmed** trade line (search / item hero / autofill SSOT).
+    last_selling_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    last_supplier_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("suppliers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    last_broker_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("brokers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    last_trade_purchase_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("trade_purchases.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    last_line_qty: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    last_line_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    last_line_weight_kg: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     category = relationship("ItemCategory", back_populates="items")

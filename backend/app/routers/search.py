@@ -17,7 +17,7 @@ from app.db_schema_compat import catalog_items_has_type_id_column
 from app.database import get_db
 from app.db_resilience import execute_with_retry
 from app.deps import require_membership
-from app.models import CatalogItem, CategoryType, Entry, EntryLineItem, ItemCategory, Membership, Supplier
+from app.models import Broker, CatalogItem, CategoryType, Entry, EntryLineItem, ItemCategory, Membership, Supplier
 from app.schemas.entries import EntryLineOut, EntryOut
 from app.services import trade_purchase_service as tps
 from app.services.fuzzy_catalog import rank_ids_by_token_sort
@@ -84,10 +84,34 @@ class UnifiedSearchOut(BaseModel):
 
 
 def _hydrate_catalog_rows(rows: list[tuple[Any, ...]]) -> list[dict[str, Any]]:
+    """Map SQL row tuples to API dicts (supports legacy 10/11-col rows pre-migration)."""
     out: list[dict[str, Any]] = []
     for row in rows:
         icode: str | None
-        if len(row) == 11:
+        dsc = lsr = lq = lu = lwg = None
+        lsid = lbid = None
+        if len(row) >= 18:
+            (
+                _id,
+                name,
+                cat,
+                tname,
+                du,
+                dkg,
+                hsn,
+                icode,
+                tax,
+                dlc,
+                lpp,
+                dsc,
+                lsr,
+                lsid,
+                lbid,
+                lq,
+                lu,
+                lwg,
+            ) = row[:18]
+        elif len(row) == 11:
             _id, name, cat, tname, du, dkg, hsn, icode, tax, dlc, lpp = row
         elif len(row) == 10:
             _id, name, cat, tname, du, dkg, hsn, tax, dlc, lpp = row
@@ -119,10 +143,76 @@ def _hydrate_catalog_rows(rows: list[tuple[Any, ...]]) -> list[dict[str, Any]]:
                 "item_code": icode_s,
                 "tax_percent": float(tax) if tax is not None else None,
                 "default_landing_cost": float(dlc) if dlc is not None else None,
+                "default_selling_cost": float(dsc) if dsc is not None else None,
                 "last_purchase_price": float(lpp) if lpp is not None else None,
+                "last_selling_rate": float(lsr) if lsr is not None else None,
+                "last_supplier_id": str(lsid) if lsid is not None else None,
+                "last_broker_id": str(lbid) if lbid is not None else None,
+                "last_line_qty": float(lq) if lq is not None else None,
+                "last_line_unit": lu,
+                "last_line_weight_kg": float(lwg) if lwg is not None else None,
+                "last_supplier_name": None,
+                "last_broker_name": None,
             }
         )
     return out
+
+
+async def _attach_last_party_names(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    items: list[dict[str, Any]],
+) -> None:
+    s_ids: set[uuid.UUID] = set()
+    b_ids: set[uuid.UUID] = set()
+    for m in items:
+        raw = m.get("last_supplier_id")
+        if raw:
+            try:
+                s_ids.add(uuid.UUID(str(raw)))
+            except ValueError:
+                pass
+        rawb = m.get("last_broker_id")
+        if rawb:
+            try:
+                b_ids.add(uuid.UUID(str(rawb)))
+            except ValueError:
+                pass
+    sm: dict[uuid.UUID, str] = {}
+    bm: dict[uuid.UUID, str] = {}
+    if s_ids:
+        sr = await execute_with_retry(
+            lambda: db.execute(
+                select(Supplier.id, Supplier.name).where(
+                    Supplier.business_id == business_id,
+                    Supplier.id.in_(s_ids),
+                )
+            )
+        )
+        sm = {row[0]: row[1] for row in sr.all()}
+    if b_ids:
+        br = await execute_with_retry(
+            lambda: db.execute(
+                select(Broker.id, Broker.name).where(
+                    Broker.business_id == business_id,
+                    Broker.id.in_(b_ids),
+                )
+            )
+        )
+        bm = {row[0]: row[1] for row in br.all()}
+    for m in items:
+        sid = m.get("last_supplier_id")
+        if sid:
+            try:
+                m["last_supplier_name"] = sm.get(uuid.UUID(str(sid)))
+            except ValueError:
+                pass
+        bid = m.get("last_broker_id")
+        if bid:
+            try:
+                m["last_broker_name"] = bm.get(uuid.UUID(str(bid)))
+            except ValueError:
+                pass
 
 
 @router.get("/search", response_model=UnifiedSearchOut)
@@ -149,7 +239,14 @@ async def unified_search(
             CatalogItem.item_code,
             CatalogItem.tax_percent,
             CatalogItem.default_landing_cost,
+            CatalogItem.default_selling_cost,
             CatalogItem.last_purchase_price,
+            CatalogItem.last_selling_rate,
+            CatalogItem.last_supplier_id,
+            CatalogItem.last_broker_id,
+            CatalogItem.last_line_qty,
+            CatalogItem.last_line_unit,
+            CatalogItem.last_line_weight_kg,
         )
         item_name_cat_hsn = or_(
             func.lower(CatalogItem.name).contains(needle),
@@ -260,6 +357,7 @@ async def unified_search(
                         catalog_rows.append((*row[:3], None, *row[3:]))
 
         catalog_items = _hydrate_catalog_rows(catalog_rows)
+        await _attach_last_party_names(db, business_id, catalog_items)
 
         sup_match = or_(
             func.lower(Supplier.name).contains(needle),

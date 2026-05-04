@@ -2,11 +2,12 @@ import logging
 import time
 import uuid
 from datetime import date
+from collections.abc import Sequence
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator, model_validator
-from sqlalchemy import and_, delete, desc, func, select
+from sqlalchemy import and_, case, delete, desc, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
@@ -196,6 +197,15 @@ class CatalogItemOut(BaseModel):
     default_landing_cost: float | None = None
     default_selling_cost: float | None = None
     last_purchase_price: float | None = None
+    last_selling_rate: float | None = None
+    last_supplier_id: uuid.UUID | None = None
+    last_broker_id: uuid.UUID | None = None
+    last_trade_purchase_id: uuid.UUID | None = None
+    last_line_qty: float | None = None
+    last_line_unit: str | None = None
+    last_line_weight_kg: float | None = None
+    last_supplier_name: str | None = None
+    last_broker_name: str | None = None
     default_supplier_ids: list[uuid.UUID] = Field(default_factory=list)
     default_broker_ids: list[uuid.UUID] = Field(default_factory=list)
 
@@ -254,6 +264,28 @@ class CategoryInsightsOut(BaseModel):
     top_item_profit: float | None
     worst_item_name: str | None
     worst_item_profit: float | None
+
+
+class CategoryTradeItemRow(BaseModel):
+    catalog_item_id: uuid.UUID
+    name: str
+    period_line_total: float = 0.0
+    period_qty_bags: float = 0.0
+    period_weight_kg: float = 0.0
+    last_purchase_price: float | None = None
+    last_selling_rate: float | None = None
+    last_supplier_name: str | None = None
+    last_broker_name: str | None = None
+
+
+class CategoryTradeSummaryOut(BaseModel):
+    """Aggregates for catalog items in a category (confirmed trade lines only)."""
+
+    item_count: int
+    total_line_amount: float
+    total_qty_bags: float
+    total_weight_kg: float
+    items: list[CategoryTradeItemRow]
 
 
 class CatalogItemLineRow(BaseModel):
@@ -412,6 +444,13 @@ _CATALOG_ITEM_CORE = (
     CatalogItem.default_purchase_unit,
     CatalogItem.default_sale_unit,
     CatalogItem.last_purchase_price,
+    CatalogItem.last_selling_rate,
+    CatalogItem.last_supplier_id,
+    CatalogItem.last_broker_id,
+    CatalogItem.last_trade_purchase_id,
+    CatalogItem.last_line_qty,
+    CatalogItem.last_line_unit,
+    CatalogItem.last_line_weight_kg,
     CatalogItem.created_at,
 )
 
@@ -423,6 +462,8 @@ def _catalog_item_out(
     type_id: uuid.UUID | None | _UnsetSentinel = _UNSET,
     default_supplier_ids: list[uuid.UUID] | None = None,
     default_broker_ids: list[uuid.UUID] | None = None,
+    last_supplier_name: str | None = None,
+    last_broker_name: str | None = None,
 ) -> CatalogItemOut:
     tid = i.type_id if type_id is _UNSET else type_id
     dipb = getattr(i, "default_items_per_box", None)
@@ -451,6 +492,19 @@ def _catalog_item_out(
         last_purchase_price=float(i.last_purchase_price)
         if getattr(i, "last_purchase_price", None) is not None
         else None,
+        last_selling_rate=float(ls)
+        if (ls := getattr(i, "last_selling_rate", None)) is not None
+        else None,
+        last_supplier_id=getattr(i, "last_supplier_id", None),
+        last_broker_id=getattr(i, "last_broker_id", None),
+        last_trade_purchase_id=getattr(i, "last_trade_purchase_id", None),
+        last_line_qty=float(lq) if (lq := getattr(i, "last_line_qty", None)) is not None else None,
+        last_line_unit=getattr(i, "last_line_unit", None),
+        last_line_weight_kg=float(lw)
+        if (lw := getattr(i, "last_line_weight_kg", None)) is not None
+        else None,
+        last_supplier_name=last_supplier_name,
+        last_broker_name=last_broker_name,
         default_supplier_ids=list(default_supplier_ids or ()),
         default_broker_ids=list(default_broker_ids or ()),
     )
@@ -474,6 +528,44 @@ async def _assert_supplier_ids_in_business(
             status.HTTP_400_BAD_REQUEST,
             detail="One or more default_supplier_ids are invalid for this business",
         )
+
+
+async def _supplier_broker_name_maps_by_ids(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    supplier_ids: set[uuid.UUID],
+    broker_ids: set[uuid.UUID],
+) -> tuple[dict[uuid.UUID, str], dict[uuid.UUID, str]]:
+    sm: dict[uuid.UUID, str] = {}
+    bm: dict[uuid.UUID, str] = {}
+    if supplier_ids:
+        sr = await db.execute(
+            select(Supplier.id, Supplier.name).where(
+                Supplier.business_id == business_id,
+                Supplier.id.in_(supplier_ids),
+            )
+        )
+        sm = {row[0]: row[1] for row in sr.all()}
+    if broker_ids:
+        br = await db.execute(
+            select(Broker.id, Broker.name).where(
+                Broker.business_id == business_id,
+                Broker.id.in_(broker_ids),
+            )
+        )
+        bm = {row[0]: row[1] for row in br.all()}
+    return sm, bm
+
+
+async def _last_party_names_for_catalog_items(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    items: Sequence[CatalogItem],
+) -> tuple[dict[uuid.UUID, str], dict[uuid.UUID, str]]:
+    """Resolve last_supplier_id / last_broker_id to display names for API consumers."""
+    s_ids = {i.last_supplier_id for i in items if getattr(i, "last_supplier_id", None) is not None}
+    b_ids = {i.last_broker_id for i in items if getattr(i, "last_broker_id", None) is not None}
+    return await _supplier_broker_name_maps_by_ids(db, business_id, s_ids, b_ids)
 
 
 async def _assert_broker_ids_in_business(
@@ -741,6 +833,128 @@ async def get_item_category(
     return ItemCategoryOut(id=c.id, name=c.name)
 
 
+@router.get(
+    "/item-categories/{category_id}/trade-summary",
+    response_model=CategoryTradeSummaryOut,
+)
+async def category_trade_summary(
+    business_id: uuid.UUID,
+    category_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Per-item and category totals from confirmed trade lines (mobile dashboard)."""
+    del _m
+    cr = await db.execute(
+        select(ItemCategory.id).where(
+            ItemCategory.id == category_id,
+            ItemCategory.business_id == business_id,
+        )
+    )
+    if cr.scalar_one_or_none() is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Category not found")
+
+    in_confirmed = and_(
+        TradePurchase.id.isnot(None),
+        func.coalesce(func.lower(TradePurchase.status), "") == "confirmed",
+    )
+    bag_unit = func.lower(TradePurchaseLine.unit).in_(("bag", "sack", "box"))
+    stmt = (
+        select(
+            CatalogItem.id,
+            CatalogItem.name,
+            func.coalesce(
+                func.sum(case((in_confirmed, TradePurchaseLine.line_total), else_=0)),
+                0,
+            ).label("period_line_total"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (and_(in_confirmed, bag_unit), TradePurchaseLine.qty),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("period_qty_bags"),
+            func.coalesce(
+                func.sum(case((in_confirmed, TradePurchaseLine.total_weight), else_=0)),
+                0,
+            ).label("period_weight_kg"),
+            CatalogItem.last_purchase_price,
+            CatalogItem.last_selling_rate,
+            CatalogItem.last_supplier_id,
+            CatalogItem.last_broker_id,
+        )
+        .select_from(CatalogItem)
+        .outerjoin(TradePurchaseLine, TradePurchaseLine.catalog_item_id == CatalogItem.id)
+        .outerjoin(
+            TradePurchase,
+            and_(
+                TradePurchase.id == TradePurchaseLine.trade_purchase_id,
+                TradePurchase.business_id == business_id,
+            ),
+        )
+        .where(
+            CatalogItem.business_id == business_id,
+            CatalogItem.category_id == category_id,
+        )
+        .group_by(
+            CatalogItem.id,
+            CatalogItem.name,
+            CatalogItem.last_purchase_price,
+            CatalogItem.last_selling_rate,
+            CatalogItem.last_supplier_id,
+            CatalogItem.last_broker_id,
+        )
+        .order_by(func.lower(CatalogItem.name))
+    )
+    r = await execute_with_retry(lambda: db.execute(stmt))
+    rows = r.all()
+    s_ids: set[uuid.UUID] = {row[7] for row in rows if row[7] is not None}
+    b_ids: set[uuid.UUID] = {row[8] for row in rows if row[8] is not None}
+    lsn_map, lbn_map = await _supplier_broker_name_maps_by_ids(db, business_id, s_ids, b_ids)
+    items_out: list[CategoryTradeItemRow] = []
+    tot_amt = 0.0
+    tot_bags = 0.0
+    tot_kg = 0.0
+    for row in rows:
+        iid = row[0]
+        nm = row[1]
+        pamt = row[2]
+        pbags = row[3]
+        pkg = row[4]
+        lpp = row[5]
+        lsr = row[6]
+        lsid = row[7]
+        lbid = row[8]
+        fa = float(pamt or 0)
+        fb = float(pbags or 0)
+        fk = float(pkg or 0)
+        tot_amt += fa
+        tot_bags += fb
+        tot_kg += fk
+        items_out.append(
+            CategoryTradeItemRow(
+                catalog_item_id=iid,
+                name=nm,
+                period_line_total=fa,
+                period_qty_bags=fb,
+                period_weight_kg=fk,
+                last_purchase_price=float(lpp) if lpp is not None else None,
+                last_selling_rate=float(lsr) if lsr is not None else None,
+                last_supplier_name=lsn_map.get(lsid) if lsid else None,
+                last_broker_name=lbn_map.get(lbid) if lbid else None,
+            )
+        )
+    return CategoryTradeSummaryOut(
+        item_count=len(items_out),
+        total_line_amount=tot_amt,
+        total_qty_bags=tot_bags,
+        total_weight_kg=tot_kg,
+        items=items_out,
+    )
+
+
 @router.patch("/item-categories/{category_id}", response_model=ItemCategoryOut)
 async def update_item_category(
     business_id: uuid.UUID,
@@ -967,12 +1181,16 @@ async def list_catalog_items(
             rows = r.all()
             ids = [i.id for i, _ in rows]
             sup_m, br_m = await _default_supplier_broker_ids_for_items(db, business_id, ids)
+            items_only = [i for i, _ in rows]
+            lsn, lbn = await _last_party_names_for_catalog_items(db, business_id, items_only)
             return [
                 _catalog_item_out(
                     i,
                     tn,
                     default_supplier_ids=sup_m.get(i.id, []),
                     default_broker_ids=br_m.get(i.id, []),
+                    last_supplier_name=lsn.get(i.last_supplier_id) if i.last_supplier_id else None,
+                    last_broker_name=lbn.get(i.last_broker_id) if i.last_broker_id else None,
                 )
                 for i, tn in rows
             ]
@@ -989,6 +1207,7 @@ async def list_catalog_items(
         items = r.scalars().all()
         ids = [i.id for i in items]
         sup_m, br_m = await _default_supplier_broker_ids_for_items(db, business_id, ids)
+        lsn, lbn = await _last_party_names_for_catalog_items(db, business_id, items)
         return [
             _catalog_item_out(
                 i,
@@ -996,6 +1215,8 @@ async def list_catalog_items(
                 type_id=None,
                 default_supplier_ids=sup_m.get(i.id, []),
                 default_broker_ids=br_m.get(i.id, []),
+                last_supplier_name=lsn.get(i.last_supplier_id) if i.last_supplier_id else None,
+                last_broker_name=lbn.get(i.last_broker_id) if i.last_broker_id else None,
             )
             for i in items
         ]
@@ -1103,8 +1324,14 @@ async def create_catalog_item(
     if i.type_id is not None:
         tr = await db.execute(select(CategoryType.name).where(CategoryType.id == i.type_id))
         tn = tr.scalar_one_or_none()
+    lsn, lbn = await _last_party_names_for_catalog_items(db, business_id, [i])
     return _catalog_item_out(
-        i, tn, default_supplier_ids=supplier_ids, default_broker_ids=broker_ids
+        i,
+        tn,
+        default_supplier_ids=supplier_ids,
+        default_broker_ids=broker_ids,
+        last_supplier_name=lsn.get(i.last_supplier_id) if i.last_supplier_id else None,
+        last_broker_name=lbn.get(i.last_broker_id) if i.last_broker_id else None,
     )
 
 
@@ -1132,11 +1359,14 @@ async def get_catalog_item(
                 raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")
             i, tn = row
             sup_m, br_m = await _default_supplier_broker_ids_for_items(db, business_id, [i.id])
+            lsn, lbn = await _last_party_names_for_catalog_items(db, business_id, [i])
             return _catalog_item_out(
                 i,
                 tn,
                 default_supplier_ids=sup_m.get(i.id, []),
                 default_broker_ids=br_m.get(i.id, []),
+                last_supplier_name=lsn.get(i.last_supplier_id) if i.last_supplier_id else None,
+                last_broker_name=lbn.get(i.last_broker_id) if i.last_broker_id else None,
             )
 
         r = await db.execute(
@@ -1151,12 +1381,15 @@ async def get_catalog_item(
         if i is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")
         sup_m, br_m = await _default_supplier_broker_ids_for_items(db, business_id, [i.id])
+        lsn, lbn = await _last_party_names_for_catalog_items(db, business_id, [i])
         return _catalog_item_out(
             i,
             None,
             type_id=None,
             default_supplier_ids=sup_m.get(i.id, []),
             default_broker_ids=br_m.get(i.id, []),
+            last_supplier_name=lsn.get(i.last_supplier_id) if i.last_supplier_id else None,
+            last_broker_name=lbn.get(i.last_broker_id) if i.last_broker_id else None,
         )
     except SQLAlchemyError:
         logger.exception("get_catalog_item failed business_id=%s item_id=%s", business_id, item_id)
@@ -1760,12 +1993,15 @@ async def update_catalog_item(
         )
         i_out = rr.scalar_one()
         sup_m, br_m = await _default_supplier_broker_ids_for_items(db, business_id, [item_id])
+        lsn, lbn = await _last_party_names_for_catalog_items(db, business_id, [i_out])
         return _catalog_item_out(
             i_out,
             None,
             type_id=None,
             default_supplier_ids=sup_m.get(item_id, []),
             default_broker_ids=br_m.get(item_id, []),
+            last_supplier_name=lsn.get(i_out.last_supplier_id) if i_out.last_supplier_id else None,
+            last_broker_name=lbn.get(i_out.last_broker_id) if i_out.last_broker_id else None,
         )
     await db.refresh(i)
     tn = None
@@ -1773,11 +2009,14 @@ async def update_catalog_item(
         tr = await db.execute(select(CategoryType.name).where(CategoryType.id == i.type_id))
         tn = tr.scalar_one_or_none()
     sup_m, br_m = await _default_supplier_broker_ids_for_items(db, business_id, [item_id])
+    lsn, lbn = await _last_party_names_for_catalog_items(db, business_id, [i])
     return _catalog_item_out(
         i,
         tn,
         default_supplier_ids=sup_m.get(item_id, []),
         default_broker_ids=br_m.get(item_id, []),
+        last_supplier_name=lsn.get(i.last_supplier_id) if i.last_supplier_id else None,
+        last_broker_name=lbn.get(i.last_broker_id) if i.last_broker_id else None,
     )
 
 

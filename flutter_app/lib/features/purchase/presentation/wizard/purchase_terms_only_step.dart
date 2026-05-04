@@ -39,18 +39,19 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
     return 'Due: ${DateFormat('dd MMM yyyy').format(d)}';
   }
 
-  static String _commissionValueLabel(String mode) {
-    switch (mode) {
+  /// Short label for the fixed-commission **unit** dropdown (same row as ₹).
+  static String _unitDropdownLabel(String mode) {
+    switch (PurchaseDraft.normalizeCommissionMode(mode)) {
       case kPurchaseCommissionModeFlatInvoice:
-        return 'Broker commission (₹, once)';
+        return 'Whole bill';
       case kPurchaseCommissionModeFlatKg:
-        return 'Broker commission (₹ / kg)';
+        return 'Kg';
       case kPurchaseCommissionModeFlatBag:
-        return 'Broker commission (₹ / bag)';
+        return 'Bag · box';
       case kPurchaseCommissionModeFlatTin:
-        return 'Broker commission (₹ / tin)';
+        return 'Tin';
       default:
-        return 'Broker commission %';
+        return '—';
     }
   }
 
@@ -162,54 +163,186 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
           },
         ),
         if (hasBroker) ...[
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: InputDecorator(
-              decoration: densePurchaseFieldDecoration('Broker commission'),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: mode,
-                  isExpanded: true,
-                  items: const [
-                    DropdownMenuItem(
-                      value: kPurchaseCommissionModePercent,
-                      child: Text('% of line totals after purchase discount'),
-                    ),
-                    DropdownMenuItem(
-                      value: kPurchaseCommissionModeFlatInvoice,
-                      child: Text('Fixed ₹ — once on bill'),
-                    ),
-                    DropdownMenuItem(
-                      value: kPurchaseCommissionModeFlatKg,
-                      child: Text('Fixed ₹ — per kg (total kg on lines)'),
-                    ),
-                    DropdownMenuItem(
-                      value: kPurchaseCommissionModeFlatBag,
-                      child: Text('Fixed ₹ — per bag / sack (line qty)'),
-                    ),
-                    DropdownMenuItem(
-                      value: kPurchaseCommissionModeFlatTin,
-                      child: Text('Fixed ₹ — per tin (line qty)'),
-                    ),
-                  ],
-                  onChanged: (v) {
-                    if (v == null) return;
-                    ref.read(purchaseDraftProvider.notifier).setCommissionMode(v);
-                    onDraftChanged();
-                  },
+          Text(
+            'Broker commission',
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
                 ),
-              ),
-            ),
           ),
-          field(
-            commissionCtrl,
-            _commissionValueLabel(mode),
-            keyboard: const TextInputType.numberWithOptions(decimal: true),
-            onChanged: (s) {
-              ref.read(purchaseDraftProvider.notifier).setCommissionText(s);
+          const SizedBox(height: 6),
+          SegmentedButton<String>(
+            style: const ButtonStyle(
+              visualDensity: VisualDensity.compact,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            showSelectedIcon: false,
+            segments: const [
+              ButtonSegment<String>(
+                value: kPurchaseCommissionModePercent,
+                label: Text('Commission %'),
+                icon: Icon(Icons.percent_rounded, size: 18),
+              ),
+              ButtonSegment<String>(
+                value: '_figure',
+                label: Text('Fixed ₹'),
+                icon: Icon(Icons.currency_rupee_rounded, size: 18),
+              ),
+            ],
+            emptySelectionAllowed: false,
+            selected: <String>{
+              if (mode == kPurchaseCommissionModePercent)
+                kPurchaseCommissionModePercent
+              else
+                '_figure',
+            },
+            onSelectionChanged: (Set<String> next) {
+              final v = next.first;
+              if (v == kPurchaseCommissionModePercent) {
+                ref
+                    .read(purchaseDraftProvider.notifier)
+                    .setCommissionMode(kPurchaseCommissionModePercent);
+              } else {
+                final sug =
+                    suggestedBrokerFigureModeFromLines(draft.lines);
+                ref.read(purchaseDraftProvider.notifier).setCommissionMode(sug);
+              }
               onDraftChanged();
             },
           ),
+          if (mode == kPurchaseCommissionModePercent) ...[
+            const SizedBox(height: 6),
+            Text(
+              '% of line totals after purchase discount.',
+              style: TextStyle(fontSize: 11, height: 1.25, color: sub),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: kPurchaseFieldHeight + 14,
+              child: TextField(
+                controller: commissionCtrl,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: densePurchaseFieldDecoration('Commission %')
+                    .copyWith(suffixText: '%'),
+                onChanged: (s) {
+                  ref.read(purchaseDraftProvider.notifier).setCommissionText(s);
+                  onDraftChanged();
+                },
+              ),
+            ),
+          ] else ...[
+            Builder(
+              builder: (context) {
+                final figOpts = brokerFigureUiOptions(draft.lines);
+                final allowed = figOpts.map((e) => e.$1).toSet();
+                final coerced = allowed.contains(mode)
+                    ? mode
+                    : clampFigureModeToUiOptions(mode, draft.lines);
+                if (coerced != mode) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (!context.mounted) return;
+                    ref
+                        .read(purchaseDraftProvider.notifier)
+                        .setCommissionMode(coerced);
+                    onDraftChanged();
+                  });
+                }
+
+                final hint =
+                    brokerFigureBasisLineHint(draft.lines, coerced);
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (figOpts.length <= 1) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        'No line items yet — amount is once for this bill. '
+                        'After Items, come back here to pick Kg / Bag · box / Tin '
+                        'if those units are on the purchase.',
+                        style: TextStyle(
+                          fontSize: 11,
+                          height: 1.3,
+                          color: sub,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: SizedBox(
+                            height: kPurchaseFieldHeight + 14,
+                            child: TextField(
+                              controller: commissionCtrl,
+                              keyboardType: const TextInputType.numberWithOptions(
+                                  decimal: true),
+                              decoration: densePurchaseFieldDecoration(
+                                'Amount (₹)',
+                              ),
+                              onChanged: (s) {
+                                ref
+                                    .read(purchaseDraftProvider.notifier)
+                                    .setCommissionText(s);
+                                onDraftChanged();
+                              },
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 128,
+                          height: kPurchaseFieldHeight + 14,
+                          child: InputDecorator(
+                            decoration:
+                                densePurchaseFieldDecoration('Unit'),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: coerced,
+                                isExpanded: true,
+                                isDense: true,
+                                items: [
+                                  for (final o in figOpts)
+                                    DropdownMenuItem<String>(
+                                      value: o.$1,
+                                      child: Text(
+                                        _unitDropdownLabel(o.$1),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                ],
+                                onChanged: (v) {
+                                  if (v == null) return;
+                                  ref
+                                      .read(purchaseDraftProvider.notifier)
+                                      .setCommissionMode(v);
+                                  onDraftChanged();
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (hint != null && figOpts.length > 1)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          hint,
+                          style: TextStyle(
+                            fontSize: 11,
+                            height: 1.25,
+                            color: sub,
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ],
+          const SizedBox(height: 8),
         ],
         field(
           deliveredRateCtrl,

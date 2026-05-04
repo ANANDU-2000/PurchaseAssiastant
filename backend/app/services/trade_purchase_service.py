@@ -365,7 +365,7 @@ def _header_commission_rupees(req: TradePurchaseCreateRequest, after_header: Dec
         bags = Decimal("0")
         for li in req.lines:
             u = (li.unit or "").strip().lower()
-            if u in ("bag", "sack"):
+            if u in ("bag", "sack", "box"):
                 bags += _dec(li.qty)
         if bags <= 0:
             return Decimal("0")
@@ -425,8 +425,15 @@ async def _sync_purchase_memory(
     db: AsyncSession,
     business_id: uuid.UUID,
     body: TradePurchaseCreateRequest,
+    *,
+    trade_purchase_id: uuid.UUID | None = None,
 ) -> None:
-    """Update item master last price and supplier-item default rows."""
+    """Update item master last price, optional last-trade snapshot, and supplier-item defaults."""
+    snap = (
+        trade_purchase_id is not None
+        and body.supplier_id is not None
+        and (body.status or "confirmed").lower() == "confirmed"
+    )
     for li in body.lines:
         if li.catalog_item_id is None:
             continue
@@ -439,6 +446,17 @@ async def _sync_purchase_memory(
         item = ir.scalar_one_or_none()
         if item is not None:
             item.last_purchase_price = dp.rate(li.landing_cost)
+            if snap:
+                wt = _line_total_weight(li)
+                sell_raw = li.selling_rate if li.selling_rate is not None else None
+                item.last_selling_rate = dp.rate(sell_raw) if sell_raw is not None else None
+                item.last_supplier_id = body.supplier_id
+                item.last_broker_id = body.broker_id
+                item.last_trade_purchase_id = trade_purchase_id
+                item.last_line_qty = dp.qty(li.qty)
+                u = (li.unit or "").strip()
+                item.last_line_unit = u[:32] if u else None
+                item.last_line_weight_kg = wt if wt > 0 else None
         if body.supplier_id is None:
             continue
         dr = await db.execute(
@@ -825,7 +843,7 @@ async def create_trade_purchase(
                 description=(li.description.strip() if (li.description and li.description.strip()) else None),
             )
         )
-    await _sync_purchase_memory(db, business_id, body)
+    await _sync_purchase_memory(db, business_id, body, trade_purchase_id=tp.id)
     await db.commit()
     bump_trade_read_caches_for_business(business_id)
     res = await db.execute(
@@ -955,7 +973,7 @@ async def update_trade_purchase(
     if paid_dec > total_dec:
         tp.paid_amount = dp.money(total_dec)
     tp.updated_at = utcnow()
-    await _sync_purchase_memory(db, business_id, body)
+    await _sync_purchase_memory(db, business_id, body, trade_purchase_id=tp.id)
     await db.commit()
     bump_trade_read_caches_for_business(business_id)
     res2 = await db.execute(
