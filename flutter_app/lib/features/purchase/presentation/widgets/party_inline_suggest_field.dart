@@ -392,43 +392,50 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   }
 
   Widget _buildSuggestionTile(ColorScheme cs, InlineSearchItem it) {
+    void commit() => _pick(it, keepFocus: false);
+    // Opaque [GestureDetector] wins taps inside a parent [ScrollView] more reliably
+    // than [InkWell] alone (scroll drag arena can swallow the tap-up).
     return Material(
       color: cs.surface,
-      child: InkWell(
-        onTap: () => _pick(it, keepFocus: false),
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: widget.dense ? 10 : 12,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                it.label,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                  color: cs.onSurface,
-                ),
-              ),
-              if (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    it.subtitle!.trim(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: cs.onSurfaceVariant,
-                    ),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: commit,
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: widget.dense ? 10 : 12,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  it.label,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: cs.onSurface,
                   ),
                 ),
-            ],
+                if (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      it.subtitle!.trim(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -450,18 +457,22 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
 
     return Material(
       color: cs.surface,
-      child: InkWell(
-        onTap: invoke,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              widget.addRowLabel ?? '',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-                color: cs.primary,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: invoke,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                widget.addRowLabel ?? '',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  color: cs.primary,
+                ),
               ),
             ),
           ),
