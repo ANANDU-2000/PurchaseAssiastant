@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -54,6 +57,8 @@ class PartyInlineSuggestField extends StatefulWidget {
     this.minFieldHeight = 0,
     this.lockedSelectionLabel,
     this.onLockedSelectionClear,
+    this.focusAfterSelection,
+    this.debugLabel,
   })  : assert(minQueryLength >= 0),
         assert(
           !showAddRow || (addRowLabel != null && onAddRow != null),
@@ -101,6 +106,12 @@ class PartyInlineSuggestField extends StatefulWidget {
 
   final VoidCallback? onLockedSelectionClear;
 
+  /// After committing a suggestion ([keepFocus]==false moves focus here instead of blur-only).
+  final FocusNode? focusAfterSelection;
+
+  /// Optional identifier for debug logging.
+  final String? debugLabel;
+
   @override
   State<PartyInlineSuggestField> createState() =>
       _PartyInlineSuggestFieldState();
@@ -113,6 +124,13 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   bool _pickInProgress = false;
   bool _suppressPanelAfterPick = false;
   String? _lastPickedLabel;
+
+  /// Blocks double-commit when both pointer-down and tap-up deliver for one gesture.
+  String? _lastCommitFingerprint;
+  int _lastCommitMs = 0;
+
+  /// Same as [_lastCommitMs] pattern for "New supplier…" / "New broker…" row.
+  int _lastAddRowInvokeMs = 0;
 
   /// Debounced query for filtering while typing ([_listRowsForUi]).
   String _filterQuery = '';
@@ -293,7 +311,20 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     }
   }
 
+  /// Pointer-down plus tap-up can both fire `_pick`; blocks the second commit.
+  bool _consumeIfDuplicatePick(InlineSearchItem it) {
+    final fp = '${it.id}\u241e${it.label}';
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (_lastCommitFingerprint == fp && now - _lastCommitMs < 400) {
+      return true;
+    }
+    _lastCommitFingerprint = fp;
+    _lastCommitMs = now;
+    return false;
+  }
+
   void _pick(InlineSearchItem it, {bool keepFocus = true}) {
+    if (_consumeIfDuplicatePick(it)) return;
     _filterDebounceTimer?.cancel();
     _revealDebounceTimer?.cancel();
     _suppressPanelAfterPick = true;
@@ -320,54 +351,73 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     // Rebuild to hide the panel
     if (mounted) setState(() {});
 
-    // Unfocus AFTER parent is notified, deferred to avoid gesture arena conflicts
+    if (kDebugMode) {
+      final tag = widget.debugLabel != null ? ' ${widget.debugLabel}' : '';
+      debugPrint('[PartySuggest$tag] pick id="${it.id}" label="${it.label}" '
+          'focusNext=${widget.focusAfterSelection != null} keepFocus=$keepFocus');
+    }
+
+    // Focus hand-off AFTER parent is notified — deferred avoids gesture/blur swallowing taps.
     if (!keepFocus) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        widget.focusNode.unfocus();
-        FocusManager.instance.primaryFocus?.unfocus();
+        final next = widget.focusAfterSelection;
+        if (next != null) {
+          FocusScope.of(context).requestFocus(next);
+        } else {
+          widget.focusNode.unfocus();
+          FocusManager.instance.primaryFocus?.unfocus();
+        }
       });
     }
   }
 
   Widget _buildSuggestionTile(ColorScheme cs, InlineSearchItem it) {
+    void commit() => _pick(it, keepFocus: false);
     return Material(
       color: cs.surface,
-      child: InkWell(
-        onTap: () => _pick(it, keepFocus: false),
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: widget.dense ? 10 : 12,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                it.label,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                  color: cs.onSurface,
-                ),
-              ),
-              if (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    it.subtitle!.trim(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: cs.onSurfaceVariant,
-                    ),
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: (PointerDownEvent e) {
+          if ((e.buttons & kPrimaryButton) == 0) return;
+          commit();
+        },
+        child: InkWell(
+          onTap: commit,
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: widget.dense ? 10 : 12,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  it.label,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: cs.onSurface,
                   ),
                 ),
-            ],
+                if (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      it.subtitle!.trim(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -376,29 +426,41 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
 
   Widget _buildAddRowTile(ColorScheme cs) {
     final cb = widget.onAddRow;
+    if (cb == null) {
+      return const SizedBox.shrink();
+    }
+    void invoke() {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (now - _lastAddRowInvokeMs < 500) return;
+      _lastAddRowInvokeMs = now;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        widget.focusNode.unfocus();
+        FocusManager.instance.primaryFocus?.unfocus();
+        Future.delayed(const Duration(milliseconds: 80), () => cb());
+      });
+    }
+
     return Material(
       color: cs.surface,
-      child: InkWell(
-        onTap: cb == null
-            ? null
-            : () {
-                // Unfocus deferred so the keyboard dismisses cleanly before navigation
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  widget.focusNode.unfocus();
-                  FocusManager.instance.primaryFocus?.unfocus();
-                  Future.delayed(const Duration(milliseconds: 80), () => cb());
-                });
-              },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              widget.addRowLabel ?? '',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-                color: cs.primary,
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: (PointerDownEvent e) {
+          if ((e.buttons & kPrimaryButton) == 0) return;
+          invoke();
+        },
+        child: InkWell(
+          onTap: invoke,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                widget.addRowLabel ?? '',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  color: cs.primary,
+                ),
               ),
             ),
           ),
@@ -414,7 +476,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       _flushFilterToLive();
       final data = _listRowsForUi(live: true);
       if (data.length == 1) {
-        _pick(data.first);
+        _pick(data.first, keepFocus: false);
         return KeyEventResult.handled;
       }
     }
@@ -425,10 +487,20 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     _flushFilterToLive();
     final data = _listRowsForUi(live: true);
     if (data.length == 1) {
-      _pick(data.first);
+      _pick(data.first, keepFocus: false);
       return;
     }
     widget.onSubmitted?.call();
+  }
+
+  double _suggestionPanelMaxHeight(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    final h = mq.size.height;
+    final kb = mq.viewInsets.bottom;
+    final safe = mq.padding.bottom;
+    final visible = math.max(120.0, h - kb - safe);
+    final fromVisible = math.max(140.0, visible * 0.48);
+    return math.min(widget.maxPanelAbs, fromVisible).clamp(100.0, widget.maxPanelAbs);
   }
 
   @override
@@ -598,7 +670,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
             const SizedBox(height: 8),
             Container(
               constraints: BoxConstraints(
-                maxHeight: MediaQuery.sizeOf(context).height * 0.35,
+                maxHeight: _suggestionPanelMaxHeight(context),
               ),
               decoration: BoxDecoration(
                 color: cs.surface,

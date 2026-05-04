@@ -3,7 +3,7 @@
     "render": {
       "url": "https://mcp.render.com/mcp",
       "headers": {
-        "Authorization": "Bearer REPLACE_WITH_RENDER_ACCOUNT_API_KEY"
+        "Authorization": "rnd_o5kIgwTvNmtstbfI9utlLBJmJfOD"
       }
     }
   }

@@ -44,43 +44,60 @@ class HexaApp extends ConsumerWidget {
         removeBootOverlayIfPresent();
         final body = child ?? const SizedBox.shrink();
         final banner = ref.watch(apiDegradedProvider);
+        // Stack (not Column+Expanded): [MaterialApp.router] builder can get unbounded
+        // height on web; Expanded would overflow. Overlay for tooltips lives under
+        // [Navigator]/[child]; keep dismiss control without Tooltip (no Overlay ancestor).
         final shell = banner != null && banner.isNotEmpty
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+            ? Stack(
+                fit: StackFit.expand,
                 children: [
-                  Material(
-                    color: const Color(0xFFFFF8E1),
-                    child: SafeArea(
-                      bottom: false,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(
-                              Icons.cloud_off_outlined,
-                              size: 20,
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                banner,
-                                style: Theme.of(context).textTheme.bodySmall,
+                  body,
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: Material(
+                      elevation: 1,
+                      color: const Color(0xFFFFF8E1),
+                      child: SafeArea(
+                        bottom: false,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.cloud_off_outlined,
+                                size: 20,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
                               ),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.close, size: 20),
-                              onPressed: () =>
-                                  ref.read(apiDegradedProvider.notifier).clear(),
-                              tooltip: 'Dismiss',
-                            ),
-                          ],
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  banner,
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ),
+                              Semantics(
+                                label: 'Dismiss connection warning',
+                                button: true,
+                                child: IconButton(
+                                  visualDensity: VisualDensity.compact,
+                                  tooltip: null,
+                                  icon: const Icon(Icons.close, size: 20),
+                                  onPressed: () => ref
+                                      .read(apiDegradedProvider.notifier)
+                                      .clear(),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
-                  Expanded(child: body),
                 ],
               )
             : body;

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -385,6 +387,8 @@ class PurchasePartyStep extends ConsumerWidget {
           idleOutlineColor: Colors.grey.shade200,
           lockedSelectionLabel: supplierLock,
           onLockedSelectionClear: onSupplierClear,
+          focusAfterSelection: brokerFocusNode,
+          debugLabel: 'supplier',
           textInputAction: TextInputAction.next,
           onSubmitted: () => brokerFocusNode.requestFocus(),
           items: items,
@@ -426,6 +430,8 @@ class PurchasePartyStep extends ConsumerWidget {
             idleOutlineColor: Colors.grey.shade200,
             lockedSelectionLabel: supplierLock,
             onLockedSelectionClear: onSupplierClear,
+            focusAfterSelection: brokerFocusNode,
+            debugLabel: 'supplier',
             textInputAction: TextInputAction.next,
             onSubmitted: () => brokerFocusNode.requestFocus(),
             items: items,
@@ -483,6 +489,8 @@ class PurchasePartyStep extends ConsumerWidget {
             idleOutlineColor: Colors.grey.shade200,
             lockedSelectionLabel: supplierLock,
             onLockedSelectionClear: onSupplierClear,
+            focusAfterSelection: brokerFocusNode,
+            debugLabel: 'supplier',
             textInputAction: TextInputAction.next,
             onSubmitted: () => brokerFocusNode.requestFocus(),
             items: items,
@@ -547,6 +555,7 @@ class PurchasePartyStep extends ConsumerWidget {
                   idleOutlineColor: Colors.grey.shade200,
                   lockedSelectionLabel: brokerLock,
                   onLockedSelectionClear: clearBrokerOnly,
+                  debugLabel: 'broker',
                   textInputAction: TextInputAction.next,
                   onSubmitted: onProceedFromParty,
                   items: items,
@@ -587,6 +596,7 @@ class PurchasePartyStep extends ConsumerWidget {
                     idleOutlineColor: Colors.grey.shade200,
                     lockedSelectionLabel: brokerLock,
                     onLockedSelectionClear: clearBrokerOnly,
+                    debugLabel: 'broker',
                     textInputAction: TextInputAction.next,
                     onSubmitted: onProceedFromParty,
                     items: items,
@@ -670,6 +680,7 @@ class PurchasePartyStep extends ConsumerWidget {
                     idleOutlineColor: Colors.grey.shade200,
                     lockedSelectionLabel: brokerLock,
                     onLockedSelectionClear: clearBrokerOnly,
+                    debugLabel: 'broker',
                     textInputAction: TextInputAction.next,
                     onSubmitted: onProceedFromParty,
                     items: items,
@@ -783,7 +794,14 @@ class PurchasePartyStep extends ConsumerWidget {
               ),
             ),
           ),
-        const SizedBox(height: 260),
+        SizedBox(
+          height: math.max(
+            48.0,
+            MediaQuery.viewInsetsOf(context).bottom +
+                MediaQuery.paddingOf(context).bottom +
+                56,
+          ),
+        ),
       ],
     );
   }

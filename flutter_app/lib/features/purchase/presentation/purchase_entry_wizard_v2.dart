@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -106,9 +108,16 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
   final _invoiceCtrl = TextEditingController();
   String _freightType = 'separate';
 
+  void _partyFieldFocusNotify() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
+    _partySupplierFocus.addListener(_partyFieldFocusNotify);
+    _partyBrokerFocus.addListener(_partyFieldFocusNotify);
     WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrap());
   }
 
@@ -436,6 +445,9 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         unawaited(OfflineStore.putPurchaseWizardDraft(bid, json));
       }
     }
+    _partySupplierFocus.removeListener(_partyFieldFocusNotify);
+    _partyBrokerFocus.removeListener(_partyFieldFocusNotify);
+
     _supplierCtrl.dispose();
     _brokerCtrl.dispose();
     _paymentDaysCtrl.dispose();
@@ -1173,6 +1185,24 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
             );
     final isEdit = _isEditMode();
 
+    if (kDebugMode) {
+      final d = ref.read(purchaseDraftProvider);
+      debugPrint(
+        '[PurchaseWizard] submit supplier id=${d.supplierId} name="${d.supplierName}"',
+      );
+      debugPrint(
+        '[PurchaseWizard] submit broker id=${d.brokerId} name="${d.brokerName}"',
+      );
+      final lines = d.lines;
+      for (var i = 0; i < lines.length; i++) {
+        final l = lines[i];
+        debugPrint(
+          '[PurchaseWizard] line[$i] catalogId=${l.catalogItemId} name="${l.itemName}"',
+        );
+      }
+      debugPrint('[PurchaseWizard] submit body: $body');
+    }
+
     try {
       final saved = isEdit
           ? await api.updateTradePurchase(
@@ -1645,8 +1675,13 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
             };
 
     final theme = Theme.of(context);
-    final showWizardFooter =
-        !_isBootstrapping && _editBootstrapError == null;
+    final viewInsetsBottom = MediaQuery.viewInsetsOf(context).bottom;
+    final hideFooterForPartyKeyboard = _wizStep == 0 &&
+        viewInsetsBottom > 8 &&
+        (_partySupplierFocus.hasFocus || _partyBrokerFocus.hasFocus);
+    final showWizardFooter = !_isBootstrapping &&
+        _editBootstrapError == null &&
+        !hideFooterForPartyKeyboard;
 
     Widget purchaseWizardMainContent() {
       return Builder(
@@ -1723,7 +1758,19 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
                   physics: const ClampingScrollPhysics(),
                   keyboardDismissBehavior:
                       ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    16,
+                    16,
+                    _wizStep == 0
+                        ? math.max(
+                            8.0,
+                            MediaQuery.viewInsetsOf(bodyContext).bottom +
+                                MediaQuery.paddingOf(bodyContext).bottom +
+                                32,
+                          )
+                        : 0,
+                  ),
                   child: _wizBody(bodyContext, catalog, isEdit),
                 ),
               ),
@@ -1782,11 +1829,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         ),
         body: SafeArea(
           bottom: false,
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onTap: () => FocusScope.of(context).unfocus(),
-            child: purchaseWizardMainContent(),
-          ),
+          child: purchaseWizardMainContent(),
         ),
       ),
     );

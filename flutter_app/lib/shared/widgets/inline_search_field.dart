@@ -1,3 +1,7 @@
+import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -63,6 +67,8 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
   bool get _disposeFocus => widget.focusNode == null;
 
   bool _pickInProgress = false;
+  String? _lastPickFingerprint;
+  int _lastPickMs = 0;
 
   @override
   void initState() {
@@ -104,6 +110,15 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
     if (mounted) setState(() {});
   }
 
+  bool _consumeIfDuplicatePick(InlineSearchItem it) {
+    final fp = '${it.id}\u241e${it.label}';
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (_lastPickFingerprint == fp && now - _lastPickMs < 400) return true;
+    _lastPickFingerprint = fp;
+    _lastPickMs = now;
+    return false;
+  }
+
   Iterable<InlineSearchItem> _optionsForQuery(String raw) {
     final q = raw.trim().toLowerCase();
     final min = widget.minQueryLength.clamp(1, 64);
@@ -124,7 +139,7 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
         event.logicalKey == LogicalKeyboardKey.numpadEnter) {
       final opts = _optionsForQuery(_ctrl.text).toList();
       if (opts.length == 1) {
-        _pick(opts.first);
+        _pick(opts.first, keepFocus: false);
         return KeyEventResult.handled;
       }
     }
@@ -132,10 +147,12 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
   }
 
   void _pick(InlineSearchItem it, {bool keepFocus = true}) {
+    if (_consumeIfDuplicatePick(it)) return;
     _pickInProgress = true;
-    _ctrl.text = it.label;
-    _ctrl.selection = TextSelection.fromPosition(
-      TextPosition(offset: _ctrl.text.length),
+    final label = it.label;
+    _ctrl.value = TextEditingValue(
+      text: label,
+      selection: TextSelection.collapsed(offset: label.length),
     );
     if (!mounted) {
       _pickInProgress = false;
@@ -143,6 +160,9 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
     }
     setState(() {});
     try {
+      if (kDebugMode) {
+        debugPrint('[InlineSearch] pick id="${it.id}" label="$label"');
+      }
       widget.onSelected(it);
     } finally {
       _pickInProgress = false;
@@ -155,6 +175,15 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
     } else if (!keepFocus) {
       _focus.unfocus();
     }
+  }
+
+  double _optionsMaxHeight(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    final usable = mq.size.height -
+        mq.viewInsets.bottom -
+        mq.padding.vertical;
+    final v = math.max(120.0, usable * 0.42);
+    return math.min(200.0, v);
   }
 
   @override
@@ -171,7 +200,7 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
           optionsBuilder: (TextEditingValue tev) {
             return _optionsForQuery(tev.text);
           },
-          onSelected: (InlineSearchItem it) => _pick(it),
+          onSelected: (InlineSearchItem it) => _pick(it, keepFocus: false),
           fieldViewBuilder: (
             BuildContext context,
             TextEditingController textEditingController,
@@ -189,7 +218,7 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
                   final opts =
                       _optionsForQuery(textEditingController.text).toList();
                   if (opts.length == 1) {
-                    _pick(opts.first);
+                    _pick(opts.first, keepFocus: false);
                   } else {
                     onFieldSubmitted();
                   }
@@ -244,7 +273,8 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
                 clipBehavior: Clip.antiAlias,
                 color: Colors.white,
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 200),
+                  constraints:
+                      BoxConstraints(maxHeight: _optionsMaxHeight(context)),
                   child: ListView.separated(
                     shrinkWrap: true,
                     padding: EdgeInsets.zero,
@@ -257,43 +287,51 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
                     ),
                     itemBuilder: (BuildContext ctx, int i) {
                       final it = opts[i];
-                      return InkWell(
-                        onTap: () => onSelected(it),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                it.label,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14,
-                                ),
-                              ),
-                              if (it.subtitle != null &&
-                                  it.subtitle!.trim().isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 2),
-                                  child: Text(
-                                    it.subtitle!,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Theme.of(ctx)
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                    ),
+                      void commit() => onSelected(it);
+                      return Listener(
+                        behavior: HitTestBehavior.opaque,
+                        onPointerDown: (PointerDownEvent e) {
+                          if ((e.buttons & kPrimaryButton) == 0) return;
+                          commit();
+                        },
+                        child: InkWell(
+                          onTap: commit,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  it.label,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
                                   ),
                                 ),
-                            ],
+                                if (it.subtitle != null &&
+                                    it.subtitle!.trim().isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 2),
+                                    child: Text(
+                                      it.subtitle!,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Theme.of(ctx)
+                                            .colorScheme
+                                            .onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
                       );

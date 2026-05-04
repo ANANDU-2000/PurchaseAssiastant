@@ -57,7 +57,13 @@ class _BusinessConnectivityBannerInterceptor extends Interceptor {
         response.statusCode != null &&
         response.statusCode! >= 200 &&
         response.statusCode! < 300) {
-      fn(false, null);
+      final dbDown =
+          response.headers.value('x-database-unavailable') == '1';
+      if (dbDown) {
+        fn(true, 'Database temporarily unavailable');
+      } else {
+        fn(false, null);
+      }
     }
     return handler.next(response);
   }

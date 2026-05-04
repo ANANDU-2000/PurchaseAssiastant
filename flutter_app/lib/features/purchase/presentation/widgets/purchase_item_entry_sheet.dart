@@ -995,9 +995,6 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   void _onItemSelected(String id, String name) {
     if (id.isEmpty) return;
     unawaited(_onCatalogPickAsync(InlineSearchItem(id: id, label: name)));
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) FocusScope.of(context).requestFocus(_qtyFocus);
-    });
   }
 
   /// Seeds ₹/kg + bag totals from catalog default landing/selling vs [kg].
@@ -1260,6 +1257,19 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     }
 
     final seq = ++_catalogPickSeq;
+
+    // Id + visible label committed before catalog resolve/network.
+    if (mounted) {
+      setState(() {
+        _catalogItemId = it.id;
+        _itemCtrl.value = TextEditingValue(
+          text: it.label,
+          selection: TextSelection.collapsed(offset: it.label.length),
+        );
+        _errItem = null;
+      });
+    }
+
     Map<String, dynamic>? row = _catalogRowById(it.id);
     if (widget.resolveCatalogItem != null) {
       try {
@@ -1508,6 +1518,8 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         child: PartyInlineSuggestField(
           controller: _itemCtrl,
           focusNode: _itemFocus,
+          focusAfterSelection: _qtyFocus,
+          debugLabel: 'catalogItem',
           hintText: 'Search item (name, code, HSN)…',
           prefixIcon: const Icon(Icons.inventory_2_outlined),
           minQueryLength: 1,

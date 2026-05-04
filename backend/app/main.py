@@ -406,7 +406,9 @@ async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
     if cfg.database_get_read_failsafe and not _block_db_empty_shape_paths(path):
         fb = _get_db_failsafe_body(request)
         if fb is not None:
-            return JSONResponse(status_code=503, content=fb, headers=hdrs)
+            # 200 + X-Database-Unavailable: clients treat body as normal JSON (empty list /
+            # zeroed dashboard) while still surfacing degraded mode from the header.
+            return JSONResponse(status_code=200, content=fb, headers=hdrs)
     return JSONResponse(status_code=503, content=payload, headers=hdrs)
 
 
