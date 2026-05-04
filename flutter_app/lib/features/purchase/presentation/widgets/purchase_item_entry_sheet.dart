@@ -82,7 +82,8 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   final _weightPerTinCtrl = TextEditingController();
   final _lineNotesCtrl = TextEditingController();
 
-  String? _catalogItemId;
+  /// Persisted catalog row id for the line (`catalog_item_id` on save).
+  String? _selectedCatalogItemId;
   /// When true: bag/sack with kg snapshot — user enters landing & selling per kg.
   bool _weightPricing = false;
   /// kg per bag/sack (from `default_kg_per_bag` or saved line).
@@ -100,12 +101,19 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   String? _hsnCode;
   String? _itemCode;
   final Map<String, Map<String, dynamic>> _catalogFetchById = {};
-  bool _autofillFromLastPurchaseHint = false;
+  /// Non-null after [resolveLastDefaults] applied meaningful trade history.
+  String? _lastPurchaseAutofillHint;
   /// Ignore stale default fetches when the user selects another catalog row mid-flight.
   int _catalogPickSeq = 0;
+  /// True while a suggestion pick mutates `_itemCtrl` + `_selectedCatalogItemId`; skips
+  /// the label-vs-row unlink in `_onItemTextChanged` for that microtask window.
+  bool _suppressCatalogTextUnlink = false;
   Timer? _defaultsDebounceTimer;
 
   late final Listenable _lineTotalsListenable;
+
+  /// Memoized catalog rows as [InlineSearchItem] (rebuilt when [widget.catalog] changes).
+  List<InlineSearchItem> _catalogSearchItems = const [];
 
   /// Short hint driven by [_activeClassification()] after catalog/name changes.
   String? _unitDetectHint;
@@ -116,18 +124,19 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
 
   void _onItemTextChanged() {
     if (!mounted) return;
+    if (_suppressCatalogTextUnlink) return;
     // If the user edits the typed label away from the selected catalog row,
     // unlink automatically so we don't persist a stale `catalog_item_id`.
     // Without this, selecting "Rice" then typing "Rice123" would silently save
     // the line against the Rice catalog id.
-    if (_catalogItemId != null && _catalogItemId!.isNotEmpty) {
-      final row = _catalogRowById(_catalogItemId!);
+    if (_selectedCatalogItemId != null && _selectedCatalogItemId!.isNotEmpty) {
+      final row = _catalogRowById(_selectedCatalogItemId!);
       final selectedLabel = (row?['name']?.toString() ?? '').trim();
       if (_itemCtrl.text.trim() != selectedLabel) {
         setState(() {
           _catalogPickSeq++;
-          _catalogItemId = null;
-          _autofillFromLastPurchaseHint = false;
+          _selectedCatalogItemId = null;
+          _lastPurchaseAutofillHint = null;
           _unitDetectHint = null;
           _errItem = null;
           _hsnCode = null;
@@ -161,7 +170,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     final init = widget.initial;
     if (init != null) {
       _itemCtrl.text = init['item_name']?.toString() ?? '';
-      _catalogItemId = init['catalog_item_id']?.toString();
+      _selectedCatalogItemId = init['catalog_item_id']?.toString();
       final q = init['qty'];
       _qtyCtrl.text = q is num && q == q.roundToDouble() ? q.round().toString() : '${q ?? ''}';
       _unitCtrl.text = init['unit']?.toString() ?? 'kg';
@@ -239,14 +248,15 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       _kgPerBagCtrl,
       _lineNotesCtrl,
     ]);
+    _rebuildCatalogSearchItems();
   }
 
   void _syncKgStateFromCatalogRow() {
-    if (_catalogItemId == null || _catalogItemId!.isEmpty) return;
+    if (_selectedCatalogItemId == null || _selectedCatalogItemId!.isEmpty) return;
     if (_kgPerUnit != null && _kgPerUnit! > 0) return;
     final u = _unitCtrl.text.trim().toLowerCase();
     if (u != 'bag' && u != 'sack') return;
-    final r = _catalogRowById(_catalogItemId!);
+    final r = _catalogRowById(_selectedCatalogItemId!);
     if (r == null) return;
     for (final key in <String>['default_kg_per_bag', 'kg_per_bag', 'kg_per_unit']) {
       final v = r[key];
@@ -309,7 +319,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   }
 
   Map<String, dynamic>? _rowForClassification() {
-    final id = _catalogItemId;
+    final id = _selectedCatalogItemId;
     if (id == null || id.isEmpty) return null;
     return _catalogRowById(id);
   }
@@ -433,6 +443,9 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     String? prefixText,
     String? errorText,
   }) {
+    final pad = widget.fullPage
+        ? const EdgeInsets.symmetric(horizontal: 12, vertical: 14)
+        : const EdgeInsets.symmetric(horizontal: 8, vertical: 8);
     return InputDecoration(
       labelText: label,
       prefixText: prefixText,
@@ -458,7 +471,27 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       ),
       filled: true,
       fillColor: Colors.grey[50],
-      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      contentPadding: pad,
+    );
+  }
+
+  /// Rounded section shell for full-page add item only.
+  Widget _fpShell(Widget child) {
+    if (!widget.fullPage) return child;
+    return Material(
+      color: Colors.white,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: const Color(0xFF17A8A7).withValues(alpha: 0.22),
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: child,
+      ),
     );
   }
 
@@ -507,7 +540,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
 
   /// Catalog item selected AND catalog row carries kg/bag.
   bool _hasCatalogKg() {
-    final id = _catalogItemId;
+    final id = _selectedCatalogItemId;
     if (id == null || id.isEmpty) return false;
     final r = _catalogRowById(id);
     if (r == null) return false;
@@ -641,6 +674,25 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     });
   }
 
+  void _rebuildCatalogSearchItems() {
+    _catalogSearchItems = [
+      for (final row in widget.catalog)
+        InlineSearchItem(
+          id: row['id']?.toString() ?? '',
+          label: row['name']?.toString() ?? '',
+          subtitle: row['default_unit']?.toString(),
+        ),
+    ];
+  }
+
+  @override
+  void didUpdateWidget(covariant PurchaseItemEntrySheet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.catalog != widget.catalog) {
+      _rebuildCatalogSearchItems();
+    }
+  }
+
   void _scrollToKey(GlobalKey key) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final ctx = key.currentContext;
@@ -670,7 +722,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     final unit = _unitCtrl.text.trim();
     final rate = _parseD(_landingCtrl.text) ?? 0;
 
-    final catalogId = _catalogItemId;
+    final catalogId = _selectedCatalogItemId;
     final rowSnap = catalogId != null && catalogId.isNotEmpty
         ? _catalogRowById(catalogId)
         : null;
@@ -687,14 +739,14 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
 
     setState(() {
       if (name.isEmpty) {
-        _errItem = 'Required';
+        _errItem = 'Enter an item';
       } else if (catalogId == null || catalogId.isEmpty) {
-        _errItem = 'Pick item from list';
+        _errItem = 'Pick a catalog item from the list';
       } else {
         _errItem = null;
       }
-      _errQty = qty <= 0 ? 'Must be > 0' : null;
-      _errUnit = unit.isEmpty ? 'Required' : null;
+      _errQty = qty <= 0 ? 'Quantity must be greater than zero' : null;
+      _errUnit = unit.isEmpty ? 'Unit is required' : null;
       _errKgPerBag = null;
       final unitLow = unit.toLowerCase();
       if (unitLow == 'box') {
@@ -732,9 +784,11 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         _errKgPerBag = (k == null || k <= 0) ? 'Kg per bag required' : null;
       }
       if (_ratesPerKgEconomics) {
-        _errLanding = rate <= 0 ? '₹/kg must be > 0' : null;
+        _errLanding =
+            rate <= 0 ? 'Enter a purchase rate per kg greater than zero' : null;
       } else {
-        _errLanding = rate <= 0 ? 'Must be > 0' : null;
+        _errLanding =
+            rate <= 0 ? 'Enter a purchase rate greater than zero' : null;
       }
       final sellT = _sellingCtrl.text.trim();
       if (sellT.isEmpty) {
@@ -742,9 +796,9 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       } else {
         final sv = _parseD(sellT);
         if (sv == null) {
-          _errSelling = 'Invalid';
+          _errSelling = 'Enter a valid selling rate';
         } else if (sv < 0) {
-          _errSelling = 'Min 0';
+          _errSelling = 'Selling rate cannot be negative';
         } else {
           _errSelling = null;
         }
@@ -795,7 +849,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     final sellSt = _sellingCtrl.text.trim();
 
     final m = <String, dynamic>{
-      if (_catalogItemId != null && _catalogItemId!.isNotEmpty) 'catalog_item_id': _catalogItemId,
+      if (_selectedCatalogItemId != null && _selectedCatalogItemId!.isNotEmpty) 'catalog_item_id': _selectedCatalogItemId,
       'item_name': name,
       'qty': qty,
       'unit': unit,
@@ -877,7 +931,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   void _resetAfterAdd() {
     setState(() {
       _itemCtrl.clear();
-      _catalogItemId = null;
+      _selectedCatalogItemId = null;
       _weightPricing = false;
       _kgPerUnit = null;
       _qtyCtrl.text = '1';
@@ -906,6 +960,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       _hsnCode = null;
       _itemCode = null;
       _lineNotesCtrl.clear();
+      _lastPurchaseAutofillHint = null;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _itemFocus.requestFocus();
@@ -966,10 +1021,10 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   }
 
   void _recomputeModeFromUnitAndCatalog() {
-    if (_catalogItemId == null || _catalogItemId!.isEmpty) return;
+    if (_selectedCatalogItemId == null || _selectedCatalogItemId!.isEmpty) return;
     final u0 = _unitCtrl.text.trim().toLowerCase();
     if (u0 != 'bag' && u0 != 'sack') return;
-    final row = _catalogRowById(_catalogItemId!);
+    final row = _catalogRowById(_selectedCatalogItemId!);
     if (row == null) return;
     final kpb = row['default_kg_per_bag'];
     final kpbD = kpb is num && kpb > 0 ? kpb.toDouble() : null;
@@ -994,7 +1049,12 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
 
   void _onItemSelected(String id, String name) {
     if (id.isEmpty) return;
-    unawaited(_onCatalogPickAsync(InlineSearchItem(id: id, label: name)));
+    _suppressCatalogTextUnlink = true;
+    unawaited(
+      _onCatalogPickAsync(InlineSearchItem(id: id, label: name)).whenComplete(() {
+        if (mounted) _suppressCatalogTextUnlink = false;
+      }),
+    );
   }
 
   /// Seeds ₹/kg + bag totals from catalog default landing/selling vs [kg].
@@ -1078,8 +1138,8 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         uLowWire == 'box';
 
     setState(() {
-      _autofillFromLastPurchaseHint = false;
-      _catalogItemId = catalogId;
+      _lastPurchaseAutofillHint = null;
+      _selectedCatalogItemId = catalogId;
       _itemCtrl.text = displayName;
       _hsnCode = _hsnFromRow(row);
       _itemCode = _itemCodeFromRow(row);
@@ -1139,11 +1199,37 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     });
   }
 
+  String? _hintForLastPurchaseDefaults(Map<String, dynamic> d) {
+    final src = d['source']?.toString();
+    if (d.isEmpty || src == null || src == 'none') return null;
+    final supplier = d['supplier_name']?.toString().trim();
+    final dateRaw = d['purchase_date']?.toString().trim();
+    final dateShort = (dateRaw != null && dateRaw.length >= 10)
+        ? dateRaw.substring(0, 10)
+        : dateRaw;
+    final pr = _numD(d['purchase_rate'] ?? d['landing_cost']);
+    final buf = StringBuffer('Filled from last purchase');
+    if (pr != null && pr > 0) {
+      buf.write(' · rate ₹');
+      buf.write(pr.toStringAsFixed(2));
+    }
+    if (supplier != null && supplier.isNotEmpty) {
+      buf.write(' · ');
+      buf.write(supplier);
+    }
+    if (dateShort != null && dateShort.isNotEmpty) {
+      buf.write(' · ');
+      buf.write(dateShort);
+    }
+    buf.write('.');
+    return buf.toString();
+  }
+
   void _applyLastDefaults(Map<String, dynamic> d) {
     final src = d['source']?.toString();
     if (d.isEmpty || src == null || src == 'none') {
       if (mounted) {
-        setState(() => _autofillFromLastPurchaseHint = false);
+        setState(() => _lastPurchaseAutofillHint = null);
       }
       return;
     }
@@ -1220,7 +1306,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         );
         _adjustBoxFixedForClassification(bc);
       }
-      _autofillFromLastPurchaseHint = true;
+      _lastPurchaseAutofillHint = _hintForLastPurchaseDefaults(d);
     });
   }
 
@@ -1243,11 +1329,11 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       _catalogPickSeq++;
       if (!mounted) return;
       setState(() {
-        _catalogItemId = null;
+        _selectedCatalogItemId = null;
         _weightPricing = false;
         _kgPerUnit = null;
         _kgPerBagCtrl.clear();
-        _autofillFromLastPurchaseHint = false;
+        _lastPurchaseAutofillHint = null;
         _unitDetectHint = null;
         _errItem = null;
         _hsnCode = null;
@@ -1261,7 +1347,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     // Id + visible label committed before catalog resolve/network.
     if (mounted) {
       setState(() {
-        _catalogItemId = it.id;
+        _selectedCatalogItemId = it.id;
         _itemCtrl.value = TextEditingValue(
           text: it.label,
           selection: TextSelection.collapsed(offset: it.label.length),
@@ -1302,9 +1388,9 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
           wLow == 'box';
 
       setState(() {
-        _catalogItemId = it.id;
+        _selectedCatalogItemId = it.id;
         _itemCtrl.text = it.label;
-        _autofillFromLastPurchaseHint = false;
+        _lastPurchaseAutofillHint = null;
         _errItem = null;
         _hsnCode = null;
         _itemCode = null;
@@ -1445,7 +1531,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         color: widget.fullPage
             ? const Color(0xFFF0FDFD)
             : Colors.blueGrey[50],
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(widget.fullPage ? 12 : 6),
         border: Border.all(
           color: widget.fullPage
               ? const Color(0xFF17A8A7).withValues(alpha: 0.35)
@@ -1462,14 +1548,6 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final searchItems = <InlineSearchItem>[
-      for (final row in widget.catalog)
-        InlineSearchItem(
-          id: row['id']?.toString() ?? '',
-          label: row['name']?.toString() ?? '',
-          subtitle: row['default_unit']?.toString(),
-        ),
-    ];
     final k = _kgPer();
     final cRow = _activeClassification();
     final showPerKgFields = _showPerKgLandingLabels;
@@ -1481,6 +1559,8 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
 
     const teal = Color(0xFF17A8A7);
     const ink = Color(0xFF0F172A);
+    final gapField = widget.fullPage ? 16.0 : 6.0;
+    final gapSection = widget.fullPage ? 24.0 : 8.0;
 
     final formChildren = <Widget>[
       if (!widget.fullPage) ...[
@@ -1515,35 +1595,39 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       ],
       KeyedSubtree(
         key: _itemKey,
-        child: PartyInlineSuggestField(
-          controller: _itemCtrl,
-          focusNode: _itemFocus,
-          focusAfterSelection: _qtyFocus,
-          debugLabel: 'catalogItem',
-          hintText: 'Search item (name, code, HSN)…',
-          prefixIcon: const Icon(Icons.inventory_2_outlined),
-          minQueryLength: 1,
-          maxMatches: 8,
-          dense: true,
-          items: searchItems,
-          textInputAction: TextInputAction.next,
-          onSubmitted: () =>
-              FocusScope.of(context).requestFocus(_qtyFocus),
-          showAddRow: widget.navigateCatalogQuickAddItem != null,
-          addRowLabel: 'New catalog item…',
-          onAddRow: widget.navigateCatalogQuickAddItem == null
-              ? null
-              : () async {
-                  final r = await widget.navigateCatalogQuickAddItem!();
-                  if (r != null && mounted) {
-                    final id = r['id']?.toString() ?? '';
-                    final nm = r['name']?.toString() ?? '';
-                    if (id.isNotEmpty) _onItemSelected(id, nm);
-                  }
-                },
-          onSelected: (it) {
-            _onItemSelected(it.id, it.label);
-          },
+        child: _fpShell(
+          PartyInlineSuggestField(
+            controller: _itemCtrl,
+            focusNode: _itemFocus,
+            focusAfterSelection: _qtyFocus,
+            debugLabel: 'catalogItem',
+            hintText: 'Search item (name, code, HSN)…',
+            prefixIcon: const Icon(Icons.inventory_2_outlined),
+            minQueryLength: 1,
+            maxMatches: 8,
+            dense: true,
+            minFieldHeight: widget.fullPage ? 52 : 0,
+            suggestionsAsOverlay: widget.fullPage,
+            items: _catalogSearchItems,
+            textInputAction: TextInputAction.next,
+            onSubmitted: () =>
+                FocusScope.of(context).requestFocus(_qtyFocus),
+            showAddRow: widget.navigateCatalogQuickAddItem != null,
+            addRowLabel: 'New catalog item…',
+            onAddRow: widget.navigateCatalogQuickAddItem == null
+                ? null
+                : () async {
+                    final r = await widget.navigateCatalogQuickAddItem!();
+                    if (r != null && mounted) {
+                      final id = r['id']?.toString() ?? '';
+                      final nm = r['name']?.toString() ?? '';
+                      if (id.isNotEmpty) _onItemSelected(id, nm);
+                    }
+                  },
+            onSelected: (it) {
+              _onItemSelected(it.id, it.label);
+            },
+          ),
         ),
       ),
               if (_errItem != null)
@@ -1551,16 +1635,17 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                   padding: const EdgeInsets.only(top: 2, left: 2),
                   child: Text(_errItem!, style: TextStyle(color: Colors.red[800], fontSize: 11)),
                 ),
-              if (_autofillFromLastPurchaseHint) ...[
+              if (_lastPurchaseAutofillHint != null &&
+                  _lastPurchaseAutofillHint!.isNotEmpty) ...[
                 Padding(
                   padding: const EdgeInsets.only(top: 2, left: 2),
                   child: Text(
-                    'Auto-filled from last purchase',
+                    _lastPurchaseAutofillHint!,
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: Colors.blueGrey[600],
+                      color: Colors.blueGrey[700],
                       fontSize: 11,
-                      fontStyle: FontStyle.italic,
-                      height: 1.15,
+                      fontWeight: FontWeight.w600,
+                      height: 1.25,
                     ),
                   ),
                 ),
@@ -1578,74 +1663,147 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                     ),
                   ),
                 ),
-              const SizedBox(height: 6),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 5,
-                    child: KeyedSubtree(
-                      key: _qtyKey,
-                      child: TextField(
-                        controller: _qtyCtrl,
-                        focusNode: _qtyFocus,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        inputFormatters: [_decimalFormatter(3)],
-                        textInputAction: TextInputAction.next,
-                        decoration: _deco('Qty *', errorText: _errQty),
-                        onChanged: (_) {
-                          _clearFieldErrors();
-                          _schedulePreviewRebuild();
-                        },
-                        onSubmitted: (_) {
-                          if (showManualKgField) {
-                            FocusScope.of(context).requestFocus(_kgManualFocus);
-                          } else {
-                            FocusScope.of(context).requestFocus(_landingFocus);
-                          }
-                        },
+              SizedBox(height: gapField),
+              if (widget.fullPage)
+                _fpShell(
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      KeyedSubtree(
+                        key: _qtyKey,
+                        child: TextField(
+                          controller: _qtyCtrl,
+                          focusNode: _qtyFocus,
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                          inputFormatters: [_decimalFormatter(3)],
+                          textInputAction: TextInputAction.next,
+                          decoration: _deco('Qty *', errorText: _errQty),
+                          onChanged: (_) {
+                            _clearFieldErrors();
+                            _schedulePreviewRebuild();
+                          },
+                          onSubmitted: (_) {
+                            if (showManualKgField) {
+                              FocusScope.of(context)
+                                  .requestFocus(_kgManualFocus);
+                            } else {
+                              FocusScope.of(context)
+                                  .requestFocus(_landingFocus);
+                            }
+                          },
+                        ),
+                      ),
+                      SizedBox(height: gapField),
+                      KeyedSubtree(
+                        key: _unitKey,
+                        child: (showPerKgFields && _hasCatalogKg())
+                            ? InputDecorator(
+                                decoration:
+                                    _deco('Unit *', errorText: _errUnit),
+                                child: Text(
+                                  '${_unitCtrl.text.trim()} (${_fmtQty(k ?? 0)} kg)',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              )
+                            : TextField(
+                                controller: _unitCtrl,
+                                decoration:
+                                    _deco('Unit *', errorText: _errUnit),
+                                onChanged: (v) {
+                                  _clearFieldErrors();
+                                  if (!_isWeightUnit(v) && !_hasCatalogKg()) {
+                                    _kgPerUnit = null;
+                                    _kgPerBagCtrl.clear();
+                                  }
+                                  _recomputeModeFromUnitAndCatalog();
+                                  setState(() {
+                                    _adjustBoxFixedForClassification(
+                                      _activeClassification(),
+                                    );
+                                  });
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 5,
+                      child: KeyedSubtree(
+                        key: _qtyKey,
+                        child: TextField(
+                          controller: _qtyCtrl,
+                          focusNode: _qtyFocus,
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                          inputFormatters: [_decimalFormatter(3)],
+                          textInputAction: TextInputAction.next,
+                          decoration: _deco('Qty *', errorText: _errQty),
+                          onChanged: (_) {
+                            _clearFieldErrors();
+                            _schedulePreviewRebuild();
+                          },
+                          onSubmitted: (_) {
+                            if (showManualKgField) {
+                              FocusScope.of(context)
+                                  .requestFocus(_kgManualFocus);
+                            } else {
+                              FocusScope.of(context)
+                                  .requestFocus(_landingFocus);
+                            }
+                          },
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    flex: 5,
-                    child: KeyedSubtree(
-                      key: _unitKey,
-                      child: (showPerKgFields && _hasCatalogKg())
-                          ? InputDecorator(
-                              decoration: _deco('Unit *', errorText: _errUnit),
-                              child: Text(
-                                '${_unitCtrl.text.trim()} (${_fmtQty(k ?? 0)} kg)',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13,
+                    const SizedBox(width: 6),
+                    Expanded(
+                      flex: 5,
+                      child: KeyedSubtree(
+                        key: _unitKey,
+                        child: (showPerKgFields && _hasCatalogKg())
+                            ? InputDecorator(
+                                decoration:
+                                    _deco('Unit *', errorText: _errUnit),
+                                child: Text(
+                                  '${_unitCtrl.text.trim()} (${_fmtQty(k ?? 0)} kg)',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13,
+                                  ),
                                 ),
+                              )
+                            : TextField(
+                                controller: _unitCtrl,
+                                decoration:
+                                    _deco('Unit *', errorText: _errUnit),
+                                onChanged: (v) {
+                                  _clearFieldErrors();
+                                  if (!_isWeightUnit(v) && !_hasCatalogKg()) {
+                                    _kgPerUnit = null;
+                                    _kgPerBagCtrl.clear();
+                                  }
+                                  _recomputeModeFromUnitAndCatalog();
+                                  setState(() {
+                                    _adjustBoxFixedForClassification(
+                                      _activeClassification(),
+                                    );
+                                  });
+                                },
                               ),
-                            )
-                          : TextField(
-                              controller: _unitCtrl,
-                              decoration: _deco('Unit *', errorText: _errUnit),
-                              onChanged: (v) {
-                                _clearFieldErrors();
-                                if (!_isWeightUnit(v) && !_hasCatalogKg()) {
-                                  _kgPerUnit = null;
-                                  _kgPerBagCtrl.clear();
-                                }
-                                _recomputeModeFromUnitAndCatalog();
-                                setState(() {
-                                  _adjustBoxFixedForClassification(
-                                    _activeClassification(),
-                                  );
-                                });
-                              },
-                            ),
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
               if (showManualKgField) ...[
-                const SizedBox(height: 6),
+                SizedBox(height: gapField),
                 KeyedSubtree(
                   key: _kgPerBagKey,
                   child: TextField(
@@ -1662,7 +1820,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                 ),
               ],
               if (unitLow == 'box') ...[
-                const SizedBox(height: 6),
+                SizedBox(height: gapField),
                 if (!(cRow.type == UnitType.singlePack ||
                     cRow.type == UnitType.multiPackBox))
                   Padding(
@@ -1770,7 +1928,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                 ],
               ],
               if (unitLow == 'tin') ...[
-                const SizedBox(height: 6),
+                SizedBox(height: gapField),
                 TextField(
                   controller: _weightPerTinCtrl,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -1779,53 +1937,110 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                   onChanged: (_) => _schedulePreviewRebuild(),
                 ),
               ],
-              const SizedBox(height: 6),
-              KeyedSubtree(
-                key: _landingKey,
-                child: TextField(
-                  controller: _landingCtrl,
-                  focusNode: _landingFocus,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  inputFormatters: [_decimalFormatter(2)],
-                  textInputAction: TextInputAction.next,
-                  decoration: _deco(
-                    _purchaseRateLabel(showPerKgFields),
-                    prefixText: '₹ ',
-                    errorText: _errLanding,
+              SizedBox(height: gapField),
+              if (widget.fullPage)
+                _fpShell(
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      KeyedSubtree(
+                        key: _landingKey,
+                        child: TextField(
+                          controller: _landingCtrl,
+                          focusNode: _landingFocus,
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                          inputFormatters: [_decimalFormatter(2)],
+                          textInputAction: TextInputAction.next,
+                          decoration: _deco(
+                            _purchaseRateLabel(showPerKgFields),
+                            prefixText: '₹ ',
+                            errorText: _errLanding,
+                          ),
+                          onChanged: (_) {
+                            _clearFieldErrors();
+                            _schedulePreviewRebuild();
+                          },
+                          onSubmitted: (_) {
+                            FocusScope.of(context).requestFocus(_sellingFocus);
+                          },
+                        ),
+                      ),
+                      SizedBox(height: gapField),
+                      KeyedSubtree(
+                        key: _sellingKey,
+                        child: TextField(
+                          controller: _sellingCtrl,
+                          focusNode: _sellingFocus,
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                          inputFormatters: [_decimalFormatter(2)],
+                          textInputAction: TextInputAction.done,
+                          decoration: _deco(
+                            _sellingRateLabel(showPerKgFields),
+                            prefixText: '₹ ',
+                            errorText: _errSelling,
+                          ),
+                          onChanged: (_) {
+                            _clearFieldErrors();
+                            _schedulePreviewRebuild();
+                          },
+                        ),
+                      ),
+                    ],
                   ),
-                  onChanged: (_) {
-                    _clearFieldErrors();
-                    _schedulePreviewRebuild();
-                  },
-                  onSubmitted: (_) {
-                    FocusScope.of(context).requestFocus(_sellingFocus);
-                  },
-                ),
-              ),
-              const SizedBox(height: 6),
-              KeyedSubtree(
-                key: _sellingKey,
-                child: TextField(
-                  controller: _sellingCtrl,
-                  focusNode: _sellingFocus,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  inputFormatters: [_decimalFormatter(2)],
-                  textInputAction: TextInputAction.done,
-                  decoration: _deco(
-                    _sellingRateLabel(showPerKgFields),
-                    prefixText: '₹ ',
-                    errorText: _errSelling,
+                )
+              else ...[
+                KeyedSubtree(
+                  key: _landingKey,
+                  child: TextField(
+                    controller: _landingCtrl,
+                    focusNode: _landingFocus,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true),
+                    inputFormatters: [_decimalFormatter(2)],
+                    textInputAction: TextInputAction.next,
+                    decoration: _deco(
+                      _purchaseRateLabel(showPerKgFields),
+                      prefixText: '₹ ',
+                      errorText: _errLanding,
+                    ),
+                    onChanged: (_) {
+                      _clearFieldErrors();
+                      _schedulePreviewRebuild();
+                    },
+                    onSubmitted: (_) {
+                      FocusScope.of(context).requestFocus(_sellingFocus);
+                    },
                   ),
-                  onChanged: (_) {
-                    _clearFieldErrors();
-                    _schedulePreviewRebuild();
-                  },
                 ),
-              ),
-              const SizedBox(height: 2),
+                SizedBox(height: gapField),
+                KeyedSubtree(
+                  key: _sellingKey,
+                  child: TextField(
+                    controller: _sellingCtrl,
+                    focusNode: _sellingFocus,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true),
+                    inputFormatters: [_decimalFormatter(2)],
+                    textInputAction: TextInputAction.done,
+                    decoration: _deco(
+                      _sellingRateLabel(showPerKgFields),
+                      prefixText: '₹ ',
+                      errorText: _errSelling,
+                    ),
+                    onChanged: (_) {
+                      _clearFieldErrors();
+                      _schedulePreviewRebuild();
+                    },
+                  ),
+                ),
+              ],
+              SizedBox(height: widget.fullPage ? gapSection : 2),
               KeyedSubtree(
                 key: _taxKey,
-                child: Theme(
+                child: _fpShell(
+                  Theme(
                   data: theme.copyWith(dividerColor: Colors.transparent),
                   child: ExpansionTile(
                     tilePadding: EdgeInsets.zero,
@@ -1940,6 +2155,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                   ),
                 ),
               ),
+            ),
               if (_errHsn != null) ...[
                 const SizedBox(height: 2),
                 Text(
@@ -1972,10 +2188,12 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                   ),
                 ),
               ],
-              const SizedBox(height: 4),
+              SizedBox(height: widget.fullPage ? gapField : 4),
               ListenableBuilder(
                 listenable: _lineTotalsListenable,
-                builder: (context, _) => _liveTotalsCard(theme),
+                builder: (context, _) => widget.fullPage
+                    ? _fpShell(_liveTotalsCard(theme))
+                    : _liveTotalsCard(theme),
               ),
               if (!widget.fullPage) const SizedBox(height: 8),
               if (!widget.fullPage)
@@ -2117,6 +2335,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                 scrollController: _scrollController,
                 horizontalPadding: 16,
                 topPadding: 4,
+                bottomExtraInset: 32,
                 minFieldsHeight:
                     c.hasBoundedHeight ? minFields : 200,
                 fields: Column(

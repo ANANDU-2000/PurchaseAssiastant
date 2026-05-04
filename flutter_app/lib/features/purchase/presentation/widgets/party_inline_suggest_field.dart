@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -61,6 +62,9 @@ class PartyInlineSuggestField extends StatefulWidget {
     this.onLockedSelectionClear,
     this.focusAfterSelection,
     this.debugLabel,
+    /// When true, suggestions render in an [Overlay] below the field (full-page
+    /// catalog pick) so the IME does not cover the list. Party step stays inline.
+    this.suggestionsAsOverlay = false,
   })  : assert(minQueryLength >= 0),
         assert(
           !showAddRow || (addRowLabel != null && onAddRow != null),
@@ -114,6 +118,9 @@ class PartyInlineSuggestField extends StatefulWidget {
   /// Optional identifier for debug logging.
   final String? debugLabel;
 
+  /// See [PartyInlineSuggestField.suggestionsAsOverlay] on the constructor.
+  final bool suggestionsAsOverlay;
+
   @override
   State<PartyInlineSuggestField> createState() =>
       _PartyInlineSuggestFieldState();
@@ -137,6 +144,9 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   Timer? _revealDebounceTimer;
 
   final GlobalKey _revealKey = GlobalKey(debugLabel: 'partyInlineSuggest');
+  final GlobalKey _fieldMeasureKey = GlobalKey(debugLabel: 'partyInlineField');
+  final LayerLink _layerLink = LayerLink();
+  OverlayEntry? _suggestionOverlayEntry;
 
   @override
   void initState() {
@@ -158,10 +168,15 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       oldWidget.focusNode.removeListener(_listenFocus);
       widget.focusNode.addListener(_listenFocus);
     }
+    if (oldWidget.suggestionsAsOverlay != widget.suggestionsAsOverlay &&
+        !widget.suggestionsAsOverlay) {
+      _removeSuggestionOverlay();
+    }
   }
 
   @override
   void dispose() {
+    _removeSuggestionOverlay();
     _filterDebounceTimer?.cancel();
     _revealDebounceTimer?.cancel();
     widget.controller.removeListener(_listenCtrl);
@@ -195,6 +210,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
         _filterQuery = widget.controller.text.trim().toLowerCase();
       });
       _maybeRevealAfterFilter();
+      _scheduleOverlaySync();
     });
 
     _revealDebounceTimer?.cancel();
@@ -225,6 +241,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       });
       WidgetsBinding.instance
           .addPostFrameCallback((_) => _maybeRevealAfterFilter());
+      _scheduleOverlaySync();
       return;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -232,6 +249,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       _tryBlurExactPick();
       if (!mounted) return;
       setState(() {});
+      _scheduleOverlaySync();
     });
   }
 
@@ -330,14 +348,10 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     _lastPickedLabel = it.label.trim();
     _filterQuery = it.label.trim().toLowerCase();
 
-    // Sync controller update first — use .value to avoid double-trigger of text listeners
-    widget.controller.value = TextEditingValue(
-      text: it.label,
-      selection: TextSelection.collapsed(offset: it.label.length),
-    );
-
-    // Call parent SYNCHRONOUSLY before any unfocus or setState.
-    // This commits the Riverpod draft while the widget tree is stable.
+    // Call parent before updating [controller]: the parent's text listener may run
+    // synchronously on controller changes; if [onSelected] commits the new catalog
+    // id after the text update, a stale id can still be set and the listener clears
+    // selection (label vs previous row name mismatch).
     if (widget.onSelected != null) {
       _pickInProgress = true;
       try {
@@ -347,8 +361,14 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       }
     }
 
+    widget.controller.value = TextEditingValue(
+      text: it.label,
+      selection: TextSelection.collapsed(offset: it.label.length),
+    );
+
     // Rebuild to hide the panel
     if (mounted) setState(() {});
+    _scheduleOverlaySync();
 
     if (kDebugMode) {
       final tag = widget.debugLabel != null ? ' ${widget.debugLabel}' : '';
@@ -472,6 +492,121 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       return;
     }
     widget.onSubmitted?.call();
+  }
+
+  void _removeSuggestionOverlay() {
+    _suggestionOverlayEntry?.remove();
+    _suggestionOverlayEntry = null;
+  }
+
+  void _scheduleOverlaySync() {
+    if (!widget.suggestionsAsOverlay) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _syncSuggestionOverlay();
+    });
+  }
+
+  bool _panelVisibleForOverlay() {
+    final lockLabel = widget.lockedSelectionLabel?.trim();
+    final locked = lockLabel != null &&
+        lockLabel.isNotEmpty &&
+        !widget.focusNode.hasFocus;
+    final rows = _listRowsForUi();
+    final showAddFocused = widget.showAddRow &&
+        widget.focusNode.hasFocus &&
+        widget.onAddRow != null;
+    return !locked &&
+        !_suppressPanelAfterPick &&
+        widget.focusNode.hasFocus &&
+        (rows.isNotEmpty || showAddFocused);
+  }
+
+  void _syncSuggestionOverlay() {
+    if (!widget.suggestionsAsOverlay) {
+      _removeSuggestionOverlay();
+      return;
+    }
+    if (!_panelVisibleForOverlay()) {
+      _removeSuggestionOverlay();
+      return;
+    }
+    if (_suggestionOverlayEntry == null) {
+      _suggestionOverlayEntry = OverlayEntry(
+        maintainState: true,
+        builder: (ctx) => _buildOverlaySuggestions(ctx),
+      );
+      Overlay.of(context).insert(_suggestionOverlayEntry!);
+    } else {
+      _suggestionOverlayEntry!.markNeedsBuild();
+    }
+  }
+
+  Widget _buildOverlaySuggestions(BuildContext overlayCtx) {
+    final cs = Theme.of(overlayCtx).colorScheme;
+    final rows = _listRowsForUi();
+    final showAddFocused = widget.showAddRow &&
+        widget.focusNode.hasFocus &&
+        widget.onAddRow != null;
+    final borderColor = widget.idleOutlineColor ?? Colors.grey.shade200;
+    final media = MediaQuery.of(overlayCtx);
+    final box =
+        _fieldMeasureKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _suggestionOverlayEntry?.markNeedsBuild();
+      });
+      return const SizedBox.shrink();
+    }
+    final sz = box.size;
+    final availBelow =
+        media.size.height - media.viewInsets.bottom - media.padding.bottom;
+    final maxPanelH = math.min(
+      widget.maxPanelAbs,
+      math.max(120.0, availBelow - sz.height - 24),
+    );
+
+    return CompositedTransformFollower(
+      link: _layerLink,
+      showWhenUnlinked: false,
+      offset: Offset(0, sz.height + 4),
+      child: Material(
+        elevation: 12,
+        shadowColor: Colors.black.withValues(alpha: 0.25),
+        borderRadius: BorderRadius.circular(12),
+        clipBehavior: Clip.antiAlias,
+        child: SizedBox(
+          width: sz.width,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: cs.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: borderColor.withValues(alpha: 0.45)),
+            ),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: maxPanelH),
+              child: SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                clipBehavior: Clip.hardEdge,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (final it in rows) _buildSuggestionTile(cs, it),
+                    if (rows.isNotEmpty &&
+                        showAddFocused &&
+                        widget.onAddRow != null)
+                      Divider(height: 1, thickness: 1, color: borderColor),
+                    if (showAddFocused && widget.onAddRow != null)
+                      _buildAddRowTile(cs),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -620,7 +755,16 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       );
     }
 
-    final fieldWrapped = innerInput;
+    Widget fieldWrapped = innerInput;
+    if (widget.suggestionsAsOverlay) {
+      fieldWrapped = CompositedTransformTarget(
+        link: _layerLink,
+        child: KeyedSubtree(
+          key: _fieldMeasureKey,
+          child: innerInput,
+        ),
+      );
+    }
 
     final cardShadow = [
       BoxShadow(
@@ -630,14 +774,14 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       ),
     ];
 
-    return KeyedSubtree(
+    final subtree = KeyedSubtree(
       key: _revealKey,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           fieldWrapped,
-          if (hasPanelSource) ...[
+          if (!widget.suggestionsAsOverlay && hasPanelSource) ...[
             const SizedBox(height: 8),
             DecoratedBox(
               decoration: BoxDecoration(
@@ -667,5 +811,11 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
         ],
       ),
     );
+    if (widget.suggestionsAsOverlay) {
+      _scheduleOverlaySync();
+    } else if (_suggestionOverlayEntry != null) {
+      _removeSuggestionOverlay();
+    }
+    return subtree;
   }
 }

@@ -637,12 +637,15 @@ async def last_purchase_defaults(
         selling_raw = getattr(li, "selling_rate", None) or li.selling_cost
         selling_rate = dp.rate(selling_raw) if selling_raw is not None else None
         tax_pct = dp.percent(li.tax_percent) if li.tax_percent is not None else None
+        sup = getattr(p, "supplier_row", None)
+        supplier_name = sup.name if sup is not None else None
         return {
             "source": source,
             "purchase_id": str(p.id),
             "purchase_date": p.purchase_date.isoformat(),
             "payment_days": p.payment_days,
             "broker_id": str(p.broker_id) if p.broker_id is not None else None,
+            "supplier_name": supplier_name,
             "item_id": str(li.catalog_item_id),
             "unit": li.unit,
             "purchase_rate": purchase_rate,
