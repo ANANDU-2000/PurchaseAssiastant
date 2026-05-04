@@ -29,6 +29,8 @@ class PurchaseItemEntrySheet extends StatefulWidget {
     this.onDefaultsResolved,
     /// Full-screen [Scaffold] (ENTRY Prompt 1) instead of a bottom sheet.
     this.fullPage = false,
+    /// When true, line payload omits freight / delivered / billty / line discount (purchase header carries these).
+    this.omitLineFreightDeliveredBilltyDiscount = false,
     /// Optional: push catalog add-item route; caller invalidates catalog + returns `{id,name}`.
     this.navigateCatalogQuickAddItem,
   });
@@ -43,6 +45,7 @@ class PurchaseItemEntrySheet extends StatefulWidget {
       resolveLastDefaults;
   final void Function(Map<String, dynamic> defaults)? onDefaultsResolved;
   final bool fullPage;
+  final bool omitLineFreightDeliveredBilltyDiscount;
   final Future<Map<String, dynamic>?> Function()? navigateCatalogQuickAddItem;
 
   @override
@@ -724,9 +727,11 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         ? _sellingParsedAsPerKg()
         : _parseD(_sellingCtrl.text);
     if (sell == null) return 0;
-    final lineCharges = (_freightType == 'separate' ? (_parseD(_freightCtrl.text) ?? 0) : 0) +
-        (_parseD(_deliveredCtrl.text) ?? 0) +
-        (_parseD(_billtyCtrl.text) ?? 0);
+    final lineCharges = widget.omitLineFreightDeliveredBilltyDiscount
+        ? 0.0
+        : (_freightType == 'separate' ? (_parseD(_freightCtrl.text) ?? 0) : 0) +
+            (_parseD(_deliveredCtrl.text) ?? 0) +
+            (_parseD(_billtyCtrl.text) ?? 0);
     if (_ratesPerKgEconomics) {
       final k = _kgPer()!;
       final perKgLand = _landingParsedAsPerKg() ?? 0;
@@ -1001,20 +1006,24 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         m['weight_per_unit'] = wt;
       }
     }
-    if (disc != null && disc > 0) m['discount'] = disc;
+    if (!widget.omitLineFreightDeliveredBilltyDiscount) {
+      if (disc != null && disc > 0) m['discount'] = disc;
+    }
     if (tax != null && tax > 0) m['tax_percent'] = tax;
     if (sellSt.isNotEmpty) {
       final sellParsed = _sellingParsedAsPerKg() ?? _parseD(sellSt)!;
       m['selling_cost'] = _sellingForPayloadForWire(sellParsed);
       m['selling_rate'] = m['selling_cost'];
     }
-    m['freight_type'] = _freightType;
-    final fv = _parseD(_freightCtrl.text);
-    final dr = _parseD(_deliveredCtrl.text);
-    final br = _parseD(_billtyCtrl.text);
-    if (fv != null) m['freight_value'] = fv;
-    if (dr != null) m['delivered_rate'] = dr;
-    if (br != null) m['billty_rate'] = br;
+    if (!widget.omitLineFreightDeliveredBilltyDiscount) {
+      m['freight_type'] = _freightType;
+      final fv = _parseD(_freightCtrl.text);
+      final dr = _parseD(_deliveredCtrl.text);
+      final br = _parseD(_billtyCtrl.text);
+      if (fv != null) m['freight_value'] = fv;
+      if (dr != null) m['delivered_rate'] = dr;
+      if (br != null) m['billty_rate'] = br;
+    }
     final hOut = _hsnCode?.trim() ?? '';
     if (hOut.isNotEmpty) m['hsn_code'] = hOut;
     final icOut = _itemCode?.trim() ?? '';
@@ -2200,97 +2209,117 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                       reverseDuration: Duration.zero,
                     ),
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _discCtrl,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              inputFormatters: [_decimalFormatter(2)],
-                              decoration: _deco('Discount %'),
-                              onChanged: (_) => setState(() {}),
+                      if (widget.omitLineFreightDeliveredBilltyDiscount) ...[
+                        TextField(
+                          controller: _taxCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          inputFormatters: [_decimalFormatter(2)],
+                          decoration: _deco('Tax %'),
+                          onChanged: (_) {
+                            _clearFieldErrors();
+                            setState(() {});
+                          },
+                        ),
+                        const SizedBox(height: 6),
+                        TextField(
+                          controller: _lineNotesCtrl,
+                          maxLines: 4,
+                          minLines: 1,
+                          decoration: _deco('Notes'),
+                        ),
+                      ] else ...[
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _discCtrl,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                inputFormatters: [_decimalFormatter(2)],
+                                decoration: _deco('Discount %'),
+                                onChanged: (_) => setState(() {}),
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: TextField(
-                              controller: _taxCtrl,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              inputFormatters: [_decimalFormatter(2)],
-                              decoration: _deco('Tax %'),
-                              onChanged: (_) {
-                                _clearFieldErrors();
-                                setState(() {});
-                              },
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: TextField(
+                                controller: _taxCtrl,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                inputFormatters: [_decimalFormatter(2)],
+                                decoration: _deco('Tax %'),
+                                onChanged: (_) {
+                                  _clearFieldErrors();
+                                  setState(() {});
+                                },
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _freightCtrl,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              inputFormatters: [_decimalFormatter(2)],
-                              decoration: _deco('Freight value'),
-                              onChanged: (_) => setState(() {}),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _freightCtrl,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                inputFormatters: [_decimalFormatter(2)],
+                                decoration: _deco('Freight value'),
+                                onChanged: (_) => setState(() {}),
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: InputDecorator(
-                              decoration: _deco('Freight type'),
-                              child: DropdownButtonHideUnderline(
-                                child: DropdownButton<String>(
-                                  value: _freightType,
-                                  isExpanded: true,
-                                  items: const [
-                                    DropdownMenuItem(value: 'separate', child: Text('Separate')),
-                                    DropdownMenuItem(value: 'included', child: Text('Included')),
-                                  ],
-                                  onChanged: (v) {
-                                    if (v == null) return;
-                                    setState(() => _freightType = v);
-                                  },
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: InputDecorator(
+                                decoration: _deco('Freight type'),
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<String>(
+                                    value: _freightType,
+                                    isExpanded: true,
+                                    items: const [
+                                      DropdownMenuItem(value: 'separate', child: Text('Separate')),
+                                      DropdownMenuItem(value: 'included', child: Text('Included')),
+                                    ],
+                                    onChanged: (v) {
+                                      if (v == null) return;
+                                      setState(() => _freightType = v);
+                                    },
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _deliveredCtrl,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              inputFormatters: [_decimalFormatter(2)],
-                              decoration: _deco('Delivered rate'),
-                              onChanged: (_) => setState(() {}),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _deliveredCtrl,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                inputFormatters: [_decimalFormatter(2)],
+                                decoration: _deco('Delivered rate'),
+                                onChanged: (_) => setState(() {}),
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: TextField(
-                              controller: _billtyCtrl,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              inputFormatters: [_decimalFormatter(2)],
-                              decoration: _deco('Billty rate'),
-                              onChanged: (_) => setState(() {}),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: TextField(
+                                controller: _billtyCtrl,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                inputFormatters: [_decimalFormatter(2)],
+                                decoration: _deco('Billty rate'),
+                                onChanged: (_) => setState(() {}),
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      TextField(
-                        controller: _lineNotesCtrl,
-                        maxLines: 4,
-                        minLines: 1,
-                        decoration: _deco('Notes'),
-                      ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        TextField(
+                          controller: _lineNotesCtrl,
+                          maxLines: 4,
+                          minLines: 1,
+                          decoration: _deco('Notes'),
+                        ),
+                      ],
                     ],
                   ),
                 ),

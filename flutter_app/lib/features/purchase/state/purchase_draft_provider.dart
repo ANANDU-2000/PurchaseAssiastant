@@ -177,7 +177,7 @@ class PurchaseSaveValidation {
       lineErrors.isEmpty;
 }
 
-/// fromStep0, fromStep1, fromStep2, fromStep3: may press Next to the following step.
+/// from0 Party→Terms, from1 Terms→Items, from2 Items→Review, from3 Save.
 final purchaseStepGatesProvider =
     Provider<({bool from0, bool from1, bool from2, bool from3})>((ref) {
   final d = ref.watch(purchaseDraftProvider);
@@ -196,11 +196,9 @@ final purchaseStepGatesProvider =
   } else {
     validLines = false;
   }
-  // Party: supplier only. Broker is optional (terms/freight defaults when set).
-  // Items → Review keeps the same validity tuple for callers.
   return (
     from0: hasS,
-    from1: validLines,
+    from1: hasS,
     from2: validLines,
     from3: validLines,
   );
@@ -501,6 +499,9 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
     setLinesFromMaps([for (final e in items) Map<String, dynamic>.from(e)]);
   }
 
+  /// Builds the trade-purchase API body. Header `delivered_rate`, `billty_rate`,
+  /// `freight_amount`, and purchase `discount` are authoritative; line JSON may
+  /// still include legacy per-line charges when loaded from older saves.
   Map<String, dynamic> buildTradePurchaseBody({bool forceDuplicate = false}) {
     final d = state;
     final lines = <Map<String, dynamic>>[

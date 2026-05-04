@@ -1,11 +1,16 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../../../core/strict_decimal.dart';
 import '../../../../core/theme/hexa_colors.dart';
 import '../../domain/purchase_draft.dart';
 import '../../state/purchase_draft_provider.dart';
+
+String _inr0(num n) =>
+    NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
+        .format(n);
 
 typedef OpenAdvancedItemSheet = Future<void> Function({
   int? editIndex,
@@ -72,10 +77,17 @@ class _PurchaseFastItemsStepState extends ConsumerState<PurchaseFastItemsStep> {
     return l.qty * l.landingCost;
   }
 
-  double? _approxLineSell(PurchaseLineDraft l) {
-    final sp = l.sellingPrice;
-    if (sp == null || sp <= 0) return null;
-    return sp * l.qty;
+  String _qtyHuman(PurchaseLineDraft l) {
+    final u = l.unit.trim();
+    final q = StrictDecimal.fromObject(l.qty).format(3, trim: true);
+    final ul = u.toLowerCase();
+    if (l.kgPerUnit != null &&
+        l.kgPerUnit! > 0 &&
+        (ul == 'bag' || ul == 'sack')) {
+      final kg = l.qty * l.kgPerUnit!;
+      return '$q $u • ${StrictDecimal.fromObject(kg).format(3, trim: true)} kg';
+    }
+    return '$q $u';
   }
 
   Future<void> _editAdvanced(int i) async {
@@ -107,18 +119,77 @@ class _PurchaseFastItemsStepState extends ConsumerState<PurchaseFastItemsStep> {
               ),
             ),
           ),
+        Consumer(
+          builder: (cx, rf, _) {
+            final bd = rf.watch(purchaseStrictBreakdownProvider);
+            final qt = rf.watch(purchaseQuantityTotalsProvider);
+            final unitBits = <String>[];
+            qt.qtyByUnit.forEach((k, v) {
+              if (v > 1e-9) {
+                unitBits.add(
+                  '${StrictDecimal.fromObject(v).format(3, trim: true)} ${k.toUpperCase()}',
+                );
+              }
+            });
+            if (qt.totalKg > 1e-6) {
+              unitBits.insert(0, '${qt.totalKg.toStringAsFixed(0)} KG');
+            }
+            final qtyLine = unitBits.isEmpty ? '—' : unitBits.join(' • ');
+            return Material(
+              color: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: HexaColors.brandBorder),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'TOTAL',
+                      style: Theme.of(cx).textTheme.labelMedium?.copyWith(
+                            fontWeight: FontWeight.w900,
+                            color: Colors.black54,
+                          ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _inr0(bd.grand),
+                      style: Theme.of(cx).textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.w900,
+                            color: const Color(0xFF0F172A),
+                          ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      qtyLine,
+                      style: Theme.of(cx).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w900,
+                            color: const Color(0xFF0F172A),
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 14),
         Row(
           children: [
             Text(
               'Items (${lines.length})',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w900,
+                    color: const Color(0xFF0F172A),
                   ),
             ),
             const Spacer(),
             TextButton(
               onPressed: blocked || lines.isEmpty ? null : _confirmClearAll,
-              child: const Text('Reset row'),
+              child: const Text('Clear all'),
             ),
           ],
         ),
@@ -143,118 +214,77 @@ class _PurchaseFastItemsStepState extends ConsumerState<PurchaseFastItemsStep> {
             itemBuilder: (ctx, i) {
               final ln = lines[i];
               final buy = _approxLinePurchase(ln);
-              final sellTot = _approxLineSell(ln);
-              final subtitle = sellTot != null
-                  ? '${StrictDecimal.fromObject(ln.qty).format(3, trim: true)} ${ln.unit} · est. buy ₹${buy.toStringAsFixed(2)} · est. sell ₹${sellTot.toStringAsFixed(2)}'
-                  : '${StrictDecimal.fromObject(ln.qty).format(3, trim: true)} ${ln.unit} · est. buy ₹${buy.toStringAsFixed(2)}';
-              return Card(
-                margin: const EdgeInsets.only(bottom: 6),
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  side: BorderSide(color: Colors.grey.shade300),
-                ),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor:
-                        HexaColors.brandPrimary.withValues(alpha: 0.1),
-                    foregroundColor: HexaColors.brandPrimary,
-                    child: Text(
-                      '${i + 1}',
-                      style: const TextStyle(fontWeight: FontWeight.w800),
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Material(
+                  color: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    side: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: () => _editAdvanced(i),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${i + 1}.',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 16,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  ln.itemName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 16,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _qtyHuman(ln),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 15,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _inr0(buy),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 17,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Remove',
+                            icon: const Icon(Icons.delete_outline_rounded),
+                            onPressed: () => _removeAt(i),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  title: Text(
-                    ln.itemName,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  subtitle: Text(subtitle),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        tooltip: 'Edit',
-                        icon: const Icon(Icons.tune_rounded),
-                        onPressed: () => _editAdvanced(i),
-                      ),
-                      IconButton(
-                        tooltip: 'Remove',
-                        icon: const Icon(Icons.delete_outline_rounded),
-                        onPressed: () => _removeAt(i),
-                      ),
-                    ],
                   ),
                 ),
               );
             },
-          ),
-        if (lines.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 6, bottom: 16),
-            child: Consumer(
-              builder: (cx, rf, _) {
-                final bd = rf.watch(purchaseStrictBreakdownProvider);
-                final qt = rf.watch(purchaseQuantityTotalsProvider);
-                return Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFECFEFF),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: HexaColors.brandPrimary.withValues(alpha: 0.22),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Total qty',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13,
-                            ),
-                          ),
-                          Text(
-                            qt.totalKg > 1e-6
-                                ? '${qt.totalKg.toStringAsFixed(2)} kg'
-                                : '${lines.fold<double>(0, (a, l) => a + l.qty).toStringAsFixed(0)} units',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'P: est. payable',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 14,
-                            ),
-                          ),
-                          Text(
-                            '₹${bd.grand.toStringAsFixed(2)}',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w900,
-                              fontSize: 15,
-                              color: HexaColors.brandPrimary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
           ),
         SizedBox(
           height: 52,
@@ -263,14 +293,14 @@ class _PurchaseFastItemsStepState extends ConsumerState<PurchaseFastItemsStep> {
             onPressed: blocked
                 ? null
                 : () => widget.openAdvancedItemEditor(),
-            icon: const Icon(Icons.add_circle_outline_rounded),
+            icon: const Icon(Icons.add_circle_outline_rounded, size: 22),
             label: const Text(
-              'Add item',
-              style: TextStyle(fontWeight: FontWeight.w700),
+              '+ Add Item',
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
             ),
             style: OutlinedButton.styleFrom(
               minimumSize: const Size.fromHeight(52),
-              side: BorderSide(color: HexaColors.brandPrimary),
+              side: const BorderSide(color: HexaColors.brandPrimary, width: 1.5),
             ),
           ),
         ),
