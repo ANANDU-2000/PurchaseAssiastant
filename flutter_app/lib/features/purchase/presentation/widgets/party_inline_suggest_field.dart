@@ -221,6 +221,11 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   String _filterQuery = '';
   Timer? _filterDebounceTimer;
   Timer? _revealDebounceTimer;
+  /// After the field loses focus (e.g. finger down on a suggestion), keep the panel
+  /// on screen briefly so [TextButton] taps complete. Otherwise the list unmounts
+  /// before [onPressed] runs (supplier / broker / item pick feels "dead").
+  Timer? _suggestPanelGraceTimer;
+  bool _suggestPanelGrace = false;
 
   final GlobalKey _revealKey = GlobalKey(debugLabel: 'partyInlineSuggest');
   final GlobalKey _fieldMeasureKey = GlobalKey(debugLabel: 'partyInlineField');
@@ -258,9 +263,45 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     _removeSuggestionOverlay();
     _filterDebounceTimer?.cancel();
     _revealDebounceTimer?.cancel();
+    _suggestPanelGraceTimer?.cancel();
     widget.controller.removeListener(_listenCtrl);
     widget.focusNode.removeListener(_listenFocus);
     super.dispose();
+  }
+
+  void _cancelSuggestPanelGrace() {
+    _suggestPanelGraceTimer?.cancel();
+    _suggestPanelGraceTimer = null;
+    _suggestPanelGrace = false;
+  }
+
+  void _armSuggestPanelGraceIfNeeded() {
+    final lock = widget.lockedSelectionLabel?.trim();
+    if (lock != null && lock.isNotEmpty) {
+      _cancelSuggestPanelGrace();
+      return;
+    }
+    _suggestPanelGraceTimer?.cancel();
+    _flushFilterToLive();
+    final rows = _listRowsForUi(live: true);
+    final canAdd = widget.showAddRow && widget.onAddRow != null;
+    if (rows.isEmpty && !canAdd) {
+      _suggestPanelGrace = false;
+      return;
+    }
+    _suggestPanelGrace = true;
+    _suggestPanelGraceTimer = Timer(const Duration(milliseconds: 360), () {
+      _suggestPanelGraceTimer = null;
+      _suggestPanelGrace = false;
+      if (!mounted) return;
+      if (!widget.focusNode.hasFocus &&
+          !_pickInProgress &&
+          !_suppressPanelAfterPick) {
+        _tryBlurExactPick();
+      }
+      setState(() {});
+      _scheduleOverlaySync();
+    });
   }
 
   void _flushFilterToLive() {
@@ -311,6 +352,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   void _listenFocus() {
     final nowFocused = widget.focusNode.hasFocus;
     if (nowFocused) {
+      _cancelSuggestPanelGrace();
       _suppressPanelAfterPick = false;
       _filterDebounceTimer?.cancel();
       _revealDebounceTimer?.cancel();
@@ -323,10 +365,10 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       _scheduleOverlaySync();
       return;
     }
+    _armSuggestPanelGraceIfNeeded();
+    if (mounted) setState(() {});
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || widget.focusNode.hasFocus) return;
-      _tryBlurExactPick();
-      if (!mounted) return;
       setState(() {});
       _scheduleOverlaySync();
     });
@@ -423,6 +465,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
 
   void _pick(InlineSearchItem it, {bool keepFocus = true}) {
     if (_consumeIfDuplicatePick(it)) return;
+    _cancelSuggestPanelGrace();
     _filterDebounceTimer?.cancel();
     _revealDebounceTimer?.cancel();
     _suppressPanelAfterPick = true;
@@ -602,12 +645,13 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
         lockLabel.isNotEmpty &&
         !widget.focusNode.hasFocus;
     final rows = _listRowsForUi();
-    final showAddFocused = widget.showAddRow &&
-        widget.focusNode.hasFocus &&
-        widget.onAddRow != null;
+    final suggestInteractive =
+        widget.focusNode.hasFocus || _suggestPanelGrace;
+    final showAddFocused =
+        widget.showAddRow && suggestInteractive && widget.onAddRow != null;
     return !locked &&
         !_suppressPanelAfterPick &&
-        widget.focusNode.hasFocus &&
+        suggestInteractive &&
         (rows.isNotEmpty || showAddFocused);
   }
 
@@ -634,9 +678,10 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   Widget _buildOverlaySuggestions(BuildContext overlayCtx) {
     final cs = Theme.of(overlayCtx).colorScheme;
     final rows = _listRowsForUi();
-    final showAddFocused = widget.showAddRow &&
-        widget.focusNode.hasFocus &&
-        widget.onAddRow != null;
+    final suggestInteractive =
+        widget.focusNode.hasFocus || _suggestPanelGrace;
+    final showAddFocused =
+        widget.showAddRow && suggestInteractive && widget.onAddRow != null;
     final borderColor = widget.idleOutlineColor ?? Colors.grey.shade200;
     final media = MediaQuery.of(overlayCtx);
     final box =
@@ -712,9 +757,10 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final rows = _listRowsForUi();
-    final showAddFocused = widget.showAddRow &&
-        widget.focusNode.hasFocus &&
-        widget.onAddRow != null;
+    final suggestInteractive =
+        widget.focusNode.hasFocus || _suggestPanelGrace;
+    final showAddFocused =
+        widget.showAddRow && suggestInteractive && widget.onAddRow != null;
 
     final lockLabel = widget.lockedSelectionLabel?.trim();
     final locked = lockLabel != null &&
@@ -723,7 +769,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
 
     final hasPanelSource = !locked &&
         !_suppressPanelAfterPick &&
-        widget.focusNode.hasFocus &&
+        suggestInteractive &&
         (rows.isNotEmpty || showAddFocused);
 
     final borderColor = widget.idleOutlineColor ?? Colors.grey.shade200;
