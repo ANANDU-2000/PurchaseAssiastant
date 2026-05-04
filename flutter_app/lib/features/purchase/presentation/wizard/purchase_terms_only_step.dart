@@ -173,7 +173,7 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
                   items: const [
                     DropdownMenuItem(
                       value: kPurchaseCommissionModePercent,
-                      child: Text('% of bill (after line disc., before freight)'),
+                      child: Text('% of line totals after purchase discount'),
                     ),
                     DropdownMenuItem(
                       value: kPurchaseCommissionModeFlatInvoice,
