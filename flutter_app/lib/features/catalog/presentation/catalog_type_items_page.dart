@@ -596,6 +596,7 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
                   merged['last_selling_rate'] = sumRow['last_selling_rate'];
                   merged['last_supplier_name'] = sumRow['last_supplier_name'];
                   merged['last_broker_name'] = sumRow['last_broker_name'];
+                  merged['last_trade_human_id'] = sumRow['last_trade_human_id'];
                 }
                 return RepaintBoundary(
                   child: Card(
@@ -669,7 +670,25 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
-                                        'Unit: ${pu.toUpperCase()} · Last ${_inr(last)}',
+                                        () {
+                                          final bagsLbl =
+                                              tradeIntelLastPurchaseBagsLabel(
+                                                  merged);
+                                          final billId = (merged[
+                                                      'last_trade_human_id'] ??
+                                                  '')
+                                              .toString()
+                                              .trim();
+                                          final tail = [
+                                            if (bagsLbl.isNotEmpty) bagsLbl,
+                                            if (billId.isNotEmpty) billId,
+                                          ].join(' · ');
+                                          final base =
+                                              'Unit: ${pu.toUpperCase()} · Last ${_inr(last)}';
+                                          return tail.isEmpty
+                                              ? base
+                                              : '$base · $tail';
+                                        }(),
                                         style: Theme.of(context)
                                             .textTheme
                                             .bodySmall

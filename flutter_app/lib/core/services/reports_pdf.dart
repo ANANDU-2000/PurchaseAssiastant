@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -403,8 +405,8 @@ Future<void> shareItemPurchaseTradeHistoryPdf({
   );
 }
 
-/// Line statement from `/trade-purchases` aggregate (reports SSOT).
-Future<void> layoutTradeStatementSsotPdf({
+/// Line statement from `/trade-purchases` aggregate (reports SSOT) as PDF bytes.
+Future<Uint8List> buildTradeStatementSsotPdfBytes({
   required BusinessProfile business,
   required DateTime from,
   required DateTime to,
@@ -518,5 +520,22 @@ Future<void> layoutTradeStatementSsotPdf({
       ],
     ),
   );
-  await Printing.layoutPdf(onLayout: (_) async => doc.save());
+  return doc.save();
+}
+
+/// Opens the print/share preview UI for the trade statement PDF.
+Future<void> layoutTradeStatementSsotPdf({
+  required BusinessProfile business,
+  required DateTime from,
+  required DateTime to,
+  required List<TradePurchase> purchases,
+}) async {
+  await Printing.layoutPdf(
+    onLayout: (_) async => buildTradeStatementSsotPdfBytes(
+      business: business,
+      from: from,
+      to: to,
+      purchases: purchases,
+    ),
+  );
 }

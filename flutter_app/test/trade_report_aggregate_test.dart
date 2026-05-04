@@ -5,11 +5,12 @@ import 'package:flutter_test/flutter_test.dart';
 TradePurchase _purchase({
   required String id,
   required List<TradePurchaseLine> lines,
+  DateTime? purchaseDate,
 }) {
   return TradePurchase(
     id: id,
     humanId: id,
-    purchaseDate: DateTime(2026, 1, 15),
+    purchaseDate: purchaseDate ?? DateTime(2026, 1, 15),
     paidAmount: 0,
     totalAmount: 0,
     storedStatus: 'paid',
@@ -148,5 +149,80 @@ void main() {
     expect(agg.totals.deals, 0);
     expect(agg.itemsBag, isEmpty);
     expect(buildTradeStatementLines([p]), isEmpty);
+  });
+
+  test('itemsAll merges packs per item; latest sort uses lastPurchaseDate', () {
+    final pOld = _purchase(
+      id: 'old',
+      purchaseDate: DateTime(2026, 1, 1),
+      lines: [
+        TradePurchaseLine(
+          id: 'l1',
+          itemName: 'Wheat',
+          qty: 2,
+          unit: 'bag',
+          landingCost: 10,
+          lineTotal: 20,
+          kgPerUnit: 50,
+        ),
+      ],
+    );
+    final pNew = _purchase(
+      id: 'new',
+      purchaseDate: DateTime(2026, 3, 1),
+      lines: [
+        TradePurchaseLine(
+          id: 'l2',
+          itemName: 'Wheat',
+          qty: 1,
+          unit: 'bag',
+          landingCost: 10,
+          lineTotal: 10,
+          kgPerUnit: 50,
+        ),
+      ],
+    );
+    final agg = buildTradeReportAgg([pOld, pNew]);
+    expect(agg.itemsAll.length, 1);
+    final row = agg.itemsAll.first;
+    expect(row.bags, 3);
+    expect(row.lastPurchaseDate, DateTime(2026, 3, 1));
+
+    final riceOld = _purchase(
+      id: 'a',
+      purchaseDate: DateTime(2026, 1, 10),
+      lines: [
+        TradePurchaseLine(
+          id: 'la',
+          itemName: 'Rice',
+          qty: 1,
+          unit: 'bag',
+          landingCost: 1,
+          lineTotal: 1,
+          kgPerUnit: 1,
+        ),
+      ],
+    );
+    final riceNew = _purchase(
+      id: 'b',
+      purchaseDate: DateTime(2026, 6, 1),
+      lines: [
+        TradePurchaseLine(
+          id: 'lb',
+          itemName: 'Rice',
+          qty: 1,
+          unit: 'bag',
+          landingCost: 1,
+          lineTotal: 1,
+          kgPerUnit: 1,
+        ),
+      ],
+    );
+    final agg2 = buildTradeReportAgg([riceOld, pOld, riceNew]);
+    final latest = sortTradeReportItemsAll(
+      List.of(agg2.itemsAll),
+      TradeReportItemSort.latest,
+    );
+    expect(latest.first.name, 'Rice');
   });
 }

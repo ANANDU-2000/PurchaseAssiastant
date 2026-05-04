@@ -17,7 +17,17 @@ from app.db_schema_compat import catalog_items_has_type_id_column
 from app.database import get_db
 from app.db_resilience import execute_with_retry
 from app.deps import require_membership
-from app.models import Broker, CatalogItem, CategoryType, Entry, EntryLineItem, ItemCategory, Membership, Supplier
+from app.models import (
+    Broker,
+    CatalogItem,
+    CategoryType,
+    Entry,
+    EntryLineItem,
+    ItemCategory,
+    Membership,
+    Supplier,
+    TradePurchase,
+)
 from app.schemas.entries import EntryLineOut, EntryOut
 from app.services import trade_purchase_service as tps
 from app.services.fuzzy_catalog import rank_ids_by_token_sort
@@ -69,6 +79,10 @@ def _entry_to_out(entry: Entry) -> EntryOut:
 class UnifiedSearchOut(BaseModel):
     catalog_items: list[dict[str, Any]] = Field(default_factory=list)
     suppliers: list[dict[str, Any]] = Field(default_factory=list)
+    brokers: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Brokers whose name matches the query (same family as Contacts search).",
+    )
     entries: list[dict[str, Any]] = Field(default_factory=list)
     """Legacy entry rows (old Entry model); often empty when the business only uses trade purchases."""
     catalog_subcategories: list[dict[str, Any]] = Field(
@@ -81,6 +95,7 @@ class UnifiedSearchOut(BaseModel):
     )
     fuzzy_catalog_used: bool = False
     fuzzy_suppliers_used: bool = False
+    fuzzy_brokers_used: bool = False
 
 
 def _hydrate_catalog_rows(rows: list[tuple[Any, ...]]) -> list[dict[str, Any]]:
@@ -90,7 +105,8 @@ def _hydrate_catalog_rows(rows: list[tuple[Any, ...]]) -> list[dict[str, Any]]:
         icode: str | None
         dsc = lsr = lq = lu = lwg = None
         lsid = lbid = None
-        if len(row) >= 18:
+        ltp_id = None
+        if len(row) >= 19:
             (
                 _id,
                 name,
@@ -102,8 +118,30 @@ def _hydrate_catalog_rows(rows: list[tuple[Any, ...]]) -> list[dict[str, Any]]:
                 icode,
                 tax,
                 dlc,
-                lpp,
                 dsc,
+                lpp,
+                lsr,
+                lsid,
+                lbid,
+                lq,
+                lu,
+                lwg,
+                ltp_id,
+            ) = row[:19]
+        elif len(row) >= 18:
+            (
+                _id,
+                name,
+                cat,
+                tname,
+                du,
+                dkg,
+                hsn,
+                icode,
+                tax,
+                dlc,
+                dsc,
+                lpp,
                 lsr,
                 lsid,
                 lbid,
@@ -151,6 +189,8 @@ def _hydrate_catalog_rows(rows: list[tuple[Any, ...]]) -> list[dict[str, Any]]:
                 "last_line_qty": float(lq) if lq is not None else None,
                 "last_line_unit": lu,
                 "last_line_weight_kg": float(lwg) if lwg is not None else None,
+                "last_trade_purchase_id": str(ltp_id) if ltp_id is not None else None,
+                "last_purchase_human_id": None,
                 "last_supplier_name": None,
                 "last_broker_name": None,
             }
@@ -215,6 +255,43 @@ async def _attach_last_party_names(
                 pass
 
 
+async def _attach_last_purchase_human_ids(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    items: list[dict[str, Any]],
+) -> None:
+    p_ids: set[uuid.UUID] = set()
+    for m in items:
+        raw = m.get("last_trade_purchase_id")
+        if raw:
+            try:
+                p_ids.add(uuid.UUID(str(raw)))
+            except ValueError:
+                pass
+    if not p_ids:
+        return
+    pr = await execute_with_retry(
+        lambda: db.execute(
+            select(TradePurchase.id, TradePurchase.human_id).where(
+                TradePurchase.business_id == business_id,
+                TradePurchase.id.in_(p_ids),
+            )
+        )
+    )
+    hm = {row[0]: row[1] for row in pr.all()}
+    for m in items:
+        raw = m.get("last_trade_purchase_id")
+        if not raw:
+            continue
+        try:
+            uid = uuid.UUID(str(raw))
+        except ValueError:
+            continue
+        hid = hm.get(uid)
+        if hid:
+            m["last_purchase_human_id"] = hid
+
+
 @router.get("/search", response_model=UnifiedSearchOut)
 async def unified_search(
     business_id: uuid.UUID,
@@ -247,6 +324,7 @@ async def unified_search(
             CatalogItem.last_line_qty,
             CatalogItem.last_line_unit,
             CatalogItem.last_line_weight_kg,
+            CatalogItem.last_trade_purchase_id,
         )
         item_name_cat_hsn = or_(
             func.lower(CatalogItem.name).contains(needle),
@@ -358,6 +436,7 @@ async def unified_search(
 
         catalog_items = _hydrate_catalog_rows(catalog_rows)
         await _attach_last_party_names(db, business_id, catalog_items)
+        await _attach_last_purchase_human_ids(db, business_id, catalog_items)
 
         sup_match = or_(
             func.lower(Supplier.name).contains(needle),
@@ -398,6 +477,40 @@ async def unified_search(
                 by_id = {row[0]: row for row in hr.all()}
                 sup_rows = [by_id[i] for i in ids if i in by_id]
         suppliers = [{"id": str(row[0]), "name": row[1]} for row in sup_rows]
+
+        br_match = func.lower(Broker.name).contains(needle)
+        sq_br = (
+            select(Broker.id, Broker.name)
+            .where(
+                Broker.business_id == business_id,
+                br_match,
+            )
+            .order_by(func.lower(Broker.name))
+            .limit(12)
+        )
+        brr = await execute_with_retry(lambda: db.execute(sq_br))
+        bro_rows = list(brr.all())
+        fuzzy_brokers_used = False
+        if not bro_rows:
+            pairs_br = await execute_with_retry(
+                lambda: db.execute(
+                    select(Broker.id, Broker.name)
+                    .where(Broker.business_id == business_id)
+                    .limit(_PAIR_CAP),
+                )
+            )
+            pairs_b = [(row[0], row[1]) for row in pairs_br.all() if row[1]]
+            bro_fuzzy_cut = 40 if len(needle) < 2 else 52
+            ranked_b = rank_ids_by_token_sort(needle, pairs_b, limit=12, score_cutoff=bro_fuzzy_cut)
+            if ranked_b:
+                fuzzy_brokers_used = True
+                ids_b = [uid for uid, _sc in ranked_b]
+                hr_b = await execute_with_retry(
+                    lambda: db.execute(select(Broker.id, Broker.name).where(Broker.id.in_(ids_b)))
+                )
+                by_id_b = {row[0]: row for row in hr_b.all()}
+                bro_rows = [by_id_b[i] for i in ids_b if i in by_id_b]
+        brokers = [{"id": str(row[0]), "name": row[1]} for row in bro_rows]
 
         line_match = exists(
             select(EntryLineItem.id).where(
@@ -471,11 +584,13 @@ async def unified_search(
         return UnifiedSearchOut(
             catalog_items=catalog_items,
             suppliers=suppliers,
+            brokers=brokers,
             entries=entries_out,
             catalog_subcategories=catalog_subcategories_out,
             recent_purchases=recent_purchases_out,
             fuzzy_catalog_used=fuzzy_catalog_used,
             fuzzy_suppliers_used=fuzzy_suppliers_used,
+            fuzzy_brokers_used=fuzzy_brokers_used,
         )
     except SQLAlchemyError:
         logger.exception("unified_search failed business_id=%s q=%s", business_id, q)

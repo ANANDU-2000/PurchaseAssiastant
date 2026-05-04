@@ -276,6 +276,7 @@ class CategoryTradeItemRow(BaseModel):
     last_selling_rate: float | None = None
     last_supplier_name: str | None = None
     last_broker_name: str | None = None
+    last_trade_human_id: str | None = None
 
 
 class CategoryTradeSummaryOut(BaseModel):
@@ -884,6 +885,12 @@ async def category_trade_summary(
             CatalogItem.last_selling_rate,
             CatalogItem.last_supplier_id,
             CatalogItem.last_broker_id,
+            func.max(
+                case(
+                    (TradePurchase.id == CatalogItem.last_trade_purchase_id, TradePurchase.human_id),
+                    else_=None,
+                )
+            ).label("last_trade_human_id"),
         )
         .select_from(CatalogItem)
         .outerjoin(TradePurchaseLine, TradePurchaseLine.catalog_item_id == CatalogItem.id)
@@ -905,6 +912,7 @@ async def category_trade_summary(
             CatalogItem.last_selling_rate,
             CatalogItem.last_supplier_id,
             CatalogItem.last_broker_id,
+            CatalogItem.last_trade_purchase_id,
         )
         .order_by(func.lower(CatalogItem.name))
     )
@@ -927,6 +935,7 @@ async def category_trade_summary(
         lsr = row[6]
         lsid = row[7]
         lbid = row[8]
+        ltp_human = row[9]
         fa = float(pamt or 0)
         fb = float(pbags or 0)
         fk = float(pkg or 0)
@@ -944,6 +953,7 @@ async def category_trade_summary(
                 last_selling_rate=float(lsr) if lsr is not None else None,
                 last_supplier_name=lsn_map.get(lsid) if lsid else None,
                 last_broker_name=lbn_map.get(lbid) if lbid else None,
+                last_trade_human_id=str(ltp_human).strip() if ltp_human else None,
             )
         )
     return CategoryTradeSummaryOut(

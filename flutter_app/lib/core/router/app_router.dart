@@ -35,6 +35,7 @@ import '../../features/purchase/presentation/purchase_detail_page.dart';
 import '../../features/purchase/presentation/purchase_home_page.dart';
 import '../../features/purchase/presentation/purchase_entry_wizard_v2.dart';
 import '../../features/purchase/presentation/scan_purchase_page.dart';
+import '../../features/reports/presentation/reports_item_detail_page.dart';
 import '../../features/notifications/presentation/notifications_page.dart';
 import '../../features/settings/presentation/business_profile_page.dart';
 import '../../features/settings/presentation/maintenance_history_page.dart';
@@ -456,6 +457,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           key: state.pageKey,
           child: const VoicePage(),
         ),
+      ),
+      GoRoute(
+        path: '/reports/item-detail',
+        name: 'reports_item_detail',
+        pageBuilder: (context, state) {
+          final k = state.uri.queryParameters['k'] ?? '';
+          final n = Uri.decodeComponent(state.uri.queryParameters['n'] ?? '');
+          return iosPushPage(
+            key: state.pageKey,
+            child: ReportsItemDetailPage(
+              itemKey: k,
+              itemName: n.isEmpty ? 'Item' : n,
+            ),
+          );
+        },
       ),
       // Main app tabs: keep navigation in this shell only; use `navigationShell.goBranch`
       // or `context.go('/home'|'/reports'|...)` — avoid `push` onto the root stack for these paths

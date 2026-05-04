@@ -72,6 +72,8 @@ class TradeReportItemRow {
   double kg = 0;
   double amountInr = 0;
   final Set<String> dealIds = {};
+  /// Latest [TradePurchase.purchaseDate] among lines contributing to this row.
+  DateTime? lastPurchaseDate;
 }
 
 class TradeReportSupplierRow {
@@ -126,6 +128,7 @@ class TradeReportAgg {
     required this.itemsBag,
     required this.itemsBox,
     required this.itemsTin,
+    required this.itemsAll,
     required this.suppliers,
     required this.brokers,
     required this.purchasesIncluded,
@@ -142,11 +145,48 @@ class TradeReportAgg {
   /// Item rows for Tin filter.
   final List<TradeReportItemRow> itemsTin;
 
+  /// All pack kinds merged per item key (only populated when [buildTradeReportAgg] uses `onlyKind: null`).
+  final List<TradeReportItemRow> itemsAll;
+
   final List<TradeReportSupplierRow> suppliers;
   final List<TradeReportBrokerRow> brokers;
 
   /// Purchases that contributed at least one classified line (for PDF / detail).
   final List<TradePurchase> purchasesIncluded;
+}
+
+/// Sorting for merged item lists (Items tab — All pack kinds).
+enum TradeReportItemSort {
+  highQty,
+  latest,
+}
+
+List<TradeReportItemRow> sortTradeReportItemsAll(
+  List<TradeReportItemRow> raw,
+  TradeReportItemSort sort,
+) {
+  final list = [...raw];
+  if (sort == TradeReportItemSort.latest) {
+    list.sort((a, b) {
+      final ad = a.lastPurchaseDate;
+      final bd = b.lastPurchaseDate;
+      if (ad == null && bd == null) return a.name.compareTo(b.name);
+      if (ad == null) return 1;
+      if (bd == null) return -1;
+      final c = bd.compareTo(ad);
+      if (c != 0) return c;
+      return a.name.compareTo(b.name);
+    });
+  } else {
+    list.sort((a, b) {
+      final qa = a.bags + a.boxes + a.tins;
+      final qb = b.bags + b.boxes + b.tins;
+      if ((qa - qb).abs() > 1e-6) return qb.compareTo(qa);
+      if ((a.kg - b.kg).abs() > 1e-9) return b.kg.compareTo(a.kg);
+      return a.name.compareTo(b.name);
+    });
+  }
+  return list;
 }
 
 String reportItemKey(TradePurchaseLine l) {
@@ -164,7 +204,8 @@ String reportSupplierKey(TradePurchase p) {
 String reportSupplierTitle(TradePurchase p) =>
     (p.supplierName ?? '').trim().isEmpty ? '-' : p.supplierName!.trim();
 
-/// When [onlyKind] is set, totals and item lists only include lines of that kind.
+/// When [onlyKind] is set, totals and per-kind item maps only include lines of that kind.
+/// When [onlyKind] is null, totals cover all classified lines and [itemsAll] merges bag/box/tin per item.
 /// Suppliers: **deals** = any classified line; **bagQty/bagKg** only from BAG lines.
 /// Brokers: commission from full purchase when it has classified lines and a broker.
 TradeReportAgg buildTradeReportAgg(
@@ -174,6 +215,7 @@ TradeReportAgg buildTradeReportAgg(
   final bagMap = <String, TradeReportItemRow>{};
   final boxMap = <String, TradeReportItemRow>{};
   final tinMap = <String, TradeReportItemRow>{};
+  final allMap = <String, TradeReportItemRow>{};
   final supMap = <String, TradeReportSupplierRow>{};
   final broMap = <String, TradeReportBrokerRow>{};
 
@@ -184,6 +226,25 @@ TradeReportAgg buildTradeReportAgg(
   var sumKg = 0.0;
   final dealIds = <String>{};
   final includedPurchases = <TradePurchase>[];
+
+  void bumpItemRow(TradeReportItemRow row, TradePurchaseLine l, ReportPackKind pk,
+      double kg, double amt, TradePurchase p) {
+    row.dealIds.add(p.id);
+    row.kg += kg;
+    row.amountInr += amt;
+    final d = p.purchaseDate;
+    if (row.lastPurchaseDate == null || d.isAfter(row.lastPurchaseDate!)) {
+      row.lastPurchaseDate = d;
+    }
+    switch (pk) {
+      case ReportPackKind.bag:
+        row.bags += l.qty;
+      case ReportPackKind.box:
+        row.boxes += l.qty;
+      case ReportPackKind.tin:
+        row.tins += l.qty;
+    }
+  }
 
   for (final p in purchases) {
     var purchaseTouchesClassified = false;
@@ -225,6 +286,14 @@ TradeReportAgg buildTradeReportAgg(
       final ik = reportItemKey(l);
       final title = l.itemName.trim().isEmpty ? '—' : l.itemName.trim();
 
+      if (onlyKind == null) {
+        final merged = allMap.putIfAbsent(
+          ik,
+          () => TradeReportItemRow(key: ik, name: title),
+        );
+        bumpItemRow(merged, l, pk, kg, amt, p);
+      }
+
       Map<String, TradeReportItemRow> targetMap;
       switch (pk) {
         case ReportPackKind.bag:
@@ -244,17 +313,7 @@ TradeReportAgg buildTradeReportAgg(
         ik,
         () => TradeReportItemRow(key: ik, name: title),
       );
-      row.dealIds.add(p.id);
-      row.kg += kg;
-      row.amountInr += amt;
-      switch (pk) {
-        case ReportPackKind.bag:
-          row.bags += l.qty;
-        case ReportPackKind.box:
-          row.boxes += l.qty;
-        case ReportPackKind.tin:
-          row.tins += l.qty;
-      }
+      bumpItemRow(row, l, pk, kg, amt, p);
 
       if (broRow != null && broRow.purchaseIds.add(p.id)) {
         broRow.commission += tradePurchaseCommissionInr(p);
@@ -304,6 +363,13 @@ TradeReportAgg buildTradeReportAgg(
       return a.name.compareTo(b.name);
     });
 
+  final itemsAll = onlyKind == null
+      ? sortTradeReportItemsAll(
+          allMap.values.toList(),
+          TradeReportItemSort.highQty,
+        )
+      : const <TradeReportItemRow>[];
+
   return TradeReportAgg(
     totals: TradeReportTotals(
       inr: sumInr,
@@ -316,6 +382,7 @@ TradeReportAgg buildTradeReportAgg(
     itemsBag: sortItems(bagMap, ReportPackKind.bag),
     itemsBox: sortItems(boxMap, ReportPackKind.box),
     itemsTin: sortItems(tinMap, ReportPackKind.tin),
+    itemsAll: itemsAll,
     suppliers: suppliers,
     brokers: brokers,
     purchasesIncluded: includedPurchases,

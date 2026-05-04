@@ -27,6 +27,7 @@ final unifiedSearchProvider =
       return {
         'catalog_items': <dynamic>[],
         'suppliers': <dynamic>[],
+        'brokers': <dynamic>[],
         'catalog_subcategories': <dynamic>[],
         'recent_purchases': <dynamic>[],
       };
@@ -132,7 +133,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   String _debounced = '';
   String _section = 'all';
 
-  static const _sections = {'all', 'types', 'items', 'bills', 'suppliers'};
+  static const _sections = {'all', 'types', 'items', 'bills', 'suppliers', 'contacts'};
 
   @override
   void initState() {
@@ -214,7 +215,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
               padding: const EdgeInsets.only(top: 24),
               child: Text(
                 'Search catalog items (name, HSN, code, category, catalog type), '
-                'recent purchase bills, and suppliers.',
+                'recent purchase bills, suppliers, and brokers.',
                 style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
                 textAlign: TextAlign.center,
               ),
@@ -234,33 +235,41 @@ class _SearchPageState extends ConsumerState<SearchPage> {
               data: (data) {
                 final items = _asMapListSkipBad('catalog_items', data);
                 final suppliers = _asMapListSkipBad('suppliers', data);
+                final brokers = _asMapListSkipBad('brokers', data);
                 final types = _asMapListSkipBad('catalog_subcategories', data);
                 final bills = _asMapListSkipBad('recent_purchases', data);
                 final fuzzyItems = data['fuzzy_catalog_used'] == true;
                 final fuzzySup = data['fuzzy_suppliers_used'] == true;
+                final fuzzyBro = data['fuzzy_brokers_used'] == true;
+                final contactHits = suppliers.length + brokers.length;
                 final sectionCounts = <String, int>{
                   'types': types.length,
                   'items': items.length,
                   'bills': bills.length,
                   'suppliers': suppliers.length,
+                  'contacts': contactHits,
                 };
                 final hasAny = types.isNotEmpty ||
                     items.isNotEmpty ||
                     bills.isNotEmpty ||
-                    suppliers.isNotEmpty;
+                    suppliers.isNotEmpty ||
+                    brokers.isNotEmpty;
 
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (fuzzyItems || fuzzySup)
+                    if (fuzzyItems || fuzzySup || fuzzyBro)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 12),
                         child: Text(
-                          fuzzyItems && fuzzySup
-                              ? 'No exact title match — showing close catalog and supplier matches.'
-                              : fuzzyItems
-                                  ? 'No exact item title match — showing close matches (typos OK).'
-                                  : 'No exact supplier name match — showing close matches.',
+                          [
+                            if (fuzzyItems)
+                              'No exact item title match — showing close catalog matches.',
+                            if (fuzzySup)
+                              'No exact supplier name match — showing close supplier matches.',
+                            if (fuzzyBro)
+                              'No exact broker name match — showing close broker matches.',
+                          ].join(' '),
                           style: tt.bodySmall?.copyWith(
                             color: cs.onSurfaceVariant,
                             height: 1.35,
@@ -301,6 +310,12 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                           onSelected: (_) =>
                               setState(() => _section = 'suppliers'),
                         ),
+                        ChoiceChip(
+                          label: Text('Contacts (${sectionCounts['contacts']})'),
+                          selected: _section == 'contacts',
+                          onSelected: (_) =>
+                              setState(() => _section = 'contacts'),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -308,7 +323,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
                         child: Text(
-                          'No matches in catalog, bills, or suppliers for this query.',
+                          'No matches in catalog, bills, suppliers, or brokers for this query.',
                           style: tt.bodySmall?.copyWith(
                             color: cs.onSurfaceVariant,
                           ),
@@ -496,6 +511,113 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                             onTap: id.isEmpty
                                 ? null
                                 : () => context.push('/supplier/$id'),
+                          );
+                        }),
+                    ],
+                    if (_section == 'all' && brokers.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        'Brokers',
+                        style: tt.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      ...brokers.map((m) {
+                        final id = m['id']?.toString() ?? '';
+                        final name = m['name']?.toString() ?? 'Broker';
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.handshake_outlined,
+                              color: cs.secondary),
+                          title: Text(name),
+                          trailing:
+                              const Icon(Icons.chevron_right_rounded),
+                          onTap: id.isEmpty
+                              ? null
+                              : () => context.push('/broker/$id'),
+                        );
+                      }),
+                    ],
+                    if (_section == 'contacts') ...[
+                      Text(
+                        'Contacts',
+                        style: tt.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Suppliers and brokers (same hub as Contacts → search).',
+                        style: tt.bodySmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                          height: 1.3,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Suppliers',
+                        style: tt.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      if (suppliers.isEmpty)
+                        Text(
+                          'No matching suppliers.',
+                          style: tt.bodySmall?.copyWith(
+                            color: cs.onSurfaceVariant,
+                          ),
+                        )
+                      else
+                        ...suppliers.map((m) {
+                          final id = m['id']?.toString() ?? '';
+                          final name = m['name']?.toString() ?? 'Supplier';
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.storefront_outlined,
+                                color: cs.primary),
+                            title: Text(name),
+                            trailing:
+                                const Icon(Icons.chevron_right_rounded),
+                            onTap: id.isEmpty
+                                ? null
+                                : () => context.push('/supplier/$id'),
+                          );
+                        }),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Brokers',
+                        style: tt.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      if (brokers.isEmpty)
+                        Text(
+                          'No matching brokers.',
+                          style: tt.bodySmall?.copyWith(
+                            color: cs.onSurfaceVariant,
+                          ),
+                        )
+                      else
+                        ...brokers.map((m) {
+                          final id = m['id']?.toString() ?? '';
+                          final name = m['name']?.toString() ?? 'Broker';
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.handshake_outlined,
+                                color: cs.secondary),
+                            title: Text(name),
+                            trailing:
+                                const Icon(Icons.chevron_right_rounded),
+                            onTap: id.isEmpty
+                                ? null
+                                : () => context.push('/broker/$id'),
                           );
                         }),
                     ],

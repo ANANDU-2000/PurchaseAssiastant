@@ -35,8 +35,10 @@ class ShellScreen extends ConsumerWidget {
     // Hide docked FAB + bottom bar on Assistant so they never overlap the composer.
     // Prefer route path over branch index (index can disagree if navigation state is stale).
     final loc = routePath;
-    final hideShellChrome =
-        loc == '/assistant' || loc.startsWith('/assistant/');
+    final hideShellChrome = loc == '/assistant' ||
+        loc.startsWith('/assistant/') ||
+        loc == '/reports' ||
+        loc.startsWith('/reports/');
 
     final bottomFabClearance = hideShellChrome
         ? 0.0
