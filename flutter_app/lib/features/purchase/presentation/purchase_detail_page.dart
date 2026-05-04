@@ -4,8 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
-
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/calc_engine.dart';
@@ -311,21 +309,46 @@ class _LoadedPurchaseScaffold extends ConsumerWidget {
                 : () => context.push('/purchase/edit/${p.id}'),
           ),
           IconButton(
-            tooltip: 'Delete',
-            icon: Icon(
-              Icons.delete_outline,
-              color: p.statusEnum == PurchaseStatus.cancelled
-                  ? null
-                  : Theme.of(context).colorScheme.error,
-            ),
-            onPressed:
-                p.statusEnum == PurchaseStatus.cancelled ? null : () => _confirmDelete(context, ref),
+            tooltip: 'Share',
+            icon: const Icon(Icons.share_outlined),
+            onPressed: () async {
+              final biz = ref.read(invoiceBusinessProfileProvider);
+              await sharePurchasePdf(p, biz);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('PDF ready to share')),
+                );
+              }
+            },
           ),
           IconButton(
-            tooltip: 'Print PDF',
+            tooltip: 'PDF',
             icon: const Icon(Icons.picture_as_pdf_outlined),
             onPressed: () => _runPrintPdf(context, ref),
           ),
+          if (p.statusEnum != PurchaseStatus.cancelled)
+            PopupMenuButton<String>(
+              tooltip: 'More',
+              onSelected: (v) {
+                if (v == 'delete') _confirmDelete(context, ref);
+              },
+              itemBuilder: (ctx) => [
+                PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete_outline,
+                          color: Theme.of(ctx).colorScheme.error, size: 22),
+                      const SizedBox(width: 12),
+                      Text('Delete purchase',
+                          style: TextStyle(
+                              color: Theme.of(ctx).colorScheme.error,
+                              fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
         ],
       ),
       body: _PurchaseDetailBody(p: p),
@@ -351,638 +374,594 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
     final st = p.statusEnum;
     final paidPending = st == PurchaseStatus.paid ||
         (p.remaining <= 0.009 && st != PurchaseStatus.cancelled);
+    final mismatch = (p.totalAmount - agg.finalComputed).abs() > 0.05;
 
-    return SafeArea(
-      child: RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(_purchaseDetailProvider(p.id));
-          await ref.read(_purchaseDetailProvider(p.id).future);
-        },
-        child: ListView(
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 32),
-          children: [
-            if (p.hasMissingDetails)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Material(
-                  color: Colors.amber.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  child: ListTile(
-                    leading: Icon(Icons.warning_amber_rounded,
-                        color: Colors.orange.shade900),
-                    title: const Text('Complete details pending'),
-                    subtitle: const Text(
-                        'Broker, payment days, freight, or discount can still be filled in.'),
-                    trailing: TextButton(
-                      onPressed: () => context.push('/purchase/edit/${p.id}'),
-                      child: const Text('Edit'),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: SafeArea(
+            bottom: false,
+            child: RefreshIndicator(
+              onRefresh: () async {
+                ref.invalidate(_purchaseDetailProvider(p.id));
+                await ref.read(_purchaseDetailProvider(p.id).future);
+              },
+              child: SingleChildScrollView(
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (p.hasMissingDetails) _pendingDetailsChip(context, p, cs),
+                    _compactMeta(context, p, st, paidPending, cs),
+                    const SizedBox(height: 18),
+                    _heroSummaryBlock(context, agg, cs),
+                    const SizedBox(height: 14),
+                    _dynamicQuantityLine(context, agg, cs),
+                    const SizedBox(height: 18),
+                    Text(
+                      'Items',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.3,
+                          ),
                     ),
-                  ),
+                    const SizedBox(height: 10),
+                    ..._itemsAsCards(context, p, cs),
+                    const SizedBox(height: 18),
+                    _miniCharges(context, agg, cs),
+                    const SizedBox(height: 14),
+                    _finalSummaryStrip(context, p, agg, cs),
+                    if (mismatch)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 10),
+                        child: Text(
+                          'Stored total ${_inr(p.totalAmount)} differs from calculated '
+                          '${_inr(agg.finalComputed)} by ${_inr((p.totalAmount - agg.finalComputed).abs())}.',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: cs.error,
+                            height: 1.3,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
-            _headerBlock(context, p, st, paidPending),
-            Divider(height: 24, thickness: 1, color: cs.outline.withValues(alpha: 0.25)),
-            _summarySection(context, p, agg, cs),
-            Divider(height: 24, thickness: 1, color: cs.outline.withValues(alpha: 0.25)),
-            Text(
-              'Items',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w900, letterSpacing: 0.4),
             ),
-            const SizedBox(height: 6),
-            _itemsTableArea(context, p, agg),
-            Divider(height: 24, thickness: 1, color: cs.outline.withValues(alpha: 0.25)),
-            Text(
-              'Cost breakdown',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w900, letterSpacing: 0.4),
+          ),
+        ),
+        _stickyActionBar(context, ref, p, cs),
+      ],
+    );
+  }
+
+  Widget _pendingDetailsChip(
+      BuildContext context, TradePurchase p, ColorScheme cs) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: ActionChip(
+          avatar: Icon(Icons.edit_note_rounded,
+              size: 18, color: Colors.amber.shade900),
+          label: Text(
+            'Details pending — tap to complete',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.amber.shade900,
             ),
-            const SizedBox(height: 8),
-            _costRows(context, p, agg),
-            const SizedBox(height: 14),
-            _secondaryActions(context, ref),
-          ],
+          ),
+          backgroundColor: Colors.amber.shade50,
+          side: BorderSide(color: Colors.amber.shade700.withValues(alpha: 0.35)),
+          onPressed: () => context.push('/purchase/edit/${p.id}'),
         ),
       ),
     );
   }
 
-  Widget _headerBlock(
+  Widget _compactMeta(
     BuildContext context,
     TradePurchase p,
     PurchaseStatus st,
     bool paidPending,
+    ColorScheme cs,
   ) {
-    final cs = Theme.of(context).colorScheme;
+    final sup = (p.supplierName ?? '—').trim();
+    final bro = (p.brokerName ?? '—').trim();
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Supplier',
-                    style: TextStyle(
-                        fontSize: 11, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant),
-                  ),
-                  SelectableText(
-                    (p.supplierName ?? '—').trim().isEmpty ? '—' : p.supplierName!.trim(),
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Broker',
-                    style: TextStyle(
-                        fontSize: 11, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant),
-                  ),
-                  SelectableText(
-                    (p.brokerName ?? '—').trim().isEmpty ? '—' : p.brokerName!.trim(),
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-                  ),
-                ],
+              child: Text(
+                sup.isEmpty ? '—' : sup,
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
               ),
             ),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: st.color.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(20),
+                color: st.color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(999),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    paidPending ? 'Paid' : 'Pending',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w900, color: cs.primary, fontSize: 13),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    st.label,
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: st.color),
-                  ),
-                ],
+              child: Text(
+                paidPending ? 'Paid' : st.label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 11,
+                  color: st.color,
+                ),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 14),
-        _pairRow(context, 'Date', DateFormat.yMMMd().add_jm().format(p.purchaseDate)),
-        _pairRow(
-          context,
-          'Payment terms',
-          p.paymentDays != null ? '${p.paymentDays} days' : '—',
+        const SizedBox(height: 4),
+        Text(
+          'Broker: ${bro.isEmpty ? '—' : bro}',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: cs.onSurfaceVariant,
+          ),
         ),
+        const SizedBox(height: 4),
+        Text(
+          DateFormat('d MMM yyyy').format(p.purchaseDate),
+          style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+        ),
+        if (p.paymentDays != null)
+          Text(
+            'Payment: ${p.paymentDays} days',
+            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+          ),
         if (p.invoiceNumber != null && p.invoiceNumber!.trim().isNotEmpty)
-          _pairRow(context, 'Invoice', p.invoiceNumber!.trim()),
+          Text(
+            'Ref: ${p.invoiceNumber!.trim()}',
+            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+          ),
       ],
     );
   }
 
-  Widget _pairRow(BuildContext context, String k, String v) {
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              k,
+  Widget _heroSummaryBlock(BuildContext context, _Agg agg, ColorScheme cs) {
+    final profitColor = agg.sumProfit >= 0 ? const Color(0xFF0F766E) : HexaColors.loss;
+    Widget big(String label, String value, Color valueColor) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(
+              label.toUpperCase(),
               style: TextStyle(
-                  fontSize: 12, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant),
+                fontSize: 11,
+                letterSpacing: 1.1,
+                fontWeight: FontWeight.w800,
+                color: cs.onSurfaceVariant,
+              ),
             ),
-          ),
-          Expanded(child: SelectableText(v, style: const TextStyle(fontSize: 14))),
-        ],
+            const SizedBox(height: 4),
+            SelectableText(
+              value,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w900,
+                color: valueColor,
+                height: 1.05,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        big('Total purchase', _inr(agg.finalComputed, fractionDigits: 0), cs.onSurface),
+        big('Total selling', _inr(agg.sumSellingGross, fractionDigits: 0), cs.onSurface),
+        big('Profit', _inr(agg.sumProfit, fractionDigits: 0), profitColor),
+      ],
+    );
+  }
+
+  Widget _dynamicQuantityLine(BuildContext context, _Agg agg, ColorScheme cs) {
+    final parts = <String>[];
+    if (agg.totalKg > 1e-6) {
+      parts.add('${_qtyFmt(agg.totalKg)} KG');
+    }
+    if (agg.totalBags > 1e-6) {
+      parts.add(
+        '${_qtyFmt(agg.totalBags)} ${agg.totalBags == 1 ? 'BAG' : 'BAGS'}',
+      );
+    }
+    if (agg.totalBox > 1e-6) {
+      parts.add(
+        '${_qtyFmt(agg.totalBox)} ${agg.totalBox == 1 ? 'BOX' : 'BOXES'}',
+      );
+    }
+    if (agg.totalTin > 1e-6) {
+      parts.add(
+        '${_qtyFmt(agg.totalTin)} ${agg.totalTin == 1 ? 'TIN' : 'TINS'}',
+      );
+    }
+    if (parts.isEmpty) return const SizedBox.shrink();
+    return Text(
+      parts.join(' • '),
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w800,
+        color: cs.primary,
       ),
     );
   }
 
-  Widget _summarySection(BuildContext context, TradePurchase p, _Agg agg, ColorScheme cs) {
-    final profitColor = agg.sumProfit >= 0 ? const Color(0xFF0F766E) : HexaColors.loss;
-    final mismatch = (p.totalAmount - agg.finalComputed).abs() > 0.05;
+  ({String purchase, String selling}) _lineRateLabels(TradePurchaseLine l) {
+    final u = l.unit.trim();
+    final ul = u.toLowerCase();
+    final sellRate = l.sellingRate ?? l.sellingCost;
+    if (l.kgPerUnit != null &&
+        l.landingCostPerKg != null &&
+        l.kgPerUnit! > 0 &&
+        l.landingCostPerKg! > 0) {
+      final pk = l.landingCostPerKg!;
+      if (sellRate != null) {
+        return (purchase: '${_inr(pk)}/kg', selling: '${_inr(sellRate)}/kg');
+      }
+      final kgQty = l.qty * l.kgPerUnit!;
+      if (kgQty > 1e-9) {
+        final sk = l.sellingGross / kgQty;
+        return (purchase: '${_inr(pk)}/kg', selling: '${_inr(sk)}/kg');
+      }
+      return (purchase: '${_inr(pk)}/kg', selling: '—');
+    }
+    if (ul == 'kg') {
+      return (
+        purchase: '${_inr(l.landingCost)}/kg',
+        selling: sellRate != null ? '${_inr(sellRate)}/kg' : '—',
+      );
+    }
+    return (
+      purchase: '${_inr(l.landingCost)}/$u',
+      selling: sellRate != null ? '${_inr(sellRate)}/$u' : '—',
+    );
+  }
 
-    Widget moneyLine(String title, num value, [Color? c, FontWeight w = FontWeight.w800]) {
+  List<Widget> _itemsAsCards(
+      BuildContext context, TradePurchase p, ColorScheme cs) {
+    final out = <Widget>[];
+    var i = 0;
+    for (final l in p.lines) {
+      i++;
+      final pr = _effectiveLineProfit(l);
+      final rates = _lineRateLabels(l);
+      final profitColor =
+          pr == null ? cs.onSurfaceVariant : (pr >= 0 ? const Color(0xFF0F766E) : HexaColors.loss);
+      out.add(
+        Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest.withValues(alpha: 0.35),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: cs.outline.withValues(alpha: 0.2)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$i.',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 14,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Tooltip(
+                      message: _unitClassificationHint(l),
+                      child: Text(
+                        l.itemName,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 15,
+                          height: 1.2,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '${_qtyFmt(l.qty)} ${l.unit.trim()}',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Purchase: ${rates.purchase}',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+              Text(
+                'Selling: ${rates.selling}',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Line total',
+                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                  ),
+                  SelectableText(
+                    _inr(_lineInclusive(l)),
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Profit',
+                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                  ),
+                  SelectableText(
+                    pr == null ? '—' : _inr(pr),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 15,
+                      color: profitColor,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return out;
+  }
+
+  Widget _miniCharges(BuildContext context, _Agg agg, ColorScheme cs) {
+    Widget tiny(String k, String v) {
       return Padding(
-        padding: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.only(bottom: 6),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              title,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(fontWeight: FontWeight.w700),
+              k,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: cs.onSurfaceVariant,
+              ),
             ),
             SelectableText(
-              _inr(value),
-              style: TextStyle(fontWeight: w, fontSize: 16, color: c ?? cs.onSurface),
+              v,
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
             ),
           ],
         ),
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        moneyLine('Total Purchase (computed)', agg.finalComputed, cs.onSurface),
-        SelectableText(
-          'Landing subtotal ${_inr(agg.sumLandingGross)} · Lines (incl. tax/disc) ${_inr(agg.linesInclusive)}',
-          style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant),
-        ),
-        if (mismatch)
-          Padding(
-            padding: const EdgeInsets.only(top: 8, bottom: 6),
-            child: SelectableText(
-              'Stored bill total ${_inr(p.totalAmount)} — differs from engine by '
-              '${_inr((p.totalAmount - agg.finalComputed).abs())}. '
-              'Breakdown FINAL TOTAL follows engine.',
-              style: TextStyle(fontSize: 11, color: cs.error, height: 1.35),
-            ),
-          ),
-        const Divider(height: 16),
-        moneyLine('Total Selling', agg.sumSellingGross, null, FontWeight.w800),
-        moneyLine('Profit', agg.sumProfit, profitColor, FontWeight.w900),
-        const Divider(height: 18),
-        _metricRow(context, 'Total Weight', '${_qtyFmt(agg.totalKg)} kg'),
-        _metricRow(context, 'Total Bags', _qtyFmt(agg.totalBags)),
-        _metricRow(context, 'Total Box', _qtyFmt(agg.totalBox)),
-        _metricRow(context, 'Total Tin', _qtyFmt(agg.totalTin)),
-      ],
-    );
+    final rows = <Widget>[];
+    if (agg.headerDiscountPct > 1e-6) {
+      rows.add(tiny(
+        'Purchase discount',
+        '${agg.headerDiscountPct.toStringAsFixed(1)}% (−${_inr(agg.discountRupeeEffect)})',
+      ));
+    }
+    rows.add(tiny(
+      'Freight',
+      agg.freightIncluded ? 'Included' : (agg.freight > 1e-6 ? _inr(agg.freight) : '—'),
+    ));
+    rows.add(tiny('Commission', agg.commission > 1e-6 ? _inr(agg.commission) : '—'));
+    rows.add(tiny('Billty', agg.billty > 1e-6 ? _inr(agg.billty) : '—'));
+    rows.add(tiny('Delivered', agg.delivered > 1e-6 ? _inr(agg.delivered) : '—'));
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: rows);
   }
 
-  Widget _metricRow(BuildContext context, String k, String v) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  Widget _finalSummaryStrip(
+      BuildContext context, TradePurchase p, _Agg agg, ColorScheme cs) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: cs.primaryContainer.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.primary.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            k,
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
-                ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'FINAL',
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 12,
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+              SelectableText(
+                _inr(agg.finalComputed),
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 18,
+                  color: cs.onSurface,
+                ),
+              ),
+            ],
           ),
-          SelectableText(
-            v,
-            style: Theme.of(context)
-                .textTheme
-                .bodyLarge
-                ?.copyWith(fontWeight: FontWeight.w800),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Remaining',
+                style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
+              ),
+              SelectableText(
+                _inr(p.remaining),
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+              ),
+            ],
           ),
+          if (p.dueDate != null) ...[
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Due',
+                  style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
+                ),
+                Text(
+                  DateFormat.yMMMd().format(p.dueDate!),
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _itemsTableArea(BuildContext context, TradePurchase p, _Agg agg) {
-    return LayoutBuilder(
-      builder: (context, lc) {
-        final minTabW = lc.maxWidth < 600 ? 900.0 : lc.maxWidth;
+  Widget _stickyActionBar(
+    BuildContext context,
+    WidgetRef ref,
+    TradePurchase p,
+    ColorScheme cs,
+  ) {
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+    Widget cell(Widget child) => Expanded(child: child);
 
-        Widget numCell(num v, [FontWeight w = FontWeight.w700]) {
-          return Align(
-            alignment: Alignment.centerRight,
-            child: SelectableText(
-              _inr(v),
-              style: TextStyle(fontWeight: w, fontSize: 12.8),
-              textAlign: TextAlign.right,
+    Future<void> download() async {
+      final biz = ref.read(invoiceBusinessProfileProvider);
+      try {
+        await downloadPurchasePdf(p, biz);
+        if (context.mounted) {
+          if (kIsWeb) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Use the browser print/save dialog to download PDF',
+                ),
+              ),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Use Save as PDF or share from the dialog to save the file',
+                ),
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                e is DioException
+                    ? friendlyApiError(e)
+                    : 'Something went wrong. Please try again.',
+              ),
             ),
           );
         }
+      }
+    }
 
-        final headerStyle = Theme.of(context)
-            .textTheme
-            .labelSmall
-            ?.copyWith(fontWeight: FontWeight.w900);
-
-        Widget hLeft(String label) => Padding(
-              padding: const EdgeInsets.only(bottom: 6, left: 4, right: 4),
-              child: Text(
-                label,
-                style: headerStyle?.copyWith(letterSpacing: 0.2),
-              ),
-            );
-
-        Widget hRight(String label) => Padding(
-              padding: const EdgeInsets.only(bottom: 6, left: 4, right: 4),
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: Text(
-                  label,
-                  style: headerStyle?.copyWith(letterSpacing: 0.2),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-            );
-
-        final rows = <TableRow>[
-          TableRow(
-            children: [
-              hLeft('Item'),
-              hRight('Qty'),
-              hLeft('Unit'),
-              hRight('Kg'),
-              hRight('Landing'),
-              hRight('Selling'),
-              hRight('Profit'),
-              hRight('Total'),
-            ],
-          ),
-        ];
-
-        for (final l in p.lines) {
-          final pr = _effectiveLineProfit(l);
-          rows.add(
-            TableRow(
+    return Material(
+      elevation: 10,
+      color: cs.surface,
+      surfaceTintColor: Colors.transparent,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(12, 8, 12, 8 + bottomInset),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
               children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                  child: Tooltip(
-                    message: _unitClassificationHint(l),
-                    child: SelectableText(
-                      l.itemName,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 13, height: 1.25),
-                    ),
+                cell(
+                  OutlinedButton(
+                    onPressed: p.statusEnum == PurchaseStatus.paid ||
+                            p.statusEnum == PurchaseStatus.cancelled
+                        ? null
+                        : () => _markPaidSheet(context, ref, p),
+                    child: const Text('Mark paid'),
                   ),
                 ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                    child: SelectableText(
-                      _qtyFmt(l.qty),
-                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-                      textAlign: TextAlign.right,
-                    ),
+                const SizedBox(width: 10),
+                cell(
+                  OutlinedButton(
+                    onPressed: () async {
+                      final biz = ref.read(invoiceBusinessProfileProvider);
+                      await sharePurchasePdf(p, biz);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('PDF ready to share')),
+                        );
+                      }
+                    },
+                    child: const Text('Share'),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                  child: SelectableText(
-                    l.unit,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: SelectableText(
-                      _qtyFmt(_lineKg(l)),
-                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-                      textAlign: TextAlign.right,
-                    ),
-                  ),
-                ),
-                Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: numCell(l.landingGross, FontWeight.w800)),
-                Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: numCell(l.sellingGross, FontWeight.w800)),
-                Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: SelectableText(
-                      pr == null ? '—' : _inr(pr),
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 12.8,
-                        color: pr == null
-                            ? null
-                            : (pr >= 0 ? Colors.teal.shade800 : HexaColors.loss),
-                      ),
-                      textAlign: TextAlign.right,
-                    ),
-                  ),
-                ),
-                Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: numCell(_lineInclusive(l), FontWeight.w900)),
               ],
             ),
-          );
-        }
-
-        rows.add(const TableRow(children: [
-          SizedBox(height: 6),
-          SizedBox.shrink(),
-          SizedBox.shrink(),
-          SizedBox.shrink(),
-          SizedBox.shrink(),
-          SizedBox.shrink(),
-          SizedBox.shrink(),
-          SizedBox.shrink(),
-        ]));
-
-        rows.add(TableRow(
-          decoration: BoxDecoration(
-            color:
-                Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-          ),
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Text(
-                'Totals',
-                style:
-                    Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
-              ),
-            ),
-            const SizedBox.shrink(),
-            const SizedBox.shrink(),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: SelectableText(
-                  _qtyFmt(agg.totalKg),
-                  style: const TextStyle(fontWeight: FontWeight.w900),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-            ),
-            Padding(padding: const EdgeInsets.all(12), child: numCell(agg.sumLandingGross)),
-            Padding(padding: const EdgeInsets.all(12), child: numCell(agg.sumSellingGross)),
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: SelectableText(
-                  _inr(agg.sumProfit),
-                  style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 13,
-                      color:
-                          agg.sumProfit >= 0 ? Colors.teal.shade900 : HexaColors.loss),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-            ),
-            Padding(padding: const EdgeInsets.all(12), child: numCell(agg.linesInclusive)),
-          ],
-        ));
-
-        return Scrollbar(
-          thumbVisibility: true,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            primary: false,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minWidth: minTabW),
-              child: Table(
-                defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-                columnWidths: const {
-                  0: FlexColumnWidth(2),
-                  1: FlexColumnWidth(1),
-                  2: FlexColumnWidth(1),
-                  3: FlexColumnWidth(1),
-                  4: FlexColumnWidth(1.35),
-                  5: FlexColumnWidth(1.35),
-                  6: FlexColumnWidth(1.35),
-                  7: FlexColumnWidth(1.35),
-                },
-                border: TableBorder(
-                  horizontalInside: BorderSide(
-                    width: 0.5,
-                    color: Theme.of(context).dividerColor.withValues(alpha: 0.4),
-                  ),
-                  verticalInside: BorderSide(
-                    width: 0.5,
-                    color: Theme.of(context).dividerColor.withValues(alpha: 0.4),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                cell(
+                  OutlinedButton(
+                    onPressed: p.statusEnum == PurchaseStatus.cancelled
+                        ? null
+                        : () => context.push('/purchase/edit/${p.id}'),
+                    child: const Text('Edit'),
                   ),
                 ),
-                children: rows,
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _costRows(BuildContext context, TradePurchase p, _Agg agg) {
-    Widget row(String k, String v) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Text(
-                k,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(fontWeight: FontWeight.w600),
-              ),
-            ),
-            Flexible(
-              child: SelectableText(
-                v,
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-                textAlign: TextAlign.right,
-              ),
+                const SizedBox(width: 10),
+                cell(
+                  OutlinedButton(
+                    onPressed: download,
+                    child: const Text('Download'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
-      );
-    }
-
-    final disc = agg.headerDiscountPct <= 0
-        ? '—'
-        : '${agg.headerDiscountPct.toStringAsFixed(2)}% (−${_inr(agg.discountRupeeEffect)})';
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        row('Lines (incl. tax / line disc)', _inr(agg.linesInclusive)),
-        row('Header discount', disc),
-        row(
-          'Freight',
-          agg.freightIncluded
-              ? 'Included in rate'
-              : (agg.freight > 0 ? _inr(agg.freight) : '—'),
-        ),
-        row('Commission', agg.commission > 0 ? _inr(agg.commission) : '—'),
-        row('Billty', agg.billty > 0 ? _inr(agg.billty) : '—'),
-        row('Delivered', agg.delivered > 0 ? _inr(agg.delivered) : '—'),
-        const Divider(height: 20),
-        row('FINAL TOTAL', _inr(agg.finalComputed)),
-        row('Stored bill total', _inr(p.totalAmount)),
-        const SizedBox(height: 8),
-        row('Paid', _inr(p.paidAmount)),
-        row('Remaining', _inr(p.remaining)),
-        if (p.dueDate != null) row('Due date', DateFormat.yMMMd().format(p.dueDate!)),
-      ],
+      ),
     );
-  }
-
-  Widget _secondaryActions(BuildContext context, WidgetRef ref) {
-    final p = widget.p;
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        OutlinedButton.icon(
-          onPressed: p.statusEnum == PurchaseStatus.paid ||
-                  p.statusEnum == PurchaseStatus.cancelled
-              ? null
-              : () => _markPaidSheet(context, ref, p),
-          icon: const Icon(Icons.payments_rounded, size: 18),
-          label: const Text('Mark paid'),
-        ),
-        OutlinedButton.icon(
-          onPressed: () async {
-            final biz = ref.read(invoiceBusinessProfileProvider);
-            await sharePurchasePdf(p, biz);
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('PDF ready to share')),
-              );
-            }
-          },
-          icon: const Icon(Icons.share_outlined, size: 18),
-          label: const Text('Share PDF'),
-        ),
-        OutlinedButton.icon(
-          onPressed: () async {
-            final biz = ref.read(invoiceBusinessProfileProvider);
-            try {
-              await downloadPurchasePdf(p, biz);
-              if (context.mounted) {
-                if (kIsWeb) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Use the browser print/save dialog to download PDF'),
-                    ),
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                          'Use Save as PDF or share from the dialog to save the file'),
-                    ),
-                  );
-                }
-              }
-            } catch (e) {
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      e is DioException
-                          ? friendlyApiError(e)
-                          : 'Something went wrong. Please try again.',
-                    ),
-                  ),
-                );
-              }
-            }
-          },
-          icon: const Icon(Icons.download_rounded, size: 18),
-          label: const Text('Download'),
-        ),
-        OutlinedButton.icon(
-          onPressed: () => _whatsappPurchasePdf(context, ref, p),
-          icon: const Icon(Icons.chat_rounded, size: 18),
-          label: const Text('WhatsApp'),
-        ),
-      ],
-    );
-  }
-
-  String? _waPhoneDigits(String? raw) {
-    if (raw == null || raw.trim().isEmpty) return null;
-    final d = raw.replaceAll(RegExp(r'\D'), '');
-    if (d.length < 10) return null;
-    if (d.length == 10) return '91$d';
-    return d;
-  }
-
-  Future<void> _whatsappPurchasePdf(
-      BuildContext context, WidgetRef ref, TradePurchase p) async {
-    final biz = ref.read(invoiceBusinessProfileProvider);
-    await sharePurchasePdf(p, biz);
-    if (!context.mounted) return;
-    final digits = _waPhoneDigits(p.supplierWhatsapp ?? p.supplierPhone);
-    if (digits == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-              'PDF shared. Add supplier WhatsApp or phone to open a chat.'),
-        ),
-      );
-      return;
-    }
-    final msg = Uri.encodeComponent(
-      '${p.humanId} — Total ${_inr(p.totalAmount)}, Remaining ${_inr(p.remaining)}. (Attach the PDF from the share sheet.)',
-    );
-    final u = Uri.parse('https://wa.me/$digits?text=$msg');
-    if (await canLaunchUrl(u)) {
-      await launchUrl(u, mode: LaunchMode.externalApplication);
-    }
   }
 
   Future<void> _markPaidSheet(BuildContext context, WidgetRef ref, TradePurchase p) async {
