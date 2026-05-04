@@ -203,26 +203,57 @@ class PurchasePartyStep extends ConsumerWidget {
     );
   }
 
+  String _supplierHaystack(Map<String, dynamic> m) {
+    final parts = <String>[
+      supplierMapLabel(m),
+      m['phone']?.toString().trim() ?? '',
+      m['whatsapp_number']?.toString().trim() ?? '',
+      m['location']?.toString().trim() ?? '',
+      m['gst_number']?.toString().trim() ?? '',
+    ].where((s) => s.isNotEmpty);
+    return parts.join(' ').toLowerCase();
+  }
+
+  String _brokerHaystack(Map<String, dynamic> m) {
+    final parts = <String>[
+      brokerMapLabel(m),
+      m['phone']?.toString().trim() ?? '',
+    ].where((s) => s.isNotEmpty);
+    return parts.join(' ').toLowerCase();
+  }
+
   List<InlineSearchItem> _supplierItems(List<Map<String, dynamic>> filtered) {
     final sorted = sortSuppliers(filtered);
-    final items = <InlineSearchItem>[
-      for (final m in sorted)
-        if (supplierRowId(m).isNotEmpty)
-          InlineSearchItem(
-            id: supplierRowId(m),
-            label: supplierMapLabel(m),
-            subtitle: supplierSubtitleFor(m),
-          ),
-    ];
+    final items = <InlineSearchItem>[];
+    for (final m in sorted) {
+      if (supplierRowId(m).isEmpty) continue;
+      final h = _supplierHaystack(m);
+      items.add(
+        InlineSearchItem(
+          id: supplierRowId(m),
+          label: supplierMapLabel(m),
+          subtitle: supplierSubtitleFor(m),
+          searchText: h.isEmpty ? null : h,
+        ),
+      );
+    }
     return items;
   }
 
   List<InlineSearchItem> _brokerItems(List<Map<String, dynamic>> list) {
-    return [
-      for (final m in list)
-        if (brokerRowId(m).isNotEmpty)
-          InlineSearchItem(id: brokerRowId(m), label: brokerMapLabel(m)),
-    ];
+    final items = <InlineSearchItem>[];
+    for (final m in list) {
+      if (brokerRowId(m).isEmpty) continue;
+      final h = _brokerHaystack(m);
+      items.add(
+        InlineSearchItem(
+          id: brokerRowId(m),
+          label: brokerMapLabel(m),
+          searchText: h.isEmpty ? null : h,
+        ),
+      );
+    }
+    return items;
   }
 
   /// Silent empty lists hide why autocomplete never opens—surface session / API / IDs.
@@ -744,9 +775,9 @@ class PurchasePartyStep extends ConsumerWidget {
         const SizedBox(height: 8),
         supplierCell,
         const SizedBox(height: 20),
-        Text(
+        const Text(
           'Broker (optional)',
-          style: const TextStyle(
+          style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
               color: Colors.black54),

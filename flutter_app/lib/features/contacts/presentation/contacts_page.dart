@@ -373,7 +373,9 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
   String _searchQuery = '';
   Map<String, dynamic>? _searchSnapshot;
   bool _searchLoading = false;
-  static const _searchMinLen = 2;
+  /// Bumped when a new search is scheduled or cleared; stale HTTP responses are ignored.
+  int _contactsSearchSeq = 0;
+  static const _searchMinLen = 1;
 
   static String _scopeForTab(int tabIndex) {
     const scopes = ['suppliers', 'brokers', 'categories', 'catalog_types', 'items'];
@@ -400,6 +402,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
 
   @override
   void dispose() {
+    _contactsSearchSeq++;
     _tabController.removeListener(_onTabChanged);
     _debounce?.cancel();
     _searchCtrl.dispose();
@@ -411,6 +414,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
     _debounce?.cancel();
     final t = raw.trim();
     if (t.length < _searchMinLen) {
+      _contactsSearchSeq++;
       setState(() {
         _searchQuery = '';
         _searchSnapshot = null;
@@ -418,11 +422,19 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
       });
       return;
     }
-    final scopeTab = _tabController.index;
     _debounce = Timer(const Duration(milliseconds: 180), () async {
       if (!mounted) return;
       final session = ref.read(sessionProvider);
-      if (session == null) return;
+      if (session == null) {
+        if (mounted) {
+          setState(() => _searchLoading = false);
+        }
+        return;
+      }
+      // Read tab when the request runs — not when the timer was scheduled — so scope
+      // matches the visible tab if the user switched tabs during debounce.
+      final scopeTab = _tabController.index;
+      final seq = ++_contactsSearchSeq;
       setState(() {
         _searchQuery = t;
         _searchLoading = true;
@@ -433,13 +445,13 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
               query: t,
               scope: _scopeForTab(scopeTab),
             );
-        if (!mounted) return;
+        if (!mounted || seq != _contactsSearchSeq) return;
         setState(() {
           _searchSnapshot = data;
           _searchLoading = false;
         });
       } catch (e) {
-        if (!mounted) return;
+        if (!mounted || seq != _contactsSearchSeq) return;
         setState(() => _searchLoading = false);
         if (mounted) {
           ScaffoldMessenger.of(context)
@@ -1068,7 +1080,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
               controller: _searchCtrl,
               onChanged: _scheduleSearch,
               decoration: InputDecoration(
-                hintText: 'Search suppliers, items, categories…',
+                hintText: 'Search (name, phone, type…) — 1+ characters',
                 prefixIcon: const Icon(Icons.search_rounded),
                 suffixIcon: ValueListenableBuilder<TextEditingValue>(
                   valueListenable: _searchCtrl,
