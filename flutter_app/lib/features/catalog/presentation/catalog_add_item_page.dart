@@ -742,6 +742,7 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
               Text('Category & subcategory', style: HexaDsType.formSectionLabel),
               const SizedBox(height: 6),
               categoriesAsync.when(
+                skipLoadingOnReload: true,
                 loading: () => const LinearProgressIndicator(),
                 error: (_, __) => const Text('Could not load categories'),
                 data: (cats) {
@@ -775,6 +776,7 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
               const SizedBox(height: 8),
               if (typesAsync != null)
                 typesAsync.when(
+                  skipLoadingOnReload: true,
                   loading: () => const LinearProgressIndicator(),
                   error: (_, __) => const Text('Could not load subcategories'),
                   data: (types) {
@@ -1067,6 +1069,7 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                   ),
                 ),
               ref.watch(suppliersListProvider).when(
+                    skipLoadingOnReload: true,
                     loading: () => const LinearProgressIndicator(),
                     error: (_, __) => const Text('Could not load suppliers'),
                     data: (rows) {
@@ -1133,6 +1136,7 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
               Text('Default brokers (optional)', style: HexaDsType.formSectionLabel),
               const SizedBox(height: 4),
               ref.watch(brokersListProvider).when(
+                    skipLoadingOnReload: true,
                     loading: () => const LinearProgressIndicator(),
                     error: (_, __) => const Text('Could not load brokers'),
                     data: (rows) {

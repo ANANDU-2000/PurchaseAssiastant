@@ -79,6 +79,7 @@ class _ItemAnalyticsDetailPageState
         ),
       ),
       body: async.when(
+        skipLoadingOnReload: true,
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, __) => FriendlyLoadError(
           onRetry: () => ref.invalidate(_pipProvider(widget.itemName)),

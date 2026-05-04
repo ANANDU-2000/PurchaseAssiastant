@@ -206,8 +206,8 @@ class PartyInlineSuggestField extends StatefulWidget {
 }
 
 class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
-  static const _filterDebounce = Duration(milliseconds: 400);
-  static const _revealDebounce = Duration(milliseconds: 420);
+  static const _filterDebounce = Duration(milliseconds: 220);
+  static const _revealDebounce = Duration(milliseconds: 280);
 
   bool _pickInProgress = false;
   bool _suppressPanelAfterPick = false;
@@ -222,8 +222,8 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   Timer? _filterDebounceTimer;
   Timer? _revealDebounceTimer;
   /// After the field loses focus (e.g. finger down on a suggestion), keep the panel
-  /// on screen briefly so [TextButton] taps complete. Otherwise the list unmounts
-  /// before [onPressed] runs (supplier / broker / item pick feels "dead").
+  /// on screen briefly so row taps complete. Otherwise the list could unmount before
+  /// the tap lands (supplier / broker / item pick felt "dead" on some devices).
   Timer? _suggestPanelGraceTimer;
   bool _suggestPanelGrace = false;
 

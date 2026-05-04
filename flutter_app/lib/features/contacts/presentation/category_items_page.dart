@@ -8,6 +8,7 @@ import '../../../core/widgets/friendly_load_error.dart';
 
 final _categoryItemsProvider = FutureProvider.autoDispose
     .family<List<Map<String, dynamic>>, String>((ref, category) async {
+  ref.keepAlive();
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   final api = ref.read(hexaApiProvider);
@@ -36,6 +37,7 @@ class CategoryItemsPage extends ConsumerWidget {
         title: Text(category),
       ),
       body: async.when(
+        skipLoadingOnReload: true,
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, __) => FriendlyLoadError(
           message: 'Could not load category items',

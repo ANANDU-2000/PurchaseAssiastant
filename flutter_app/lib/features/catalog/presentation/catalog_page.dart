@@ -168,6 +168,7 @@ class _CatalogPageState extends ConsumerState<CatalogPage> {
           ),
           if (_searchQuery.trim().isNotEmpty)
             async.when(
+              skipLoadingOnReload: true,
               loading: () => const SizedBox.shrink(),
               error: (_, __) => const SizedBox.shrink(),
               data: (list) {

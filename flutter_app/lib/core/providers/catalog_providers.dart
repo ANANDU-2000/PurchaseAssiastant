@@ -36,6 +36,7 @@ final catalogItemsListProvider =
 /// Per-category types (Category → Type → items).
 final categoryTypesListProvider = FutureProvider.autoDispose
     .family<List<Map<String, dynamic>>, String>((ref, categoryId) async {
+  ref.keepAlive();
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   return ref.read(hexaApiProvider).listCategoryTypes(

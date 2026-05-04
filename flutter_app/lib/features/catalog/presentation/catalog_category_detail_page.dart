@@ -170,6 +170,7 @@ class _CatalogCategoryDetailPageState
             ),
             const SizedBox(height: 8),
             typesAsync.when(
+              skipLoadingOnReload: true,
               loading: () => const Padding(
                 padding: EdgeInsets.symmetric(vertical: 12),
                 child: Center(child: CircularProgressIndicator()),

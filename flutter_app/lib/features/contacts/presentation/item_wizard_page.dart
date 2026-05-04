@@ -332,6 +332,7 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
       children: [
         cats.when(
+          skipLoadingOnReload: true,
           loading: () => const LinearProgressIndicator(),
           error: (_, __) => const Text('Could not load categories'),
           data: (rows) {
@@ -394,6 +395,7 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
         ),
         const SizedBox(height: 8),
         typesAsync.when(
+          skipLoadingOnReload: true,
           loading: () => const SizedBox.shrink(),
           error: (_, __) => const SizedBox.shrink(),
           data: (rows) {
@@ -658,6 +660,7 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
         ),
         const SizedBox(height: 12),
         async.when(
+          skipLoadingOnReload: true,
           loading: () => const LinearProgressIndicator(),
           error: (_, __) => const Text('Could not load suppliers'),
           data: (rows) {
@@ -814,6 +817,7 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
         ),
         const SizedBox(height: 12),
         async.when(
+          skipLoadingOnReload: true,
           loading: () => const LinearProgressIndicator(),
           error: (_, __) => const Text('Could not load brokers'),
           data: (rows) {

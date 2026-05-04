@@ -733,6 +733,7 @@ class _MaintenanceSettingsCard extends ConsumerWidget {
     final async = ref.watch(maintenancePaymentControllerProvider);
     final cs = Theme.of(context).colorScheme;
     return async.when(
+      skipLoadingOnReload: true,
       data: (v) {
         if (v?.userVisibleError != null) {
           return Card(
@@ -1051,6 +1052,7 @@ class _CloudSettingsCard extends ConsumerWidget {
     final local = ref.watch(cloudPaymentLocalProvider);
     final async = ref.watch(cloudCostProvider);
     return async.when(
+      skipLoadingOnReload: true,
       loading: () => _buildCloudCard(
         context,
         ref,

@@ -16,6 +16,7 @@ const int contactsLookbackDays = 90;
 /// Suppliers merged with last-90d analytics rows (key `_metrics` when present).
 final contactsSuppliersEnrichedProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.keepAlive();
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   final api = ref.read(hexaApiProvider);
@@ -39,6 +40,7 @@ final contactsSuppliersEnrichedProvider =
 
 final contactsBrokersEnrichedProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.keepAlive();
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   final api = ref.read(hexaApiProvider);
@@ -62,6 +64,7 @@ final contactsBrokersEnrichedProvider =
 
 final contactsCategoriesProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.keepAlive();
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   final api = ref.read(hexaApiProvider);
@@ -76,6 +79,7 @@ final contactsCategoriesProvider =
 
 final contactsItemsProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.keepAlive();
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   final api = ref.read(hexaApiProvider);

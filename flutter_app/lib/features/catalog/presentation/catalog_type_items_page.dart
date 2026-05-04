@@ -272,6 +272,7 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
                               }
                               final typesAsync = ref.watch(categoryTypesListProvider(targetCat!));
                               return typesAsync.when(
+                                skipLoadingOnReload: true,
                                 loading: () => const OutlinedButton(
                                   onPressed: null,
                                   child: Align(

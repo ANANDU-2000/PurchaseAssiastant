@@ -224,6 +224,7 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
         ],
       ),
       body: async.when(
+        skipLoadingOnReload: true,
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, __) => FriendlyLoadError(
           message: 'Could not load broker',
