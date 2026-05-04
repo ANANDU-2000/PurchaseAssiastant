@@ -7,5 +7,7 @@ String safePdfText(String? raw) {
       .replaceAll('—', '-')
       .replaceAll('–', '-')
       .replaceAll('\u2013', '-')
-      .replaceAll('\u2014', '-');
+      .replaceAll('\u2014', '-')
+      .replaceAll('\uFFFD', '')
+      .replaceAll('\u0000', '');
 }

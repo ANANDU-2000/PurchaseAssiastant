@@ -23,7 +23,7 @@ class BusinessBrief {
   final String? gstNumber;
   final String? address;
   final String? phone;
-  /// Purchase invoice / contact (optional).
+  /// Purchase order / contact (optional).
   final String? contactEmail;
 
   /// Title for MaterialApp / chrome — not the OS store name.

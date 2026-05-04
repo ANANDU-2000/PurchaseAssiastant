@@ -63,3 +63,6 @@ flutter:
     - assets/signup/harisree.png
     - assets/signup/signup.png
     - assets/login/login.png
+    - assets/fonts/NotoSans-Regular.ttf
+    - assets/fonts/NotoSans-Bold.ttf
+    - assets/fonts/NotoSansMalayalam-Regular.ttf

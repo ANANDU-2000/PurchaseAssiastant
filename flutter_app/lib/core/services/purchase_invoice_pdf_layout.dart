@@ -8,6 +8,7 @@ import '../calc_engine.dart';
 import '../models/business_profile.dart';
 import '../models/trade_purchase_models.dart';
 import '../utils/trade_purchase_commission.dart';
+import '../utils/trade_purchase_rate_display.dart';
 import 'purchase_invoice_amount_words.dart';
 import 'pdf_text_safe.dart';
 
@@ -66,12 +67,6 @@ TradeCalcRequest _purchaseToCalcRequest(TradePurchase p) {
     billtyRate: p.billtyRate,
     deliveredRate: p.deliveredRate,
   );
-}
-
-bool _isWeightLine(TradePurchaseLine l) {
-  final a = l.kgPerUnit;
-  final b = l.landingCostPerKg;
-  return a != null && b != null && a > 0 && b > 0;
 }
 
 pw.Widget _tCell(
@@ -157,7 +152,7 @@ pw.Widget _invoiceHeader({
             crossAxisAlignment: pw.CrossAxisAlignment.end,
             children: [
               pw.Text(
-                'PURCHASE INVOICE',
+                kPurchaseOrderPdfTitle,
                 style: pw.TextStyle(
                     fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.black),
               ),
@@ -265,69 +260,87 @@ pw.Widget _supplierBrokerBlock(TradePurchase p) {
   );
 }
 
+String _pdfPurchaseRateStr(TradePurchaseLine l) {
+  final r = tradePurchaseLineDisplayPurchaseRate(l);
+  final u = l.unit.trim();
+  final ul = u.toLowerCase();
+  if (tradePurchaseLineIsWeightPriced(l)) return '${_rsPdf(r)}/kg';
+  if (ul == 'kg') return '${_rsPdf(r)}/kg';
+  return '${_rsPdf(r)}/${safePdfText(u)}';
+}
+
+String _pdfSellingRateStr(TradePurchaseLine l) {
+  final r = tradePurchaseLineDisplaySellingRate(l);
+  if (r == null) return '—';
+  final u = l.unit.trim().toLowerCase();
+  if (tradePurchaseLineIsWeightPriced(l)) return '${_rsPdf(r)}/kg';
+  if (u == 'kg') return '${_rsPdf(r)}/kg';
+  return '${_rsPdf(r)}/${safePdfText(l.unit.trim())}';
+}
+
+double _pdfLineWeightKg(TradePurchaseLine l) {
+  return ledgerTradeLineWeightKg(
+    itemName: l.itemName,
+    unit: l.unit,
+    qty: l.qty,
+    catalogDefaultUnit: l.defaultPurchaseUnit ?? l.defaultUnit,
+    catalogDefaultKgPerBag: l.defaultKgPerBag,
+    kgPerUnit: l.kgPerUnit,
+    boxMode: l.boxMode,
+    itemsPerBox: l.itemsPerBox,
+    weightPerItem: l.weightPerItem,
+    kgPerBox: l.kgPerBox,
+    weightPerTin: l.weightPerTin,
+  );
+}
+
 pw.Widget _lineItemsTable(TradePurchase p) {
   final col = <int, pw.TableColumnWidth>{
-    0: const pw.FixedColumnWidth(16),
-    1: const pw.FlexColumnWidth(2.0),
-    2: const pw.FixedColumnWidth(36),
-    3: const pw.FixedColumnWidth(28),
-    4: const pw.FixedColumnWidth(32),
-    5: const pw.FixedColumnWidth(36),
-    6: const pw.FixedColumnWidth(36),
+    0: const pw.FixedColumnWidth(14),
+    1: const pw.FlexColumnWidth(2.2),
+    2: const pw.FixedColumnWidth(26),
+    3: const pw.FixedColumnWidth(26),
+    4: const pw.FixedColumnWidth(30),
+    5: const pw.FixedColumnWidth(44),
+    6: const pw.FixedColumnWidth(44),
     7: const pw.FixedColumnWidth(40),
-    8: const pw.FixedColumnWidth(44),
-    9: const pw.FixedColumnWidth(28),
-    10: const pw.FixedColumnWidth(40),
+    8: const pw.FixedColumnWidth(22),
   };
   final header = pw.TableRow(
     children: [
-      _tCell('#', bold: true, align: pw.TextAlign.center, fs: 6.5),
-      _tCell('Item', bold: true, fs: 6.5),
-      _tCell('HSN', bold: true, align: pw.TextAlign.center, fs: 6.5),
-      _tCell('Unit', bold: true, align: pw.TextAlign.center, fs: 6.5),
-      _tCell('Qty', bold: true, align: pw.TextAlign.right, fs: 6.5),
-      _tCell('Kg/U', bold: true, align: pw.TextAlign.right, fs: 6.5),
-      _tCell('T.kg', bold: true, align: pw.TextAlign.right, fs: 6.5),
-      _tCell('Rate', bold: true, align: pw.TextAlign.right, fs: 6.5),
-      _tCell('Amount', bold: true, align: pw.TextAlign.right, fs: 6.5),
-      _tCell('Tax%', bold: true, align: pw.TextAlign.right, fs: 6.5),
-      _tCell('Tax', bold: true, align: pw.TextAlign.right, fs: 6.5),
+      _tCell('#', bold: true, align: pw.TextAlign.center, fs: 6.2),
+      _tCell('Item', bold: true, fs: 6.2),
+      _tCell('Unit', bold: true, align: pw.TextAlign.center, fs: 6.2),
+      _tCell('Qty', bold: true, align: pw.TextAlign.right, fs: 6.2),
+      _tCell('Kg', bold: true, align: pw.TextAlign.right, fs: 6.2),
+      _tCell('P rate', bold: true, align: pw.TextAlign.right, fs: 6.2),
+      _tCell('S rate', bold: true, align: pw.TextAlign.right, fs: 6.2),
+      _tCell('Amount', bold: true, align: pw.TextAlign.right, fs: 6.2),
+      _tCell('Tax%', bold: true, align: pw.TextAlign.right, fs: 6.2),
     ],
   );
   final rows = <pw.TableRow>[header];
   for (var i = 0; i < p.lines.length; i++) {
     final l = p.lines[i];
     final c = _purchaseLineToCalc(l);
-    final w = _isWeightLine(l);
-    final tkg = w ? l.qty * l.kgPerUnit! : 0.0;
-    final taxable = lineTaxableAfterLineDisc(c);
-    final taxAmt = lineTaxAmount(c);
-    final rateStr =
-        w ? _rsPdf(l.landingCostPerKg!) : _rsPdf(l.landingCost);
-    final tkgStr = w ? _num0.format(tkg) : '—';
-    final kgPerStr = w ? _num0.format(l.kgPerUnit!) : '—';
+    final kgLine = _pdfLineWeightKg(l);
+    final kgStr = kgLine > 1e-6 ? _num0.format(kgLine) : '—';
     final taxP = l.taxPercent;
     final taxPStr = taxP == null
         ? '—'
         : (taxP == taxP.roundToDouble() ? '${taxP.round()}' : _num0.format(taxP));
-    final ic = l.itemCode?.trim();
-    final itemBlock = (ic != null && ic.isNotEmpty)
-        ? '${l.itemName}\nCode: $ic'
-        : l.itemName;
     rows.add(
       pw.TableRow(
         children: [
-          _tCell('${i + 1}', align: pw.TextAlign.center, fs: 6.5),
-          _tCell(safePdfText(itemBlock), fs: 6.5, maxLines: 3),
-          _tCell(_empty(l.hsnCode), align: pw.TextAlign.center, fs: 6.0),
-          _tCell(l.unit, align: pw.TextAlign.center, fs: 6.5),
-          _tCell(_num0.format(l.qty), align: pw.TextAlign.right, fs: 6.5),
-          _tCell(kgPerStr, align: pw.TextAlign.right, fs: 6.5),
-          _tCell(tkgStr, align: pw.TextAlign.right, fs: 6.5),
-          _tCell(rateStr, align: pw.TextAlign.right, fs: 6.0),
-          _tCell(_rsPdf(taxable), align: pw.TextAlign.right, fs: 6.0),
-          _tCell(taxPStr, align: pw.TextAlign.right, fs: 6.5),
-          _tCell(_rsPdf(taxAmt), align: pw.TextAlign.right, fs: 6.0),
+          _tCell('${i + 1}', align: pw.TextAlign.center, fs: 6.2),
+          _tCell(safePdfText(l.itemName), fs: 6.2, maxLines: 3),
+          _tCell(safePdfText(l.unit.trim()), align: pw.TextAlign.center, fs: 6.2),
+          _tCell(_num0.format(l.qty), align: pw.TextAlign.right, fs: 6.2),
+          _tCell(kgStr, align: pw.TextAlign.right, fs: 6.2),
+          _tCell(_pdfPurchaseRateStr(l), align: pw.TextAlign.right, fs: 5.8),
+          _tCell(_pdfSellingRateStr(l), align: pw.TextAlign.right, fs: 5.8),
+          _tCell(_rsPdf(lineMoney(c)), align: pw.TextAlign.right, fs: 6.0),
+          _tCell(taxPStr, align: pw.TextAlign.right, fs: 6.2),
         ],
       ),
     );
@@ -449,24 +462,22 @@ pw.Widget _summaryBlock(TradePurchase p, _SummaryNumbers s, {required bool total
   return pw.Column(
     crossAxisAlignment: pw.CrossAxisAlignment.end,
     children: [
-      row('Sum of line amounts (incl. line tax)', _rsPdf(s.sumLineMoney)),
-      row('Taxable value (sum, pre-tax)', _rsPdf(s.sumTaxable)),
-      row('Tax total (lines)', _rsPdf(s.sumLineTax)),
+      row('Subtotal (incl. line tax)', _rsPdf(s.sumLineMoney)),
       if (s.headerDiscountAmount > 0.001)
         row('Header discount', '- ${_rsPdf(s.headerDiscountAmount)}'),
-      row('Subtotal after header discount', _rsPdf(s.afterHeader)),
+      row('Net after discount', _rsPdf(s.afterHeader)),
       if (s.freight > 0) row('Freight', _rsPdf(s.freight)),
       if (s.commission > 0)
         row(_brokerCommissionPdfLabel(p), _rsPdf(s.commission)),
       if (del > 0) row('Delivered / other', _rsPdf(del)),
       if (bill > 0) row('Billty / charges', _rsPdf(bill)),
       pw.SizedBox(height: 4),
-      row('GRAND TOTAL', _rsPdf(p.totalAmount), bold: true),
+      row('FINAL TOTAL', _rsPdf(p.totalAmount), bold: true),
       if (!totalMatches)
         pw.Padding(
           padding: const pw.EdgeInsets.only(top: 4),
           child: pw.Text(
-            'Note: Recomputed subtotal does not match stored total; GRAND TOTAL is the server value.',
+            'Note: Recomputed total does not match stored total; FINAL TOTAL is the server value.',
             style: const pw.TextStyle(fontSize: 6.5, color: _muted),
             textAlign: pw.TextAlign.right,
           ),
@@ -526,13 +537,14 @@ pw.Widget _footerBlock(BusinessProfile biz, TradePurchase p) {
   );
 }
 
-/// A4, ~10mm margins, print-ready professional purchase invoice.
+/// A4, ~10mm margins, print-ready professional purchase order.
 Future<pw.Document> buildProfessionalPurchaseInvoiceDoc({
   required TradePurchase purchase,
   required BusinessProfile business,
   pw.ImageProvider? logo,
+  pw.ThemeData? pdfTheme,
 }) async {
-  final doc = pw.Document();
+  final doc = pw.Document(theme: pdfTheme);
   final req = _purchaseToCalcRequest(purchase);
   final totals = computeTradeTotals(req);
   final summary = _computeSummaryBreakdown(purchase);
@@ -544,6 +556,7 @@ Future<pw.Document> buildProfessionalPurchaseInvoiceDoc({
     pw.MultiPage(
       pageFormat: PdfPageFormat.a4,
       margin: const pw.EdgeInsets.all(28),
+      theme: pdfTheme,
       build: (ctx) => [
         _invoiceHeader(biz: business, p: purchase, logo: logo),
         pw.SizedBox(height: 8),

@@ -9,7 +9,7 @@ final invoiceBusinessProfileProvider = Provider<BusinessProfile>((ref) {
   if (session == null) {
     return const BusinessProfile(
       legalName: 'Workspace',
-      displayTitle: 'Purchase invoice',
+      displayTitle: 'Purchase order',
     );
   }
   return BusinessProfile.fromBusinessBrief(session.primaryBusiness);

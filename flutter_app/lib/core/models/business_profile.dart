@@ -1,6 +1,6 @@
 import 'session.dart';
 
-/// Workspace identity shown on purchase invoice PDFs.
+/// Workspace identity shown on purchase order PDFs.
 class BusinessProfile {
   const BusinessProfile({
     required this.legalName,
@@ -17,7 +17,7 @@ class BusinessProfile {
   final String? gstNumber;
   final String? address;
   final String? phone;
-  /// Shown on purchase invoice header when set.
+  /// Shown on purchase order PDF header when set.
   final String? contactEmail;
   final String? logoUrl;
 

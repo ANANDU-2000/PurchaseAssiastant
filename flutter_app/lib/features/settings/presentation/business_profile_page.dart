@@ -139,7 +139,7 @@ class _BusinessProfilePageState extends ConsumerState<BusinessProfilePage> {
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
         children: [
           Text(
-            'Shown on purchase invoice PDFs (GSTIN, address, phone, contact email).',
+            'Shown on purchase order PDFs (GSTIN, address, phone, contact email).',
             style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
           ),
           const SizedBox(height: 16),
@@ -163,7 +163,7 @@ class _BusinessProfilePageState extends ConsumerState<BusinessProfilePage> {
                     controller: _titleCtrl,
                     textCapitalization: TextCapitalization.characters,
                     decoration: const InputDecoration(
-                      labelText: 'Invoice header title',
+                      labelText: 'Order PDF header title',
                       hintText: 'e.g. HARISREE AGENCY',
                       border: OutlineInputBorder(),
                     ),
@@ -195,7 +195,7 @@ class _BusinessProfilePageState extends ConsumerState<BusinessProfilePage> {
                     autocorrect: false,
                     decoration: const InputDecoration(
                       labelText: 'Contact email (optional)',
-                      hintText: 'For invoice PDF header',
+                      hintText: 'For purchase order PDF header',
                       border: OutlineInputBorder(),
                     ),
                   ),

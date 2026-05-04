@@ -264,7 +264,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                         child: Text(
                           [
                             if (fuzzyItems)
-                              'No exact item title match — showing close catalog matches.',
+                              'No exact item title match — showing close catalog matches. '
+                                  'Do not trust rates until you open the item.',
                             if (fuzzySup)
                               'No exact supplier name match — showing close supplier matches.',
                             if (fuzzyBro)
@@ -396,6 +397,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                           final id = m['id']?.toString() ?? '';
                           return TradeIntelCatalogSearchTile(
                             item: m,
+                            fuzzyNameMatch: fuzzyItems,
                             onTap: id.isEmpty
                                 ? null
                                 : () => context.push('/catalog/item/$id'),

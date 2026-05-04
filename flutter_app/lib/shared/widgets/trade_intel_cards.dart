@@ -65,11 +65,10 @@ String tradeIntelPeriodAmountLine(Map<String, dynamic> m) {
   return 'Spend: ${tradeIntelFormatInr(a)}';
 }
 
-/// Last purchase → last selling (search item: last_purchase_price + last_selling_rate or default_selling_cost).
+/// Last purchase → last selling (confirmed [last_selling_rate] only — no catalog defaults).
 String tradeIntelRatePairLine(Map<String, dynamic> m) {
   final buy = tradeIntelToDouble(m['last_purchase_price']);
-  final sell = tradeIntelToDouble(m['last_selling_rate']) ??
-      tradeIntelToDouble(m['default_selling_cost']);
+  final sell = tradeIntelToDouble(m['last_selling_rate']);
   if ((buy == null || buy <= 0) && (sell == null || sell <= 0)) {
     return '';
   }
@@ -83,7 +82,6 @@ String tradeIntelLastPurchaseBagsLabel(Map<String, dynamic> m) {
   final qty = tradeIntelToDouble(m['last_line_qty']);
   final unit = (m['last_line_unit'] ?? '').toString().toLowerCase().trim();
   final kg = tradeIntelToDouble(m['last_line_weight_kg']);
-  final kgPerBag = tradeIntelToDouble(m['default_kg_per_bag']);
   if (qty != null && qty > 1e-6) {
     if (unit == 'bag' || unit == 'sack') {
       return '${tradeIntelFormatQty(qty)} bags';
@@ -92,37 +90,32 @@ String tradeIntelLastPurchaseBagsLabel(Map<String, dynamic> m) {
     if (unit == 'tin') return '${tradeIntelFormatQty(qty)} tin';
     if (unit == 'kg') return '${tradeIntelFormatQty(qty)} kg';
   }
-  if (kg != null && kg > 1e-6 && kgPerBag != null && kgPerBag > 1e-6) {
-    final est = (kg / kgPerBag).round();
-    if (est > 0) return '~$est bags';
-  }
   if (kg != null && kg > 1e-6) {
     return '${tradeIntelFormatQty(kg)} kg';
   }
   return '';
 }
 
-/// One scannable line: buy (→ sell) · last qty · last bill id · guide fallback.
+/// Confirmed last-purchase facts only (no catalog guide / default rates).
 String tradeIntelSearchCatalogSubtitle(Map<String, dynamic> m) {
   final parts = <String>[];
   final buy = tradeIntelToDouble(m['last_purchase_price']);
-  final sell = tradeIntelToDouble(m['last_selling_rate']) ??
-      tradeIntelToDouble(m['default_selling_cost']);
-  final guide = tradeIntelToDouble(m['default_landing_cost']);
+  final sell = tradeIntelToDouble(m['last_selling_rate']);
   if (buy != null && buy > 0) {
     if (sell != null && sell > 0) {
-      parts.add('Buy ${tradeIntelFormatInr(buy)} → ${tradeIntelFormatInr(sell)}');
+      parts.add(
+          'Last buy ${tradeIntelFormatInr(buy)} · Last sell ${tradeIntelFormatInr(sell)}');
     } else {
-      parts.add('Buy ${tradeIntelFormatInr(buy)}');
+      parts.add('Last buy ${tradeIntelFormatInr(buy)}');
     }
-  } else if (guide != null && guide > 0) {
-    parts.add('Guide ${tradeIntelFormatInr(guide)}');
+  } else if (sell != null && sell > 0) {
+    parts.add('Last sell ${tradeIntelFormatInr(sell)}');
   }
   final bags = tradeIntelLastPurchaseBagsLabel(m);
   if (bags.isNotEmpty) parts.add(bags);
   final hid = (m['last_purchase_human_id'] ?? '').toString().trim();
   if (hid.isNotEmpty) parts.add(hid);
-  if (parts.isEmpty) return 'No purchase history yet';
+  if (parts.isEmpty) return '';
   return parts.join(' · ');
 }
 
@@ -257,18 +250,22 @@ class TradeIntelCatalogSearchTile extends StatelessWidget {
     super.key,
     required this.item,
     required this.onTap,
+    this.fuzzyNameMatch = false,
   });
 
   final Map<String, dynamic> item;
   final VoidCallback? onTap;
+  /// When true, hide numeric last-buy/sell lines (approximate title match).
+  final bool fuzzyNameMatch;
 
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
     final name = (item['name'] ?? 'Item').toString();
-    final factLine = tradeIntelSearchCatalogSubtitle(item);
-    final srcLine = tradeIntelSourceLine(item);
+    final factLine =
+        fuzzyNameMatch ? '' : tradeIntelSearchCatalogSubtitle(item);
+    final srcLine = fuzzyNameMatch ? '' : tradeIntelSourceLine(item);
 
     return InkWell(
       onTap: onTap,
@@ -290,15 +287,28 @@ class TradeIntelCatalogSearchTile extends StatelessWidget {
                       height: 1.2,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    factLine,
-                    style: tt.bodySmall?.copyWith(
-                      color: cs.onSurface,
-                      fontWeight: FontWeight.w600,
-                      height: 1.3,
+                  if (fuzzyNameMatch) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Approximate name match — open item to verify details.',
+                      style: tt.bodySmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                        height: 1.3,
+                      ),
                     ),
-                  ),
+                  ],
+                  if (!fuzzyNameMatch && factLine.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      factLine,
+                      style: tt.bodySmall?.copyWith(
+                        color: cs.onSurface,
+                        fontWeight: FontWeight.w600,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
                   if (srcLine.isNotEmpty) ...[
                     const SizedBox(height: 2),
                     Text(

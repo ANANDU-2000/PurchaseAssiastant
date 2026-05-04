@@ -16,6 +16,7 @@ import '../../../core/services/purchase_invoice_pdf_layout.dart'
     show tradeCalcRequestFromTradePurchase;
 import '../../../core/services/purchase_pdf.dart';
 import '../../../core/utils/trade_purchase_commission.dart';
+import '../../../core/utils/trade_purchase_rate_display.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/utils/unit_classifier.dart';
 import '../../../core/widgets/friendly_load_error.dart';
@@ -399,9 +400,7 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
                     if (p.hasMissingDetails) _pendingDetailsChip(context, p, cs),
                     _compactMeta(context, p, st, paidPending, cs),
                     const SizedBox(height: 18),
-                    _heroSummaryBlock(context, agg, cs),
-                    const SizedBox(height: 14),
-                    _dynamicQuantityLine(context, agg, cs),
+                    _summaryHeroCard(context, p, agg, cs),
                     const SizedBox(height: 18),
                     Text(
                       'Items',
@@ -413,22 +412,7 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
                     const SizedBox(height: 10),
                     ..._itemsAsCards(context, p, cs),
                     const SizedBox(height: 18),
-                    _miniCharges(context, agg, cs),
-                    const SizedBox(height: 14),
-                    _finalSummaryStrip(context, p, agg, cs),
-                    if (mismatch)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 10),
-                        child: Text(
-                          'Stored total ${_inr(p.totalAmount)} differs from calculated '
-                          '${_inr(agg.finalComputed)} by ${_inr((p.totalAmount - agg.finalComputed).abs())}.',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: cs.error,
-                            height: 1.3,
-                          ),
-                        ),
-                      ),
+                    _chargesAndBalanceCollapsible(context, p, agg, cs, mismatch),
                   ],
                 ),
               ),
@@ -531,77 +515,180 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
     );
   }
 
-  Widget _heroSummaryBlock(BuildContext context, _Agg agg, ColorScheme cs) {
-    final profitColor = agg.sumProfit >= 0 ? const Color(0xFF0F766E) : HexaColors.loss;
-    Widget big(String label, String value, Color valueColor) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Text(
-              label.toUpperCase(),
-              style: TextStyle(
-                fontSize: 11,
-                letterSpacing: 1.1,
-                fontWeight: FontWeight.w800,
-                color: cs.onSurfaceVariant,
-              ),
+  Widget _summaryHeroCard(
+      BuildContext context, TradePurchase p, _Agg agg, ColorScheme cs) {
+    final profitColor =
+        agg.sumProfit >= 0 ? const Color(0xFF0F766E) : HexaColors.loss;
+    final volParts = <String>[];
+    if (agg.totalKg > 1e-6) volParts.add('${_qtyFmt(agg.totalKg)} kg');
+    if (agg.totalBags > 1e-6) {
+      volParts.add(
+          '${_qtyFmt(agg.totalBags)} ${agg.totalBags == 1 ? 'bag' : 'bags'}');
+    }
+    if (agg.totalBox > 1e-6) {
+      volParts.add(
+          '${_qtyFmt(agg.totalBox)} ${agg.totalBox == 1 ? 'box' : 'boxes'}');
+    }
+    if (agg.totalTin > 1e-6) {
+      volParts.add(
+          '${_qtyFmt(agg.totalTin)} ${agg.totalTin == 1 ? 'tin' : 'tins'}');
+    }
+    final hasSell = agg.sumSellingGross > 1e-6;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cs.outline.withValues(alpha: 0.22)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Total (this bill)',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: cs.onSurfaceVariant,
             ),
-            const SizedBox(height: 4),
-            SelectableText(
-              value,
+          ),
+          const SizedBox(height: 6),
+          SelectableText(
+            _inr(agg.finalComputed, fractionDigits: 0),
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w900,
+              color: cs.onSurface,
+              height: 1.05,
+            ),
+          ),
+          if (volParts.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              volParts.join(' · '),
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.w900,
-                color: valueColor,
-                height: 1.05,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: cs.primary,
               ),
             ),
           ],
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        big('Total purchase', _inr(agg.finalComputed, fractionDigits: 0), cs.onSurface),
-        big('Total selling', _inr(agg.sumSellingGross, fractionDigits: 0), cs.onSurface),
-        big('Profit', _inr(agg.sumProfit, fractionDigits: 0), profitColor),
-      ],
+          if (hasSell) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Est. sell value ${_inr(agg.sumSellingGross, fractionDigits: 0)}',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: cs.onSurfaceVariant,
+              ),
+            ),
+          ],
+          if (agg.sumProfit.abs() > 1e-6 || hasSell) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Profit ${_inr(agg.sumProfit, fractionDigits: 0)}',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: profitColor,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
-  Widget _dynamicQuantityLine(BuildContext context, _Agg agg, ColorScheme cs) {
-    final parts = <String>[];
-    if (agg.totalKg > 1e-6) {
-      parts.add('${_qtyFmt(agg.totalKg)} KG');
-    }
-    if (agg.totalBags > 1e-6) {
-      parts.add(
-        '${_qtyFmt(agg.totalBags)} ${agg.totalBags == 1 ? 'BAG' : 'BAGS'}',
-      );
-    }
-    if (agg.totalBox > 1e-6) {
-      parts.add(
-        '${_qtyFmt(agg.totalBox)} ${agg.totalBox == 1 ? 'BOX' : 'BOXES'}',
-      );
-    }
-    if (agg.totalTin > 1e-6) {
-      parts.add(
-        '${_qtyFmt(agg.totalTin)} ${agg.totalTin == 1 ? 'TIN' : 'TINS'}',
-      );
-    }
-    if (parts.isEmpty) return const SizedBox.shrink();
-    return Text(
-      parts.join(' • '),
-      textAlign: TextAlign.center,
-      style: TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w800,
-        color: cs.primary,
+  Widget _chargesAndBalanceCollapsible(
+    BuildContext context,
+    TradePurchase p,
+    _Agg agg,
+    ColorScheme cs,
+    bool mismatch,
+  ) {
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        initiallyExpanded: false,
+        title: Text(
+          'Charges & balance',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+        ),
+        subtitle: Text(
+          'Freight, commission, payment',
+          style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+        ),
+        children: [
+          _miniCharges(context, agg, cs),
+          const SizedBox(height: 8),
+          _balanceRows(context, p, cs),
+          if (mismatch)
+            Padding(
+              padding: const EdgeInsets.only(top: 10, bottom: 4),
+              child: Text(
+                'Stored total ${_inr(p.totalAmount)} differs from calculated '
+                '${_inr(agg.finalComputed)} by ${_inr((p.totalAmount - agg.finalComputed).abs())}.',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: cs.error,
+                  height: 1.3,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _balanceRows(BuildContext context, TradePurchase p, ColorScheme cs) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+      decoration: BoxDecoration(
+        color: cs.primaryContainer.withValues(alpha: 0.25),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: cs.primary.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Remaining',
+                style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
+              ),
+              SelectableText(
+                _inr(p.remaining),
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+              ),
+            ],
+          ),
+          if (p.dueDate != null) ...[
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Due',
+                  style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
+                ),
+                Text(
+                  DateFormat.yMMMd().format(p.dueDate!),
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                ),
+              ],
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -609,32 +696,43 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
   ({String purchase, String selling}) _lineRateLabels(TradePurchaseLine l) {
     final u = l.unit.trim();
     final ul = u.toLowerCase();
-    final sellRate = l.sellingRate ?? l.sellingCost;
+    final pk = tradePurchaseLineDisplayPurchaseRate(l);
+    final sk = tradePurchaseLineDisplaySellingRate(l);
+    final pSuffix =
+        (tradePurchaseLineIsWeightPriced(l) || ul == 'kg') ? '/kg' : '/$u';
+    final purchase = '${_inr(pk)}$pSuffix';
+    if (sk != null) {
+      final sSuffix =
+          (tradePurchaseLineIsWeightPriced(l) || ul == 'kg') ? '/kg' : '/$u';
+      return (purchase: purchase, selling: '${_inr(sk)}$sSuffix');
+    }
     if (l.kgPerUnit != null &&
         l.landingCostPerKg != null &&
         l.kgPerUnit! > 0 &&
         l.landingCostPerKg! > 0) {
-      final pk = l.landingCostPerKg!;
-      if (sellRate != null) {
-        return (purchase: '${_inr(pk)}/kg', selling: '${_inr(sellRate)}/kg');
-      }
       final kgQty = l.qty * l.kgPerUnit!;
       if (kgQty > 1e-9) {
-        final sk = l.sellingGross / kgQty;
-        return (purchase: '${_inr(pk)}/kg', selling: '${_inr(sk)}/kg');
+        final implied = l.sellingGross / kgQty;
+        return (purchase: purchase, selling: '${_inr(implied)}/kg');
       }
-      return (purchase: '${_inr(pk)}/kg', selling: '—');
     }
-    if (ul == 'kg') {
-      return (
-        purchase: '${_inr(l.landingCost)}/kg',
-        selling: sellRate != null ? '${_inr(sellRate)}/kg' : '—',
-      );
+    return (purchase: purchase, selling: '—');
+  }
+
+  String _lineQtyHuman(TradePurchaseLine l) {
+    final q = _qtyFmt(l.qty);
+    final u = l.unit.trim();
+    final kg = _lineKg(l);
+    final ul = u.toLowerCase();
+    if (kg > 1e-6 &&
+        (ul == 'bag' ||
+            ul == 'sack' ||
+            ul == 'box' ||
+            ul == 'tin' ||
+            ul == 'kg')) {
+      return '$q $u · ${_qtyFmt(kg)} kg';
     }
-    return (
-      purchase: '${_inr(l.landingCost)}/$u',
-      selling: sellRate != null ? '${_inr(sellRate)}/$u' : '—',
-    );
+    return '$q $u';
   }
 
   List<Widget> _itemsAsCards(
@@ -689,7 +787,7 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
               ),
               const SizedBox(height: 6),
               Text(
-                '${_qtyFmt(l.qty)} ${l.unit.trim()}',
+                _lineQtyHuman(l),
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
@@ -698,11 +796,7 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Purchase: ${rates.purchase}',
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-              ),
-              Text(
-                'Selling: ${rates.selling}',
+                'P: ${rates.purchase}  ·  S: ${rates.selling}',
                 style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
@@ -719,24 +813,26 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Profit',
-                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                  ),
-                  SelectableText(
-                    pr == null ? '—' : _inr(pr),
-                    style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 15,
-                      color: profitColor,
+              if (pr != null) ...[
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Profit',
+                      style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
                     ),
-                  ),
-                ],
-              ),
+                    SelectableText(
+                      _inr(pr),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 15,
+                        color: profitColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -784,74 +880,6 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
     rows.add(tiny('Billty', agg.billty > 1e-6 ? _inr(agg.billty) : '—'));
     rows.add(tiny('Delivered', agg.delivered > 1e-6 ? _inr(agg.delivered) : '—'));
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: rows);
-  }
-
-  Widget _finalSummaryStrip(
-      BuildContext context, TradePurchase p, _Agg agg, ColorScheme cs) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: cs.primaryContainer.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cs.primary.withValues(alpha: 0.25)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'FINAL',
-                style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 12,
-                  color: cs.onSurfaceVariant,
-                ),
-              ),
-              SelectableText(
-                _inr(agg.finalComputed),
-                style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 18,
-                  color: cs.onSurface,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Remaining',
-                style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
-              ),
-              SelectableText(
-                _inr(p.remaining),
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-              ),
-            ],
-          ),
-          if (p.dueDate != null) ...[
-            const SizedBox(height: 6),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Due',
-                  style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
-                ),
-                Text(
-                  DateFormat.yMMMd().format(p.dueDate!),
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
   }
 
   Widget _stickyActionBar(

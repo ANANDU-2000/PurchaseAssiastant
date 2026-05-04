@@ -468,9 +468,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: Icon(Icons.receipt_long_outlined, color: cs.primary),
-                    title: const Text('Invoice / business profile'),
+                    title: const Text('Purchase order / business profile'),
                     subtitle: const Text(
-                      'GSTIN, address, phone for PDF purchase invoices',
+                      'GSTIN, address, phone for PDF purchase orders',
                     ),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () => context.push('/settings/business'),
