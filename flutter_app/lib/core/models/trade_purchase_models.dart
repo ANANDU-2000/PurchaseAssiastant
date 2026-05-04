@@ -234,6 +234,19 @@ class TradePurchaseLine {
   }
 }
 
+String _normTradePurchaseCommissionMode(String? raw) {
+  final m = (raw ?? 'percent').trim().toLowerCase();
+  switch (m) {
+    case 'flat_invoice':
+    case 'flat_kg':
+    case 'flat_bag':
+    case 'flat_tin':
+      return m;
+    default:
+      return 'percent';
+  }
+}
+
 class TradePurchase {
   TradePurchase({
     required this.id,
@@ -260,7 +273,9 @@ class TradePurchase {
     this.brokerPhone,
     this.brokerLocation,
     this.discount,
+    this.commissionMode = 'percent',
     this.commissionPercent,
+    this.commissionMoney,
     this.deliveredRate,
     this.billtyRate,
     this.freightAmount,
@@ -298,7 +313,9 @@ class TradePurchase {
   final String? brokerPhone;
   final String? brokerLocation;
   final double? discount;
+  final String commissionMode;
   final double? commissionPercent;
+  final double? commissionMoney;
   final double? deliveredRate;
   final double? billtyRate;
   final double? freightAmount;
@@ -337,6 +354,9 @@ class TradePurchase {
     }
 
     final pd = parseD('purchase_date') ?? DateTime.now();
+    final cm = _normTradePurchaseCommissionMode(j['commission_mode']?.toString());
+    final cPct = _decNullableDouble(j['commission_percent']);
+    final cMoney = _decNullableDouble(j['commission_money']);
 
     return TradePurchase(
       id: j['id']?.toString() ?? '',
@@ -368,7 +388,9 @@ class TradePurchase {
       brokerPhone: j['broker_phone']?.toString(),
       brokerLocation: j['broker_location']?.toString(),
       discount: _decNullableDouble(j['discount']),
-      commissionPercent: _decNullableDouble(j['commission_percent']),
+      commissionMode: cm,
+      commissionPercent: cm == 'percent' ? cPct : null,
+      commissionMoney: cm != 'percent' ? cMoney : null,
       deliveredRate: _decNullableDouble(j['delivered_rate']),
       billtyRate: _decNullableDouble(j['billty_rate']),
       freightAmount: _decNullableDouble(j['freight_amount'] ?? j['freight_value']),

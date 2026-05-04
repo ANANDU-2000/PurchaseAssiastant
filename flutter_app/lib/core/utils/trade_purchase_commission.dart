@@ -1,5 +1,6 @@
 import '../calc_engine.dart';
 import '../models/trade_purchase_models.dart';
+import '../strict_decimal.dart';
 
 /// Single line rupees (tax-inclusive), same as wizard / reports line math.
 double tradePurchaseLineSumForLine(TradePurchaseLine l) {
@@ -15,11 +16,24 @@ double tradePurchaseLineSumForLine(TradePurchaseLine l) {
   );
 }
 
-/// Commission amount matching backend [compute_totals] / PDF footer:
-/// applies header discount to line sum, then `commission_percent` of that base.
+TradeCommissionLine _tradeLineToCommissionBasis(TradePurchaseLine l) {
+  return TradeCommissionLine(
+    itemName: l.itemName,
+    unit: l.unit,
+    qty: l.qty,
+    kgPerUnit: l.kgPerUnit,
+    catalogDefaultUnit: l.defaultPurchaseUnit ?? l.defaultUnit,
+    catalogDefaultKgPerBag: l.defaultKgPerBag,
+    boxMode: l.boxMode,
+    itemsPerBox: l.itemsPerBox,
+    weightPerItem: l.weightPerItem,
+    kgPerBox: l.kgPerBox,
+    weightPerTin: l.weightPerTin,
+  );
+}
+
+/// Broker commission rupees (matches backend `compute_totals` / [computeTradeTotals]).
 double tradePurchaseCommissionInr(TradePurchase p) {
-  final c = p.commissionPercent;
-  if (c == null || c <= 0) return 0;
   var linesTotal = 0.0;
   for (final l in p.lines) {
     linesTotal += tradePurchaseLineSumForLine(l);
@@ -27,9 +41,17 @@ double tradePurchaseCommissionInr(TradePurchase p) {
   var hd = p.discount ?? 0;
   if (hd > 100) hd = 100;
   final afterHeader = linesTotal * (1.0 - hd / 100.0);
-  var cp = c;
-  if (cp > 100) cp = 100;
-  return afterHeader * cp / 100.0;
+  return headerCommissionAddOnDecimal(
+    commissionMode: p.commissionMode,
+    afterHeader: StrictDecimal.fromObject(afterHeader),
+    commissionPercent: p.commissionPercent != null
+        ? StrictDecimal.fromObject(p.commissionPercent!)
+        : null,
+    commissionMoney: p.commissionMoney != null
+        ? StrictDecimal.fromObject(p.commissionMoney!)
+        : null,
+    basisLines: [for (final l in p.lines) _tradeLineToCommissionBasis(l)],
+  ).toDouble();
 }
 
 /// Allocates header [tradePurchaseCommissionInr] across lines by each line's

@@ -23,6 +23,13 @@ double? _decimalToNullableDouble(Object? value) {
 String _fixed(Object value, int scale) =>
     StrictDecimal.fromObject(value).format(scale);
 
+/// API `commission_mode` values (broker header).
+const String kPurchaseCommissionModePercent = 'percent';
+const String kPurchaseCommissionModeFlatInvoice = 'flat_invoice';
+const String kPurchaseCommissionModeFlatKg = 'flat_kg';
+const String kPurchaseCommissionModeFlatBag = 'flat_bag';
+const String kPurchaseCommissionModeFlatTin = 'flat_tin';
+
 /// API-aligned: `included` or `separate`.
 @immutable
 class PurchaseDraft {
@@ -36,7 +43,9 @@ class PurchaseDraft {
     this.invoiceNumber,
     this.paymentDays,
     this.headerDiscountPercent,
+    this.commissionMode = kPurchaseCommissionModePercent,
     this.commissionPercent,
+    this.commissionMoney,
     this.deliveredRate,
     this.billtyRate,
     this.freightAmount,
@@ -54,12 +63,55 @@ class PurchaseDraft {
   final String? invoiceNumber;
   final int? paymentDays;
   final double? headerDiscountPercent;
+  final String commissionMode;
   final double? commissionPercent;
+  final double? commissionMoney;
   final double? deliveredRate;
   final double? billtyRate;
   final double? freightAmount;
   final String freightType;
   final List<PurchaseLineDraft> lines;
+
+  static String normalizeCommissionMode(String? raw) {
+    final m = (raw ?? kPurchaseCommissionModePercent).trim().toLowerCase();
+    switch (m) {
+      case kPurchaseCommissionModeFlatInvoice:
+      case kPurchaseCommissionModeFlatKg:
+      case kPurchaseCommissionModeFlatBag:
+      case kPurchaseCommissionModeFlatTin:
+        return m;
+      default:
+        return kPurchaseCommissionModePercent;
+    }
+  }
+
+  /// Replaces broker commission header fields (null-safe for API modes).
+  PurchaseDraft withCommissionHeader({
+    required String mode,
+    double? percent,
+    double? money,
+  }) {
+    final m = normalizeCommissionMode(mode);
+    return PurchaseDraft(
+      supplierId: supplierId,
+      supplierName: supplierName,
+      brokerId: brokerId,
+      brokerName: brokerName,
+      brokerIdFromSupplier: brokerIdFromSupplier,
+      purchaseDate: purchaseDate,
+      invoiceNumber: invoiceNumber,
+      paymentDays: paymentDays,
+      headerDiscountPercent: headerDiscountPercent,
+      commissionMode: m,
+      commissionPercent: m == kPurchaseCommissionModePercent ? percent : null,
+      commissionMoney: m == kPurchaseCommissionModePercent ? null : money,
+      deliveredRate: deliveredRate,
+      billtyRate: billtyRate,
+      freightAmount: freightAmount,
+      freightType: freightType,
+      lines: lines,
+    );
+  }
 
   static PurchaseDraft initial() => PurchaseDraft(
         purchaseDate: DateTime.now(),
@@ -71,7 +123,9 @@ class PurchaseDraft {
         invoiceNumber: null,
         paymentDays: null,
         headerDiscountPercent: null,
+        commissionMode: kPurchaseCommissionModePercent,
         commissionPercent: null,
+        commissionMoney: null,
         deliveredRate: null,
         billtyRate: null,
         freightAmount: null,
@@ -95,8 +149,11 @@ class PurchaseDraft {
     bool clearPaymentDays = false,
     double? headerDiscountPercent,
     bool clearHeaderDiscount = false,
+    String? commissionMode,
     double? commissionPercent,
     bool clearCommission = false,
+    double? commissionMoney,
+    bool clearCommissionMoney = false,
     double? deliveredRate,
     bool clearDelivered = false,
     double? billtyRate,
@@ -120,8 +177,14 @@ class PurchaseDraft {
       headerDiscountPercent: clearHeaderDiscount
           ? null
           : (headerDiscountPercent ?? this.headerDiscountPercent),
+      commissionMode: clearCommission
+          ? kPurchaseCommissionModePercent
+          : (commissionMode ?? this.commissionMode),
       commissionPercent:
           clearCommission ? null : (commissionPercent ?? this.commissionPercent),
+      commissionMoney: clearCommission || clearCommissionMoney
+          ? null
+          : (commissionMoney ?? this.commissionMoney),
       deliveredRate: clearDelivered ? null : (deliveredRate ?? this.deliveredRate),
       billtyRate: clearBillty ? null : (billtyRate ?? this.billtyRate),
       freightAmount: clearFreight ? null : (freightAmount ?? this.freightAmount),

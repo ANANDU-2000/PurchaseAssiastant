@@ -7,6 +7,7 @@ import 'package:pdf/widgets.dart' as pw;
 import '../calc_engine.dart';
 import '../models/business_profile.dart';
 import '../models/trade_purchase_models.dart';
+import '../utils/trade_purchase_commission.dart';
 import 'purchase_invoice_amount_words.dart';
 import 'pdf_text_safe.dart';
 
@@ -36,11 +37,30 @@ TradeCalcLine _purchaseLineToCalc(TradePurchaseLine l) {
   );
 }
 
+TradeCommissionLine _purchaseLineToCommissionBasis(TradePurchaseLine l) {
+  return TradeCommissionLine(
+    itemName: l.itemName,
+    unit: l.unit,
+    qty: l.qty,
+    kgPerUnit: l.kgPerUnit,
+    catalogDefaultUnit: l.defaultPurchaseUnit ?? l.defaultUnit,
+    catalogDefaultKgPerBag: l.defaultKgPerBag,
+    boxMode: l.boxMode,
+    itemsPerBox: l.itemsPerBox,
+    weightPerItem: l.weightPerItem,
+    kgPerBox: l.kgPerBox,
+    weightPerTin: l.weightPerTin,
+  );
+}
+
 TradeCalcRequest _purchaseToCalcRequest(TradePurchase p) {
   return TradeCalcRequest(
     lines: [for (final l in p.lines) _purchaseLineToCalc(l)],
     headerDiscountPercent: p.discount,
     commissionPercent: p.commissionPercent,
+    commissionMode: p.commissionMode,
+    commissionMoney: p.commissionMoney,
+    commissionBasisLines: [for (final l in p.lines) _purchaseLineToCommissionBasis(l)],
     freightAmount: p.freightAmount,
     freightType: p.freightType ?? 'separate',
     billtyRate: p.billtyRate,
@@ -166,8 +186,26 @@ pw.Widget _invoiceHeader({
   );
 }
 
+String? _brokerCommissionBrokerBlockLine(TradePurchase p) {
+  if (tradePurchaseCommissionInr(p) <= 1e-9) return null;
+  final mode = p.commissionMode.trim().toLowerCase();
+  if (mode == 'percent' && p.commissionPercent != null) {
+    final c = p.commissionPercent!;
+    return 'Commission: ${c == c.roundToDouble() ? c.round().toString() : c.toStringAsFixed(1)}%';
+  }
+  final cm = p.commissionMoney;
+  if (cm == null) return 'Commission: (see totals)';
+  return switch (mode) {
+    'flat_invoice' => 'Commission: ${_rsPdf(cm)} (once on bill)',
+    'flat_kg' => 'Commission: ${_rsPdf(cm)} / kg',
+    'flat_bag' => 'Commission: ${_rsPdf(cm)} / bag',
+    'flat_tin' => 'Commission: ${_rsPdf(cm)} / tin',
+    _ => 'Commission: (see totals)',
+  };
+}
+
 pw.Widget _supplierBrokerBlock(TradePurchase p) {
-  final c = p.commissionPercent;
+  final commLine = _brokerCommissionBrokerBlockLine(p);
   return pw.Table(
     border: pw.TableBorder.all(color: _border, width: 0.5),
     columnWidths: {
@@ -212,8 +250,8 @@ pw.Widget _supplierBrokerBlock(TradePurchase p) {
                         fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
                 pw.Text('Phone: ${_empty(p.brokerPhone)}',
                     style: const pw.TextStyle(fontSize: 8, color: PdfColors.black)),
-                if (c != null && c > 0)
-                  pw.Text('Commission: ${c == c.roundToDouble() ? c.round().toString() : c.toStringAsFixed(1)}%',
+                if (commLine != null)
+                  pw.Text(commLine,
                       style: const pw.TextStyle(fontSize: 8, color: PdfColors.black)),
                 if (p.brokerLocation != null && p.brokerLocation!.trim().isNotEmpty)
                   pw.Text(p.brokerLocation!,
@@ -301,6 +339,20 @@ pw.Widget _lineItemsTable(TradePurchase p) {
   );
 }
 
+String _brokerCommissionPdfLabel(TradePurchase p) {
+  final mode = p.commissionMode.trim().toLowerCase();
+  if (mode == 'percent' && p.commissionPercent != null) {
+    return 'Broker commission (${_num0.format(p.commissionPercent!)}%)';
+  }
+  return switch (mode) {
+    'flat_invoice' => 'Broker commission (fixed, bill)',
+    'flat_kg' => 'Broker commission (per kg × total kg)',
+    'flat_bag' => 'Broker commission (per bag/sack × qty)',
+    'flat_tin' => 'Broker commission (per tin × qty)',
+    _ => 'Broker commission',
+  };
+}
+
 class _SummaryNumbers {
   _SummaryNumbers({
     required this.sumLineMoney,
@@ -339,9 +391,7 @@ _SummaryNumbers _computeSummaryBreakdown(TradePurchase p) {
   final headerDiscountAmount = sumLineMoney - afterHeader;
   var freight = p.freightAmount ?? 0.0;
   if (p.freightType == 'included') freight = 0.0;
-  final commP = p.commissionPercent ?? 0.0;
-  final c = commP > 100 ? 100.0 : commP;
-  final commission = commP > 0 ? afterHeader * c / 100.0 : 0.0;
+  final commission = tradePurchaseCommissionInr(p);
   final bill = p.billtyRate ?? 0.0;
   final del = p.deliveredRate ?? 0.0;
   final computed = afterHeader + freight + commission + bill + del;
@@ -407,9 +457,7 @@ pw.Widget _summaryBlock(TradePurchase p, _SummaryNumbers s, {required bool total
       row('Subtotal after header discount', _rsPdf(s.afterHeader)),
       if (s.freight > 0) row('Freight', _rsPdf(s.freight)),
       if (s.commission > 0)
-        row(
-            'Broker commission${p.commissionPercent != null ? " (${_num0.format(p.commissionPercent!)}%)" : ""}',
-            _rsPdf(s.commission)),
+        row(_brokerCommissionPdfLabel(p), _rsPdf(s.commission)),
       if (del > 0) row('Delivered / other', _rsPdf(del)),
       if (bill > 0) row('Billty / charges', _rsPdf(bill)),
       pw.SizedBox(height: 4),

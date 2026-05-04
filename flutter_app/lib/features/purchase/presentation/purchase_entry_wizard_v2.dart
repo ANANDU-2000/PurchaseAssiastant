@@ -225,9 +225,15 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     _headerDiscCtrl.text = d.headerDiscountPercent != null
         ? d.headerDiscountPercent!.toStringAsFixed(2)
         : '';
-    _commissionCtrl.text = d.commissionPercent != null
-        ? d.commissionPercent!.toStringAsFixed(2)
-        : '';
+    if (d.commissionMode == kPurchaseCommissionModePercent) {
+      _commissionCtrl.text = d.commissionPercent != null
+          ? d.commissionPercent!.toStringAsFixed(2)
+          : '';
+    } else {
+      _commissionCtrl.text = d.commissionMoney != null
+          ? d.commissionMoney!.toStringAsFixed(4)
+          : '';
+    }
     _deliveredRateCtrl.text =
         d.deliveredRate != null ? d.deliveredRate!.toStringAsFixed(2) : '';
     _billtyRateCtrl.text =
@@ -1394,6 +1400,11 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         });
         return;
       }
+      final termsErr = ref.read(purchaseTermsStepValidationProvider);
+      if (termsErr != null) {
+        setState(() => _inlineSaveError = termsErr);
+        return;
+      }
       setState(() => _wizStep = 2);
       return;
     }
@@ -1465,24 +1476,20 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
           );
         break;
       case 1:
-        step = SingleChildScrollView(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: PurchaseTermsOnlyStep(
-            paymentDaysCtrl: _paymentDaysCtrl,
-            deliveredRateCtrl: _deliveredRateCtrl,
-            billtyRateCtrl: _billtyRateCtrl,
-            freightCtrl: _freightCtrl,
-            commissionCtrl: _commissionCtrl,
-            headerDiscCtrl: _headerDiscCtrl,
-            memoCtrl: _invoiceCtrl,
-            freightType: _freightType,
-            onFreightTypeChanged: (v) {
-              setState(() => _freightType = v);
-              ref.read(purchaseDraftProvider.notifier).setFreightType(v);
-              _onDraftChanged();
-            },
-            onDraftChanged: _onDraftChanged,
-          ),
+        step = PurchaseTermsOnlyStep(
+          paymentDaysCtrl: _paymentDaysCtrl,
+          deliveredRateCtrl: _deliveredRateCtrl,
+          billtyRateCtrl: _billtyRateCtrl,
+          freightCtrl: _freightCtrl,
+          commissionCtrl: _commissionCtrl,
+          headerDiscCtrl: _headerDiscCtrl,
+          freightType: _freightType,
+          onFreightTypeChanged: (v) {
+            setState(() => _freightType = v);
+            ref.read(purchaseDraftProvider.notifier).setFreightType(v);
+            _onDraftChanged();
+          },
+          onDraftChanged: _onDraftChanged,
         );
         break;
       case 2:
@@ -1804,7 +1811,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
                   ),
                 ),
               Expanded(
-                child: _wizStep == 0
+                child: (_wizStep == 0 || _wizStep == 1)
                     ? Padding(
                         padding: EdgeInsets.fromLTRB(
                           16,

@@ -124,14 +124,34 @@ class PurchaseReviewTallyStep extends ConsumerWidget {
 
     Widget termsSnapshot() {
       final pd = draft.paymentDays;
+      final cm = draft.commissionMode;
       final cp = draft.commissionPercent;
+      final cMoney = draft.commissionMoney;
       final fr = draft.freightAmount;
       final hd = draft.headerDiscountPercent;
       final dr = draft.deliveredRate;
       final br = draft.billtyRate;
+      String? commissionLine() {
+        if (cm == kPurchaseCommissionModePercent) {
+          if (cp == null || cp <= 1e-9) return null;
+          return 'Commission: ${cp.toStringAsFixed(2)}%';
+        }
+        if (cMoney == null || cMoney <= 1e-9) return null;
+        return switch (cm) {
+          kPurchaseCommissionModeFlatInvoice =>
+            'Commission: ₹${cMoney.toStringAsFixed(2)} (once on bill)',
+          kPurchaseCommissionModeFlatKg =>
+            'Commission: ₹${cMoney.toStringAsFixed(2)} / kg × line kg',
+          kPurchaseCommissionModeFlatBag =>
+            'Commission: ₹${cMoney.toStringAsFixed(2)} / bag × line bags',
+          kPurchaseCommissionModeFlatTin =>
+            'Commission: ₹${cMoney.toStringAsFixed(2)} / tin × line tins',
+          _ => null,
+        };
+      }
       final lines = <String>[
         if (pd != null) 'Payment: $pd days',
-        if (cp != null && cp > 1e-9) 'Commission: ${cp.toStringAsFixed(2)}%',
+        if (commissionLine() != null) commissionLine()!,
         if (draft.freightType == 'included')
           'Freight: included in rate'
         else if (fr != null && fr > 1e-9)

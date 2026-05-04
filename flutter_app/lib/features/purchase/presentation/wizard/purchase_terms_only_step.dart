@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../domain/purchase_draft.dart';
 import '../../state/purchase_draft_provider.dart';
 import 'purchase_wizard_shared.dart';
 
@@ -15,7 +16,6 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
     required this.freightCtrl,
     required this.commissionCtrl,
     required this.headerDiscCtrl,
-    required this.memoCtrl,
     required this.freightType,
     required this.onFreightTypeChanged,
     required this.onDraftChanged,
@@ -27,7 +27,6 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
   final TextEditingController freightCtrl;
   final TextEditingController commissionCtrl;
   final TextEditingController headerDiscCtrl;
-  final TextEditingController memoCtrl;
   final String freightType;
   final ValueChanged<String> onFreightTypeChanged;
   final VoidCallback onDraftChanged;
@@ -38,6 +37,21 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
     final d0 = ref.read(purchaseDraftProvider).purchaseDate ?? DateTime.now();
     final d = d0.add(Duration(days: pd));
     return 'Due: ${DateFormat('dd MMM yyyy').format(d)}';
+  }
+
+  static String _commissionValueLabel(String mode) {
+    switch (mode) {
+      case kPurchaseCommissionModeFlatInvoice:
+        return 'Broker commission (₹, once)';
+      case kPurchaseCommissionModeFlatKg:
+        return 'Broker commission (₹ / kg)';
+      case kPurchaseCommissionModeFlatBag:
+        return 'Broker commission (₹ / bag)';
+      case kPurchaseCommissionModeFlatTin:
+        return 'Broker commission (₹ / tin)';
+      default:
+        return 'Broker commission %';
+    }
   }
 
   @override
@@ -54,6 +68,7 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
     final hasBroker =
         draft.brokerId != null && draft.brokerId!.trim().isNotEmpty;
     final sub = Theme.of(context).colorScheme.onSurfaceVariant;
+    final mode = draft.commissionMode;
 
     Widget field(
       TextEditingController c,
@@ -74,11 +89,11 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
         onChanged: onChanged,
       );
       return Padding(
-        padding: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.only(bottom: 8),
         child: maxLines > 1
             ? tf
             : SizedBox(
-                height: kPurchaseFieldHeight + 18,
+                height: kPurchaseFieldHeight + 14,
                 child: tf,
               ),
       );
@@ -90,9 +105,9 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
       children: [
         if (draft.supplierName != null && draft.supplierName!.trim().isNotEmpty)
           Padding(
-            padding: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.only(bottom: 8),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
                 color: const Color(0xFF0D9488).withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(8),
@@ -134,7 +149,7 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
             final t = paymentDaysCtrl.text.trim();
             if (t.isEmpty) return const SizedBox.shrink();
             return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.only(bottom: 8),
               child: Text(
                 _duePreview(ref, paymentDaysCtrl),
                 style: const TextStyle(
@@ -147,9 +162,48 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
           },
         ),
         if (hasBroker) ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: InputDecorator(
+              decoration: densePurchaseFieldDecoration('Broker commission'),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: mode,
+                  isExpanded: true,
+                  items: const [
+                    DropdownMenuItem(
+                      value: kPurchaseCommissionModePercent,
+                      child: Text('% of bill (after line disc., before freight)'),
+                    ),
+                    DropdownMenuItem(
+                      value: kPurchaseCommissionModeFlatInvoice,
+                      child: Text('Fixed ₹ — once on bill'),
+                    ),
+                    DropdownMenuItem(
+                      value: kPurchaseCommissionModeFlatKg,
+                      child: Text('Fixed ₹ — per kg (total kg on lines)'),
+                    ),
+                    DropdownMenuItem(
+                      value: kPurchaseCommissionModeFlatBag,
+                      child: Text('Fixed ₹ — per bag / sack (line qty)'),
+                    ),
+                    DropdownMenuItem(
+                      value: kPurchaseCommissionModeFlatTin,
+                      child: Text('Fixed ₹ — per tin (line qty)'),
+                    ),
+                  ],
+                  onChanged: (v) {
+                    if (v == null) return;
+                    ref.read(purchaseDraftProvider.notifier).setCommissionMode(v);
+                    onDraftChanged();
+                  },
+                ),
+              ),
+            ),
+          ),
           field(
             commissionCtrl,
-            'Broker commission %',
+            _commissionValueLabel(mode),
             keyboard: const TextInputType.numberWithOptions(decimal: true),
             onChanged: (s) {
               ref.read(purchaseDraftProvider.notifier).setCommissionText(s);
@@ -185,7 +239,7 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
           },
         ),
         Padding(
-          padding: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.only(bottom: 8),
           child: InputDecorator(
             decoration: densePurchaseFieldDecoration('Freight type'),
             child: DropdownButtonHideUnderline(
@@ -213,18 +267,9 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
             onDraftChanged();
           },
         ),
-        field(
-          memoCtrl,
-          'Memo / invoice ref',
-          maxLines: 2,
-          onChanged: (s) {
-            ref.read(purchaseDraftProvider.notifier).setInvoiceText(s);
-            onDraftChanged();
-          },
-        ),
         Text(
           'Freight, delivered, billty, and purchase discount apply once to this bill — not per line.',
-          style: TextStyle(fontSize: 11, height: 1.3, color: sub),
+          style: TextStyle(fontSize: 11, height: 1.25, color: sub),
         ),
       ],
     );

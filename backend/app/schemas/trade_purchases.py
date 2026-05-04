@@ -37,6 +37,7 @@ _HEADER_NUMERIC_INPUTS = {
     "discount",
     "header_discount",
     "commission_percent",
+    "commission_money",
     "delivered_rate",
     "billty_rate",
     "freight_amount",
@@ -179,6 +180,11 @@ class TradePurchaseCreateRequest(DecimalModel):
     payment_days: int | None = Field(None, ge=0, le=3650)
     discount: Decimal | None = Field(None, ge=0)
     commission_percent: Decimal | None = Field(None, ge=0)
+    commission_mode: str = Field(
+        default="percent",
+        pattern="^(percent|flat_invoice|flat_kg|flat_bag|flat_tin)$",
+    )
+    commission_money: Decimal | None = Field(None, ge=0)
     delivered_rate: Decimal | None = Field(None, ge=0)
     billty_rate: Decimal | None = Field(None, ge=0)
     freight_amount: Decimal | None = Field(None, ge=0)
@@ -201,9 +207,20 @@ class TradePurchaseCreateRequest(DecimalModel):
     @model_validator(mode="after")
     def _normalize_decimal_precision(self) -> "TradePurchaseCreateRequest":
         self.discount = dp.percent(self.discount) if self.discount is not None else None
-        self.commission_percent = (
-            dp.percent(self.commission_percent) if self.commission_percent is not None else None
-        )
+        mode = self.commission_mode.strip().lower()
+        if mode not in ("percent", "flat_invoice", "flat_kg", "flat_bag", "flat_tin"):
+            mode = "percent"
+        self.commission_mode = mode
+        if mode == "percent":
+            self.commission_money = None
+            self.commission_percent = (
+                dp.percent(self.commission_percent) if self.commission_percent is not None else None
+            )
+        else:
+            self.commission_percent = None
+            self.commission_money = (
+                dp.money(self.commission_money) if self.commission_money is not None else None
+            )
         self.delivered_rate = dp.money(self.delivered_rate) if self.delivered_rate is not None else None
         self.billty_rate = dp.money(self.billty_rate) if self.billty_rate is not None else None
         self.freight_amount = dp.money(self.freight_amount) if self.freight_amount is not None else None
@@ -264,6 +281,8 @@ class TradePurchaseOut(DecimalModel):
     paid_at: datetime | None = None
     discount: Decimal | None
     commission_percent: Decimal | None
+    commission_mode: str = "percent"
+    commission_money: Decimal | None = None
     delivered_rate: Decimal | None
     billty_rate: Decimal | None
     freight_amount: Decimal | None

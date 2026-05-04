@@ -31,6 +31,7 @@ def apply_sqlite_bootstrap(sync_conn) -> None:
     _ensure_catalog_item_trade_columns(sync_conn)
     _ensure_trade_purchases_freight_type(sync_conn)
     _ensure_trade_purchases_lifecycle_columns(sync_conn)
+    _ensure_trade_purchases_commission_mode_columns(sync_conn)
     _ensure_trade_purchase_line_columns(sync_conn)
     logger.info("SQLite bootstrap: create_all + legacy column patches complete")
 
@@ -345,6 +346,28 @@ def _ensure_trade_purchases_lifecycle_columns(sync_conn):
     for sql in alters:
         try:
             sync_conn.exec_driver_sql(sql)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _ensure_trade_purchases_commission_mode_columns(sync_conn):
+    insp = inspect(sync_conn)
+    if not insp.has_table("trade_purchases"):
+        return
+    cols = {c["name"] for c in insp.get_columns("trade_purchases")}
+    if "commission_mode" not in cols:
+        try:
+            sync_conn.exec_driver_sql(
+                "ALTER TABLE trade_purchases ADD COLUMN commission_mode VARCHAR(24) NULL"
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        cols = {c["name"] for c in insp.get_columns("trade_purchases")}
+    if "commission_money" not in cols:
+        try:
+            sync_conn.exec_driver_sql(
+                "ALTER TABLE trade_purchases ADD COLUMN commission_money NUMERIC(14,4) NULL"
+            )
         except Exception:  # noqa: BLE001
             pass
 

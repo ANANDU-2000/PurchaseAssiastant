@@ -60,11 +60,30 @@ TradeCalcLine _lineToCalc(PurchaseLineDraft l) {
   );
 }
 
+TradeCommissionLine _draftLineToCommissionBasis(PurchaseLineDraft l) {
+  return TradeCommissionLine(
+    itemName: l.itemName,
+    unit: l.unit,
+    qty: l.qty,
+    kgPerUnit: l.kgPerUnit,
+    catalogDefaultUnit: null,
+    catalogDefaultKgPerBag: null,
+    boxMode: l.boxMode,
+    itemsPerBox: l.itemsPerBox,
+    weightPerItem: l.weightPerItem,
+    kgPerBox: l.kgPerBox,
+    weightPerTin: l.weightPerTin,
+  );
+}
+
 /// Maps draft lines to [computeTradeTotals] request (unchanged from legacy `\_computeTotals`).
 TradeCalcRequest draftToCalcRequest(PurchaseDraft d) {
   return TradeCalcRequest(
     headerDiscountPercent: d.headerDiscountPercent,
     commissionPercent: d.commissionPercent,
+    commissionMode: d.commissionMode,
+    commissionMoney: d.commissionMoney,
+    commissionBasisLines: [for (final l in d.lines) _draftLineToCommissionBasis(l)],
     freightAmount: d.freightAmount,
     freightType: d.freightType,
     billtyRate: d.billtyRate,
@@ -106,9 +125,17 @@ PurchaseStrictBreakdown strictFooterBreakdown(PurchaseDraft d) {
   final discountTotal = lineDiscountTotal + headerDiscountAmt;
   var freight = d.freightAmount ?? 0.0;
   if (d.freightType == 'included') freight = 0.0;
-  final comm = d.commissionPercent ?? 0.0;
-  final c = comm > 100 ? 100.0 : comm;
-  final commission = comm > 0 ? afterHeader * c / 100.0 : 0.0;
+  final commission = headerCommissionAddOnDecimal(
+    commissionMode: d.commissionMode,
+    afterHeader: StrictDecimal.fromObject(afterHeader),
+    commissionPercent: d.commissionPercent != null
+        ? StrictDecimal.fromObject(d.commissionPercent!)
+        : null,
+    commissionMoney: d.commissionMoney != null
+        ? StrictDecimal.fromObject(d.commissionMoney!)
+        : null,
+    basisLines: [for (final l in d.lines) _draftLineToCommissionBasis(l)],
+  ).toDouble();
   final totals = computePurchaseTotals(d);
   return PurchaseStrictBreakdown(
     subtotalGross: subtotalGross,
@@ -228,6 +255,26 @@ final purchaseSaveValidationProvider = Provider<PurchaseSaveValidation>((ref) {
     );
   }
   return const PurchaseSaveValidation();
+});
+
+/// Blocking message when Terms → Items advance should stop (broker commission input).
+final purchaseTermsStepValidationProvider = Provider<String?>((ref) {
+  final d = ref.watch(purchaseDraftProvider);
+  if (d.supplierId == null || d.supplierId!.isEmpty) return null;
+  final hasBroker = d.brokerId != null && d.brokerId!.trim().isNotEmpty;
+  if (!hasBroker) return null;
+  if (d.commissionMode == kPurchaseCommissionModePercent) {
+    final p = d.commissionPercent;
+    if (p != null && p > 100) {
+      return 'Broker commission % cannot exceed 100.';
+    }
+  } else {
+    final m = d.commissionMoney;
+    if (m != null && m < 0) {
+      return 'Broker commission amount cannot be negative.';
+    }
+  }
+  return null;
 });
 
 class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
@@ -397,11 +444,17 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
     double? bill = _decimalFromObject(raw['default_billty_rate']);
     if (bill != null && bill < 0) bill = null;
 
-    double? comm;
+    String commMode = kPurchaseCommissionModePercent;
+    double? commPct;
+    double? commMoney;
     final ct = raw['commission_type']?.toString() ?? 'percent';
     if (ct == 'percent') {
-      comm = _decimalFromObject(raw['commission_value']);
-      if (comm != null && comm < 0) comm = null;
+      commPct = _decimalFromObject(raw['commission_value']);
+      if (commPct != null && commPct < 0) commPct = null;
+    } else {
+      commMode = kPurchaseCommissionModeFlatInvoice;
+      commMoney = _decimalFromObject(raw['commission_value']);
+      if (commMoney != null && commMoney < 0) commMoney = null;
     }
 
     var ft = state.freightType;
@@ -413,13 +466,15 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
       paymentDays: pay,
       clearHeaderDiscount: disc == null,
       headerDiscountPercent: disc,
-      clearCommission: comm == null,
-      commissionPercent: comm,
       clearDelivered: del == null,
       deliveredRate: del,
       clearBillty: bill == null,
       billtyRate: bill,
       freightType: ft,
+    ).withCommissionHeader(
+      mode: commMode,
+      percent: commPct,
+      money: commMoney,
     );
   }
 
@@ -467,10 +522,35 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
   void setCommissionText(String t) {
     final v = t.trim();
     if (v.isEmpty) {
-      state = state.copyWith(clearCommission: true);
+      if (state.commissionMode == kPurchaseCommissionModePercent) {
+        state = state.copyWith(clearCommission: true);
+      } else {
+        state = state.copyWith(clearCommissionMoney: true);
+      }
       return;
     }
-    state = state.copyWith(commissionPercent: _parseDecimalInput(v));
+    final parsed = _parseDecimalInput(v);
+    state = state.withCommissionHeader(
+      mode: state.commissionMode,
+      percent: state.commissionMode == kPurchaseCommissionModePercent
+          ? parsed
+          : state.commissionPercent,
+      money: state.commissionMode != kPurchaseCommissionModePercent
+          ? parsed
+          : state.commissionMoney,
+    );
+  }
+
+  void setCommissionMode(String rawMode) {
+    final m = PurchaseDraft.normalizeCommissionMode(rawMode);
+    if (m == state.commissionMode) return;
+    state = state.withCommissionHeader(
+      mode: m,
+      percent: m == kPurchaseCommissionModePercent
+          ? state.commissionPercent
+          : null,
+      money: m != kPurchaseCommissionModePercent ? state.commissionMoney : null,
+    );
   }
 
   void addOrReplaceLine(PurchaseLineDraft line, {int? editIndex}) {
@@ -524,8 +604,18 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
     if (pd != null && pd >= 0) body['payment_days'] = pd;
     final hd = d.headerDiscountPercent;
     if (hd != null && hd > 0) body['discount'] = _fixed(hd, 2);
-    final comm = d.commissionPercent;
-    if (comm != null && comm > 0) body['commission_percent'] = _fixed(comm, 2);
+    body['commission_mode'] = d.commissionMode;
+    if (d.commissionMode == kPurchaseCommissionModePercent) {
+      final comm = d.commissionPercent;
+      if (comm != null && comm > 0) {
+        body['commission_percent'] = _fixed(comm, 2);
+      }
+    } else {
+      final cm = d.commissionMoney;
+      if (cm != null && cm > 0) {
+        body['commission_money'] = _fixed(cm, 4);
+      }
+    }
     final dlr = d.deliveredRate;
     if (dlr != null && dlr >= 0) body['delivered_rate'] = _fixed(dlr, 2);
     final brt = d.billtyRate;
@@ -550,6 +640,8 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
         if (e is Map) lines.add(Map<String, dynamic>.from(e));
       }
     }
+    final cmRaw = m['commissionMode']?.toString();
+    final commMode = PurchaseDraft.normalizeCommissionMode(cmRaw);
     state = PurchaseDraft(
       supplierId: m['supplierId']?.toString(),
       supplierName: m['supplierName']?.toString(),
@@ -560,7 +652,13 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
       invoiceNumber: m['invoice']?.toString(),
       paymentDays: int.tryParse(m['paymentDays']?.toString() ?? ''),
       headerDiscountPercent: _parseDecimalInput(m['headerDisc']?.toString() ?? ''),
-      commissionPercent: _parseDecimalInput(m['commission']?.toString() ?? ''),
+      commissionMode: commMode,
+      commissionPercent: commMode == kPurchaseCommissionModePercent
+          ? _parseDecimalInput(m['commission']?.toString() ?? '')
+          : null,
+      commissionMoney: commMode != kPurchaseCommissionModePercent
+          ? _parseDecimalInput(m['commission']?.toString() ?? '')
+          : null,
       deliveredRate: _parseDecimalInput(m['delivered']?.toString() ?? ''),
       billtyRate: _parseDecimalInput(m['billty']?.toString() ?? ''),
       freightAmount: _parseDecimalInput(m['freight']?.toString() ?? ''),
@@ -581,7 +679,10 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
       'invoice': d.invoiceNumber,
       'paymentDays': d.paymentDays?.toString() ?? '',
       'headerDisc': d.headerDiscountPercent?.toString() ?? '',
-      'commission': d.commissionPercent?.toString() ?? '',
+      'commissionMode': d.commissionMode,
+      'commission': d.commissionMode == kPurchaseCommissionModePercent
+          ? (d.commissionPercent?.toString() ?? '')
+          : (d.commissionMoney?.toString() ?? ''),
       'delivered': d.deliveredRate?.toString() ?? '',
       'billty': d.billtyRate?.toString() ?? '',
       'freight': d.freightAmount?.toString() ?? '',
@@ -643,6 +744,10 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
       }
     }
 
+    final apiMode =
+        PurchaseDraft.normalizeCommissionMode(raw['commission_mode']?.toString());
+    final pct = _decimalFromObject(raw['commission_percent']);
+    final money = _decimalFromObject(raw['commission_money']);
     return PurchaseDraft(
       supplierId: raw['supplier_id']?.toString(),
       supplierName: raw['supplier_name']?.toString(),
@@ -653,7 +758,9 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
       invoiceNumber: raw['invoice_number']?.toString(),
       paymentDays: pay,
       headerDiscountPercent: _decimalFromObject(raw['discount']),
-      commissionPercent: _decimalFromObject(raw['commission_percent']),
+      commissionMode: apiMode,
+      commissionPercent: apiMode == kPurchaseCommissionModePercent ? pct : null,
+      commissionMoney: apiMode != kPurchaseCommissionModePercent ? money : null,
       deliveredRate: _decimalFromObject(raw['delivered_rate']),
       billtyRate: _decimalFromObject(raw['billty_rate']),
       freightAmount: _decimalFromObject(raw['freight_amount']),

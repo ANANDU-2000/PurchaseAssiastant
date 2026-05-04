@@ -51,6 +51,8 @@ class TradePurchase(Base):
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     discount: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     commission_percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    commission_mode: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    commission_money: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     delivered_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     billty_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     freight_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)

@@ -27,11 +27,43 @@ class TradeCalcLine {
   final double? taxPercent;
 }
 
+/// Line snapshot for per-kg / per-bag / per-tin broker commission (header).
+class TradeCommissionLine {
+  const TradeCommissionLine({
+    required this.itemName,
+    required this.unit,
+    required this.qty,
+    this.kgPerUnit,
+    this.catalogDefaultUnit,
+    this.catalogDefaultKgPerBag,
+    this.boxMode,
+    this.itemsPerBox,
+    this.weightPerItem,
+    this.kgPerBox,
+    this.weightPerTin,
+  });
+
+  final String itemName;
+  final String unit;
+  final double qty;
+  final double? kgPerUnit;
+  final String? catalogDefaultUnit;
+  final double? catalogDefaultKgPerBag;
+  final String? boxMode;
+  final double? itemsPerBox;
+  final double? weightPerItem;
+  final double? kgPerBox;
+  final double? weightPerTin;
+}
+
 class TradeCalcRequest {
   const TradeCalcRequest({
     required this.lines,
     this.headerDiscountPercent,
     this.commissionPercent,
+    this.commissionMode = 'percent',
+    this.commissionMoney,
+    this.commissionBasisLines = const [],
     this.freightAmount,
     this.freightType,
     this.billtyRate,
@@ -41,6 +73,11 @@ class TradeCalcRequest {
   final List<TradeCalcLine> lines;
   final double? headerDiscountPercent;
   final double? commissionPercent;
+  /// `percent` | `flat_invoice` | `flat_kg` | `flat_bag` | `flat_tin` (API `commission_mode`).
+  final String commissionMode;
+  /// Rupee rate or one-shot amount depending on [commissionMode].
+  final double? commissionMoney;
+  final List<TradeCommissionLine> commissionBasisLines;
   final double? freightAmount;
   /// `separate` adds freight; `included` ignores [freightAmount] for totals.
   final String? freightType;
@@ -211,6 +248,72 @@ StrictDecimal lineTaxAmountDecimal(TradeCalcLine li) =>
 
 double lineTaxAmount(TradeCalcLine li) => lineTaxAmountDecimal(li).toDouble();
 
+/// Broker commission rupees added to the bill total (matches backend `_header_commission_rupees`).
+StrictDecimal headerCommissionAddOnDecimal({
+  required String commissionMode,
+  required StrictDecimal afterHeader,
+  required StrictDecimal? commissionPercent,
+  required StrictDecimal? commissionMoney,
+  required List<TradeCommissionLine> basisLines,
+}) {
+  final mode = commissionMode.trim().toLowerCase();
+  if (mode.isEmpty || mode == 'percent') {
+    final c = commissionPercent != null
+        ? commissionPercent.clamp(max: _hundred)
+        : StrictDecimal.zero();
+    if (!c.isPositive) return StrictDecimal.zero();
+    return afterHeader.percentOf(c);
+  }
+  final rate = commissionMoney ?? StrictDecimal.zero();
+  if (!rate.isPositive) return StrictDecimal.zero();
+  switch (mode) {
+    case 'flat_invoice':
+      return rate.toScale(2);
+    case 'flat_kg':
+      var kg = StrictDecimal.zero();
+      for (final l in basisLines) {
+        final w = ledgerTradeLineWeightKg(
+          itemName: l.itemName,
+          unit: l.unit,
+          qty: l.qty,
+          catalogDefaultUnit: l.catalogDefaultUnit,
+          catalogDefaultKgPerBag: l.catalogDefaultKgPerBag,
+          kgPerUnit: l.kgPerUnit,
+          boxMode: l.boxMode,
+          itemsPerBox: l.itemsPerBox,
+          weightPerItem: l.weightPerItem,
+          kgPerBox: l.kgPerBox,
+          weightPerTin: l.weightPerTin,
+        );
+        kg += StrictDecimal.fromObject(w);
+      }
+      if (!kg.isPositive) return StrictDecimal.zero();
+      return (rate * kg).toScale(2);
+    case 'flat_bag':
+      var bags = StrictDecimal.zero();
+      for (final l in basisLines) {
+        final u = l.unit.trim().toLowerCase();
+        if (u == 'bag' || u == 'sack') {
+          bags += _dec(l.qty);
+        }
+      }
+      if (!bags.isPositive) return StrictDecimal.zero();
+      return (rate * bags).toScale(2);
+    case 'flat_tin':
+      var tins = StrictDecimal.zero();
+      for (final l in basisLines) {
+        final u = l.unit.trim().toLowerCase();
+        if (u == 'tin') {
+          tins += _dec(l.qty);
+        }
+      }
+      if (!tins.isPositive) return StrictDecimal.zero();
+      return (rate * tins).toScale(2);
+    default:
+      return StrictDecimal.zero();
+  }
+}
+
 /// Returns total quantity sum and final amount (matches backend `compute_totals`).
 TradeCalcTotals computeTradeTotals(TradeCalcRequest req) {
   var qtySum = StrictDecimal.zero();
@@ -236,11 +339,15 @@ TradeCalcTotals computeTradeTotals(TradeCalcRequest req) {
   }
   amtSum += freight;
 
-  final comm =
-      req.commissionPercent != null ? _dec(req.commissionPercent).clamp(max: _hundred) : StrictDecimal.zero();
-  if (comm.isPositive) {
-    amtSum += afterHeader.percentOf(comm);
-  }
+  amtSum += headerCommissionAddOnDecimal(
+    commissionMode: req.commissionMode,
+    afterHeader: afterHeader,
+    commissionPercent:
+        req.commissionPercent != null ? _dec(req.commissionPercent) : null,
+    commissionMoney:
+        req.commissionMoney != null ? _dec(req.commissionMoney) : null,
+    basisLines: req.commissionBasisLines,
+  );
 
   final billty = req.billtyRate != null ? _dec(req.billtyRate) : StrictDecimal.zero();
   final delivered =

@@ -339,6 +339,49 @@ def _line_selling_gross_in(li: TradePurchaseLineIn) -> Decimal:
     return _dec(li.qty) * _dec(li.selling_cost)
 
 
+def _header_commission_rupees(req: TradePurchaseCreateRequest, after_header: Decimal) -> Decimal:
+    """Broker commission added to purchase total (matches Flutter `headerCommissionAddOn`)."""
+    mode = (req.commission_mode or "percent").strip().lower()
+    if mode not in ("percent", "flat_invoice", "flat_kg", "flat_bag", "flat_tin"):
+        mode = "percent"
+    if mode == "percent":
+        comm = _dec(req.commission_percent) if req.commission_percent is not None else Decimal("0")
+        if comm <= 0:
+            return Decimal("0")
+        return dp.total(after_header * dp.clamp_percent(comm) / Decimal("100"))
+    money = _dec(req.commission_money) if req.commission_money is not None else Decimal("0")
+    if money <= 0:
+        return Decimal("0")
+    if mode == "flat_invoice":
+        return dp.total(money)
+    if mode == "flat_kg":
+        total_kg = Decimal("0")
+        for li in req.lines:
+            total_kg += _line_total_weight(li)
+        if total_kg <= 0:
+            return Decimal("0")
+        return dp.total(money * total_kg)
+    if mode == "flat_bag":
+        bags = Decimal("0")
+        for li in req.lines:
+            u = (li.unit or "").strip().lower()
+            if u in ("bag", "sack"):
+                bags += _dec(li.qty)
+        if bags <= 0:
+            return Decimal("0")
+        return dp.total(money * bags)
+    if mode == "flat_tin":
+        tins = Decimal("0")
+        for li in req.lines:
+            u = (li.unit or "").strip().lower()
+            if u == "tin":
+                tins += _dec(li.qty)
+        if tins <= 0:
+            return Decimal("0")
+        return dp.total(money * tins)
+    return Decimal("0")
+
+
 def aggregate_landing_selling_profit(
     req: TradePurchaseCreateRequest,
 ) -> tuple[Decimal, Decimal | None, Decimal | None]:
@@ -367,9 +410,9 @@ def compute_totals(req: TradePurchaseCreateRequest) -> tuple[Decimal, Decimal]:
         if req.freight_type == "included":
             freight = Decimal("0")
         amt_sum += freight
-    comm = _dec(req.commission_percent) if req.commission_percent is not None else Decimal("0")
-    if comm > 0:
-        amt_sum += after_header * dp.clamp_percent(comm) / Decimal("100")
+    comm_amt = _header_commission_rupees(req, after_header)
+    if comm_amt > 0:
+        amt_sum += comm_amt
     if not has_item_level_charges:
         # Fixed-rupee header charges kept for compatibility with existing rows/clients.
         billty = _dec(req.billty_rate) if req.billty_rate is not None else Decimal("0")
@@ -726,6 +769,8 @@ async def create_trade_purchase(
         commission_percent=dp.percent(body.commission_percent)
         if body.commission_percent is not None
         else None,
+        commission_mode=body.commission_mode,
+        commission_money=dp.money(body.commission_money) if body.commission_money is not None else None,
         delivered_rate=dp.money(body.delivered_rate) if body.delivered_rate is not None else None,
         billty_rate=dp.money(body.billty_rate) if body.billty_rate is not None else None,
         freight_amount=dp.money(body.freight_amount) if body.freight_amount is not None else None,
@@ -848,6 +893,8 @@ async def update_trade_purchase(
     tp.due_date = _due_date_from(body.purchase_date, body.payment_days)
     tp.discount = dp.percent(body.discount) if body.discount is not None else None
     tp.commission_percent = dp.percent(body.commission_percent) if body.commission_percent is not None else None
+    tp.commission_mode = body.commission_mode
+    tp.commission_money = dp.money(body.commission_money) if body.commission_money is not None else None
     tp.delivered_rate = dp.money(body.delivered_rate) if body.delivered_rate is not None else None
     tp.billty_rate = dp.money(body.billty_rate) if body.billty_rate is not None else None
     tp.freight_amount = dp.money(body.freight_amount) if body.freight_amount is not None else None
@@ -1233,6 +1280,8 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
         paid_at=getattr(tp, "paid_at", None),
         discount=dp.percent(tp.discount) if tp.discount is not None else None,
         commission_percent=dp.percent(tp.commission_percent) if tp.commission_percent is not None else None,
+        commission_mode=(getattr(tp, "commission_mode", None) or "percent").strip().lower(),
+        commission_money=dp.money(tp.commission_money) if getattr(tp, "commission_money", None) is not None else None,
         delivered_rate=dp.money(tp.delivered_rate) if tp.delivered_rate is not None else None,
         billty_rate=dp.money(tp.billty_rate) if tp.billty_rate is not None else None,
         freight_amount=dp.money(tp.freight_amount) if tp.freight_amount is not None else None,

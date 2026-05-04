@@ -14,7 +14,10 @@ import '../../../core/providers/business_aggregates_invalidation.dart'
     show invalidatePurchaseWorkspace;
 import '../../../core/providers/business_profile_provider.dart';
 import '../../../core/router/navigation_ext.dart';
+import '../../../core/services/purchase_invoice_pdf_layout.dart'
+    show tradeCalcRequestFromTradePurchase;
 import '../../../core/services/purchase_pdf.dart';
+import '../../../core/utils/trade_purchase_commission.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/utils/unit_classifier.dart';
 import '../../../core/widgets/friendly_load_error.dart';
@@ -52,43 +55,6 @@ double _lineInclusive(TradePurchaseLine l) {
       discountPercent: l.discount,
     ),
   );
-}
-
-TradeCalcRequest _calcRequest(TradePurchase p) {
-  return TradeCalcRequest(
-    headerDiscountPercent: p.discount,
-    commissionPercent: p.commissionPercent,
-    freightAmount: p.freightAmount,
-    freightType: p.freightType,
-    billtyRate: p.billtyRate,
-    deliveredRate: p.deliveredRate,
-    lines: [
-      for (final l in p.lines)
-        TradeCalcLine(
-          qty: l.qty,
-          landingCost: l.landingCost,
-          kgPerUnit: l.kgPerUnit,
-          landingCostPerKg: l.landingCostPerKg,
-          taxPercent: l.taxPercent,
-          discountPercent: l.discount,
-        ),
-    ],
-  );
-}
-
-double _headerCommissionInr(TradePurchase p) {
-  final c = p.commissionPercent;
-  if (c == null || c <= 0) return 0;
-  var linesTotal = 0.0;
-  for (final l in p.lines) {
-    linesTotal += _lineInclusive(l);
-  }
-  var hd = p.discount ?? 0;
-  if (hd > 100) hd = 100;
-  final afterHeader = linesTotal * (1.0 - hd / 100.0);
-  var cp = c;
-  if (cp > 100) cp = 100;
-  return afterHeader * cp / 100.0;
 }
 
 double _lineKg(TradePurchaseLine l) {
@@ -201,7 +167,7 @@ _Agg _buildAgg(TradePurchase p) {
     profitSum = p.totalLineProfit!;
   }
 
-  final req = _calcRequest(p);
+  final req = tradeCalcRequestFromTradePurchase(p);
   final totals = computeTradeTotals(req);
   final hdr = p.discount ?? 0.0;
   final clippedHdr = hdr > 100 ? 100.0 : (hdr < 0 ? 0.0 : hdr);
@@ -221,7 +187,7 @@ _Agg _buildAgg(TradePurchase p) {
     headerDiscountPct: clippedHdr,
     freight: fr,
     freightIncluded: included,
-    commission: _headerCommissionInr(p),
+    commission: tradePurchaseCommissionInr(p),
     billty: req.billtyRate ?? 0.0,
     delivered: req.deliveredRate ?? 0.0,
     finalComputed: totals.amountSum,
