@@ -1511,6 +1511,18 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       duration: const Duration(milliseconds: 200),
       switchInCurve: Curves.easeOut,
       switchOutCurve: Curves.easeIn,
+      // Default AnimatedSwitcher centers children in free height — party fields
+      // must stay at the top so keyboard + suggestion overlay have room below.
+      layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
+        return Stack(
+          fit: StackFit.passthrough,
+          alignment: Alignment.topCenter,
+          children: <Widget>[
+            ...previousChildren,
+            if (currentChild != null) currentChild,
+          ],
+        );
+      },
       child: Padding(
         key: ValueKey<int>(_wizStep),
         padding: EdgeInsets.zero,

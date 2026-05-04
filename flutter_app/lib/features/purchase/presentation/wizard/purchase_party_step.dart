@@ -808,7 +808,7 @@ class PurchasePartyStep extends ConsumerWidget {
           const SizedBox(height: 4),
         ],
         _compactMeta(context, ref),
-        const SizedBox(height: 24),
+        const SizedBox(height: 12),
         _partyFieldsColumn(context, ref),
         if (showClearSupplier)
           Padding(
