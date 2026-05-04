@@ -45,11 +45,14 @@ String _pRateLine(PurchaseLineDraft l) {
 String _sRateLine(PurchaseLineDraft l) {
   final sp = l.sellingPrice;
   if (sp == null || sp <= 0) return '—';
+  // Wire `selling_rate` for weight-priced bags is **per physical unit** (₹/bag);
+  // per-kg display = per-bag ÷ kg per bag.
   if (l.landingCostPerKg != null &&
       l.landingCostPerKg! > 0 &&
       l.kgPerUnit != null &&
       l.kgPerUnit! > 0) {
-    return '₹${sp.toStringAsFixed(2)}/kg';
+    final perKg = sp / l.kgPerUnit!;
+    return '₹${perKg.toStringAsFixed(2)}/kg';
   }
   return '₹${sp.toStringAsFixed(2)}';
 }
@@ -102,15 +105,19 @@ class PurchaseReviewTallyStep extends ConsumerWidget {
     }
 
     final unitBits = <String>[];
+    if (qt.totalKg > 1e-6) {
+      unitBits.add('${qt.totalKg.toStringAsFixed(0)} KG');
+    }
     qt.qtyByUnit.forEach((k, v) {
       if (v > 1e-9) {
+        final lk = k.trim().toLowerCase();
+        if (lk == 'kg' || lk == 'kgs' || lk == 'kilogram') {
+          return;
+        }
         unitBits.add(
             '${StrictDecimal.fromObject(v).format(3, trim: true)} ${k.toUpperCase()}');
       }
     });
-    if (qt.totalKg > 1e-6) {
-      unitBits.insert(0, '${qt.totalKg.toStringAsFixed(0)} KG');
-    }
     final qtyLine = unitBits.isEmpty ? '—' : unitBits.join(' • ');
 
     final legacyOverrides = draft.lines.any((l) =>

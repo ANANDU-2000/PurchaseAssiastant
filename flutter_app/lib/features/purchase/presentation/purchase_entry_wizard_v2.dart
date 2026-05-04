@@ -10,6 +10,7 @@ import 'package:dio/dio.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/json_coerce.dart';
 import '../../../core/api/fastapi_error.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
@@ -906,6 +907,45 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     HapticFeedback.selectionClick();
   }
 
+  Future<void> _learnCatalogPackDefaultsIfNeeded(
+    List<Map<String, dynamic>> catalogRows,
+    PurchaseLineDraft line,
+  ) async {
+    final id = (line.catalogItemId ?? '').trim();
+    if (id.isEmpty) return;
+    final kpu = line.kgPerUnit;
+    if (kpu == null || kpu <= 0) return;
+    final u = line.unit.trim().toLowerCase();
+    if (u != 'bag' && u != 'sack') return;
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    Map<String, dynamic>? row;
+    for (final r in catalogRows) {
+      if (r['id']?.toString() == id) {
+        row = r;
+        break;
+      }
+    }
+    final raw = row == null
+        ? null
+        : (row['default_kg_per_bag'] ??
+            row['kg_per_bag'] ??
+            row['kg_per_unit']);
+    final catalogKpb = coerceToDoubleNullable(raw);
+    if (catalogKpb != null && (catalogKpb - kpu).abs() < 0.05) return;
+    try {
+      await ref.read(hexaApiProvider).updateCatalogItem(
+            businessId: session.primaryBusiness.id,
+            itemId: id,
+            patchDefaultKgPerBag: true,
+            defaultKgPerBag: kpu,
+            includeDefaultUnit: true,
+            defaultUnit: 'bag',
+          );
+      ref.invalidate(catalogItemsListProvider);
+    } catch (_) {}
+  }
+
   Future<void> _openItemSheet(
     List<Map<String, dynamic>> catalog, {
     int? editIndex,
@@ -941,87 +981,77 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       }
     }
     if (!mounted) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      barrierColor: Colors.black54,
-      builder: (ctx) {
-        final h = MediaQuery.sizeOf(ctx).height;
-        final bottomInset = MediaQuery.viewInsetsOf(ctx).bottom;
-        return Padding(
-          padding: EdgeInsets.only(bottom: bottomInset),
-          child: SizedBox(
-            height: h * 0.90,
-            child: PurchaseItemEntrySheet(
-              catalog: catalogForSheet,
-              initial: initial,
-              isEdit: editIndex != null,
-              fullPage: false,
-              omitLineFreightDeliveredBilltyDiscount: true,
-              navigateCatalogQuickAddItem: session == null || catalog.isEmpty
-                  ? null
-                  : () async {
-                      final row = catalog.first;
-                      final catId = row['category_id']?.toString();
-                      final tid = row['type_id']?.toString();
-                      if (catId == null ||
-                          tid == null ||
-                          catId.isEmpty ||
-                          tid.isEmpty) {
-                        return null;
-                      }
-                      final res = await ctx.push<Map<String, dynamic>?>(
-                        '/catalog/category/$catId/type/$tid/add-item',
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (ctx) => PurchaseItemEntrySheet(
+          catalog: catalogForSheet,
+          initial: initial,
+          isEdit: editIndex != null,
+          fullPage: true,
+          omitLineFreightDeliveredBilltyDiscount: true,
+          navigateCatalogQuickAddItem: session == null || catalog.isEmpty
+              ? null
+              : () async {
+                  final row = catalog.first;
+                  final catId = row['category_id']?.toString();
+                  final tid = row['type_id']?.toString();
+                  if (catId == null ||
+                      tid == null ||
+                      catId.isEmpty ||
+                      tid.isEmpty) {
+                    return null;
+                  }
+                  final res = await ctx.push<Map<String, dynamic>?>(
+                    '/catalog/category/$catId/type/$tid/add-item',
+                  );
+                  if (!ctx.mounted) return null;
+                  if (res != null &&
+                      (res['id']?.toString().trim().isNotEmpty ?? false)) {
+                    ref.invalidate(catalogItemsListProvider);
+                    try {
+                      await ref.read(catalogItemsListProvider.future);
+                    } catch (_) {}
+                  }
+                  return res;
+                },
+          onDefaultsResolved: session == null
+              ? null
+              : _applyHeaderDefaultsFromLastTrade,
+          resolveCatalogItem: session == null
+              ? null
+              : (String catalogItemId) =>
+                  ref.read(hexaApiProvider).getCatalogItem(
+                        businessId: session.primaryBusiness.id,
+                        itemId: catalogItemId,
+                      ),
+          resolveLastDefaults: session == null
+              ? null
+              : (String catalogItemId) {
+                  final d = ref.read(purchaseDraftProvider);
+                  return ref.read(hexaApiProvider).lastTradePurchaseDefaults(
+                        businessId: session.primaryBusiness.id,
+                        catalogItemId: catalogItemId,
+                        supplierId: d.supplierId,
+                        brokerId: d.brokerId,
                       );
-                      if (!ctx.mounted) return null;
-                      if (res != null &&
-                          (res['id']?.toString().trim().isNotEmpty ?? false)) {
-                        ref.invalidate(catalogItemsListProvider);
-                        try {
-                          await ref.read(catalogItemsListProvider.future);
-                        } catch (_) {}
-                      }
-                      return res;
-                    },
-              onDefaultsResolved: session == null
-                  ? null
-                  : _applyHeaderDefaultsFromLastTrade,
-              resolveCatalogItem: session == null
-                  ? null
-                  : (String catalogItemId) =>
-                      ref.read(hexaApiProvider).getCatalogItem(
-                            businessId: session.primaryBusiness.id,
-                            itemId: catalogItemId,
-                          ),
-              resolveLastDefaults: session == null
-                  ? null
-                  : (String catalogItemId) {
-                      final d = ref.read(purchaseDraftProvider);
-                      return ref.read(hexaApiProvider).lastTradePurchaseDefaults(
-                            businessId: session.primaryBusiness.id,
-                            catalogItemId: catalogItemId,
-                            supplierId: d.supplierId,
-                            brokerId: d.brokerId,
-                          );
-                    },
-              onCommitted: (line) {
-                final p = PurchaseLineDraft.fromLineMap(
-                  Map<String, dynamic>.from(line),
+                },
+          onCommitted: (line) {
+            final p = PurchaseLineDraft.fromLineMap(
+              Map<String, dynamic>.from(line),
+            );
+            ref.read(purchaseDraftProvider.notifier).addOrReplaceLine(
+                  p,
+                  editIndex: editIndex,
                 );
-                ref.read(purchaseDraftProvider.notifier).addOrReplaceLine(
-                      p,
-                      editIndex: editIndex,
-                    );
-                setState(() {
-                  _inlineSaveError = null;
-                });
-                _onDraftChanged();
-              },
-            ),
-          ),
-        );
-      },
+            setState(() {
+              _inlineSaveError = null;
+            });
+            _onDraftChanged();
+            unawaited(_learnCatalogPackDefaultsIfNeeded(catalogForSheet, p));
+          },
+        ),
+      ),
     );
   }
 

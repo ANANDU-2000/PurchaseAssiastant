@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../json_coerce.dart';
 import '../strict_decimal.dart';
 import '../theme/hexa_colors.dart';
 
@@ -187,7 +188,7 @@ class TradePurchaseLine {
       catalogItemId: j['catalog_item_id']?.toString(),
       hsnCode: j['hsn_code']?.toString(),
       itemCode: j['item_code']?.toString(),
-      paymentDays: (j['payment_days'] as num?)?.toInt(),
+      paymentDays: coerceToIntNullable(j['payment_days']),
       description: j['description']?.toString(),
       defaultUnit: j['default_unit']?.toString(),
       defaultKgPerBag: _decNullableDouble(j['default_kg_per_bag']),
@@ -365,7 +366,7 @@ class TradePurchase {
       purchaseDate: pd,
       supplierId: j['supplier_id']?.toString(),
       brokerId: j['broker_id']?.toString(),
-      paymentDays: (j['payment_days'] as num?)?.toInt(),
+      paymentDays: coerceToIntNullable(j['payment_days']),
       dueDate: parseD('due_date'),
       paidAmount: _decDouble(j['paid_amount']),
       paidAt: parseD('paid_at'),
@@ -378,7 +379,7 @@ class TradePurchase {
           j['derived_status']?.toString() ?? j['status']?.toString() ?? 'confirmed',
       remaining: _decNullableDouble(j['remaining']) ??
           _decDouble(j['total_amount']) - _decDouble(j['paid_amount']),
-      itemsCount: (j['items_count'] as num?)?.toInt() ?? lines.length,
+      itemsCount: coerceToInt(j['items_count'], fallback: lines.length),
       supplierName: j['supplier_name']?.toString(),
       brokerName: j['broker_name']?.toString(),
       supplierGst: j['supplier_gst']?.toString(),

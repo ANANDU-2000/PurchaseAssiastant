@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../auth/session_notifier.dart';
+import '../json_coerce.dart';
 
 /// Selected date range for the Analytics tab (`from`/`to` inclusive calendar days).
 /// Default matches Home “Month”: last 30 days through today (`homePeriodRange`).
@@ -57,13 +58,13 @@ final analyticsKpiProvider =
     ut = Map<String, dynamic>.from(u);
   }
   return AnalyticsKpi(
-    totalPurchase: (m['total_purchase'] as num?)?.toDouble() ?? 0,
-    totalQtyBase: (m['total_qty'] as num?)?.toDouble() ?? 0,
+    totalPurchase: coerceToDouble(m['total_purchase']),
+    totalQtyBase: coerceToDouble(m['total_qty']),
     totalProfit: 0,
-    purchaseCount: (m['deals'] as num?)?.toInt() ?? 0,
-    totalKg: (ut['total_kg'] as num?)?.toDouble() ?? 0,
-    totalBags: (ut['total_bags'] as num?)?.toDouble() ?? 0,
-    totalBoxes: (ut['total_boxes'] as num?)?.toDouble() ?? 0,
-    totalTins: (ut['total_tins'] as num?)?.toDouble() ?? 0,
+    purchaseCount: coerceToInt(m['deals']),
+    totalKg: coerceToDouble(ut['total_kg']),
+    totalBags: coerceToDouble(ut['total_bags']),
+    totalBoxes: coerceToDouble(ut['total_boxes']),
+    totalTins: coerceToDouble(ut['total_tins']),
   );
 });

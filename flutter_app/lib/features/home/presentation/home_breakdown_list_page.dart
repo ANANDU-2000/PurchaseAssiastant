@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/json_coerce.dart';
 import '../../../core/providers/home_breakdown_tab_providers.dart';
 import '../../../core/providers/home_dashboard_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
@@ -16,17 +17,17 @@ String _fmtQty(double q) =>
     q == q.roundToDouble() ? q.round().toString() : q.toStringAsFixed(1);
 
 String _itemUpperQtyLine(Map<String, dynamic> m) {
-  final tb = (m['total_bags'] as num?)?.toDouble() ?? 0;
-  final txb = (m['total_boxes'] as num?)?.toDouble() ?? 0;
-  final ttn = (m['total_tins'] as num?)?.toDouble() ?? 0;
-  final tkg = (m['total_kg'] as num?)?.toDouble() ?? 0;
+  final tb = coerceToDouble(m['total_bags']);
+  final txb = coerceToDouble(m['total_boxes']);
+  final ttn = coerceToDouble(m['total_tins']);
+  final tkg = coerceToDouble(m['total_kg']);
   final parts = <String>[];
   if (tb > 0) parts.add('${_fmtQty(tb)} ${homePackUnitWord('BAG', tb)}');
   if (txb > 0) parts.add('${_fmtQty(txb)} ${homePackUnitWord('BOX', txb)}');
   if (ttn > 0) parts.add('${_fmtQty(ttn)} ${homePackUnitWord('TIN', ttn)}');
   if (tkg > 0) parts.add('${_fmtQty(tkg)} KG');
   if (parts.isNotEmpty) return parts.join(' • ');
-  final q = (m['total_qty'] as num?)?.toDouble() ?? 0;
+  final q = coerceToDouble(m['total_qty']);
   return homePackQtyWithDbUnit(q, m['unit']?.toString());
 }
 
@@ -250,8 +251,8 @@ class HomeBreakdownListPage extends ConsumerWidget {
   ) {
     final rows = List<Map<String, dynamic>>.from(b.subcategories)
       ..sort((a, c) {
-        final pa = (a['total_purchase'] as num?)?.toDouble() ?? 0;
-        final pc = (c['total_purchase'] as num?)?.toDouble() ?? 0;
+        final pa = coerceToDouble(a['total_purchase']);
+        final pc = coerceToDouble(c['total_purchase']);
         return pc.compareTo(pa);
       });
     return _buildScroll(
@@ -268,7 +269,7 @@ class HomeBreakdownListPage extends ConsumerWidget {
     final title = typ.isNotEmpty
         ? typ
         : (r['category_name']?.toString() ?? '—');
-    final amt = (r['total_purchase'] as num?)?.toDouble() ?? 0;
+    final amt = coerceToDouble(r['total_purchase']);
     final dot = _dotColors[index % _dotColors.length];
     return _breakdownTile(
       dot: dot,
@@ -288,8 +289,8 @@ class HomeBreakdownListPage extends ConsumerWidget {
   ) {
     final rows = List<Map<String, dynamic>>.from(b.suppliers)
       ..sort((a, c) {
-        final pa = (a['total_purchase'] as num?)?.toDouble() ?? 0;
-        final pc = (c['total_purchase'] as num?)?.toDouble() ?? 0;
+        final pa = coerceToDouble(a['total_purchase']);
+        final pc = coerceToDouble(c['total_purchase']);
         return pc.compareTo(pa);
       });
     return _buildScroll(
@@ -303,7 +304,7 @@ class HomeBreakdownListPage extends ConsumerWidget {
 
   Widget _rowSup(BuildContext context, Map<String, dynamic> r, int index) {
     final name = r['supplier_name']?.toString() ?? '—';
-    final amt = (r['total_purchase'] as num?)?.toDouble() ?? 0;
+    final amt = coerceToDouble(r['total_purchase']);
     final sid = r['supplier_id']?.toString() ?? '';
     final dot = _dotColors[index % _dotColors.length];
     return _breakdownTile(
@@ -328,8 +329,8 @@ class HomeBreakdownListPage extends ConsumerWidget {
   ) {
     final rows = List<Map<String, dynamic>>.from(b.items)
       ..sort((a, c) {
-        final pa = (a['total_purchase'] as num?)?.toDouble() ?? 0;
-        final pc = (c['total_purchase'] as num?)?.toDouble() ?? 0;
+        final pa = coerceToDouble(a['total_purchase']);
+        final pc = coerceToDouble(c['total_purchase']);
         return pc.compareTo(pa);
       });
     return _buildScroll(
@@ -343,7 +344,7 @@ class HomeBreakdownListPage extends ConsumerWidget {
 
   Widget _rowItem(BuildContext context, Map<String, dynamic> r, int index) {
     final name = r['item_name']?.toString() ?? '—';
-    final amt = (r['total_purchase'] as num?)?.toDouble() ?? 0;
+    final amt = coerceToDouble(r['total_purchase']);
     final bold = _itemUpperQtyLine(r);
     final dot = _dotColors[index % _dotColors.length];
     return _breakdownTile(

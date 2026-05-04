@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../json_coerce.dart';
+
 const _kKey = 'recent_catalog_item_picks_v1';
 const _kMax = 5;
 
@@ -36,10 +38,10 @@ class RecentCatalogItem {
       RecentCatalogItem(
         id: j['id']?.toString() ?? '',
         name: j['name']?.toString() ?? '',
-        lastPrice: (j['last_price'] as num?)?.toDouble(),
+        lastPrice: coerceToDoubleNullable(j['last_price']),
         unit: j['unit']?.toString(),
         categoryName: j['category_name']?.toString(),
-        kgPerBag: (j['kg_per_bag'] as num?)?.toDouble(),
+        kgPerBag: coerceToDoubleNullable(j['kg_per_bag']),
       );
 
   /// Convert to the same map shape used by the wizard catalog search hits.

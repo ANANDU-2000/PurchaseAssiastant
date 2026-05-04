@@ -25,7 +25,9 @@ class UnitClassification {
 }
 
 class UnitClassifier {
-  static final RegExp _kgInName = RegExp(r'(\d+)\s*KG', caseSensitive: false);
+  /// Matches `50 KG`, `50.5 kg`, `25kg` in catalog / free-typed names.
+  static final RegExp _kgInName =
+      RegExp(r'(\d+(?:\.\d+)?)\s*KG', caseSensitive: false);
 
   /// Optional [categoryName] / [subcategoryName] are reserved for future rules.
   /// Optional [catalogDefaultKgPerBag] — when `(line/catalog) unit` is bag/sack and
@@ -106,8 +108,8 @@ class UnitClassifier {
   static double? _parseKgFromName(String itemName) {
     final m = _kgInName.firstMatch(itemName);
     if (m == null) return null;
-    final n = int.tryParse(m.group(1) ?? '');
+    final n = double.tryParse(m.group(1) ?? '');
     if (n == null || n <= 0) return null;
-    return n.toDouble();
+    return n;
   }
 }

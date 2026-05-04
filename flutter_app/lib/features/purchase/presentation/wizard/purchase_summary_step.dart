@@ -28,6 +28,13 @@ String _pRateDisplay(PurchaseLineDraft l) {
 String _sRateDisplay(PurchaseLineDraft l) {
   final sp = l.sellingPrice;
   if (sp == null || sp <= 0) return '—';
+  if (l.landingCostPerKg != null &&
+      l.landingCostPerKg! > 0 &&
+      l.kgPerUnit != null &&
+      l.kgPerUnit! > 0) {
+    final perKg = sp / l.kgPerUnit!;
+    return '₹${perKg.toStringAsFixed(2)}/kg';
+  }
   return '₹${sp.toStringAsFixed(2)}';
 }
 

@@ -1,6 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:intl/intl.dart';
+
+import '../json_coerce.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -200,7 +202,7 @@ Future<void> shareReportsSummaryPdf({
                 .map((r) => [
                       r['category_name']?.toString() ?? '—',
                       _rs(
-                          (r['total_purchase'] as num?)?.toDouble() ?? 0),
+                          coerceToDouble(r['total_purchase'])),
                     ])
                 .toList(),
           ),
@@ -222,9 +224,9 @@ Future<void> shareReportsSummaryPdf({
                 .take(30)
                 .map((r) => [
                       r['supplier_name']?.toString() ?? '—',
-                      '${(r['purchase_count'] as num?)?.toInt() ?? 0}',
+                      '${coerceToInt(r['purchase_count'])}',
                       _rs(
-                          (r['total_purchase'] as num?)?.toDouble() ?? 0),
+                          coerceToDouble(r['total_purchase'])),
                     ])
                 .toList(),
           ),

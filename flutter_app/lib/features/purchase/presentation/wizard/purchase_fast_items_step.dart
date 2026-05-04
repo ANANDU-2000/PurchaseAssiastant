@@ -90,6 +90,29 @@ class _PurchaseFastItemsStepState extends ConsumerState<PurchaseFastItemsStep> {
     return '$q $u';
   }
 
+  String _pRateQuick(PurchaseLineDraft l) {
+    if (l.landingCostPerKg != null &&
+        l.landingCostPerKg! > 0 &&
+        l.kgPerUnit != null &&
+        l.kgPerUnit! > 0) {
+      return 'P ₹${l.landingCostPerKg!.toStringAsFixed(1)}/kg';
+    }
+    return 'P ₹${l.landingCost.toStringAsFixed(0)}';
+  }
+
+  String _sRateQuick(PurchaseLineDraft l) {
+    final sp = l.sellingPrice;
+    if (sp == null || sp <= 0) return 'S —';
+    if (l.landingCostPerKg != null &&
+        l.landingCostPerKg! > 0 &&
+        l.kgPerUnit != null &&
+        l.kgPerUnit! > 0) {
+      final perKg = sp / l.kgPerUnit!;
+      return 'S ₹${perKg.toStringAsFixed(1)}/kg';
+    }
+    return 'S ₹${sp.toStringAsFixed(0)}';
+  }
+
   Future<void> _editAdvanced(int i) async {
     await widget.openAdvancedItemEditor(editIndex: i);
     if (mounted) setState(() {});
@@ -124,16 +147,20 @@ class _PurchaseFastItemsStepState extends ConsumerState<PurchaseFastItemsStep> {
             final bd = rf.watch(purchaseStrictBreakdownProvider);
             final qt = rf.watch(purchaseQuantityTotalsProvider);
             final unitBits = <String>[];
+            if (qt.totalKg > 1e-6) {
+              unitBits.add('${qt.totalKg.toStringAsFixed(0)} KG');
+            }
             qt.qtyByUnit.forEach((k, v) {
               if (v > 1e-9) {
+                final lk = k.trim().toLowerCase();
+                if (lk == 'kg' || lk == 'kgs' || lk == 'kilogram') {
+                  return;
+                }
                 unitBits.add(
                   '${StrictDecimal.fromObject(v).format(3, trim: true)} ${k.toUpperCase()}',
                 );
               }
             });
-            if (qt.totalKg > 1e-6) {
-              unitBits.insert(0, '${qt.totalKg.toStringAsFixed(0)} KG');
-            }
             final qtyLine = unitBits.isEmpty ? '—' : unitBits.join(' • ');
             return Material(
               color: Colors.white,
@@ -261,13 +288,52 @@ class _PurchaseFastItemsStepState extends ConsumerState<PurchaseFastItemsStep> {
                                     color: Color(0xFF0F172A),
                                   ),
                                 ),
-                                const SizedBox(height: 4),
+                                const SizedBox(height: 6),
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 4,
+                                  children: [
+                                    Chip(
+                                      visualDensity: VisualDensity.compact,
+                                      label: Text(
+                                        _pRateQuick(ln),
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      backgroundColor:
+                                          const Color(0xFFF1F5F9),
+                                      side: BorderSide.none,
+                                      padding: EdgeInsets.zero,
+                                      materialTapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    Chip(
+                                      visualDensity: VisualDensity.compact,
+                                      label: Text(
+                                        _sRateQuick(ln),
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      backgroundColor:
+                                          const Color(0xFFECFDF5),
+                                      side: BorderSide.none,
+                                      padding: EdgeInsets.zero,
+                                      materialTapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
                                 Text(
                                   _inr0(buy),
                                   style: const TextStyle(
                                     fontWeight: FontWeight.w900,
-                                    fontSize: 17,
-                                    color: Color(0xFF0F172A),
+                                    fontSize: 18,
+                                    color: Color(0xFF0D9488),
                                   ),
                                 ),
                               ],

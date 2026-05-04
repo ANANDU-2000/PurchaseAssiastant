@@ -1,4 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../json_coerce.dart';
 import 'package:intl/intl.dart';
 
 import '../auth/session_notifier.dart';
@@ -141,8 +143,8 @@ final analyticsBestSupplierInsightProvider =
   Map<String, dynamic>? topByVol;
   var bestVol = -1.0;
   for (final r in items) {
-    final al = (r['avg_landing'] as num?)?.toDouble() ?? 0;
-    final tq = (r['total_qty'] as num?)?.toDouble() ?? 0;
+    final al = coerceToDouble(r['avg_landing']);
+    final tq = coerceToDouble(r['total_qty']);
     final vol = al * tq;
     if (vol > bestVol) {
       bestVol = vol;
@@ -152,14 +154,14 @@ final analyticsBestSupplierInsightProvider =
   final itemName = topByVol?['item_name']?.toString() ?? '';
   if (itemName.isEmpty) return null;
   final supList = List<Map<String, dynamic>>.from(suppliers);
-  supList.sort((a, b) => ((a['avg_landing'] as num?) ?? 1e18)
-      .compareTo((b['avg_landing'] as num?) ?? 1e18));
+  supList.sort((a, b) => (coerceToDoubleNullable(a['avg_landing']) ?? 1e18)
+      .compareTo(coerceToDoubleNullable(b['avg_landing']) ?? 1e18));
   final best = supList.first;
   final sname = best['supplier_name']?.toString() ?? '';
-  final savg = (best['avg_landing'] as num?)?.toDouble() ?? 0;
+  final savg = coerceToDouble(best['avg_landing']);
   var sum = 0.0;
   for (final s in supList) {
-    sum += (s['avg_landing'] as num?)?.toDouble() ?? 0;
+    sum += coerceToDouble(s['avg_landing']);
   }
   final overall = supList.isEmpty ? savg : sum / supList.length;
   final delta = overall - savg;

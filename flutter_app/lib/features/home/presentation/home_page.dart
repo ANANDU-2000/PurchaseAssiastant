@@ -20,6 +20,7 @@ import '../../../core/theme/hexa_colors.dart';
 import '../../../shared/widgets/shell_quick_ref_actions.dart';
 import '../../purchase/presentation/widgets/purchase_saved_sheet.dart';
 import '../../purchase/presentation/widgets/resume_purchase_draft_banner.dart';
+import '../../../core/json_coerce.dart';
 import '../../../core/providers/home_breakdown_tab_providers.dart';
 import '../../../core/providers/home_dashboard_provider.dart';
 import '../../../core/providers/maintenance_payment_provider.dart';
@@ -291,7 +292,7 @@ class _HomePageState extends ConsumerState<HomePage>
                         return const SizedBox.shrink();
                       }
                       final name = m['name']?.toString() ?? 'Cloud Cost';
-                      final amt = (m['amount_inr'] as num?)?.toDouble() ?? 0;
+                      final amt = coerceToDouble(m['amount_inr']);
                       final next = m['next_due_date']?.toString() ?? '—';
                       final needPay = m['show_alert'] == true;
                       final inPre = m['in_pre_due_window'] == true;
@@ -649,17 +650,17 @@ List<String> _ringCenterLines(HomeDashboardData d) {
 }
 
 String _itemUpperQtyLine(Map<String, dynamic> m) {
-  final tb = (m['total_bags'] as num?)?.toDouble() ?? 0;
-  final txb = (m['total_boxes'] as num?)?.toDouble() ?? 0;
-  final ttn = (m['total_tins'] as num?)?.toDouble() ?? 0;
-  final tkg = (m['total_kg'] as num?)?.toDouble() ?? 0;
+  final tb = coerceToDouble(m['total_bags']);
+  final txb = coerceToDouble(m['total_boxes']);
+  final ttn = coerceToDouble(m['total_tins']);
+  final tkg = coerceToDouble(m['total_kg']);
   final parts = <String>[];
   if (tb > 0) parts.add('${_fmtQty(tb)} ${homePackUnitWord('BAG', tb)}');
   if (txb > 0) parts.add('${_fmtQty(txb)} ${homePackUnitWord('BOX', txb)}');
   if (ttn > 0) parts.add('${_fmtQty(ttn)} ${homePackUnitWord('TIN', ttn)}');
   if (tkg > 0) parts.add('${_fmtQty(tkg)} KG');
   if (parts.isNotEmpty) return parts.join(' • ');
-  final q = (m['total_qty'] as num?)?.toDouble() ?? 0;
+  final q = coerceToDouble(m['total_qty']);
   return homePackQtyWithDbUnit(q, m['unit']?.toString());
 }
 
@@ -1368,8 +1369,8 @@ List<_BreakdownRowSlice> _topSlice(
       if (bundle == null) return const [];
       final rows = List<Map<String, dynamic>>.from(bundle.subcategories)
         ..sort((a, c) {
-          final pa = (a['total_purchase'] as num?)?.toDouble() ?? 0;
-          final pc = (c['total_purchase'] as num?)?.toDouble() ?? 0;
+          final pa = coerceToDouble(a['total_purchase']);
+          final pc = coerceToDouble(c['total_purchase']);
           return pc.compareTo(pa);
         });
       return [
@@ -1380,7 +1381,7 @@ List<_BreakdownRowSlice> _topSlice(
               if (tn.isNotEmpty) return tn;
               return r['category_name']?.toString() ?? '—';
             }(),
-            ringAmount: (r['total_purchase'] as num?)?.toDouble() ?? 0,
+            ringAmount: coerceToDouble(r['total_purchase']),
             line2: _itemUpperQtyLine(r),
             sup: '—',
             bro: '—',
@@ -1391,15 +1392,15 @@ List<_BreakdownRowSlice> _topSlice(
       if (bundle == null) return const [];
       final rows = List<Map<String, dynamic>>.from(bundle.suppliers)
         ..sort((a, c) {
-          final pa = (a['total_purchase'] as num?)?.toDouble() ?? 0;
-          final pc = (c['total_purchase'] as num?)?.toDouble() ?? 0;
+          final pa = coerceToDouble(a['total_purchase']);
+          final pc = coerceToDouble(c['total_purchase']);
           return pc.compareTo(pa);
         });
       return [
         for (final r in rows.take(maxN))
           _BreakdownRowSlice(
             title: r['supplier_name']?.toString() ?? '—',
-            ringAmount: (r['total_purchase'] as num?)?.toDouble() ?? 0,
+            ringAmount: coerceToDouble(r['total_purchase']),
             line2: _itemUpperQtyLine(r),
             sup: '—',
             bro: '—',
@@ -1415,15 +1416,15 @@ List<_BreakdownRowSlice> _topSlice(
       if (bundle == null) return const [];
       final rows = List<Map<String, dynamic>>.from(bundle.items)
         ..sort((a, c) {
-          final pa = (a['total_purchase'] as num?)?.toDouble() ?? 0;
-          final pc = (c['total_purchase'] as num?)?.toDouble() ?? 0;
+          final pa = coerceToDouble(a['total_purchase']);
+          final pc = coerceToDouble(c['total_purchase']);
           return pc.compareTo(pa);
         });
       return [
         for (final r in rows.take(maxN))
           _BreakdownRowSlice(
             title: r['item_name']?.toString() ?? '—',
-            ringAmount: (r['total_purchase'] as num?)?.toDouble() ?? 0,
+            ringAmount: coerceToDouble(r['total_purchase']),
             line2: _itemUpperQtyLine(r),
             sup: '—',
             bro: '—',

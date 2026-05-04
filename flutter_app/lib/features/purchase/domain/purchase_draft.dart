@@ -476,6 +476,11 @@ String? purchaseLineSaveBlockReason(PurchaseLineDraft l) {
   final unitIsBagSack = _isBagOrSackUnit(l.unit);
   final unitIsBox = _isBoxUnit(l.unit);
   final unitIsTin = _isTinUnit(l.unit);
+  if (unitIsBagSack || unitIsBox || unitIsTin) {
+    if ((l.qty - l.qty.roundToDouble()).abs() > 1e-6) {
+      return 'Use a whole number quantity for ${l.unit.trim()} lines (no decimals).';
+    }
+  }
   if (unitIsBox) {
     final hasItemsBox = (l.itemsPerBox ?? 0) > 0 && (l.weightPerItem ?? 0) > 0;
     final hasFixedBox = (l.kgPerBox ?? 0) > 0 || (l.kgPerUnit ?? 0) > 0;

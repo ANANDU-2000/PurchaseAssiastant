@@ -43,7 +43,7 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
   static String _unitDropdownLabel(String mode) {
     switch (PurchaseDraft.normalizeCommissionMode(mode)) {
       case kPurchaseCommissionModeFlatInvoice:
-        return 'Whole bill';
+        return 'Once / bill';
       case kPurchaseCommissionModeFlatKg:
         return 'Kg';
       case kPurchaseCommissionModeFlatBag:
@@ -268,62 +268,52 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
                       ),
                     ],
                     const SizedBox(height: 8),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Expanded(
-                          child: SizedBox(
-                            height: kPurchaseFieldHeight + 14,
-                            child: TextField(
-                              controller: commissionCtrl,
-                              keyboardType: const TextInputType.numberWithOptions(
-                                  decimal: true),
-                              decoration: densePurchaseFieldDecoration(
-                                'Amount (₹)',
-                              ),
-                              onChanged: (s) {
-                                ref
-                                    .read(purchaseDraftProvider.notifier)
-                                    .setCommissionText(s);
-                                onDraftChanged();
-                              },
-                            ),
-                          ),
+                    SizedBox(
+                      height: kPurchaseFieldHeight + 14,
+                      child: TextField(
+                        controller: commissionCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        decoration: densePurchaseFieldDecoration(
+                          'Amount (₹)',
                         ),
-                        const SizedBox(width: 8),
-                        SizedBox(
-                          width: 128,
-                          height: kPurchaseFieldHeight + 14,
-                          child: InputDecorator(
-                            decoration:
-                                densePurchaseFieldDecoration('Unit'),
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: coerced,
-                                isExpanded: true,
-                                isDense: true,
-                                items: [
-                                  for (final o in figOpts)
-                                    DropdownMenuItem<String>(
-                                      value: o.$1,
-                                      child: Text(
-                                        _unitDropdownLabel(o.$1),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                ],
-                                onChanged: (v) {
-                                  if (v == null) return;
-                                  ref
-                                      .read(purchaseDraftProvider.notifier)
-                                      .setCommissionMode(v);
-                                  onDraftChanged();
-                                },
+                        onChanged: (s) {
+                          ref
+                              .read(purchaseDraftProvider.notifier)
+                              .setCommissionText(s);
+                          onDraftChanged();
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    InputDecorator(
+                      decoration: densePurchaseFieldDecoration(
+                        'Commission applies to',
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: coerced,
+                          isExpanded: true,
+                          isDense: true,
+                          items: [
+                            for (final o in figOpts)
+                              DropdownMenuItem<String>(
+                                value: o.$1,
+                                child: Text(
+                                  _unitDropdownLabel(o.$1),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                            ),
-                          ),
+                          ],
+                          onChanged: (v) {
+                            if (v == null) return;
+                            ref
+                                .read(purchaseDraftProvider.notifier)
+                                .setCommissionMode(v);
+                            onDraftChanged();
+                          },
                         ),
-                      ],
+                      ),
                     ),
                     if (hint != null && figOpts.length > 1)
                       Padding(

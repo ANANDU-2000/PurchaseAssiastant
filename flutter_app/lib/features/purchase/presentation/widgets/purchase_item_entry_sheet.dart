@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/calc_engine.dart';
+import '../../../../core/json_coerce.dart';
 import '../../../../core/strict_decimal.dart';
 import '../../../../core/theme/hexa_colors.dart';
 import '../../../../core/utils/unit_classifier.dart';
@@ -124,6 +125,9 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   /// Short hint driven by [_activeClassification()] after catalog/name changes.
   String? _unitDetectHint;
 
+  /// Snapshot of text fields after init / reset — for unsaved-change guard (full-page).
+  Map<String, String>? _fieldBaseline;
+
   /// Indian grouping for weight line (display only).
   static final NumberFormat _inQtyWtFmt =
       NumberFormat('#,##,##0.###', 'en_IN');
@@ -177,12 +181,19 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     if (init != null) {
       _itemCtrl.text = init['item_name']?.toString() ?? '';
       _selectedCatalogItemId = init['catalog_item_id']?.toString();
-      final q = init['qty'];
-      _qtyCtrl.text = q is num && q == q.roundToDouble() ? q.round().toString() : '${q ?? ''}';
+      final qVal = coerceToDoubleNullable(init['qty']);
+      if (qVal != null) {
+        _qtyCtrl.text = (qVal - qVal.roundToDouble()).abs() < 1e-9
+            ? qVal.round().toString()
+            : qVal.toString();
+      } else {
+        _qtyCtrl.text = '';
+      }
       _unitCtrl.text = init['unit']?.toString() ?? 'kg';
 
-      final kpu = (init['kg_per_unit'] as num?)?.toDouble();
-      final lck = (init['landing_cost_per_kg'] as num?)?.toDouble();
+      final kpu = coerceToDoubleNullable(
+          init['kg_per_unit'] ?? init['weight_per_unit']);
+      final lck = coerceToDoubleNullable(init['landing_cost_per_kg']);
       if (kpu != null && kpu > 0) {
         _weightPricing = true;
         _kgPerUnit = kpu;
@@ -190,36 +201,41 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         if (lck != null && lck > 0) {
           _landingCtrl.text = lck.toStringAsFixed(2);
         } else {
-          final lc = (init['landing_cost'] as num?)?.toDouble();
+          final lc = coerceToDoubleNullable(
+              init['landing_cost'] ?? init['purchase_rate']);
           if (lc != null && lc > 0) {
             _landingCtrl.text = (lc / kpu).toStringAsFixed(2);
           } else {
             _landingCtrl.text = '';
           }
         }
-        final sc = init['selling_cost'];
-        if (sc is num) {
-          _sellingCtrl.text = (sc.toDouble() / kpu).toStringAsFixed(2);
+        final sc = coerceToDoubleNullable(
+            init['selling_cost'] ?? init['selling_rate']);
+        if (sc != null && sc > 0) {
+          _sellingCtrl.text = (sc / kpu).toStringAsFixed(2);
         } else {
           _sellingCtrl.text = '';
         }
       } else {
         _weightPricing = false;
         _kgPerUnit = null;
-        final r = init['landing_cost'];
-        _landingCtrl.text = r is num && r > 0 ? r.toDouble().toStringAsFixed(2) : '';
-        final s = init['selling_cost'];
-        if (s is num) {
-          _sellingCtrl.text = s.toDouble().toStringAsFixed(2);
+        final r = coerceToDoubleNullable(
+            init['landing_cost'] ?? init['purchase_rate']);
+        _landingCtrl.text =
+            r != null && r > 0 ? r.toStringAsFixed(2) : '';
+        final s = coerceToDoubleNullable(
+            init['selling_cost'] ?? init['selling_rate']);
+        if (s != null && s > 0) {
+          _sellingCtrl.text = s.toStringAsFixed(2);
         } else {
           _sellingCtrl.text = '';
         }
       }
 
-      final d = init['discount'];
-      _discCtrl.text = d is num && d > 0 ? d.toString() : '';
-      final t = init['tax_percent'];
-      _taxCtrl.text = t is num && t > 0 ? t.toString() : '';
+      final d = coerceToDoubleNullable(init['discount']);
+      _discCtrl.text = d != null && d > 0 ? d.toString() : '';
+      final t = coerceToDoubleNullable(init['tax_percent']);
+      _taxCtrl.text = t != null && t > 0 ? t.toString() : '';
       final hsn = init['hsn_code']?.toString().trim() ?? '';
       _hsnCode = hsn.isEmpty ? null : hsn;
       final ic = init['item_code']?.toString().trim() ?? '';
@@ -255,6 +271,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       _lineNotesCtrl,
     ]);
     _rebuildCatalogSearchItems();
+    _storeFieldBaseline();
   }
 
   void _syncKgStateFromCatalogRow() {
@@ -802,6 +819,118 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     });
   }
 
+  Map<String, String> _snapshotFields() {
+    return {
+      'item': _itemCtrl.text,
+      'qty': _qtyCtrl.text,
+      'unit': _unitCtrl.text,
+      'landing': _landingCtrl.text,
+      'selling': _sellingCtrl.text,
+      'disc': _discCtrl.text,
+      'tax': _taxCtrl.text,
+      'kgpb': _kgPerBagCtrl.text,
+      'notes': _lineNotesCtrl.text,
+    };
+  }
+
+  void _storeFieldBaseline() {
+    _fieldBaseline = _snapshotFields();
+  }
+
+  bool _isDirtySheet() {
+    final b = _fieldBaseline;
+    if (b == null) return false;
+    final n = _snapshotFields();
+    for (final e in n.entries) {
+      if ((b[e.key] ?? '') != e.value) return true;
+    }
+    return false;
+  }
+
+  Future<void> _confirmDiscardAndPop() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Discard changes?'),
+        content: const Text('You will lose edits to this line.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep editing'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Leave'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true && mounted) Navigator.of(context).pop();
+  }
+
+  Future<void> _handleLeadingBack() async {
+    if (!_isDirtySheet()) {
+      if (mounted) Navigator.of(context).maybePop();
+      return;
+    }
+    await _confirmDiscardAndPop();
+  }
+
+  bool _showHsnFooterMeta() {
+    final tax = _parseD(_taxCtrl.text) ?? 0;
+    if (tax > 1e-9) return true;
+    final u = _unitCtrl.text.trim().toLowerCase();
+    if (u == 'bag' || u == 'sack') return true;
+    return _activeClassification().type == UnitType.weightBag;
+  }
+
+  Widget? _suggestOneBagInsteadOfKgBanner() {
+    final c = _activeClassification();
+    final kn = c.kgFromName;
+    if (kn == null || kn <= 0) return null;
+    if (_unitCtrl.text.trim().toLowerCase() != 'kg') return null;
+    final q = _qtyVal();
+    if (q <= 0 || (q - kn).abs() > 0.01 * math.max(1.0, kn)) return null;
+    final theme = Theme.of(context);
+    final knLabel =
+        (kn - kn.roundToDouble()).abs() < 1e-6 ? '${kn.round()}' : kn.toStringAsFixed(1);
+    return Material(
+      color: const Color(0xFFE0F2FE),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                'This name looks like a $knLabel kg pack. Record as 1 bag instead?',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF0369A1),
+                  height: 1.25,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _unitCtrl.text = 'bag';
+                  _qtyCtrl.text = '1';
+                  _weightPricing = true;
+                  _kgPerUnit = kn;
+                  _kgPerBagCtrl.text = _fmtQty(kn);
+                  _recomputeModeFromUnitAndCatalog();
+                });
+              },
+              child: const Text('Use 1 bag'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Selling stored per line unit on the wire; weight mode: multiply per-kg × kg_per_unit.
   /// Call only after validation; [sell] must be non-null and >= 0.
   double _sellingForPayloadForWire(double sell) {
@@ -842,10 +971,19 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       } else {
         _errItem = null;
       }
-      _errQty = qty <= 0 ? 'Quantity must be greater than zero' : null;
+      final unitLow = unit.toLowerCase();
+      final fracPack = (unitLow == 'bag' ||
+              unitLow == 'sack' ||
+              unitLow == 'box' ||
+              unitLow == 'tin') &&
+          (qty - qty.roundToDouble()).abs() > 1e-6;
+      _errQty = qty <= 0
+          ? 'Quantity must be greater than zero'
+          : fracPack
+              ? 'Use a whole number for $unitLow lines (no decimals)'
+              : null;
       _errUnit = unit.isEmpty ? 'Unit is required' : null;
       _errKgPerBag = null;
-      final unitLow = unit.toLowerCase();
       if (unitLow == 'box') {
         if (clf.type == UnitType.multiPackBox) {
           _errKgPerBag = ((_parseD(_itemsPerBoxCtrl.text) ?? 0) <= 0)
@@ -1069,7 +1207,10 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       _rateFieldsPerKg = true;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _itemFocus.requestFocus();
+      if (mounted) {
+        _itemFocus.requestFocus();
+        _storeFieldBaseline();
+      }
     });
   }
 
@@ -1921,6 +2062,17 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                     ),
                   ],
                 ),
+              ListenableBuilder(
+                listenable: _lineTotalsListenable,
+                builder: (cx, _) {
+                  final b = _suggestOneBagInsteadOfKgBanner();
+                  if (b == null) return const SizedBox.shrink();
+                  return Padding(
+                    padding: EdgeInsets.only(top: gapField * 0.5),
+                    child: b,
+                  );
+                },
+              ),
               if (showManualKgField) ...[
                 SizedBox(height: gapField),
                 KeyedSubtree(
@@ -2325,38 +2477,49 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                 ),
               ),
             ),
-              if (_errHsn != null) ...[
-                const SizedBox(height: 2),
-                Text(
-                  _errHsn!,
-                  style: TextStyle(
-                    color: Colors.red[800],
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ] else if (_hsnCode != null && _hsnCode!.isNotEmpty) ...[
-                const SizedBox(height: 2),
-                Text(
-                  'HSN: ${_hsnCode!}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: Colors.blueGrey[800],
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-              if (_itemCode != null && _itemCode!.isNotEmpty) ...[
-                const SizedBox(height: 2),
-                Text(
-                  'Item code: ${_itemCode!}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: Colors.blueGrey[800],
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
+              ListenableBuilder(
+                listenable: _lineTotalsListenable,
+                builder: (cx, _) {
+                  final showMeta = _showHsnFooterMeta();
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (_errHsn != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          _errHsn!,
+                          style: TextStyle(
+                            color: Colors.red[800],
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ] else if (showMeta && _hsnCode != null && _hsnCode!.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'HSN: ${_hsnCode!}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: Colors.blueGrey[800],
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                      if (showMeta && _itemCode != null && _itemCode!.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Item code: ${_itemCode!}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: Colors.blueGrey[800],
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                },
+              ),
               SizedBox(height: widget.fullPage ? gapField : 4),
               ListenableBuilder(
                 listenable: _lineTotalsListenable,
@@ -2483,38 +2646,45 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
 
       return Theme(
         data: sheetTheme,
-        child: Scaffold(
-          resizeToAvoidBottomInset: true,
-          backgroundColor: Colors.white,
-          appBar: AppBar(
+        child: PopScope(
+          canPop: !_isDirtySheet(),
+          onPopInvokedWithResult: (didPop, _) async {
+            if (didPop) return;
+            await _confirmDiscardAndPop();
+          },
+          child: Scaffold(
+            resizeToAvoidBottomInset: true,
             backgroundColor: Colors.white,
-            foregroundColor: ink,
-            elevation: 0,
-            title: Text(widget.isEdit ? 'Edit item' : 'Add item'),
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-              onPressed: () => Navigator.of(context).maybePop(),
+            appBar: AppBar(
+              backgroundColor: Colors.white,
+              foregroundColor: ink,
+              elevation: 0,
+              title: Text(widget.isEdit ? 'Edit item' : 'Add item'),
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+                onPressed: _handleLeadingBack,
+              ),
             ),
-          ),
-          body: LayoutBuilder(
-            builder: (context, c) {
-              final minFields = math.max(200.0, c.maxHeight - 260);
-              return KeyboardSafeFormViewport(
-                dismissKeyboardOnTap: true,
-                scrollController: _scrollController,
-                horizontalPadding: 16,
-                topPadding: 4,
-                bottomExtraInset: 32,
-                minFieldsHeight:
-                    c.hasBoundedHeight ? minFields : 200,
-                fields: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisSize: MainAxisSize.min,
-                  children: formChildren,
-                ),
-                footer: footer,
-              );
-            },
+            body: LayoutBuilder(
+              builder: (context, c) {
+                final minFields = math.max(200.0, c.maxHeight - 260);
+                return KeyboardSafeFormViewport(
+                  dismissKeyboardOnTap: true,
+                  scrollController: _scrollController,
+                  horizontalPadding: 16,
+                  topPadding: 4,
+                  bottomExtraInset: 32,
+                  minFieldsHeight:
+                      c.hasBoundedHeight ? minFields : 200,
+                  fields: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: formChildren,
+                  ),
+                  footer: footer,
+                );
+              },
+            ),
           ),
         ),
       );
