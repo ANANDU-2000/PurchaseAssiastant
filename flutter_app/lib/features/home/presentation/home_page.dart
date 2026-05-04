@@ -815,15 +815,17 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
   HomeShellReportsBundle? _bundle(
     HomeBreakdownTab tab,
     AsyncValue<HomeShellReportsBundle> shell,
+    HomeShellReportsBundle? peekShell,
   ) {
     if (tab == HomeBreakdownTab.category) return null;
-    return shell.valueOrNull;
+    return shell.valueOrNull ?? peekShell;
   }
 
   Widget _ring(
     BuildContext context,
     HomeBreakdownTab tab,
     AsyncValue<HomeShellReportsBundle> shell,
+    HomeShellReportsBundle? peekShell,
     List<String> rc,
     double previewSide,
   ) {
@@ -847,7 +849,8 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
     // Shell loading: single spinner lives in the list area below — ring stays a neutral placeholder.
     if (tab != HomeBreakdownTab.category &&
         shell.isLoading &&
-        shell.valueOrNull == null) {
+        shell.valueOrNull == null &&
+        peekShell == null) {
       return RepaintBoundary(
         child: SpendRingChart(
           diameter: previewSide,
@@ -861,7 +864,8 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
     }
     if (tab != HomeBreakdownTab.category &&
         shell.hasError &&
-        shell.valueOrNull == null) {
+        shell.valueOrNull == null &&
+        peekShell == null) {
       return SizedBox(
         height: 112,
         child: Center(
@@ -879,7 +883,7 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
       );
     }
 
-    final bundle = _bundle(tab, shell);
+    final bundle = _bundle(tab, shell, peekShell);
     final slice = _topSlice(data, tab, bundle, _homeRingPreviewCap);
     final amts =
         List<double>.generate(slice.length, (i) => slice[i].ringAmount);
@@ -925,6 +929,7 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
   Widget build(BuildContext context) {
     final tab = ref.watch(homeBreakdownTabProvider);
     final shell = ref.watch(homeShellReportsProvider);
+    final peekShell = ref.watch(homeShellReportsSyncCacheProvider);
     final rc = _ringCenterLines(widget.data);
 
     return Column(
@@ -950,7 +955,7 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
             final previewSide = math.min(200.0, c.maxWidth * 0.82);
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: _ring(context, tab, shell, rc, previewSide),
+              child: _ring(context, tab, shell, peekShell, rc, previewSide),
             );
           },
         ),
@@ -961,7 +966,9 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
             child: LayoutBuilder(
               builder: (context, constraints) {
                 if (tab != HomeBreakdownTab.category) {
-                  if (shell.isLoading && shell.valueOrNull == null) {
+                  if (shell.isLoading &&
+                      shell.valueOrNull == null &&
+                      peekShell == null) {
                     return Center(
                       child: Padding(
                         padding: const EdgeInsets.all(24),
@@ -988,7 +995,9 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
                       ),
                     );
                   }
-                  if (shell.hasError && shell.valueOrNull == null) {
+                  if (shell.hasError &&
+                      shell.valueOrNull == null &&
+                      peekShell == null) {
                     return Center(
                       child: Padding(
                         padding: const EdgeInsets.all(24),
@@ -1032,7 +1041,7 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
                   );
                 }
 
-                final bundle = _bundle(tab, shell);
+                final bundle = _bundle(tab, shell, peekShell);
                 final full = _topSlice(
                   widget.data,
                   tab,

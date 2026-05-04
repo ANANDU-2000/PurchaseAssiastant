@@ -85,6 +85,21 @@ HomeShellReportsBundle _homeShellFromHive(Map<String, dynamic>? raw) {
   );
 }
 
+/// Last persisted home-shell rows for the current period (instant paint on tab switches / reload).
+final homeShellReportsSyncCacheProvider =
+    Provider.autoDispose<HomeShellReportsBundle?>((ref) {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return null;
+  final q = homeDateRangeForRef(ref);
+  final raw = OfflineStore.getCachedHomeShellReports(
+    session.primaryBusiness.id,
+    q.from,
+    q.to,
+  );
+  if (raw == null) return null;
+  return _homeShellFromHive(raw);
+});
+
 final Map<String, Future<HomeShellReportsBundle>> _shellInflight = {};
 
 const _shellEachTimeout = Duration(seconds: 28);

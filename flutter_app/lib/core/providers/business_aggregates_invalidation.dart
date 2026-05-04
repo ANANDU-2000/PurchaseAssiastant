@@ -1,3 +1,4 @@
+import 'home_breakdown_tab_providers.dart';
 import 'home_dashboard_provider.dart';
 import 'cloud_expense_provider.dart';
 import 'analytics_breakdown_providers.dart';
@@ -42,6 +43,7 @@ void invalidateBusinessAggregates(dynamic ref) {
   invalidateAnalyticsData(ref);
   ref.invalidate(dashboardProvider);
   ref.invalidate(homeDashboardDataProvider);
+  ref.invalidate(homeShellReportsProvider);
   ref.invalidate(cloudCostProvider);
   ref.invalidate(homeInsightsProvider);
   ref.invalidate(contactsSuppliersEnrichedProvider);

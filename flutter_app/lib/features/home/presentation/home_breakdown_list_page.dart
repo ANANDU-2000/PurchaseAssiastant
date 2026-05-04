@@ -94,6 +94,7 @@ class HomeBreakdownListPage extends ConsumerWidget {
     final asyncDash = ref.watch(homeDashboardDataProvider);
     final peekDash = ref.watch(homeDashboardSyncCacheProvider);
     final asyncShell = ref.watch(homeShellReportsProvider);
+    final peekShell = ref.watch(homeShellReportsSyncCacheProvider);
     final pay = asyncDash.snapshot;
     final dashboard =
         pay.data.isEmpty ? (peekDash ?? pay.data) : pay.data;
@@ -129,11 +130,14 @@ class HomeBreakdownListPage extends ConsumerWidget {
               );
             }(),
         _ => () {
-              if (asyncShell.isLoading && asyncShell.valueOrNull == null) {
+              if (asyncShell.isLoading &&
+                  asyncShell.valueOrNull == null &&
+                  peekShell == null) {
                 return const Center(child: CircularProgressIndicator());
               }
-              final bundle =
-                  asyncShell.valueOrNull ?? HomeShellReportsBundle.empty;
+              final bundle = asyncShell.valueOrNull ??
+                  peekShell ??
+                  HomeShellReportsBundle.empty;
               return switch (tab) {
                 HomeBreakdownTab.subcategory =>
                   _subList(context, bundle, dashboard),
