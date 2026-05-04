@@ -22,11 +22,41 @@ bool partySuggestLabelMatches(String label, String qLower) {
   return false;
 }
 
-int _partySuggestMatchRank(String label, String qLower) {
+int _rankLabelTokenMatch(String labLower, String qLower) {
   if (qLower.isEmpty) return 0;
-  final lab = label.toLowerCase().trim();
-  if (lab.startsWith(qLower)) return 0;
-  return 1;
+  if (labLower.startsWith(qLower)) return 0;
+  final toks = labLower
+      .split(RegExp(r'[^a-z0-9]+'))
+      .where((t) => t.isNotEmpty)
+      .toList();
+  if (toks.isNotEmpty && toks.first.startsWith(qLower)) return 1;
+  for (var i = 1; i < toks.length; i++) {
+    if (toks[i].startsWith(qLower)) return 2;
+  }
+  return 3;
+}
+
+String _partyMatchBlobLower(InlineSearchItem it) {
+  final s = it.searchText?.trim();
+  if (s != null && s.isNotEmpty) return s.toLowerCase();
+  return it.label.toLowerCase().trim();
+}
+
+/// Best rank for sorting: label match quality first, then extended [searchText] blob.
+int _partySuggestItemMatchRank(InlineSearchItem it, String qLower) {
+  if (qLower.isEmpty) return 0;
+  final lab = it.label.toLowerCase().trim();
+  final blob = _partyMatchBlobLower(it);
+  final rLab = _rankLabelTokenMatch(lab, qLower);
+  if (rLab < 3) return rLab;
+  if (blob != lab) {
+    if (partySuggestLabelMatches(blob, qLower)) {
+      final rb = _rankLabelTokenMatch(blob, qLower);
+      return 3 + math.min(2, rb);
+    }
+    if (blob.contains(qLower)) return 6;
+  }
+  return 7;
 }
 
 /// Party step: suggestions **inline** below the field (no overlay).
@@ -276,11 +306,13 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     if (qRaw.length < min) return [];
     final hits = <InlineSearchItem>[];
     for (final it in widget.items) {
-      if (partySuggestLabelMatches(it.label, qRaw)) hits.add(it);
+      if (partySuggestLabelMatches(_partyMatchBlobLower(it), qRaw)) {
+        hits.add(it);
+      }
     }
     hits.sort((a, b) {
-      final ra = _partySuggestMatchRank(a.label, qRaw);
-      final rb = _partySuggestMatchRank(b.label, qRaw);
+      final ra = _partySuggestItemMatchRank(a, qRaw);
+      final rb = _partySuggestItemMatchRank(b, qRaw);
       final c = ra.compareTo(rb);
       if (c != 0) return c;
       return a.label.toLowerCase().compareTo(b.label.toLowerCase());
@@ -573,6 +605,20 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       widget.maxPanelAbs,
       math.max(120.0, availBelow - sz.height - 24),
     );
+    final showDivider = rows.isNotEmpty &&
+        showAddFocused &&
+        widget.onAddRow != null;
+    const estRow = 56.0;
+    const estAdd = 50.0;
+    const estDiv = 17.0;
+    var estContentH = rows.length * estRow;
+    if (showDivider) estContentH += estDiv;
+    if (showAddFocused && widget.onAddRow != null) {
+      estContentH += estAdd;
+    }
+    final overlayListPhysics = estContentH <= maxPanelH
+        ? const NeverScrollableScrollPhysics()
+        : const ClampingScrollPhysics();
 
     return CompositedTransformFollower(
       link: _layerLink,
@@ -593,22 +639,18 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
             ),
             child: ConstrainedBox(
               constraints: BoxConstraints(maxHeight: maxPanelH),
-              child: SingleChildScrollView(
-                physics: const ClampingScrollPhysics(),
+              child: ListView(
+                shrinkWrap: true,
+                physics: overlayListPhysics,
+                padding: EdgeInsets.zero,
                 clipBehavior: Clip.hardEdge,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (final it in rows) _buildSuggestionTile(cs, it),
-                    if (rows.isNotEmpty &&
-                        showAddFocused &&
-                        widget.onAddRow != null)
-                      Divider(height: 1, thickness: 1, color: borderColor),
-                    if (showAddFocused && widget.onAddRow != null)
-                      _buildAddRowTile(cs),
-                  ],
-                ),
+                children: [
+                  for (final it in rows) _buildSuggestionTile(cs, it),
+                  if (showDivider)
+                    Divider(height: 1, thickness: 1, color: borderColor),
+                  if (showAddFocused && widget.onAddRow != null)
+                    _buildAddRowTile(cs),
+                ],
               ),
             ),
           ),

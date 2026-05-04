@@ -11,11 +11,14 @@ class InlineSearchItem {
     required this.id,
     required this.label,
     this.subtitle,
+    /// Lowercase-ish blob for matching (e.g. name + code + HSN). Display stays [label].
+    this.searchText,
   });
 
   final String id;
   final String label;
   final String? subtitle;
+  final String? searchText;
 
   @override
   bool operator ==(Object other) =>

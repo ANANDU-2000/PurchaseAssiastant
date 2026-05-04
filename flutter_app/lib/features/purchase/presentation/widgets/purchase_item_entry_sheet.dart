@@ -91,6 +91,9 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   String _freightType = 'separate';
   bool _boxFixedWeight = true;
 
+  /// For weight-bag ₹/kg economics: text fields hold **per kg** vs **per bag** amounts.
+  bool _rateFieldsPerKg = true;
+
   String? _errItem;
   String? _errQty;
   String? _errUnit;
@@ -438,6 +441,55 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     return _activeClassification().type == UnitType.weightBag;
   }
 
+  void _onRateBasisChanged(bool wantPerKg) {
+    if (wantPerKg == _rateFieldsPerKg) return;
+    final k = _kgPer();
+    final land = _parseD(_landingCtrl.text);
+    final sell = _parseD(_sellingCtrl.text);
+    setState(() {
+      if (k != null && k > 0) {
+        if (_rateFieldsPerKg && !wantPerKg) {
+          if (land != null && land > 0) {
+            _landingCtrl.text = _fmtMoney(land * k);
+          }
+          if (sell != null && sell > 0) {
+            _sellingCtrl.text = _fmtMoney(sell * k);
+          }
+        } else if (!_rateFieldsPerKg && wantPerKg) {
+          if (land != null && land > 0) {
+            _landingCtrl.text = _fmtMoney(land / k);
+          }
+          if (sell != null && sell > 0) {
+            _sellingCtrl.text = _fmtMoney(sell / k);
+          }
+        }
+      }
+      _rateFieldsPerKg = wantPerKg;
+    });
+  }
+
+  /// Landing field interpreted as **₹/kg** for wire when [_ratesPerKgEconomics].
+  double? _landingParsedAsPerKg() {
+    final raw = _parseD(_landingCtrl.text);
+    if (raw == null) return null;
+    if (!_ratesPerKgEconomics) return raw;
+    if (_rateFieldsPerKg) return raw;
+    final k = _kgPer();
+    if (k == null || k <= 0) return raw;
+    return raw / k;
+  }
+
+  /// Selling field interpreted as **₹/kg** for wire when [_ratesPerKgEconomics].
+  double? _sellingParsedAsPerKg() {
+    final raw = _parseD(_sellingCtrl.text);
+    if (raw == null) return null;
+    if (!_ratesPerKgEconomics) return raw;
+    if (_rateFieldsPerKg) return raw;
+    final k = _kgPer();
+    if (k == null || k <= 0) return raw;
+    return raw / k;
+  }
+
   InputDecoration _deco(
     String label, {
     String? prefixText,
@@ -626,7 +678,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     final tax = _parseD(_taxCtrl.text);
     if (_ratesPerKgEconomics) {
       final kpu = _kgPer()!;
-      final perKg = _parseD(_landingCtrl.text) ?? 0;
+      final perKg = _landingParsedAsPerKg() ?? 0;
       return TradeCalcLine(
         qty: qty,
         landingCost: kpu * perKg,
@@ -646,15 +698,38 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
 
   double _lineTotalPreview() => lineMoney(_currentLine());
 
+  Widget? _rateEntryBasisSegmented(double? kPer, bool showPerKg) {
+    if (!showPerKg || kPer == null || kPer <= 0) return null;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: SegmentedButton<bool>(
+          segments: const [
+            ButtonSegment(value: true, label: Text('₹/kg')),
+            ButtonSegment(value: false, label: Text('₹/bag')),
+          ],
+          selected: {_rateFieldsPerKg},
+          onSelectionChanged: (s) {
+            if (s.isEmpty) return;
+            _onRateBasisChanged(s.first);
+          },
+        ),
+      ),
+    );
+  }
+
   double _profitPreview() {
-    final sell = _parseD(_sellingCtrl.text);
+    final sell = _ratesPerKgEconomics
+        ? _sellingParsedAsPerKg()
+        : _parseD(_sellingCtrl.text);
     if (sell == null) return 0;
     final lineCharges = (_freightType == 'separate' ? (_parseD(_freightCtrl.text) ?? 0) : 0) +
         (_parseD(_deliveredCtrl.text) ?? 0) +
         (_parseD(_billtyCtrl.text) ?? 0);
     if (_ratesPerKgEconomics) {
       final k = _kgPer()!;
-      final perKgLand = _parseD(_landingCtrl.text) ?? 0;
+      final perKgLand = _landingParsedAsPerKg() ?? 0;
       final totalK = _qtyVal() * k;
       return ((sell - perKgLand) * totalK) - lineCharges;
     }
@@ -675,14 +750,30 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   }
 
   void _rebuildCatalogSearchItems() {
-    _catalogSearchItems = [
-      for (final row in widget.catalog)
+    final out = <InlineSearchItem>[];
+    for (final row in widget.catalog) {
+      final blob = _catalogSearchBlob(row);
+      out.add(
         InlineSearchItem(
           id: row['id']?.toString() ?? '',
           label: row['name']?.toString() ?? '',
           subtitle: row['default_unit']?.toString(),
+          searchText: blob.isEmpty ? null : blob,
         ),
-    ];
+      );
+    }
+    _catalogSearchItems = out;
+  }
+
+  /// Space-joined lowercase tokens for typeahead (name + code + HSN).
+  String _catalogSearchBlob(Map<String, dynamic> row) {
+    final parts = <String>[
+      row['name']?.toString().trim() ?? '',
+      row['item_code']?.toString().trim() ?? '',
+      row['hsn_code']?.toString().trim() ?? '',
+      row['hsn']?.toString().trim() ?? '',
+    ].where((s) => s.isNotEmpty);
+    return parts.join(' ').toLowerCase();
   }
 
   @override
@@ -720,7 +811,8 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     final name = _itemCtrl.text.trim();
     final qty = _qtyVal();
     final unit = _unitCtrl.text.trim();
-    final rate = _parseD(_landingCtrl.text) ?? 0;
+    final rate =
+        _ratesPerKgEconomics ? (_landingParsedAsPerKg() ?? 0) : (_parseD(_landingCtrl.text) ?? 0);
 
     final catalogId = _selectedCatalogItemId;
     final rowSnap = catalogId != null && catalogId.isNotEmpty
@@ -784,8 +876,11 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         _errKgPerBag = (k == null || k <= 0) ? 'Kg per bag required' : null;
       }
       if (_ratesPerKgEconomics) {
-        _errLanding =
-            rate <= 0 ? 'Enter a purchase rate per kg greater than zero' : null;
+        _errLanding = rate <= 0
+            ? (_rateFieldsPerKg
+                ? 'Enter a purchase rate per kg greater than zero'
+                : 'Enter a purchase rate per bag greater than zero')
+            : null;
       } else {
         _errLanding =
             rate <= 0 ? 'Enter a purchase rate greater than zero' : null;
@@ -909,7 +1004,8 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     if (disc != null && disc > 0) m['discount'] = disc;
     if (tax != null && tax > 0) m['tax_percent'] = tax;
     if (sellSt.isNotEmpty) {
-      m['selling_cost'] = _sellingForPayloadForWire(_parseD(sellSt)!);
+      final sellParsed = _sellingParsedAsPerKg() ?? _parseD(sellSt)!;
+      m['selling_cost'] = _sellingForPayloadForWire(sellParsed);
       m['selling_rate'] = m['selling_cost'];
     }
     m['freight_type'] = _freightType;
@@ -961,6 +1057,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       _itemCode = null;
       _lineNotesCtrl.clear();
       _lastPurchaseAutofillHint = null;
+      _rateFieldsPerKg = true;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _itemFocus.requestFocus();
@@ -1461,13 +1558,17 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   /// Line preview: qty + unit + total weight, then rates and profit.
   Widget _liveTotalsCard(ThemeData theme) {
     final total = _lineTotalPreview();
-    final sell = _parseD(_sellingCtrl.text);
+    final sell = _ratesPerKgEconomics
+        ? _sellingParsedAsPerKg()
+        : _parseD(_sellingCtrl.text);
     final profit = _profitPreview();
     final k = _kgPer();
     final q = _qtyVal();
     final u = _unitCtrl.text.trim();
 
-    final per = _parseD(_landingCtrl.text) ?? 0;
+    final per = _ratesPerKgEconomics
+        ? (_landingParsedAsPerKg() ?? 0)
+        : (_parseD(_landingCtrl.text) ?? 0);
 
     final lines = <Widget>[
       Text(
@@ -1561,6 +1662,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     const ink = Color(0xFF0F172A);
     final gapField = widget.fullPage ? 16.0 : 6.0;
     final gapSection = widget.fullPage ? 24.0 : 8.0;
+    final rateBasisSeg = _rateEntryBasisSegmented(k, showPerKgFields);
 
     final formChildren = <Widget>[
       if (!widget.fullPage) ...[
@@ -1666,67 +1768,75 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
               SizedBox(height: gapField),
               if (widget.fullPage)
                 _fpShell(
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      KeyedSubtree(
-                        key: _qtyKey,
-                        child: TextField(
-                          controller: _qtyCtrl,
-                          focusNode: _qtyFocus,
-                          keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
-                          inputFormatters: [_decimalFormatter(3)],
-                          textInputAction: TextInputAction.next,
-                          decoration: _deco('Qty *', errorText: _errQty),
-                          onChanged: (_) {
-                            _clearFieldErrors();
-                            _schedulePreviewRebuild();
-                          },
-                          onSubmitted: (_) {
-                            if (showManualKgField) {
-                              FocusScope.of(context)
-                                  .requestFocus(_kgManualFocus);
-                            } else {
-                              FocusScope.of(context)
-                                  .requestFocus(_landingFocus);
-                            }
-                          },
+                      Expanded(
+                        flex: 5,
+                        child: KeyedSubtree(
+                          key: _qtyKey,
+                          child: TextField(
+                            controller: _qtyCtrl,
+                            focusNode: _qtyFocus,
+                            keyboardType:
+                                const TextInputType.numberWithOptions(
+                                    decimal: true),
+                            inputFormatters: [_decimalFormatter(3)],
+                            textInputAction: TextInputAction.next,
+                            decoration: _deco('Qty *', errorText: _errQty),
+                            onChanged: (_) {
+                              _clearFieldErrors();
+                              _schedulePreviewRebuild();
+                            },
+                            onSubmitted: (_) {
+                              if (showManualKgField) {
+                                FocusScope.of(context)
+                                    .requestFocus(_kgManualFocus);
+                              } else {
+                                FocusScope.of(context)
+                                    .requestFocus(_landingFocus);
+                              }
+                            },
+                          ),
                         ),
                       ),
-                      SizedBox(height: gapField),
-                      KeyedSubtree(
-                        key: _unitKey,
-                        child: (showPerKgFields && _hasCatalogKg())
-                            ? InputDecorator(
-                                decoration:
-                                    _deco('Unit *', errorText: _errUnit),
-                                child: Text(
-                                  '${_unitCtrl.text.trim()} (${_fmtQty(k ?? 0)} kg)',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 13,
+                      const SizedBox(width: 6),
+                      Expanded(
+                        flex: 5,
+                        child: KeyedSubtree(
+                          key: _unitKey,
+                          child: (showPerKgFields && _hasCatalogKg())
+                              ? InputDecorator(
+                                  decoration:
+                                      _deco('Unit *', errorText: _errUnit),
+                                  child: Text(
+                                    '${_unitCtrl.text.trim()} (${_fmtQty(k ?? 0)} kg)',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13,
+                                    ),
                                   ),
+                                )
+                              : TextField(
+                                  controller: _unitCtrl,
+                                  decoration:
+                                      _deco('Unit *', errorText: _errUnit),
+                                  onChanged: (v) {
+                                    _clearFieldErrors();
+                                    if (!_isWeightUnit(v) &&
+                                        !_hasCatalogKg()) {
+                                      _kgPerUnit = null;
+                                      _kgPerBagCtrl.clear();
+                                    }
+                                    _recomputeModeFromUnitAndCatalog();
+                                    setState(() {
+                                      _adjustBoxFixedForClassification(
+                                        _activeClassification(),
+                                      );
+                                    });
+                                  },
                                 ),
-                              )
-                            : TextField(
-                                controller: _unitCtrl,
-                                decoration:
-                                    _deco('Unit *', errorText: _errUnit),
-                                onChanged: (v) {
-                                  _clearFieldErrors();
-                                  if (!_isWeightUnit(v) && !_hasCatalogKg()) {
-                                    _kgPerUnit = null;
-                                    _kgPerBagCtrl.clear();
-                                  }
-                                  _recomputeModeFromUnitAndCatalog();
-                                  setState(() {
-                                    _adjustBoxFixedForClassification(
-                                      _activeClassification(),
-                                    );
-                                  });
-                                },
-                              ),
+                        ),
                       ),
                     ],
                   ),
@@ -1943,13 +2053,83 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      KeyedSubtree(
+                      if (rateBasisSeg != null) rateBasisSeg,
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 5,
+                            child: KeyedSubtree(
+                              key: _landingKey,
+                              child: TextField(
+                                controller: _landingCtrl,
+                                focusNode: _landingFocus,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                        decimal: true),
+                                inputFormatters: [_decimalFormatter(2)],
+                                textInputAction: TextInputAction.next,
+                                decoration: _deco(
+                                  _purchaseRateLabel(showPerKgFields),
+                                  prefixText: '₹ ',
+                                  errorText: _errLanding,
+                                ),
+                                onChanged: (_) {
+                                  _clearFieldErrors();
+                                  _schedulePreviewRebuild();
+                                },
+                                onSubmitted: (_) {
+                                  FocusScope.of(context)
+                                      .requestFocus(_sellingFocus);
+                                },
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            flex: 5,
+                            child: KeyedSubtree(
+                              key: _sellingKey,
+                              child: TextField(
+                                controller: _sellingCtrl,
+                                focusNode: _sellingFocus,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                        decimal: true),
+                                inputFormatters: [_decimalFormatter(2)],
+                                textInputAction: TextInputAction.done,
+                                decoration: _deco(
+                                  _sellingRateLabel(showPerKgFields),
+                                  prefixText: '₹ ',
+                                  errorText: _errSelling,
+                                ),
+                                onChanged: (_) {
+                                  _clearFieldErrors();
+                                  _schedulePreviewRebuild();
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                )
+              else ...[
+                if (rateBasisSeg != null) rateBasisSeg,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 5,
+                      child: KeyedSubtree(
                         key: _landingKey,
                         child: TextField(
                           controller: _landingCtrl,
                           focusNode: _landingFocus,
-                          keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
+                          keyboardType:
+                              const TextInputType.numberWithOptions(
+                                  decimal: true),
                           inputFormatters: [_decimalFormatter(2)],
                           textInputAction: TextInputAction.next,
                           decoration: _deco(
@@ -1962,18 +2142,23 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                             _schedulePreviewRebuild();
                           },
                           onSubmitted: (_) {
-                            FocusScope.of(context).requestFocus(_sellingFocus);
+                            FocusScope.of(context)
+                                .requestFocus(_sellingFocus);
                           },
                         ),
                       ),
-                      SizedBox(height: gapField),
-                      KeyedSubtree(
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      flex: 5,
+                      child: KeyedSubtree(
                         key: _sellingKey,
                         child: TextField(
                           controller: _sellingCtrl,
                           focusNode: _sellingFocus,
-                          keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
+                          keyboardType:
+                              const TextInputType.numberWithOptions(
+                                  decimal: true),
                           inputFormatters: [_decimalFormatter(2)],
                           textInputAction: TextInputAction.done,
                           decoration: _deco(
@@ -1987,53 +2172,8 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                           },
                         ),
                       ),
-                    ],
-                  ),
-                )
-              else ...[
-                KeyedSubtree(
-                  key: _landingKey,
-                  child: TextField(
-                    controller: _landingCtrl,
-                    focusNode: _landingFocus,
-                    keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true),
-                    inputFormatters: [_decimalFormatter(2)],
-                    textInputAction: TextInputAction.next,
-                    decoration: _deco(
-                      _purchaseRateLabel(showPerKgFields),
-                      prefixText: '₹ ',
-                      errorText: _errLanding,
                     ),
-                    onChanged: (_) {
-                      _clearFieldErrors();
-                      _schedulePreviewRebuild();
-                    },
-                    onSubmitted: (_) {
-                      FocusScope.of(context).requestFocus(_sellingFocus);
-                    },
-                  ),
-                ),
-                SizedBox(height: gapField),
-                KeyedSubtree(
-                  key: _sellingKey,
-                  child: TextField(
-                    controller: _sellingCtrl,
-                    focusNode: _sellingFocus,
-                    keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true),
-                    inputFormatters: [_decimalFormatter(2)],
-                    textInputAction: TextInputAction.done,
-                    decoration: _deco(
-                      _sellingRateLabel(showPerKgFields),
-                      prefixText: '₹ ',
-                      errorText: _errSelling,
-                    ),
-                    onChanged: (_) {
-                      _clearFieldErrors();
-                      _schedulePreviewRebuild();
-                    },
-                  ),
+                  ],
                 ),
               ],
               SizedBox(height: widget.fullPage ? gapSection : 2),
@@ -2275,12 +2415,12 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                       onPressed: () => _commit(closeSheet: false),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: teal,
-                        side: BorderSide(color: teal),
+                        side: const BorderSide(color: teal),
                         minimumSize: const Size(double.infinity, 50),
                         padding:
                             const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(12)),
                         ),
                       ),
                       child: const Text('Save & add more'),
@@ -2295,8 +2435,8 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                         minimumSize: const Size(double.infinity, 50),
                         padding:
                             const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(12)),
                         ),
                       ),
                       child: const Text(
