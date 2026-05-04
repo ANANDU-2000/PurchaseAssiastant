@@ -19,6 +19,7 @@ from app.db_resilience import execute_with_retry
 from app.deps import require_membership
 from app.models import CatalogItem, CategoryType, Entry, EntryLineItem, ItemCategory, Membership, Supplier
 from app.schemas.entries import EntryLineOut, EntryOut
+from app.services import trade_purchase_service as tps
 from app.services.fuzzy_catalog import rank_ids_by_token_sort
 
 router = APIRouter(prefix="/v1/businesses/{business_id}", tags=["search"])
@@ -69,6 +70,15 @@ class UnifiedSearchOut(BaseModel):
     catalog_items: list[dict[str, Any]] = Field(default_factory=list)
     suppliers: list[dict[str, Any]] = Field(default_factory=list)
     entries: list[dict[str, Any]] = Field(default_factory=list)
+    """Legacy entry rows (old Entry model); often empty when the business only uses trade purchases."""
+    catalog_subcategories: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Catalog types (subcategories) matching the query by type or parent category name.",
+    )
+    recent_purchases: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Recent trade purchases whose bill / supplier / line text matches q.",
+    )
     fuzzy_catalog_used: bool = False
     fuzzy_suppliers_used: bool = False
 
@@ -154,6 +164,13 @@ async def unified_search(
             ),
         )
         if has_type:
+            item_name_cat_hsn = or_(
+                item_name_cat_hsn,
+                and_(
+                    CatalogItem.type_id.isnot(None),
+                    func.lower(ct.name).contains(needle),
+                ),
+            )
             sq_items = (
                 select(
                     CatalogItem.id,
@@ -301,10 +318,64 @@ async def unified_search(
         entries = [e for e in er.scalars().unique().all()]
         entries_out = [_entry_to_out(e).model_dump(mode="json") for e in entries]
 
+        catalog_subcategories_out: list[dict[str, Any]] = []
+        if has_type:
+            rsub = await execute_with_retry(
+                lambda: db.execute(
+                    select(
+                        CategoryType.id,
+                        CategoryType.name,
+                        ItemCategory.id,
+                        ItemCategory.name,
+                    )
+                    .join(ItemCategory, ItemCategory.id == CategoryType.category_id)
+                    .where(
+                        ItemCategory.business_id == business_id,
+                        or_(
+                            func.lower(CategoryType.name).contains(needle),
+                            func.lower(ItemCategory.name).contains(needle),
+                        ),
+                    )
+                    .distinct()
+                    .limit(20)
+                )
+            )
+            for row in rsub.all():
+                catalog_subcategories_out.append(
+                    {
+                        "id": str(row[0]),
+                        "name": row[1],
+                        "category_id": str(row[2]),
+                        "category_name": row[3],
+                    }
+                )
+
+        recent_purchases_out: list[dict[str, Any]] = []
+        try:
+            recent_rows = await execute_with_retry(
+                lambda: tps.list_trade_purchases(
+                    db,
+                    business_id,
+                    limit=10,
+                    offset=0,
+                    status_filter="all",
+                    q=q.strip(),
+                )
+            )
+            recent_purchases_out = [r.model_dump(mode="json") for r in recent_rows]
+        except Exception:
+            logger.exception(
+                "unified_search recent_purchases failed business_id=%s q=%s",
+                business_id,
+                q,
+            )
+
         return UnifiedSearchOut(
             catalog_items=catalog_items,
             suppliers=suppliers,
             entries=entries_out,
+            catalog_subcategories=catalog_subcategories_out,
+            recent_purchases=recent_purchases_out,
             fuzzy_catalog_used=fuzzy_catalog_used,
             fuzzy_suppliers_used=fuzzy_suppliers_used,
         )

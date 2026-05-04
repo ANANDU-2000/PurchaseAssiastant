@@ -3,11 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 
-/// Server-backed unified search (items, suppliers).
+/// Server-backed unified search (catalog items, catalog types, trade bills, suppliers).
 final unifiedSearchProvider =
     FutureProvider.autoDispose.family<Map<String, dynamic>, String>(
   (ref, q) async {
@@ -16,6 +17,8 @@ final unifiedSearchProvider =
       return {
         'catalog_items': <dynamic>[],
         'suppliers': <dynamic>[],
+        'catalog_subcategories': <dynamic>[],
+        'recent_purchases': <dynamic>[],
       };
     }
     return ref.read(hexaApiProvider).unifiedSearch(
@@ -24,6 +27,87 @@ final unifiedSearchProvider =
         );
   },
 );
+
+double? _toD(dynamic v) {
+  if (v == null) return null;
+  if (v is num) return v.toDouble();
+  return double.tryParse(v.toString());
+}
+
+String _fmtInr(dynamic v, {int digits = 2}) {
+  final n = _toD(v);
+  if (n == null) return '—';
+  return NumberFormat.currency(
+    locale: 'en_IN',
+    symbol: '₹',
+    decimalDigits: digits,
+  ).format(n);
+}
+
+String _fmtQty(dynamic v) {
+  final n = _toD(v);
+  if (n == null) return '—';
+  if (n == n.roundToDouble()) return n.round().toString();
+  return n.toStringAsFixed(2);
+}
+
+List<Map<String, dynamic>> _asMapListSkipBad(String key, Map<String, dynamic> data) {
+  final raw = data[key];
+  if (raw is! List) return [];
+  final out = <Map<String, dynamic>>[];
+  for (final e in raw) {
+    if (e is Map) out.add(Map<String, dynamic>.from(e));
+  }
+  return out;
+}
+
+String _catalogItemMetaLines(Map<String, dynamic> m) {
+  final bits = <String>[];
+  final hsn = m['hsn_code']?.toString().trim();
+  if (hsn != null && hsn.isNotEmpty) bits.add('HSN $hsn');
+  final ic = m['item_code']?.toString().trim();
+  if (ic != null && ic.isNotEmpty) bits.add('Code $ic');
+  final du = m['default_unit']?.toString().trim();
+  if (du != null && du.isNotEmpty) bits.add('Unit $du');
+  final kpb = _toD(m['default_kg_per_bag']);
+  if (kpb != null && kpb > 0) bits.add('${_fmtQty(kpb)} kg/bag');
+  final last = _toD(m['last_purchase_price']);
+  final def = _toD(m['default_landing_cost']);
+  if (last != null && last > 0) {
+    bits.add('Last buy ${_fmtInr(last)}');
+  }
+  if (def != null && def > 0) {
+    bits.add('Default ${_fmtInr(def)}');
+  }
+  return bits.join(' · ');
+}
+
+Map<String, dynamic>? _pickPurchaseLine(Map<String, dynamic> p, String q) {
+  final lines = (p['lines'] as List<dynamic>?) ?? [];
+  for (final raw in lines) {
+    if (raw is! Map) continue;
+    final m = Map<String, dynamic>.from(raw);
+    final nm = (m['item_name'] ?? '').toString().toLowerCase();
+    if (q.isNotEmpty && nm.contains(q)) return m;
+  }
+  if (lines.isNotEmpty && lines.first is Map) {
+    return Map<String, dynamic>.from(lines.first as Map);
+  }
+  return null;
+}
+
+String _purchaseLineSummary(Map<String, dynamic> line) {
+  final nm = line['item_name']?.toString() ?? 'Line';
+  final qty = _fmtQty(line['qty']);
+  final unit = line['unit']?.toString() ?? '';
+  final pr = line['purchase_rate'];
+  final lc = line['landing_cost'];
+  final prN = _toD(pr);
+  final rate = prN != null && prN > 0
+      ? 'Rate ${_fmtInr(pr)}'
+      : 'Landing ${_fmtInr(lc)}';
+  return '$nm · $qty $unit · $rate';
+}
 
 class SearchPage extends ConsumerStatefulWidget {
   const SearchPage({super.key});
@@ -39,14 +123,16 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   String _debounced = '';
   String _section = 'all';
 
+  static const _sections = {'all', 'types', 'items', 'bills', 'suppliers'};
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final sec = GoRouterState.of(context).uri.queryParameters['section'];
-      if (sec == 'all' || sec == 'items' || sec == 'suppliers') {
-        setState(() => _section = sec!);
+      if (sec != null && _sections.contains(sec)) {
+        setState(() => _section = sec);
       }
       _focus.requestFocus();
     });
@@ -93,7 +179,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
           SearchBar(
             focusNode: _focus,
             controller: _controller,
-            hintText: 'Name, HSN, category, supplier, GST…',
+            hintText: 'Item, type, bill, supplier, HSN…',
             textInputAction: TextInputAction.search,
             textStyle: const WidgetStatePropertyAll(TextStyle()),
             leading: const Icon(Icons.search_rounded),
@@ -118,7 +204,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
             Padding(
               padding: const EdgeInsets.only(top: 24),
               child: Text(
-                'Type one letter to search items (name, HSN, category) and suppliers.',
+                'Search catalog items (name, HSN, code, category, catalog type), '
+                'recent purchase bills, and suppliers.',
                 style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
                 textAlign: TextAlign.center,
               ),
@@ -132,26 +219,26 @@ class _SearchPageState extends ConsumerState<SearchPage> {
               ),
               error: (_, __) => FriendlyLoadError(
                 message: 'Search failed',
-                onRetry: () => ref.invalidate(unifiedSearchProvider(q)),
+                onRetry: () =>
+                    ref.invalidate(unifiedSearchProvider(_debounced)),
               ),
               data: (data) {
-                final items = (data['catalog_items'] as List<dynamic>?)
-                        ?.map((e) => Map<String, dynamic>.from(e as Map))
-                        .toList() ??
-                    [];
-                final suppliers = (data['suppliers'] as List<dynamic>?)
-                        ?.map((e) => Map<String, dynamic>.from(e as Map))
-                        .toList() ??
-                    [];
+                final items = _asMapListSkipBad('catalog_items', data);
+                final suppliers = _asMapListSkipBad('suppliers', data);
+                final types = _asMapListSkipBad('catalog_subcategories', data);
+                final bills = _asMapListSkipBad('recent_purchases', data);
+                final fuzzyItems = data['fuzzy_catalog_used'] == true;
+                final fuzzySup = data['fuzzy_suppliers_used'] == true;
                 final sectionCounts = <String, int>{
+                  'types': types.length,
                   'items': items.length,
+                  'bills': bills.length,
                   'suppliers': suppliers.length,
                 };
-                final hasAnyResult = items.isNotEmpty || suppliers.isNotEmpty;
-                final fuzzyItems =
-                    data['fuzzy_catalog_used'] == true;
-                final fuzzySup =
-                    data['fuzzy_suppliers_used'] == true;
+                final hasAny = types.isNotEmpty ||
+                    items.isNotEmpty ||
+                    bills.isNotEmpty ||
+                    suppliers.isNotEmpty;
 
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -171,109 +258,276 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                           ),
                         ),
                       ),
-                    if (hasAnyResult) ...[
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          ChoiceChip(
-                            label: const Text('All'),
-                            selected: _section == 'all',
-                            onSelected: (_) => setState(() => _section = 'all'),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        ChoiceChip(
+                          label: const Text('All'),
+                          selected: _section == 'all',
+                          onSelected: (_) => setState(() => _section = 'all'),
+                        ),
+                        ChoiceChip(
+                          label: Text('Types (${sectionCounts['types']})'),
+                          selected: _section == 'types',
+                          onSelected: (_) =>
+                              setState(() => _section = 'types'),
+                        ),
+                        ChoiceChip(
+                          label: Text('Items (${sectionCounts['items']})'),
+                          selected: _section == 'items',
+                          onSelected: (_) =>
+                              setState(() => _section = 'items'),
+                        ),
+                        ChoiceChip(
+                          label: Text('Bills (${sectionCounts['bills']})'),
+                          selected: _section == 'bills',
+                          onSelected: (_) =>
+                              setState(() => _section = 'bills'),
+                        ),
+                        ChoiceChip(
+                          label:
+                              Text('Suppliers (${sectionCounts['suppliers']})'),
+                          selected: _section == 'suppliers',
+                          onSelected: (_) =>
+                              setState(() => _section = 'suppliers'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (!hasAny)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          'No matches in catalog, bills, or suppliers for this query.',
+                          style: tt.bodySmall?.copyWith(
+                            color: cs.onSurfaceVariant,
                           ),
-                          ChoiceChip(
-                            label: Text('Items (${sectionCounts['items']})'),
-                            selected: _section == 'items',
-                            onSelected: (_) =>
-                                setState(() => _section = 'items'),
-                          ),
-                          ChoiceChip(
-                            label:
-                                Text('Suppliers (${sectionCounts['suppliers']})'),
-                            selected: _section == 'suppliers',
-                            onSelected: (_) =>
-                                setState(() => _section = 'suppliers'),
-                          ),
-                        ],
+                        ),
                       ),
-                      const SizedBox(height: 12),
+                    if (_section == 'all' || _section == 'types') ...[
+                      Text(
+                        'Catalog types',
+                        style: tt.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      if (types.isEmpty)
+                        Text(
+                          'No matching category / subcategory (type) names.',
+                          style: tt.bodySmall?.copyWith(
+                            color: cs.onSurfaceVariant,
+                          ),
+                        )
+                      else
+                        ...types.map((m) {
+                          final tid = m['id']?.toString() ?? '';
+                          final cid = m['category_id']?.toString() ?? '';
+                          final tname = m['name']?.toString() ?? '—';
+                          final cname = m['category_name']?.toString() ?? '';
+                          final sub = cname.isEmpty
+                              ? 'Catalog type'
+                              : 'Under $cname';
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.category_outlined,
+                                color: cs.primary),
+                            title: Text(tname),
+                            subtitle: Text(
+                              sub,
+                              style: tt.bodySmall?.copyWith(
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
+                            trailing: const Icon(Icons.chevron_right_rounded),
+                            onTap: tid.isEmpty || cid.isEmpty
+                                ? null
+                                : () => context.push(
+                                      '/catalog/category/$cid/type/$tid',
+                                    ),
+                          );
+                        }),
+                      const SizedBox(height: 20),
                     ],
                     if (_section == 'all' || _section == 'items') ...[
-                    Text(
-                      'Items',
-                      style: tt.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 16,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    if (items.isEmpty)
                       Text(
-                        'No matching catalog items.',
-                        style:
-                            tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-                      )
-                    else
-                      ...items.map((m) {
-                        final id = m['id']?.toString() ?? '';
-                        final name = m['name']?.toString() ?? 'Item';
-                        final cat = m['category_name']?.toString();
-                        final typ = m['type_name']?.toString();
-                        final sub = [cat, typ].whereType<String>().where((s) => s.isNotEmpty).join(' · ');
-                        return ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.inventory_2_outlined,
-                              color: cs.primary),
-                          title: Text(name),
-                          subtitle: sub.isEmpty
-                              ? null
-                              : Text(
-                                  sub,
+                        'Catalog items',
+                        style: tt.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      if (items.isEmpty)
+                        Text(
+                          'No matching catalog items.',
+                          style: tt.bodySmall?.copyWith(
+                            color: cs.onSurfaceVariant,
+                          ),
+                        )
+                      else
+                        ...items.map((m) {
+                          final id = m['id']?.toString() ?? '';
+                          final name = m['name']?.toString() ?? 'Item';
+                          final cat = m['category_name']?.toString();
+                          final typ = m['type_name']?.toString();
+                          final path = [cat, typ]
+                              .whereType<String>()
+                              .where((s) => s.isNotEmpty)
+                              .join(' · ');
+                          final meta = _catalogItemMetaLines(m);
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            isThreeLine: meta.isNotEmpty,
+                            leading: Icon(Icons.inventory_2_outlined,
+                                color: cs.primary),
+                            title: Text(name),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (path.isNotEmpty)
+                                  Text(
+                                    path,
+                                    style: tt.bodySmall?.copyWith(
+                                      color: cs.onSurfaceVariant,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                if (meta.isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 2),
+                                    child: Text(
+                                      meta,
+                                      style: tt.bodySmall?.copyWith(
+                                        color: cs.onSurfaceVariant,
+                                        height: 1.3,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            trailing:
+                                const Icon(Icons.chevron_right_rounded),
+                            onTap: id.isEmpty
+                                ? null
+                                : () => context.push('/catalog/item/$id'),
+                          );
+                        }),
+                      const SizedBox(height: 20),
+                    ],
+                    if (_section == 'all' || _section == 'bills') ...[
+                      Text(
+                        'Recent purchase bills',
+                        style: tt.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      if (bills.isEmpty)
+                        Text(
+                          'No bills matched (try item name, supplier, or bill id).',
+                          style: tt.bodySmall?.copyWith(
+                            color: cs.onSurfaceVariant,
+                          ),
+                        )
+                      else
+                        ...bills.map((p) {
+                          final id = p['id']?.toString() ?? '';
+                          final hid = p['human_id']?.toString() ?? '';
+                          final dtRaw = p['purchase_date'];
+                          String dateTxt = '';
+                          if (dtRaw is String && dtRaw.length >= 10) {
+                            dateTxt = dtRaw.substring(0, 10);
+                          } else if (dtRaw != null) {
+                            dateTxt = dtRaw.toString();
+                          }
+                          final sup =
+                              p['supplier_name']?.toString() ?? 'Supplier';
+                          final line = _pickPurchaseLine(p, q);
+                          final lineTxt = line != null
+                              ? _purchaseLineSummary(line)
+                              : '';
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            isThreeLine: lineTxt.isNotEmpty,
+                            leading: Icon(Icons.receipt_long_outlined,
+                                color: cs.secondary),
+                            title: Text(
+                              hid.isEmpty ? 'Purchase' : hid,
+                              style: const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  [dateTxt, sup]
+                                      .where((s) => s.isNotEmpty)
+                                      .join(' · '),
                                   style: tt.bodySmall?.copyWith(
                                     color: cs.onSurfaceVariant,
                                   ),
                                 ),
-                          trailing:
-                              const Icon(Icons.chevron_right_rounded),
-                          onTap: id.isEmpty
-                              ? null
-                              : () => context.push('/catalog/item/$id'),
-                        );
-                      }),
-                    const SizedBox(height: 24),
+                                if (lineTxt.isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Text(
+                                      lineTxt,
+                                      style: tt.bodySmall?.copyWith(
+                                        color: cs.onSurface,
+                                        height: 1.35,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            trailing:
+                                const Icon(Icons.chevron_right_rounded),
+                            onTap: id.isEmpty
+                                ? null
+                                : () =>
+                                    context.push('/purchase/detail/$id'),
+                          );
+                        }),
+                      const SizedBox(height: 20),
                     ],
                     if (_section == 'all' || _section == 'suppliers') ...[
-                    Text(
-                      'Suppliers',
-                      style: tt.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 16,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    if (suppliers.isEmpty)
                       Text(
-                        'No matching suppliers.',
-                        style:
-                            tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-                      )
-                    else
-                      ...suppliers.map((m) {
-                        final id = m['id']?.toString() ?? '';
-                        final name = m['name']?.toString() ?? 'Supplier';
-                        return ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.storefront_outlined,
-                              color: cs.primary),
-                          title: Text(name),
-                          trailing:
-                              const Icon(Icons.chevron_right_rounded),
-                          onTap: id.isEmpty
-                              ? null
-                              : () => context.push('/supplier/$id'),
-                        );
-                      }),
-                    const SizedBox(height: 24),
+                        'Suppliers',
+                        style: tt.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      if (suppliers.isEmpty)
+                        Text(
+                          'No matching suppliers.',
+                          style: tt.bodySmall?.copyWith(
+                            color: cs.onSurfaceVariant,
+                          ),
+                        )
+                      else
+                        ...suppliers.map((m) {
+                          final id = m['id']?.toString() ?? '';
+                          final name = m['name']?.toString() ?? 'Supplier';
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.storefront_outlined,
+                                color: cs.primary),
+                            title: Text(name),
+                            trailing:
+                                const Icon(Icons.chevron_right_rounded),
+                            onTap: id.isEmpty
+                                ? null
+                                : () => context.push('/supplier/$id'),
+                          );
+                        }),
                     ],
                   ],
                 );

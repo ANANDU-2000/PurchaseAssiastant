@@ -14,7 +14,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.db_resilience import execute_with_retry
 from app.deps import require_membership, require_owner_membership
-from app.models import Broker, BrokerSupplierLink, CategoryType, Entry, EntryLineItem, ItemCategory, Membership, Supplier
+from app.models import (
+    Broker,
+    BrokerSupplierLink,
+    CatalogItem,
+    CategoryType,
+    Entry,
+    EntryLineItem,
+    ItemCategory,
+    Membership,
+    Supplier,
+)
 
 router = APIRouter(prefix="/v1/businesses/{business_id}", tags=["contacts"])
 logger = logging.getLogger(__name__)
@@ -976,12 +986,25 @@ async def contacts_search(
             )
             .limit(limit * 2)
         )
-        raw_names = [row[0] for row in ri.all() if row[0]]
-        raw_names.sort(
+        name_set = {str(row[0]).strip() for row in ri.all() if row[0] and str(row[0]).strip()}
+        ric = await db.execute(
+            select(CatalogItem.name)
+            .where(
+                CatalogItem.business_id == business_id,
+                func.lower(CatalogItem.name).like(like_contains),
+            )
+            .distinct()
+            .limit(limit * 2)
+        )
+        for row in ric.all():
+            if row[0] and str(row[0]).strip():
+                name_set.add(str(row[0]).strip())
+        raw_names = sorted(
+            name_set,
             key=lambda n: (
                 not str(n).strip().lower().startswith(term_l),
                 str(n).strip().lower(),
-            )
+            ),
         )
         item_names = raw_names[:limit]
 
@@ -1000,14 +1023,26 @@ async def contacts_search(
             )
             .limit(limit * 2)
         )
-        cats = [row[0] for row in rc.all() if row[0]]
-        cats.sort(
+        cat_set = {str(row[0]).strip() for row in rc.all() if row[0] and str(row[0]).strip()}
+        ricc = await db.execute(
+            select(ItemCategory.name)
+            .where(
+                ItemCategory.business_id == business_id,
+                func.lower(ItemCategory.name).like(like_contains),
+            )
+            .distinct()
+            .limit(limit * 2)
+        )
+        for row in ricc.all():
+            if row[0] and str(row[0]).strip():
+                cat_set.add(str(row[0]).strip())
+        categories = sorted(
+            cat_set,
             key=lambda n: (
                 not str(n).strip().lower().startswith(term_l),
                 str(n).strip().lower(),
-            )
-        )
-        categories = cats[:limit]
+            ),
+        )[:limit]
 
     catalog_subcategories: list[CatalogSubcategoryRow] = []
     if bucket("catalog_types"):

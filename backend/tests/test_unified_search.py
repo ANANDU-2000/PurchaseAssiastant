@@ -62,6 +62,8 @@ def test_unified_search_single_char_and_hsn():
     )
     assert r1.status_code == 200, r1.text
     d1 = r1.json()
+    assert "catalog_subcategories" in d1
+    assert "recent_purchases" in d1
     ids = {x["id"] for x in d1.get("catalog_items", [])}
     assert iid in ids
 
