@@ -41,7 +41,7 @@ final tradePurchasesForAlertsProvider =
   if (session == null) return [];
   return ref.read(hexaApiProvider).listTradePurchases(
         businessId: session.primaryBusiness.id,
-        limit: 50,
+        limit: 200,
       );
 });
 
@@ -55,7 +55,7 @@ final tradePurchasesListProvider =
   final apiStatus = _tradeListApiStatus(primary, secondary);
   return ref.read(hexaApiProvider).listTradePurchases(
         businessId: session.primaryBusiness.id,
-        limit: 50,
+        limit: 200,
         status: apiStatus,
       );
 });

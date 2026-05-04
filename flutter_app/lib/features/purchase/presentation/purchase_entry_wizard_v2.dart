@@ -1261,7 +1261,11 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       if (quick) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(isEdit ? 'Purchase updated' : 'Purchase saved'),
+            content: Text(
+              isEdit
+                  ? 'Purchase updated · history refreshed'
+                  : 'Purchase saved · history refreshed',
+            ),
             backgroundColor: Colors.green[700],
           ),
         );

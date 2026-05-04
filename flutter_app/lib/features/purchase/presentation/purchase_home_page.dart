@@ -19,6 +19,7 @@ import '../../../core/providers/business_aggregates_invalidation.dart'
     show invalidatePurchaseWorkspace;
 import '../../../core/providers/trade_purchases_provider.dart';
 import 'widgets/due_soon_banner.dart';
+import 'widgets/resume_purchase_draft_banner.dart';
 import '../../../core/services/purchase_pdf.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
@@ -557,6 +558,10 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                     DueSoonBanner(
                       count: dueAlert,
                       onTap: () => _selectPrimary('due_soon'),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(12, 6, 12, 0),
+                      child: ResumePurchaseDraftBanner(),
                     ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
