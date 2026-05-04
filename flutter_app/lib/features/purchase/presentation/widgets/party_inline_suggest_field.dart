@@ -42,11 +42,56 @@ String _partyMatchBlobLower(InlineSearchItem it) {
   return it.label.toLowerCase().trim();
 }
 
+bool _partySuggestHasHaystack(InlineSearchItem it) {
+  final s = it.searchText?.trim();
+  return s != null && s.isNotEmpty;
+}
+
+/// Party rows (no [InlineSearchItem.searchText]): prefix + token-prefix only, plus
+/// **multi-word AND** (each word must match via [partySuggestLabelMatches]).
+///
+/// Catalog rows (haystack set): also match **substring** on the blob and require
+/// **every** space-separated word to appear (prefix/token or substring), so any
+/// letter or word in name/code/HSN can surface a selectable row.
+bool partySuggestItemMatchesQuery(InlineSearchItem it, String qLower) {
+  if (qLower.isEmpty) return true;
+  final blob = _partyMatchBlobLower(it);
+  final haystack = _partySuggestHasHaystack(it);
+
+  if (partySuggestLabelMatches(blob, qLower)) return true;
+
+  final words = qLower
+      .split(RegExp(r'\s+'))
+      .map((w) => w.trim())
+      .where((w) => w.isNotEmpty)
+      .toList();
+
+  if (haystack) {
+    if (blob.contains(qLower)) return true;
+    if (words.length > 1) {
+      return words.every(
+        (w) => partySuggestLabelMatches(blob, w) || blob.contains(w),
+      );
+    }
+    if (words.length == 1) {
+      return blob.contains(words.first);
+    }
+    return false;
+  }
+
+  if (words.length > 1) {
+    return words.every((w) => partySuggestLabelMatches(blob, w));
+  }
+
+  return false;
+}
+
 /// Best rank for sorting: label match quality first, then extended [searchText] blob.
 int _partySuggestItemMatchRank(InlineSearchItem it, String qLower) {
   if (qLower.isEmpty) return 0;
   final lab = it.label.toLowerCase().trim();
   final blob = _partyMatchBlobLower(it);
+  final haystack = _partySuggestHasHaystack(it);
   final rLab = _rankLabelTokenMatch(lab, qLower);
   if (rLab < 3) return rLab;
   if (blob != lab) {
@@ -54,7 +99,11 @@ int _partySuggestItemMatchRank(InlineSearchItem it, String qLower) {
       final rb = _rankLabelTokenMatch(blob, qLower);
       return 3 + math.min(2, rb);
     }
-    if (blob.contains(qLower)) return 6;
+    if (haystack && blob.contains(qLower)) return 6;
+  } else if (haystack &&
+      blob.contains(qLower) &&
+      !partySuggestLabelMatches(blob, qLower)) {
+    return 6;
   }
   return 7;
 }
@@ -306,7 +355,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     if (qRaw.length < min) return [];
     final hits = <InlineSearchItem>[];
     for (final it in widget.items) {
-      if (partySuggestLabelMatches(_partyMatchBlobLower(it), qRaw)) {
+      if (partySuggestItemMatchesQuery(it, qRaw)) {
         hits.add(it);
       }
     }
