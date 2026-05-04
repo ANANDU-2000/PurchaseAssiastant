@@ -393,51 +393,50 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
 
   Widget _buildSuggestionTile(ColorScheme cs, InlineSearchItem it) {
     void commit() => _pick(it, keepFocus: false);
-    // Opaque [GestureDetector] wins taps inside a parent [ScrollView] more reliably
-    // than [InkWell] alone (scroll drag arena can swallow the tap-up).
-    return Material(
-      color: cs.surface,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: commit,
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: 14,
-              vertical: widget.dense ? 10 : 12,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  it.label,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                    color: cs.onSurface,
-                  ),
-                ),
-                if (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      it.subtitle!.trim(),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: cs.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-              ],
+    // [TextButton] uses Material tap targets that behave more reliably than
+    // [GestureDetector]/[InkWell] for Flutter **web** inside a parent [ScrollView].
+    return TextButton(
+      onPressed: commit,
+      style: TextButton.styleFrom(
+        foregroundColor: cs.onSurface,
+        backgroundColor: cs.surface,
+        padding: EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: widget.dense ? 10 : 12,
+        ),
+        minimumSize: const Size(double.infinity, 44),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        alignment: Alignment.centerLeft,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            it.label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+              color: cs.onSurface,
             ),
           ),
-        ),
+          if (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                it.subtitle!.trim(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -448,34 +447,32 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       return const SizedBox.shrink();
     }
     void invoke() {
+      widget.focusNode.unfocus();
+      FocusManager.instance.primaryFocus?.unfocus();
+      // One post-frame hop (no extra 80ms delay): stacked delays made web taps
+      // feel dead and could race rebuilds before [Navigator.push] in the wizard.
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        widget.focusNode.unfocus();
-        FocusManager.instance.primaryFocus?.unfocus();
-        Future.delayed(const Duration(milliseconds: 80), () => cb());
+        if (!mounted) return;
+        cb();
       });
     }
 
-    return Material(
-      color: cs.surface,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: invoke,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                widget.addRowLabel ?? '',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                  color: cs.primary,
-                ),
-              ),
-            ),
-          ),
+    return TextButton(
+      onPressed: invoke,
+      style: TextButton.styleFrom(
+        foregroundColor: cs.primary,
+        backgroundColor: cs.surface,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        minimumSize: const Size(double.infinity, 48),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        alignment: Alignment.centerLeft,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      ),
+      child: Text(
+        widget.addRowLabel ?? '',
+        style: const TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: 13,
         ),
       ),
     );
