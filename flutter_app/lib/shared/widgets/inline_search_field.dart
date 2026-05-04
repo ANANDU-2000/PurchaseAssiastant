@@ -291,7 +291,10 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
                       return Listener(
                         behavior: HitTestBehavior.opaque,
                         onPointerDown: (PointerDownEvent e) {
-                          if ((e.buttons & kPrimaryButton) == 0) return;
+                          if (e.buttons != 0 &&
+                              (e.buttons & kPrimaryButton) == 0) {
+                            return;
+                          }
                           commit();
                         },
                         child: InkWell(

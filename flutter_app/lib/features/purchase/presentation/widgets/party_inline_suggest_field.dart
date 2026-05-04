@@ -1,8 +1,6 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -32,6 +30,10 @@ int _partySuggestMatchRank(String label, String qLower) {
 
 /// Party step: suggestions **inline** below the field (no overlay).
 /// Filter is debounced while typing; commits use the live query via [live: true].
+///
+/// The suggestion list is **not** wrapped in its own [ScrollView]: it grows with
+/// the parent scroll (e.g. purchase wizard) so taps are not eaten by nested
+/// scroll gesture arenas.
 class PartyInlineSuggestField extends StatefulWidget {
   const PartyInlineSuggestField({
     super.key,
@@ -128,9 +130,6 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   /// Blocks double-commit when both pointer-down and tap-up deliver for one gesture.
   String? _lastCommitFingerprint;
   int _lastCommitMs = 0;
-
-  /// Same as [_lastCommitMs] pattern for "New supplier…" / "New broker…" row.
-  int _lastAddRowInvokeMs = 0;
 
   /// Debounced query for filtering while typing ([_listRowsForUi]).
   String _filterQuery = '';
@@ -373,51 +372,43 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   }
 
   Widget _buildSuggestionTile(ColorScheme cs, InlineSearchItem it) {
-    void commit() => _pick(it, keepFocus: false);
     return Material(
       color: cs.surface,
-      child: Listener(
-        behavior: HitTestBehavior.opaque,
-        onPointerDown: (PointerDownEvent e) {
-          if ((e.buttons & kPrimaryButton) == 0) return;
-          commit();
-        },
-        child: InkWell(
-          onTap: commit,
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: 14,
-              vertical: widget.dense ? 10 : 12,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  it.label,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                    color: cs.onSurface,
-                  ),
+      child: InkWell(
+        onTap: () => _pick(it, keepFocus: false),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: widget.dense ? 10 : 12,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                it.label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  color: cs.onSurface,
                 ),
-                if (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      it.subtitle!.trim(),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: cs.onSurfaceVariant,
-                      ),
+              ),
+              if (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    it.subtitle!.trim(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: cs.onSurfaceVariant,
                     ),
                   ),
-              ],
-            ),
+                ),
+            ],
           ),
         ),
       ),
@@ -430,9 +421,6 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       return const SizedBox.shrink();
     }
     void invoke() {
-      final now = DateTime.now().millisecondsSinceEpoch;
-      if (now - _lastAddRowInvokeMs < 500) return;
-      _lastAddRowInvokeMs = now;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         widget.focusNode.unfocus();
         FocusManager.instance.primaryFocus?.unfocus();
@@ -442,25 +430,18 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
 
     return Material(
       color: cs.surface,
-      child: Listener(
-        behavior: HitTestBehavior.opaque,
-        onPointerDown: (PointerDownEvent e) {
-          if ((e.buttons & kPrimaryButton) == 0) return;
-          invoke();
-        },
-        child: InkWell(
-          onTap: invoke,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                widget.addRowLabel ?? '',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                  color: cs.primary,
-                ),
+      child: InkWell(
+        onTap: invoke,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              widget.addRowLabel ?? '',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                color: cs.primary,
               ),
             ),
           ),
@@ -491,16 +472,6 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       return;
     }
     widget.onSubmitted?.call();
-  }
-
-  double _suggestionPanelMaxHeight(BuildContext context) {
-    final mq = MediaQuery.of(context);
-    final h = mq.size.height;
-    final kb = mq.viewInsets.bottom;
-    final safe = mq.padding.bottom;
-    final visible = math.max(120.0, h - kb - safe);
-    final fromVisible = math.max(140.0, visible * 0.48);
-    return math.min(widget.maxPanelAbs, fromVisible).clamp(100.0, widget.maxPanelAbs);
   }
 
   @override
@@ -668,19 +639,15 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
           fieldWrapped,
           if (hasPanelSource) ...[
             const SizedBox(height: 8),
-            Container(
-              constraints: BoxConstraints(
-                maxHeight: _suggestionPanelMaxHeight(context),
-              ),
+            DecoratedBox(
               decoration: BoxDecoration(
                 color: cs.surface,
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: cardShadow,
                 border: Border.all(color: borderColor.withValues(alpha: 0.45)),
               ),
-              clipBehavior: Clip.antiAlias,
-              child: SingleChildScrollView(
-                physics: const ClampingScrollPhysics(),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
