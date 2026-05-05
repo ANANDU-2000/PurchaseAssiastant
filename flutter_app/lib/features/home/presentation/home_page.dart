@@ -655,7 +655,24 @@ String _itemUpperQtyLine(Map<String, dynamic> m) {
   final ttn = coerceToDouble(m['total_tins']);
   final tkg = coerceToDouble(m['total_kg']);
   final parts = <String>[];
-  if (tb > 0) parts.add('${_fmtQty(tb)} ${homePackUnitWord('BAG', tb)}');
+  // Legacy: some items were recorded in KG but named like "SUGAR 50 KG".
+  // Infer bags from name when totals don't include bags.
+  var bags = tb;
+  if (bags <= 1e-9 && tkg > 1e-9) {
+    final unit = (m['unit']?.toString() ?? '').trim().toUpperCase();
+    final name = (m['item_name']?.toString() ?? '').toUpperCase();
+    final isKg = unit == 'KG' || unit == 'KGS' || unit == 'KILOGRAM' || unit == 'KILOGRAMS';
+    if (isKg) {
+      final mm = RegExp(r'(\d{1,3}(?:\.\d{1,2})?)\s*KG\b').firstMatch(name);
+      final raw = mm?.group(1);
+      final v = raw == null ? null : double.tryParse(raw);
+      if (v != null && v > 0 && v <= 200) {
+        bags = tkg / v;
+      }
+    }
+  }
+
+  if (bags > 0) parts.add('${_fmtQty(bags)} ${homePackUnitWord('BAG', bags)}');
   if (txb > 0) parts.add('${_fmtQty(txb)} ${homePackUnitWord('BOX', txb)}');
   if (ttn > 0) parts.add('${_fmtQty(ttn)} ${homePackUnitWord('TIN', ttn)}');
   if (tkg > 0) parts.add('${_fmtQty(tkg)} KG');

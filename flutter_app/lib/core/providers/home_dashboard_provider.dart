@@ -10,6 +10,7 @@ import '../auth/session_notifier.dart';
 import '../models/trade_purchase_models.dart';
 import '../services/offline_store.dart';
 import '../utils/line_display.dart';
+import '../reporting/trade_report_aggregate.dart';
 
 /// Period chips on the home dashboard. [custom] uses
 /// [homeCustomDateRangeProvider] (inclusive start/end dates).
@@ -854,10 +855,22 @@ HomeDashboardData _aggregate({
       totalQtyAllLines += ln.qty;
       totalKg += _lineKg(ln);
 
-      final u = ln.unit.toUpperCase();
-      if (u.contains('BAG')) totalBags += ln.qty;
-      if (u.contains('BOX')) totalBoxes += ln.qty;
-      if (u.contains('TIN')) totalTins += ln.qty;
+      final eff = reportEffectivePack(ln);
+      if (eff != null) {
+        switch (eff.kind) {
+          case ReportPackKind.bag:
+            totalBags += eff.packQty;
+          case ReportPackKind.box:
+            totalBoxes += eff.packQty;
+          case ReportPackKind.tin:
+            totalTins += eff.packQty;
+        }
+      } else {
+        final u = ln.unit.toUpperCase();
+        if (u.contains('BAG')) totalBags += ln.qty;
+        if (u.contains('BOX')) totalBoxes += ln.qty;
+        if (u.contains('TIN')) totalTins += ln.qty;
+      }
 
       String catId = '_uncat';
       String catName = 'Uncategorised';
@@ -891,9 +904,21 @@ HomeDashboardData _aggregate({
       agg.totalAmount += amt;
       agg.totalQty += ln.qty;
 
-      if (unitCountsAsBagFamily(ln.unit)) agg.units.bags += ln.qty;
-      if (u.contains('BOX')) agg.units.boxes += ln.qty;
-      if (u.contains('TIN')) agg.units.tins += ln.qty;
+      if (eff != null) {
+        switch (eff.kind) {
+          case ReportPackKind.bag:
+            agg.units.bags += eff.packQty;
+          case ReportPackKind.box:
+            agg.units.boxes += eff.packQty;
+          case ReportPackKind.tin:
+            agg.units.tins += eff.packQty;
+        }
+      } else {
+        final u = ln.unit.toUpperCase();
+        if (unitCountsAsBagFamily(ln.unit)) agg.units.bags += ln.qty;
+        if (u.contains('BOX')) agg.units.boxes += ln.qty;
+        if (u.contains('TIN')) agg.units.tins += ln.qty;
+      }
 
       final itemKey = ln.itemName.trim().isEmpty ? '—' : ln.itemName.trim();
       final slot = agg.itemMap.putIfAbsent(

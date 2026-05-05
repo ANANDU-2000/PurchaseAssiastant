@@ -15,10 +15,12 @@ class ReportsPurchasePayload {
   ReportsPurchasePayload({
     required this.items,
     this.fromLiveFetch = false,
+    this.liveFetchError,
   });
 
   final List<TradePurchase> items;
   final bool fromLiveFetch;
+  final String? liveFetchError;
 
   static ReportsPurchasePayload empty() =>
       ReportsPurchasePayload(items: const []);
@@ -130,12 +132,16 @@ final reportsPurchasesPayloadProvider =
   try {
     final list = await _loadReportsPurchases(ref);
     return ReportsPurchasePayload(items: list, fromLiveFetch: true);
-  } catch (_) {
+  } catch (e) {
     final cached = ref.read(reportsPurchasesHiveCacheProvider);
     if (cached != null && cached.isNotEmpty) {
-      return ReportsPurchasePayload(items: cached, fromLiveFetch: false);
+      return ReportsPurchasePayload(
+        items: cached,
+        fromLiveFetch: false,
+        liveFetchError: e.toString(),
+      );
     }
-    return ReportsPurchasePayload.empty();
+    return ReportsPurchasePayload(items: const [], fromLiveFetch: false, liveFetchError: e.toString());
   }
 });
 

@@ -825,6 +825,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
   @override
   Widget build(BuildContext context) {
     final purchasesAsync = ref.watch(reportsPurchasesPayloadProvider);
+    final liveErr = purchasesAsync.value?.liveFetchError;
     final hive = ref.watch(reportsPurchasesHiveCacheProvider);
     final merged = purchasesAsync.value?.items ?? hive ?? const <TradePurchase>[];
     final fromLive = purchasesAsync.value?.fromLiveFetch ?? false;
@@ -970,7 +971,9 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  'Offline or server unreachable — showing saved copy. Pull down or tap Retry.',
+                                  liveErr == null || liveErr.trim().isEmpty
+                                      ? 'Offline or server unreachable — showing saved copy. Pull down or tap Retry.'
+                                      : 'Live refresh failed — showing saved copy.\n$liveErr',
                                   style: TextStyle(
                                       fontSize: 12, color: HexaColors.textBody),
                                 ),
