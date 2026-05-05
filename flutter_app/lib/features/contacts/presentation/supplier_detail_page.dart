@@ -626,6 +626,7 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                         return TradeLedgerCardList(
                           trades: shown,
                           useCompactLines: narrow,
+                          showBillTotals: true,
                         );
                       },
                     ),

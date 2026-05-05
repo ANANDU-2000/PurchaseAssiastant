@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../core/calc_engine.dart' show lineMoney;
 import '../../core/catalog/item_trade_history.dart' show tradeLineToCalc;
 import '../../core/models/trade_purchase_models.dart';
+import '../../core/reporting/trade_report_aggregate.dart';
 import '../../core/utils/line_display.dart';
 import '../../core/utils/trade_purchase_rate_display.dart';
 
@@ -194,11 +195,13 @@ class TradeLedgerCardList extends StatelessWidget {
     required this.trades,
     required this.useCompactLines,
     this.emptyHint,
+    this.showBillTotals = false,
   });
 
   final List<TradePurchase> trades;
   final bool useCompactLines;
   final String? emptyHint;
+  final bool showBillTotals;
 
   String _inr(num v) => NumberFormat.currency(
         locale: 'en_IN',
@@ -255,6 +258,51 @@ class TradeLedgerCardList extends StatelessWidget {
             const Divider(height: 1, indent: 12, endIndent: 12),
         itemBuilder: (context, ip) {
           final p = trades[ip];
+          String? totalsLine;
+          if (showBillTotals) {
+            var kg = 0.0, bags = 0.0, boxes = 0.0, tins = 0.0;
+            for (final ln in p.lines) {
+              kg += lineKgEstimate(ln);
+              final eff = reportEffectivePack(ln);
+              if (eff != null) {
+                switch (eff.kind) {
+                  case ReportPackKind.bag:
+                    bags += eff.packQty;
+                  case ReportPackKind.box:
+                    boxes += eff.packQty;
+                  case ReportPackKind.tin:
+                    tins += eff.packQty;
+                }
+              } else {
+                final u = ln.unit.trim().toLowerCase();
+                if (u.contains('bag') || u.contains('sack')) bags += ln.qty;
+                if (u.contains('box')) boxes += ln.qty;
+                if (u.contains('tin')) tins += ln.qty;
+              }
+            }
+            final parts = <String>[];
+            if (kg > 1e-9) {
+              parts.add(kg == kg.roundToDouble()
+                  ? '${kg.round()} kg'
+                  : '${kg.toStringAsFixed(1)} kg');
+            }
+            if (bags > 1e-9) {
+              parts.add(bags == bags.roundToDouble()
+                  ? '${bags.round()} bags'
+                  : '${bags.toStringAsFixed(1)} bags');
+            }
+            if (boxes > 1e-9) {
+              parts.add(boxes == boxes.roundToDouble()
+                  ? '${boxes.round()} boxes'
+                  : '${boxes.toStringAsFixed(1)} boxes');
+            }
+            if (tins > 1e-9) {
+              parts.add(tins == tins.roundToDouble()
+                  ? '${tins.round()} tins'
+                  : '${tins.toStringAsFixed(1)} tins');
+            }
+            totalsLine = parts.isEmpty ? null : parts.join(' · ');
+          }
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -266,7 +314,8 @@ class TradeLedgerCardList extends StatelessWidget {
                 ),
                 subtitle: Text(
                   '${fmt.format(p.purchaseDate)} · ${p.derivedStatus}'
-                  '${(p.brokerName ?? '').isNotEmpty ? ' · ${p.brokerName}' : ''}',
+                  '${(p.brokerName ?? '').isNotEmpty ? ' · ${p.brokerName}' : ''}'
+                  '${totalsLine != null ? '\n$totalsLine' : ''}',
                   style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                 ),
                 trailing: Text(
