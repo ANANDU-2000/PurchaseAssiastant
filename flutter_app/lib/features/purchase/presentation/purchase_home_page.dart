@@ -603,11 +603,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                   parent: BouncingScrollPhysics()),
                               key: PageStorageKey<String>('hist_${primary}_${secondary ?? ''}_${ref.watch(purchaseHistorySearchProvider)}'),
                               controller: _scroll,
-                              padding: EdgeInsets.fromLTRB(
-                                  16,
-                                  8,
-                                  16,
-                                  80 + MediaQuery.of(context).padding.bottom),
+                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                       itemCount: visible.length + (showLocalWipRow ? 1 : 0),
                       separatorBuilder: (_, __) => const SizedBox(height: 4),
                               itemBuilder: (context, i) {

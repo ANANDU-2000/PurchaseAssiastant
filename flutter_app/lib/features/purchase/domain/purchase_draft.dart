@@ -94,49 +94,16 @@ String? brokerFigureBasisLineHint(List<PurchaseLineDraft> lines, String mode) {
   return null;
 }
 
-/// Fixed-₹ UI choices from **actual line units** (no tin chip if there are no
-/// tin lines, etc.). Before any lines: **[once / bill]** only — Terms runs
-/// before Items in the wizard.
+/// Fixed-₹ commission basis — always show all choices so Terms works before Items.
+/// [lines] is kept for call-site stability; hints use it to explain qty available.
 List<(String mode, String label)> brokerFigureUiOptions(
-    List<PurchaseLineDraft> lines) {
-  const once = (
-    kPurchaseCommissionModeFlatInvoice,
-    'Once / bill',
-  );
-  if (lines.isEmpty) {
-    return const [once];
-  }
-  var tinQty = 0.0;
-  var bagQty = 0.0;
-  var kgLike = false;
-  for (final l in lines) {
-    final u = l.unit.trim().toLowerCase();
-    if (u == 'tin') tinQty += l.qty;
-    if (u == 'bag' || u == 'sack' || u == 'box') bagQty += l.qty;
-    if (u.contains('kg') ||
-        u == 'kgs' ||
-        u == 'kilogram' ||
-        u == 'g' ||
-        u == 'gram' ||
-        u == 'quintal' ||
-        u == 'qtl') {
-      kgLike = true;
-    }
-  }
-  final tail = <(String, String)>[];
-  if (tinQty > 0) {
-    tail.add((kPurchaseCommissionModeFlatTin, 'Per tin'));
-  }
-  if (bagQty > 0) {
-    tail.add((kPurchaseCommissionModeFlatBag, 'Per bag · box'));
-  }
-  if (kgLike) {
-    tail.add((kPurchaseCommissionModeFlatKg, 'Per kg'));
-  }
-  if (tail.isEmpty) {
-    return const [once];
-  }
-  return [once, ...tail];
+    List<PurchaseLineDraft> _) {
+  return const [
+    (kPurchaseCommissionModeFlatInvoice, 'Once / bill'),
+    (kPurchaseCommissionModeFlatKg, 'Per kg (total kg)'),
+    (kPurchaseCommissionModeFlatBag, 'Per bag · box · sack'),
+    (kPurchaseCommissionModeFlatTin, 'Per tin'),
+  ];
 }
 
 /// If [current] fixed mode is not allowed for [lines], pick a sensible default.

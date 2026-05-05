@@ -8,6 +8,63 @@ enum ReportPackKind {
   tin,
 }
 
+double? _inferPackSizeKgFromItemName(String name) {
+  // Heuristic: detect patterns like "SUGAR 50 KG" or "50KG" and treat as a bag-size.
+  // We only use this when the stored unit is KG (i.e. legacy entries recorded as weight).
+  final s = name.toUpperCase();
+  final m = RegExp(r'(\d{1,3}(?:\.\d{1,2})?)\s*KG\b').firstMatch(s);
+  if (m == null) return null;
+  final raw = m.group(1);
+  if (raw == null) return null;
+  final v = double.tryParse(raw);
+  if (v == null || v <= 0) return null;
+  // Guard against nonsense (e.g. "2026 KG" in dates or IDs).
+  if (v > 200) return null;
+  return v;
+}
+
+class ReportEffectiveLinePack {
+  const ReportEffectiveLinePack({
+    required this.kind,
+    required this.packQty,
+    required this.kg,
+  });
+
+  final ReportPackKind kind;
+  final double packQty;
+  final double kg;
+}
+
+/// Returns the effective pack kind + quantities used by Reports.
+///
+/// Primary: classify by explicit line unit.
+/// Fallback: if unit is KG and item name includes a pack size like "50 KG",
+/// treat it as a BAG-family line with `packQty = totalKg / packSizeKg`.
+ReportEffectiveLinePack? reportEffectivePack(TradePurchaseLine l) {
+  final pk = reportClassifyPackKind(l);
+  if (pk != null) {
+    return ReportEffectiveLinePack(
+      kind: pk,
+      packQty: l.qty,
+      kg: reportLineKg(l),
+    );
+  }
+
+  final u = l.unit.trim().toUpperCase();
+  final isKg = u == 'KG' || u == 'KGS' || u == 'KILOGRAM' || u == 'KILOGRAMS';
+  if (!isKg) return null;
+
+  final packSizeKg = _inferPackSizeKgFromItemName(l.itemName);
+  if (packSizeKg == null || packSizeKg <= 1e-9) return null;
+  if (l.qty <= 1e-9) return null;
+
+  return ReportEffectiveLinePack(
+    kind: ReportPackKind.bag,
+    packQty: l.qty / packSizeKg,
+    kg: l.qty,
+  );
+}
+
 /// Single source of truth for Reports: classify only by [TradePurchaseLine.unit].
 ReportPackKind? reportClassifyPackKind(TradePurchaseLine l) {
   final u = l.unit.trim().toUpperCase();
@@ -227,8 +284,15 @@ TradeReportAgg buildTradeReportAgg(
   final dealIds = <String>{};
   final includedPurchases = <TradePurchase>[];
 
-  void bumpItemRow(TradeReportItemRow row, TradePurchaseLine l, ReportPackKind pk,
-      double kg, double amt, TradePurchase p) {
+  void bumpItemRow(
+    TradeReportItemRow row,
+    TradePurchaseLine l,
+    ReportPackKind pk,
+    double packQty,
+    double kg,
+    double amt,
+    TradePurchase p,
+  ) {
     row.dealIds.add(p.id);
     row.kg += kg;
     row.amountInr += amt;
@@ -238,11 +302,11 @@ TradeReportAgg buildTradeReportAgg(
     }
     switch (pk) {
       case ReportPackKind.bag:
-        row.bags += l.qty;
+        row.bags += packQty;
       case ReportPackKind.box:
-        row.boxes += l.qty;
+        row.boxes += packQty;
       case ReportPackKind.tin:
-        row.tins += l.qty;
+        row.tins += packQty;
     }
   }
 
@@ -270,15 +334,17 @@ TradeReportAgg buildTradeReportAgg(
     );
 
     for (final l in p.lines) {
-      final pk = reportClassifyPackKind(l);
-      if (pk == null) continue;
+      final eff = reportEffectivePack(l);
+      if (eff == null) continue;
+      final pk = eff.kind;
       if (onlyKind != null && pk != onlyKind) continue;
+      final kg = eff.kg;
+      final packQty = eff.packQty;
 
       purchaseTouchesClassified = true;
       dealIds.add(p.id);
       sup.dealIds.add(p.id);
 
-      final kg = reportLineKg(l);
       final amt = reportLineAmountInr(l);
       sumInr += amt;
       sumKg += kg;
@@ -291,15 +357,15 @@ TradeReportAgg buildTradeReportAgg(
           ik,
           () => TradeReportItemRow(key: ik, name: title),
         );
-        bumpItemRow(merged, l, pk, kg, amt, p);
+        bumpItemRow(merged, l, pk, packQty, kg, amt, p);
       }
 
       Map<String, TradeReportItemRow> targetMap;
       switch (pk) {
         case ReportPackKind.bag:
           targetMap = bagMap;
-          sumBags += l.qty;
-          sup.bagQty += l.qty;
+          sumBags += packQty;
+          sup.bagQty += packQty;
           sup.bagKg += kg;
         case ReportPackKind.box:
           targetMap = boxMap;
@@ -313,7 +379,7 @@ TradeReportAgg buildTradeReportAgg(
         ik,
         () => TradeReportItemRow(key: ik, name: title),
       );
-      bumpItemRow(row, l, pk, kg, amt, p);
+      bumpItemRow(row, l, pk, packQty, kg, amt, p);
 
       if (broRow != null && broRow.purchaseIds.add(p.id)) {
         broRow.commission += tradePurchaseCommissionInr(p);

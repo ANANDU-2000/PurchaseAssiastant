@@ -212,7 +212,8 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
           if (mode == kPurchaseCommissionModePercent) ...[
             const SizedBox(height: 6),
             Text(
-              '% of line totals after purchase discount.',
+              '% of each line ₹ total after purchase discount. '
+              'For ₹ per kg / bag / tin, switch to Fixed ₹.',
               style: TextStyle(fontSize: 11, height: 1.25, color: sub),
             ),
             const SizedBox(height: 8),
@@ -254,19 +255,16 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (figOpts.length <= 1) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        'No line items yet — amount is once for this bill. '
-                        'After Items, come back here to pick Kg / Bag · box / Tin '
-                        'if those units are on the purchase.',
-                        style: TextStyle(
-                          fontSize: 11,
-                          height: 1.3,
-                          color: sub,
-                        ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Choose what the ₹ amount multiplies by. '
+                      'You can set this before adding items; hints update after lines exist.',
+                      style: TextStyle(
+                        fontSize: 11,
+                        height: 1.3,
+                        color: sub,
                       ),
-                    ],
+                    ),
                     const SizedBox(height: 8),
                     SizedBox(
                       height: kPurchaseFieldHeight + 14,
@@ -315,7 +313,7 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
                         ),
                       ),
                     ),
-                    if (hint != null && figOpts.length > 1)
+                    if (hint != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 6),
                         child: Text(

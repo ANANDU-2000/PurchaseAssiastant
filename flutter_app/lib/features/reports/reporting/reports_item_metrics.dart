@@ -49,18 +49,19 @@ String _fmtRate(num? n) {
   var w = 0.0;
   for (final p in purchases) {
     for (final l in p.lines) {
-      if (reportClassifyPackKind(l) == null) continue;
+      final eff = reportEffectivePack(l);
+      if (eff == null) continue;
       if (reportItemKey(l) != itemKey) continue;
-      if (l.qty <= 1e-12) continue;
+      if (eff.packQty <= 1e-12) continue;
       final br = (l.purchaseRate != null && l.purchaseRate! > 0)
           ? l.purchaseRate!
           : l.landingCost;
-      buyNum += br * l.qty;
-      w += l.qty;
+      buyNum += br * eff.packQty;
+      w += eff.packQty;
       final sr = l.sellingRate ?? l.sellingCost;
       if (sr != null && sr > 0) {
-        sellNum += sr * l.qty;
-        sellDen += l.qty;
+        sellNum += sr * eff.packQty;
+        sellDen += eff.packQty;
       }
     }
   }
@@ -102,9 +103,10 @@ List<ReportItemTxnView> reportItemTransactions(
   for (final p in purchases) {
     final sup = reportSupplierTitle(p);
     for (final l in p.lines) {
-      if (reportClassifyPackKind(l) == null) continue;
+      final eff = reportEffectivePack(l);
+      if (eff == null) continue;
       if (reportItemKey(l) != itemKey) continue;
-      final kg = reportLineKg(l);
+      final kg = eff.kg;
       final br = (l.purchaseRate != null && l.purchaseRate! > 0)
           ? l.purchaseRate!
           : l.landingCost;

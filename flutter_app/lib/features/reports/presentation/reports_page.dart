@@ -378,12 +378,6 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
 
   Widget _summaryHeader(TradeReportTotals t, String rangeFmt) {
     final tt = Theme.of(context).textTheme;
-    final packBits = <String>[
-      if (t.kg > 1e-9) '${_kgReadable(t.kg)} KG',
-      if (t.bags > 1e-9) '${_qtyReadable(t.bags)} BAGS',
-      if (t.boxes > 1e-9) '${_qtyReadable(t.boxes)} BOX',
-      if (t.tins > 1e-9) '${_qtyReadable(t.tins)} TIN',
-    ];
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
       child: Column(
@@ -441,7 +435,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
             margin: EdgeInsets.zero,
             color: Colors.white,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+              padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -454,15 +448,15 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                       color: Color(0xFF888888),
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   SelectableText(
                     _inr0(t.inr.round()),
-                    style: tt.headlineMedium?.copyWith(fontWeight: FontWeight.w900),
+                    style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w900),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
                       _MetricTile(label: 'Total kg', value: _kgReadable(t.kg)),
                       _MetricTile(label: 'Total bags', value: _qtyReadable(t.bags)),
@@ -476,14 +470,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
               ),
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            packBits.isEmpty ? '—' : packBits.join(' • '),
-            style: tt.titleSmall?.copyWith(
-              fontWeight: FontWeight.w800,
-              height: 1.25,
-            ),
-          ),
+          const SizedBox(height: 2),
           TextButton(
             onPressed: _syncRangeWithHome,
             style: TextButton.styleFrom(
@@ -500,34 +487,24 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
 
   Widget _overviewBody(TradeReportTotals t) {
     final tt = Theme.of(context).textTheme;
-    final packBits = <String>[
-      if (t.kg > 1e-9) '${_kgReadable(t.kg)} KG',
-      if (t.bags > 1e-9) '${_qtyReadable(t.bags)} BAGS',
-      if (t.boxes > 1e-9) '${_qtyReadable(t.boxes)} BOX',
-      if (t.tins > 1e-9) '${_qtyReadable(t.tins)} TIN',
-    ];
+    final hasPack =
+        t.kg > 1e-9 || t.bags > 1e-9 || t.boxes > 1e-9 || t.tins > 1e-9;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+      padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'All pack kinds',
+            'Overview',
             style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 6),
           Text(
-            packBits.isEmpty
-                ? 'No classified bag/box/tin lines in this period.'
-                : packBits.join(' • '),
-            style: tt.bodyLarge?.copyWith(
-              fontWeight: FontWeight.w800,
-              color: HexaColors.textBody,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Use Items for per-item breakdown. Group filters Bag / Box / Tin / All.',
+            hasPack
+                ? 'Totals are in the card above (including per-item lines such as sugar when recorded). '
+                    'Open Items for the full product list and search by name.'
+                : 'No bag / box / tin weighted lines in this period. '
+                    'Check date range, pull to refresh, or confirm purchases use those units.',
             style: tt.bodySmall?.copyWith(color: HexaColors.textBody, height: 1.35),
           ),
         ],
@@ -985,7 +962,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                         color: HexaColors.brandCard,
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
+                              horizontal: 8, vertical: 6),
                           child: Row(
                             children: [
                               Icon(Icons.cloud_off_rounded,
@@ -993,10 +970,20 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  'Cached data — pull to refresh.',
+                                  'Offline or server unreachable — showing saved copy. Pull down or tap Retry.',
                                   style: TextStyle(
                                       fontSize: 12, color: HexaColors.textBody),
                                 ),
+                              ),
+                              TextButton(
+                                onPressed: purchasesAsync.isLoading
+                                    ? null
+                                    : () {
+                                        _bumpInvalidate();
+                                        ref.invalidate(
+                                            reportsPurchasesPayloadProvider);
+                                      },
+                                child: const Text('Retry'),
                               ),
                             ],
                           ),
