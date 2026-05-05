@@ -427,7 +427,8 @@ class _SupplierCreateWizardPageState
       _nameError = 'Required';
       ok = false;
     }
-    if (!_validPhoneDigits(_phone.text)) {
+    final rawPhone = _phone.text.trim();
+    if (rawPhone.isNotEmpty && !_validPhoneDigits(_phone.text)) {
       _phoneError = 'Enter a valid phone (10–15 digits)';
       ok = false;
     }

@@ -121,7 +121,7 @@ class _SupplierCreateSimpleState extends ConsumerState<SupplierCreateSimple> {
                   TextFormField(
                     controller: _phoneCtrl,
                     decoration: InputDecoration(
-                      labelText: 'Phone *',
+                      labelText: 'Phone (optional)',
                       hintText: '+91 98765 43210',
                       prefixIcon: const Icon(Icons.phone_rounded),
                       border: OutlineInputBorder(
@@ -140,12 +140,10 @@ class _SupplierCreateSimpleState extends ConsumerState<SupplierCreateSimple> {
                     ),
                     keyboardType: TextInputType.phone,
                     validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Phone is required';
-                      }
-                      if (value.trim().length < 10) {
-                        return 'Phone must be at least 10 digits';
-                      }
+                      final v = value?.trim() ?? '';
+                      if (v.isEmpty) return null;
+                      final digits = v.replaceAll(RegExp(r'\D'), '');
+                      if (digits.length < 10) return 'Phone must be at least 10 digits';
                       return null;
                     },
                   ),
