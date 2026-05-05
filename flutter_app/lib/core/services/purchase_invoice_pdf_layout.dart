@@ -486,7 +486,59 @@ pw.Widget _summaryBlock(TradePurchase p, _SummaryNumbers s, {required bool total
   );
 }
 
+String? _purchasePdfTotalsWeightFooterLine(TradePurchase p) {
+  var kg = 0.0;
+  var bags = 0.0;
+  var boxes = 0.0;
+  var tins = 0.0;
+  for (final l in p.lines) {
+    kg += ledgerTradeLineWeightKg(
+      itemName: l.itemName,
+      unit: l.unit,
+      qty: l.qty,
+      catalogDefaultUnit: l.defaultPurchaseUnit ?? l.defaultUnit,
+      catalogDefaultKgPerBag: l.defaultKgPerBag,
+      kgPerUnit: l.kgPerUnit,
+      boxMode: l.boxMode,
+      itemsPerBox: l.itemsPerBox,
+      weightPerItem: l.weightPerItem,
+      kgPerBox: l.kgPerBox,
+      weightPerTin: l.weightPerTin,
+    );
+    final u = l.unit.trim().toLowerCase();
+    if (u == 'bag' || u == 'sack') {
+      bags += l.qty;
+    } else if (u == 'box') {
+      boxes += l.qty;
+    } else if (u == 'tin') {
+      tins += l.qty;
+    }
+  }
+  final parts = <String>[];
+  if (bags > 1e-6) {
+    parts.add(
+      '${bags == bags.roundToDouble() ? bags.round() : bags} ${bags == 1 ? 'bag' : 'bags'}',
+    );
+  }
+  if (boxes > 1e-6) {
+    parts.add(
+      '${boxes == boxes.roundToDouble() ? boxes.round() : boxes} ${boxes == 1 ? 'box' : 'boxes'}',
+    );
+  }
+  if (tins > 1e-6) {
+    parts.add(
+      '${tins == tins.roundToDouble() ? tins.round() : tins} ${tins == 1 ? 'tin' : 'tins'}',
+    );
+  }
+  if (kg > 1e-6) {
+    parts.add('${_num0.format(kg)} kg');
+  }
+  if (parts.isEmpty) return null;
+  return 'Total: ${parts.join(' · ')}';
+}
+
 pw.Widget _footerBlock(BusinessProfile biz, TradePurchase p) {
+  final wLine = _purchasePdfTotalsWeightFooterLine(p);
   return pw.Column(
     crossAxisAlignment: pw.CrossAxisAlignment.stretch,
     children: [
@@ -496,6 +548,13 @@ pw.Widget _footerBlock(BusinessProfile biz, TradePurchase p) {
         'Amount in words: ${amountInWordsInr(p.totalAmount)}',
         style: const pw.TextStyle(fontSize: 8.5, color: PdfColors.black, height: 1.25),
       ),
+      if (wLine != null) ...[
+        pw.SizedBox(height: 2),
+        pw.Text(
+          wLine,
+          style: const pw.TextStyle(fontSize: 8.5, color: PdfColors.black, height: 1.2),
+        ),
+      ],
       if (p.invoiceNumber != null && p.invoiceNumber!.trim().isNotEmpty)
         pw.Text(
           'Reference: ${p.invoiceNumber}',

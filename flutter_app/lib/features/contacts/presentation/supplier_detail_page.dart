@@ -446,7 +446,7 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                             ),
                             _SupplierVBar(cs: cs),
                             _QuickStat(
-                              label: 'Total spend',
+                              label: 'Amount',
                               value: inr.format(spendN.round()),
                             ),
                             _SupplierVBar(cs: cs),

@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import '../../core/calc_engine.dart' show lineMoney;
 import '../../core/catalog/item_trade_history.dart' show tradeLineToCalc;
 import '../../core/models/trade_purchase_models.dart';
+import '../../core/utils/line_display.dart';
+import '../../core/utils/trade_purchase_rate_display.dart';
 
 double lineKgEstimate(TradePurchaseLine ln) {
   if (ln.totalWeight != null && ln.totalWeight! > 0) return ln.totalWeight!;
@@ -130,7 +132,7 @@ class TradeLedgerSummaryStrip extends StatelessWidget {
               runSpacing: 10,
               children: [
                 _ChipStat(label: 'Bills', value: '$bills'),
-                _ChipStat(label: 'Total ₹', value: inrSpend),
+                _ChipStat(label: 'Amount', value: inrSpend),
                 _ChipStat(label: 'Est. kg', value: _fmtKg(kg)),
               ],
             ),
@@ -205,12 +207,12 @@ class TradeLedgerCardList extends StatelessWidget {
       ).format(v);
 
   String _rateL(TradePurchaseLine ln) {
-    final kpu = ln.kgPerUnit;
-    final lcpk = ln.landingCostPerKg;
-    if (kpu != null && lcpk != null && kpu > 0 && lcpk > 0) {
-      return 'L ${_inr(lcpk)}/kg';
-    }
-    return 'L ${_inr(ln.landingCost)}/${ln.unit}';
+    final r = tradePurchaseLineDisplayPurchaseRate(ln);
+    final u = ln.unit.trim();
+    final ul = u.toLowerCase();
+    final suffix =
+        (tradePurchaseLineIsWeightPriced(ln) || ul == 'kg') ? '/kg' : '/$u';
+    return 'L ${_inr(r)}$suffix';
   }
 
   @override
@@ -306,26 +308,21 @@ class TradeLedgerCardList extends StatelessWidget {
                                             runSpacing: 4,
                                             children: [
                                               Text(
-                                                '${ln.qty % 1 == 0 ? ln.qty.toInt() : ln.qty.toStringAsFixed(1)} ${ln.unit}',
+                                                formatLineQtyWeightFromTradeLine(
+                                                    ln),
                                                 style: tt.labelSmall,
                                               ),
-                                              if (lineKgEstimate(ln) > 0)
-                                                Text(
-                                                  '${lineKgEstimate(ln).toStringAsFixed(1)} kg est.',
-                                                  style: tt.labelSmall
-                                                      ?.copyWith(
-                                                          color:
-                                                              cs.onSurfaceVariant),
-                                                ),
                                               Text(
                                                 _rateL(ln),
                                                 style: tt.labelSmall?.copyWith(
                                                     color:
                                                         cs.onSurfaceVariant),
                                               ),
-                                              if (ln.sellingCost != null)
+                                              if (tradePurchaseLineDisplaySellingRate(
+                                                      ln) !=
+                                                  null)
                                                 Text(
-                                                  'S ${_inr(ln.sellingCost!)}',
+                                                  'S ${_inr(tradePurchaseLineDisplaySellingRate(ln)!)}',
                                                   style:
                                                       tt.labelSmall?.copyWith(
                                                           color: cs
@@ -362,23 +359,11 @@ class TradeLedgerCardList extends StatelessWidget {
                                       ),
                                     ),
                                     Expanded(
-                                      flex: 2,
+                                      flex: 4,
                                       child: Text(
-                                        '${ln.qty % 1 == 0 ? ln.qty.toInt() : ln.qty.toStringAsFixed(1)} ${ln.unit}',
+                                        formatLineQtyWeightFromTradeLine(ln),
                                         textAlign: TextAlign.right,
                                         style: tt.labelSmall,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Expanded(
-                                      flex: 2,
-                                      child: Text(
-                                        lineKgEstimate(ln) > 0
-                                            ? '${lineKgEstimate(ln).toStringAsFixed(1)} kg'
-                                            : '—',
-                                        textAlign: TextAlign.right,
-                                        style: tt.labelSmall?.copyWith(
-                                            color: cs.onSurfaceVariant),
                                       ),
                                     ),
                                     const SizedBox(width: 4),
@@ -391,12 +376,13 @@ class TradeLedgerCardList extends StatelessWidget {
                                             color: cs.onSurfaceVariant),
                                       ),
                                     ),
-                                    if (ln.sellingCost != null) ...[
+                                    if (tradePurchaseLineDisplaySellingRate(ln) !=
+                                        null) ...[
                                       const SizedBox(width: 4),
                                       Expanded(
                                         flex: 2,
                                         child: Text(
-                                          'S ${_inr(ln.sellingCost!)}',
+                                          'S ${_inr(tradePurchaseLineDisplaySellingRate(ln)!)}',
                                           textAlign: TextAlign.right,
                                           style: tt.labelSmall?.copyWith(
                                               color: cs.onSurfaceVariant),

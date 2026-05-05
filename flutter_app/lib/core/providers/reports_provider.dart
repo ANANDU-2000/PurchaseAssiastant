@@ -41,7 +41,9 @@ List<TradePurchase>? _decodePurchasesJson(String? js) {
   }
 }
 
-/// Sync Hive cache for the current analytics period (instant paint).
+/// Trade purchase rows for Reports use [analyticsDateRangeProvider] (local calendar
+/// `from`/`to` as `yyyy-MM-dd`) and the API `purchase_from` / `purchase_to` filters
+/// on **purchase_date**, same window as Home analytics when that provider is shared.
 final reportsPurchasesHiveCacheProvider =
     Provider.autoDispose<List<TradePurchase>?>((ref) {
   final session = ref.watch(sessionProvider);

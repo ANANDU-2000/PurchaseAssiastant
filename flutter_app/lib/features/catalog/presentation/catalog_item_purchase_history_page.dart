@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/models/trade_purchase_models.dart';
@@ -99,6 +100,31 @@ class _CatalogItemPurchaseHistoryPageState
     }
   }
 
+  Future<void> _exportCsv() async {
+    if (_purchases.isEmpty) return;
+    final buf = StringBuffer('human_id,purchase_date,total_inr,line_summary\n');
+    final want = widget.itemId.toLowerCase();
+    for (final p in _purchases) {
+      TradePurchaseLine? line;
+      for (final l in p.lines) {
+        if ((l.catalogItemId ?? '').toString().toLowerCase() == want) {
+          line = l;
+          break;
+        }
+      }
+      final sub = line != null
+          ? '${line.itemName} ${line.qty} ${line.unit}'
+          : p.itemsSummary;
+      final safe = sub.replaceAll('\n', ' ').replaceAll(',', ';');
+      buf.write(
+          '${p.humanId},${DateFormat('yyyy-MM-dd').format(p.purchaseDate)},${p.totalAmount.round()},$safe\n');
+    }
+    await Share.share(
+      buf.toString(),
+      subject: 'Purchase history · item ${widget.itemId}',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -108,6 +134,13 @@ class _CatalogItemPurchaseHistoryPageState
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => context.pop(),
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Export CSV',
+            onPressed: _purchases.isEmpty ? null : _exportCsv,
+            icon: const Icon(Icons.ios_share_rounded),
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

@@ -135,6 +135,13 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
               ),
             ),
           ),
+        Text(
+          'Payment terms',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+        ),
+        const SizedBox(height: 6),
         field(
           paymentDaysCtrl,
           'Payment days',
@@ -334,6 +341,13 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
           ],
           const SizedBox(height: 8),
         ],
+        Text(
+          'Charges (once for this bill)',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+        ),
+        const SizedBox(height: 6),
         field(
           deliveredRateCtrl,
           'Delivered rate',

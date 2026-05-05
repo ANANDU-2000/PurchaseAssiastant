@@ -15,6 +15,7 @@ import '../../../core/router/navigation_ext.dart';
 import '../../../core/services/purchase_invoice_pdf_layout.dart'
     show tradeCalcRequestFromTradePurchase;
 import '../../../core/services/purchase_pdf.dart';
+import '../../../core/utils/line_display.dart';
 import '../../../core/utils/trade_purchase_commission.dart';
 import '../../../core/utils/trade_purchase_rate_display.dart';
 import '../../../core/theme/hexa_colors.dart';
@@ -24,6 +25,7 @@ import '../../../core/widgets/list_skeleton.dart';
 
 final _purchaseDetailProvider = FutureProvider.autoDispose
     .family<TradePurchase, String>((ref, purchaseId) async {
+  ref.keepAlive();
   final session = ref.watch(sessionProvider);
   if (session == null) throw StateError('no session');
   final m = await ref.read(hexaApiProvider).getTradePurchase(
@@ -93,6 +95,14 @@ double? _effectiveLineProfit(TradePurchaseLine l) {
   final hasSell = (l.sellingRate ?? l.sellingCost) != null;
   if (!hasSell) return null;
   return l.sellingGross - l.landingGross;
+}
+
+bool _hasExplicitSellRates(TradePurchase p) {
+  for (final l in p.lines) {
+    if (l.sellingRate != null && l.sellingRate! > 0) return true;
+    if (l.sellingCost != null && l.sellingCost! > 0) return true;
+  }
+  return false;
 }
 
 class _Agg {
@@ -375,7 +385,7 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
     final st = p.statusEnum;
     final paidPending = st == PurchaseStatus.paid ||
         (p.remaining <= 0.009 && st != PurchaseStatus.cancelled);
-    final mismatch = (p.totalAmount - agg.finalComputed).abs() > 0.05;
+    final mismatch = (p.totalAmount - agg.finalComputed).abs() > 1.0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -533,10 +543,18 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
       volParts.add(
           '${_qtyFmt(agg.totalTin)} ${agg.totalTin == 1 ? 'tin' : 'tins'}');
     }
-    final hasSell = agg.sumSellingGross > 1e-6;
+    final explicitSell = _hasExplicitSellRates(p);
+    final hasSellDisplay = explicitSell && agg.sumSellingGross > 1e-6;
+    final showProfit = agg.sumProfit.abs() > 1e-6 &&
+        (p.totalLineProfit != null || explicitSell);
+    final smallHdr = TextStyle(
+      fontSize: 11,
+      fontWeight: FontWeight.w700,
+      color: cs.onSurfaceVariant,
+    );
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
         borderRadius: BorderRadius.circular(14),
@@ -545,38 +563,78 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Total (this bill)',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: cs.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 6),
-          SelectableText(
-            _inr(agg.finalComputed, fractionDigits: 0),
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w900,
-              color: cs.onSurface,
-              height: 1.05,
-            ),
-          ),
-          if (volParts.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(
-              volParts.join(' · '),
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: cs.primary,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Amount', style: smallHdr),
+                    const SizedBox(height: 4),
+                    SelectableText(
+                      _inr(agg.finalComputed, fractionDigits: 0),
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        color: cs.onSurface,
+                        height: 1.05,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
-          if (hasSell) ...[
-            const SizedBox(height: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text('Volume', style: smallHdr),
+                    const SizedBox(height: 4),
+                    Text(
+                      volParts.isEmpty ? '—' : volParts.join('\n'),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: cs.primary,
+                        height: 1.25,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text('Profit', style: smallHdr),
+                    const SizedBox(height: 4),
+                    if (showProfit)
+                      SelectableText(
+                        _inr(agg.sumProfit, fractionDigits: 0),
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          color: profitColor,
+                          height: 1.05,
+                        ),
+                      )
+                    else
+                      Text(
+                        '—',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (hasSellDisplay) ...[
+            const SizedBox(height: 10),
             Text(
               'Est. sell value ${_inr(agg.sumSellingGross, fractionDigits: 0)}',
               textAlign: TextAlign.center,
@@ -584,18 +642,6 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: cs.onSurfaceVariant,
-              ),
-            ),
-          ],
-          if (agg.sumProfit.abs() > 1e-6 || hasSell) ...[
-            const SizedBox(height: 8),
-            Text(
-              'Profit ${_inr(agg.sumProfit, fractionDigits: 0)}',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                color: profitColor,
               ),
             ),
           ],
@@ -638,7 +684,9 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
                 '${_inr(agg.finalComputed)} by ${_inr((p.totalAmount - agg.finalComputed).abs())}.',
                 style: TextStyle(
                   fontSize: 11,
-                  color: cs.error,
+                  color: (p.totalAmount - agg.finalComputed).abs() <= 5
+                      ? cs.onSurfaceVariant
+                      : cs.error,
                   height: 1.3,
                 ),
               ),
@@ -663,7 +711,7 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Remaining',
+                'Balance',
                 style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
               ),
               SelectableText(
@@ -719,21 +767,8 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
     return (purchase: purchase, selling: '—');
   }
 
-  String _lineQtyHuman(TradePurchaseLine l) {
-    final q = _qtyFmt(l.qty);
-    final u = l.unit.trim();
-    final kg = _lineKg(l);
-    final ul = u.toLowerCase();
-    if (kg > 1e-6 &&
-        (ul == 'bag' ||
-            ul == 'sack' ||
-            ul == 'box' ||
-            ul == 'tin' ||
-            ul == 'kg')) {
-      return '$q $u · ${_qtyFmt(kg)} kg';
-    }
-    return '$q $u';
-  }
+  String _lineQtyHuman(TradePurchaseLine l) =>
+      formatLineQtyWeightFromTradeLine(l);
 
   List<Widget> _itemsAsCards(
       BuildContext context, TradePurchase p, ColorScheme cs) {

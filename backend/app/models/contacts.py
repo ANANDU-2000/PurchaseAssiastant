@@ -30,6 +30,7 @@ class Broker(Base):
     default_delivered_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     default_billty_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     freight_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    image_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     suppliers = relationship("Supplier", back_populates="broker")

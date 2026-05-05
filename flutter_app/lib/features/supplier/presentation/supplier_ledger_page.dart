@@ -33,12 +33,18 @@ class SupplierLedgerPage extends ConsumerWidget {
       ).format(n);
 
   Map<String, dynamic> _rowIntel(LedgerLineRow row) {
+    final u = row.unit.trim().toLowerCase();
+    double? kpu;
+    if ((u == 'bag' || u == 'sack') && row.qty > 1e-9 && row.kg > 1e-9) {
+      kpu = row.kg / row.qty;
+    }
     return {
       'last_purchase_price': row.rateInr,
       'last_selling_rate': row.sellingRateInr,
       'last_line_qty': row.qty,
       'last_line_unit': row.unit,
       'last_line_weight_kg': row.kg,
+      if (kpu != null) 'kg_per_unit': kpu,
     };
   }
 

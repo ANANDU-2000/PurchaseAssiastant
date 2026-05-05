@@ -18,8 +18,8 @@ import '../../../core/providers/business_profile_provider.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart'
     show invalidatePurchaseWorkspace;
 import '../../../core/providers/trade_purchases_provider.dart';
+import '../state/purchase_local_wip_draft_provider.dart';
 import 'widgets/due_soon_banner.dart';
-import 'widgets/resume_purchase_draft_banner.dart';
 import '../../../core/services/purchase_pdf.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
@@ -419,6 +419,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
     final alerts = ref.watch(purchaseAlertsProvider);
     final dueAlert = (alerts['dueSoon'] ?? 0) + (alerts['overdue'] ?? 0);
     final searchQ = ref.watch(purchaseHistorySearchProvider);
+    final localWip = ref.watch(purchaseLocalWipDraftForHistoryProvider);
 
     return Scaffold(
       backgroundColor: HexaColors.brandBackground,
@@ -553,15 +554,12 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                   _applySecondary(_withoutPendingDeletes(items)),
                   searchQ,
                 );
+                final showLocalWipRow = localWip != null && !_selectMode;
                 return Column(
                   children: [
                     DueSoonBanner(
                       count: dueAlert,
                       onTap: () => _selectPrimary('due_soon'),
-                    ),
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(12, 6, 12, 0),
-                      child: ResumePurchaseDraftBanner(),
                     ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
@@ -627,7 +625,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                         ),
                       ),
                     Expanded(
-                      child: visible.isEmpty
+                      child: visible.isEmpty && !showLocalWipRow
                           ? _HistoryEmpty(onAdd: () => context.push('/purchase/new'))
                           : ListView.separated(
                               keyboardDismissBehavior:
@@ -641,13 +639,17 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                   8,
                                   16,
                                   80 + MediaQuery.of(context).padding.bottom),
-                      itemCount: visible.length,
+                      itemCount: visible.length + (showLocalWipRow ? 1 : 0),
                       separatorBuilder: (_, __) => const SizedBox(height: 4),
                               itemBuilder: (context, i) {
-                                final p = visible[i];
+                                if (showLocalWipRow && i == 0) {
+                                  return _LocalWipDraftHistoryRow(vm: localWip);
+                                }
+                                final idx = i - (showLocalWipRow ? 1 : 0);
+                                final p = visible[idx];
                                 return _PurchaseRow(
                                   p: p,
-                                  serial: visible.length - i,
+                                  serial: visible.length - idx,
                                   selectMode: _selectMode,
                                   selected: _selected.contains(p.id),
                                   onLongPress: () {
@@ -688,6 +690,95 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                 );
               },
             ),
+    );
+  }
+}
+
+class _LocalWipDraftHistoryRow extends StatelessWidget {
+  const _LocalWipDraftHistoryRow({required this.vm});
+
+  final PurchaseLocalWipDraftVm vm;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: () => context.pushNamed(
+          'purchase_new',
+          extra: <String, dynamic>{'resumeDraft': true},
+        ),
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: const Color(0xFFF59E0B).withValues(alpha: 0.7),
+              width: 1.5,
+            ),
+          ),
+          padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color:
+                                const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Text(
+                            'Draft',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFFD97706),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            vm.titleLine,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: HexaDsType.purchaseQtyUnit.copyWith(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w900,
+                              color: const Color(0xFF0F172A),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      vm.subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: HexaColors.neutral,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: Colors.grey.shade600),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -745,7 +836,7 @@ class _PurchaseRow extends StatelessWidget {
                 color: selected ? HexaColors.brandPrimary : HexaColors.brandBorder,
                 width: selected ? 2 : 1),
           ),
-          padding: const EdgeInsets.fromLTRB(7, 5, 7, 5),
+          padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -856,27 +947,13 @@ class _PurchaseRow extends StatelessWidget {
                       p.remaining > 0.01) ...[
                     const SizedBox(height: 2),
                     Text(
-                      'Rem ${_inr(p.remaining.round())}',
+                      'Bal ${_inr(p.remaining.round())}',
                       style: HexaDsType.purchaseQtyUnit.copyWith(
                         fontSize: 10,
                         color: HexaColors.neutral,
                       ),
                     ),
                   ],
-                  if (st != PurchaseStatus.paid &&
-                      st != PurchaseStatus.draft &&
-                      st != PurchaseStatus.cancelled &&
-                      p.remaining > 0.01)
-                    TextButton(
-                      onPressed: onMarkPaid,
-                      style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFF16A34A),
-                        padding: EdgeInsets.zero,
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      child: const Text('Mark paid', style: TextStyle(fontSize: 11)),
-                    ),
                 ],
               ),
             ],

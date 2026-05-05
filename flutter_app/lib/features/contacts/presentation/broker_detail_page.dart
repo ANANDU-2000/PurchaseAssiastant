@@ -6,6 +6,8 @@ import 'package:intl/intl.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/providers/business_profile_provider.dart';
+import '../../../core/services/broker_statement_pdf.dart';
 import '../../../core/router/navigation_ext.dart';
 import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/trade/trade_line_profit.dart';
@@ -114,6 +116,31 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
     }
   }
 
+  Future<void> _shareBrokerStatementPdf() async {
+    final session = ref.read(sessionProvider);
+    if (session == null || _rangeTrades.isEmpty) return;
+    final biz = ref.read(invoiceBusinessProfileProvider);
+    final bro = ref.read(_brokerProvider(widget.brokerId)).valueOrNull;
+    final name = bro?['name']?.toString() ?? 'Broker';
+    final phone = bro?['phone']?.toString();
+    try {
+      await shareBrokerStatementPdf(
+        business: biz,
+        brokerName: name,
+        brokerPhone: phone,
+        purchases: _rangeTrades,
+        fromDate: _from,
+        toDate: _to,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('PDF failed: $e')),
+        );
+      }
+    }
+  }
+
   void _preset(int days) {
     final n = _dOnly(DateTime.now());
     setState(() {
@@ -217,6 +244,13 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
         ),
         actions: [
           IconButton(
+            tooltip: 'Broker statement PDF',
+            onPressed: _loading || _rangeTrades.isEmpty
+                ? null
+                : _shareBrokerStatementPdf,
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+          ),
+          IconButton(
             tooltip: 'Trade purchase ledger',
             icon: const Icon(Icons.receipt_long_outlined),
             onPressed: () => context.push('/broker/${widget.brokerId}/ledger'),
@@ -299,9 +333,35 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
                       style: tt.labelMedium
                           ?.copyWith(color: HexaColors.textSecondary)),
                 ),
-                Text(b['name']?.toString() ?? '—',
-                    style: tt.headlineSmall
-                        ?.copyWith(fontWeight: FontWeight.w800)),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if ((b['image_url'] ?? '').toString().trim().isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: Image.network(
+                            b['image_url'].toString().trim(),
+                            width: 56,
+                            height: 56,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const SizedBox(
+                              width: 56,
+                              height: 56,
+                            ),
+                          ),
+                        ),
+                      ),
+                    Expanded(
+                      child: Text(
+                        b['name']?.toString() ?? '—',
+                        style: tt.headlineSmall
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 10),
                 Chip(
                   avatar: Icon(

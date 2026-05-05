@@ -28,6 +28,7 @@ import '../../purchase/state/purchase_draft_provider.dart';
 import '../../contacts/presentation/broker_wizard_page.dart';
 import '../../contacts/presentation/supplier_create_simple.dart';
 import '../../../shared/widgets/inline_search_field.dart';
+import '../../../shared/widgets/keyboard_safe_form_viewport.dart';
 import 'wizard/purchase_fast_items_step.dart';
 import 'wizard/purchase_party_step.dart';
 import 'wizard/purchase_review_tally_step.dart';
@@ -178,6 +179,9 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       Future.microtask(() {
         if (!mounted) return;
         ref.invalidate(catalogItemsListProvider);
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_maybeShowResumeDraftMaterialBanner());
       });
     }
     if (!mounted) return;
@@ -338,6 +342,59 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     return '${_draftKeyV1}_${s.primaryBusiness.id}';
   }
 
+  Future<void> _maybeShowResumeDraftMaterialBanner() async {
+    if (!mounted) return;
+    if (widget.editingId != null && widget.editingId!.isNotEmpty) return;
+    if (widget.resumeDraft || widget.initialDraft != null) return;
+    final k = _draftPrefsKey();
+    final s0 = ref.read(sessionProvider);
+    if (s0 == null || k == null) return;
+    final bid = s0.primaryBusiness.id;
+    String? raw = OfflineStore.getPurchaseWizardDraft(bid);
+    raw ??= ref.read(sharedPreferencesProvider).getString(k);
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final dec = jsonDecode(raw);
+      if (dec is! Map) return;
+      final m = Map<String, dynamic>.from(dec);
+      final meta = m['draftWizardMeta'];
+      if (meta is! Map) return;
+      final at = DateTime.tryParse(meta['savedAt']?.toString() ?? '');
+      if (at == null) return;
+      if (DateTime.now().difference(at) > const Duration(hours: 24)) return;
+      final items = m['items'] ?? m['lines'];
+      final hasLines = items is List && items.isNotEmpty;
+      final hasSupplier = (m['supplierId'] ?? m['supplier_id'] ?? '')
+          .toString()
+          .trim()
+          .isNotEmpty;
+      if (!hasLines && !hasSupplier) return;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showMaterialBanner(
+        MaterialBanner(
+          content: const Text(
+            'You have an unsaved purchase draft from the last 24 hours.',
+          ),
+          leading: const Icon(Icons.edit_note_outlined),
+          actions: [
+            TextButton(
+              onPressed: () =>
+                  ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
+              child: const Text('Dismiss'),
+            ),
+            TextButton(
+              onPressed: () async {
+                ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
+                await _maybeRestoreDraft();
+              },
+              child: const Text('Resume'),
+            ),
+          ],
+        ),
+      );
+    } catch (_) {}
+  }
+
   Future<void> _maybeRestoreDraft() async {
     if (widget.editingId != null && widget.editingId!.isNotEmpty) return;
     final k = _draftPrefsKey();
@@ -391,7 +448,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     if (!mounted) return;
     if (!_formDirty) setState(() => _formDirty = true);
     _draftDebounce?.cancel();
-    _draftDebounce = Timer(const Duration(milliseconds: 400), () {
+    _draftDebounce = Timer(const Duration(milliseconds: 800), () {
       if (!mounted) return;
       _flushDraftToPrefs();
     });
@@ -1845,65 +1902,40 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
                   ),
                 ),
               Expanded(
-                child: (_wizStep == 0 || _wizStep == 1)
-                    ? Padding(
-                        padding: EdgeInsets.fromLTRB(
-                          16,
-                          16,
-                          16,
-                          math.max(
-                            8.0,
-                            MediaQuery.viewInsetsOf(bodyContext).bottom +
-                                MediaQuery.paddingOf(bodyContext).bottom +
-                                8,
-                          ),
-                        ),
-                        child: _wizBody(bodyContext, catalog, isEdit),
-                      )
-                    : SingleChildScrollView(
-                        physics: const ClampingScrollPhysics(),
-                        keyboardDismissBehavior:
-                            ScrollViewKeyboardDismissBehavior.onDrag,
-                        padding: EdgeInsets.fromLTRB(
-                          16,
-                          16,
-                          16,
-                          math.max(
-                            8.0,
-                            MediaQuery.viewInsetsOf(bodyContext).bottom +
-                                MediaQuery.paddingOf(bodyContext).bottom +
-                                16,
-                          ),
-                        ),
-                        child: _wizBody(bodyContext, catalog, isEdit),
+                child: LayoutBuilder(
+                  builder: (bodyContext, cts) {
+                    final minFields =
+                        math.max(220.0, cts.maxHeight - 280);
+                    return KeyboardSafeFormViewport(
+                      horizontalPadding: 16,
+                      topPadding: 16,
+                      bottomExtraInset: 24,
+                      minFieldsHeight:
+                          cts.hasBoundedHeight ? minFields : 220,
+                      fields: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _wizBody(bodyContext, catalog, isEdit),
+                        ],
                       ),
-              ),
-              if (showWizardFooter)
-                AnimatedPadding(
-                  duration: const Duration(milliseconds: 140),
-                  curve: Curves.easeOut,
-                  padding: EdgeInsets.only(
-                    left: 16,
-                    right: 16,
-                    bottom:
-                        MediaQuery.viewInsetsOf(bodyContext).bottom + 16,
-                    top: 8,
-                  ),
-                  child: Material(
-                    elevation: 8,
-                    surfaceTintColor: Colors.transparent,
-                    color: theme.colorScheme.surface,
-                    child: SafeArea(
-                      top: false,
-                      child: Padding(
-                        padding:
-                            const EdgeInsets.fromLTRB(8, 4, 8, 6),
-                        child:
-                            _wizardFooterChrome(catalog, isEdit),
-                      ),
-                    ),
-                  ),
+                      footer: showWizardFooter
+                          ? Material(
+                              elevation: 8,
+                              surfaceTintColor: Colors.transparent,
+                              color: theme.colorScheme.surface,
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                    8, 4, 8, 6),
+                                child: _wizardFooterChrome(
+                                    catalog, isEdit),
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                    );
+                  },
                 ),
+              ),
             ],
           );
         },

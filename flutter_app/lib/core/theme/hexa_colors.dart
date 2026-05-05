@@ -53,7 +53,7 @@ abstract final class HexaColors {
   static const neutral          = Color(0xFF64748B);
   static const primaryNavy      = Color(0xFF0F172A);
   static const textPrimary      = Color(0xFFF0F4FF);
-  static const textSecondary    = Color(0xFF8993A9);
+  static const textSecondary    = Color(0xFF5C6578);
 
   // ── SEMANTIC ───────────────────────────────────────────────────────────────
   static const profit  = Color(0xFF16A34A);

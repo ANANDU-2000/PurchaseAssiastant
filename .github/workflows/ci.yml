@@ -26,6 +26,10 @@ jobs:
           cache: pip
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - name: Alembic migrations (SQLite smoke)
+        env:
+          HEXA_USE_SQLITE: "1"
+        run: alembic upgrade head
       - name: Test
         run: python -m pytest -q
 

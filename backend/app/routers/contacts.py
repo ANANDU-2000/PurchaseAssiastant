@@ -480,6 +480,7 @@ class BrokerOut(BaseModel):
     default_delivered_rate: float | None = None
     default_billty_rate: float | None = None
     freight_type: str | None = None
+    image_url: str | None = None
     supplier_ids: list[uuid.UUID] = Field(default_factory=list)
     preferences_json: str | None = None
 
@@ -499,6 +500,7 @@ class BrokerUpdate(BaseModel):
     default_delivered_rate: float | None = Field(default=None, ge=0)
     default_billty_rate: float | None = Field(default=None, ge=0)
     freight_type: str | None = Field(default=None, pattern="^(included|separate)$")
+    image_url: str | None = Field(default=None, max_length=1024)
     supplier_ids: list[uuid.UUID] | None = None
     preferences: SupplierPrefsIn | None = None
 
@@ -579,6 +581,7 @@ class BrokerCreate(BaseModel):
     default_delivered_rate: float | None = Field(default=None, ge=0)
     default_billty_rate: float | None = Field(default=None, ge=0)
     freight_type: str | None = Field(default=None, pattern="^(included|separate)$")
+    image_url: str | None = Field(default=None, max_length=1024)
     supplier_ids: list[uuid.UUID] | None = None
     preferences: SupplierPrefsIn | None = None
 
@@ -610,6 +613,7 @@ async def create_broker(
         default_delivered_rate=body.default_delivered_rate,
         default_billty_rate=body.default_billty_rate,
         freight_type=body.freight_type,
+        image_url=(body.image_url.strip() if body.image_url and body.image_url.strip() else None),
         preferences_json=body.preferences.model_dump_json() if body.preferences else None,
     )
     db.add(b)
@@ -683,6 +687,9 @@ async def update_broker(
         b.default_billty_rate = data["default_billty_rate"]
     if "freight_type" in data:
         b.freight_type = data["freight_type"]
+    if "image_url" in data:
+        v = data["image_url"]
+        b.image_url = v.strip() if isinstance(v, str) and v.strip() else v
     if "supplier_ids" in data:
         dedup_suppliers: list[uuid.UUID] = []
         for sid in data["supplier_ids"] or []:

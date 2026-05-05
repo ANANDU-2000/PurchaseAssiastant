@@ -14,10 +14,13 @@ import '../../../core/providers/business_profile_provider.dart';
 import '../../../core/providers/business_write_revision.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/router/navigation_ext.dart';
+import '../../../core/services/broker_statement_pdf.dart';
 import '../../../core/services/item_statement_pdf.dart';
 import '../../../core/services/supplier_statement_pdf.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/utils/line_display.dart';
 import '../../../core/utils/trade_purchase_commission.dart';
+import '../../../core/utils/trade_purchase_rate_display.dart';
 import '../../../shared/widgets/hexa_empty_state.dart';
 import '../../../shared/widgets/trade_intel_cards.dart';
 import '../../../shared/widgets/trade_purchase_ledger_cards.dart';
@@ -254,6 +257,16 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
           fromDate: _from,
           toDate: _to,
         );
+      } else if (widget.kind == TradeLedgerKind.broker) {
+        final first = data.first;
+        await shareBrokerStatementPdf(
+          business: biz,
+          brokerName: first.brokerName ?? 'Broker',
+          brokerPhone: first.brokerPhone,
+          purchases: data,
+          fromDate: _from,
+          toDate: _to,
+        );
       } else if (widget.kind == TradeLedgerKind.catalogItem) {
         final itemAsync = ref.read(catalogItemDetailProvider(widget.entityId));
         final name = itemAsync.maybeWhen(
@@ -272,6 +285,30 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('PDF failed: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _shareBrokerStatementForChat(List<TradePurchase> data) async {
+    final session = ref.read(sessionProvider);
+    if (session == null || data.isEmpty) return;
+    if (widget.kind != TradeLedgerKind.broker) return;
+    final biz = ref.read(invoiceBusinessProfileProvider);
+    final first = data.first;
+    try {
+      await shareBrokerStatementPdfForChat(
+        business: biz,
+        brokerName: first.brokerName ?? 'Broker',
+        brokerPhone: first.brokerPhone,
+        purchases: data,
+        fromDate: _from,
+        toDate: _to,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Share failed: $e')),
         );
       }
     }
@@ -379,6 +416,7 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
         title: Text(_title),
         actions: [
           if (widget.kind == TradeLedgerKind.supplier ||
+              widget.kind == TradeLedgerKind.broker ||
               widget.kind == TradeLedgerKind.catalogItem)
             IconButton(
               tooltip: 'Share statement PDF',
@@ -386,6 +424,14 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
                   ? null
                   : () => _shareStatementPdf(data),
               icon: const Icon(Icons.picture_as_pdf_outlined),
+            ),
+          if (widget.kind == TradeLedgerKind.broker)
+            IconButton(
+              tooltip: 'Share PDF (WhatsApp, etc.)',
+              onPressed: (_loading || data.isEmpty)
+                  ? null
+                  : () => _shareBrokerStatementForChat(data),
+              icon: const Icon(Icons.chat_rounded),
             ),
           IconButton(
             tooltip: 'Refresh',
@@ -749,10 +795,13 @@ class _LedgerPurchaseCard extends StatelessWidget {
                                 'last_line_qty': ln.qty,
                                 'last_line_unit': ln.unit,
                                 'last_line_weight_kg': kg,
-                                'last_purchase_price': ln.landingCost,
-                                'last_selling_rate': ln.sellingRate,
+                                'kg_per_unit': ln.kgPerUnit,
+                                'last_purchase_price':
+                                    tradePurchaseLineDisplayPurchaseRate(ln),
+                                'last_selling_rate':
+                                    tradePurchaseLineDisplaySellingRate(ln),
                               };
-                              final q = tradeIntelQtySummaryLine(intel);
+                              final q = formatLineQtyWeightFromTradeLine(ln);
                               final r = tradeIntelRatePairLine(intel);
                               final lineAmt =
                                   ln.lineTotal ?? (ln.qty * ln.landingCost);

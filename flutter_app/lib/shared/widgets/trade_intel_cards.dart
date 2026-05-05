@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/utils/line_display.dart';
+
 double? tradeIntelToDouble(dynamic v) {
   if (v == null) return null;
   if (v is num) return v.toDouble();
@@ -22,25 +24,24 @@ String tradeIntelFormatQty(num? n) {
   return n.toStringAsFixed(2);
 }
 
-/// "5000 KG • 100 BAGS" style line from unified-search / catalog item maps.
+/// Qty + weight for catalog / ledger intel maps (bags · kg order via [formatLineQtyWeight]).
 String tradeIntelQtySummaryLine(Map<String, dynamic> m) {
   final kg = tradeIntelToDouble(m['last_line_weight_kg']);
   final qty = tradeIntelToDouble(m['last_line_qty']);
-  final unit = (m['last_line_unit'] ?? '').toString().toLowerCase().trim();
-  final parts = <String>[];
+  final unit = (m['last_line_unit'] ?? '').toString();
+  final kpu = tradeIntelToDouble(m['kg_per_unit']);
+  if (qty != null && qty > 1e-6 && unit.trim().isNotEmpty) {
+    return formatLineQtyWeight(
+      qty: qty,
+      unit: unit,
+      kgPerUnit: kpu,
+      totalWeightKg: kg,
+    );
+  }
   if (kg != null && kg > 1e-6) {
-    parts.add('${tradeIntelFormatQty(kg)} KG');
+    return formatLineQtyWeight(qty: kg, unit: 'kg');
   }
-  if (qty != null && qty > 1e-6) {
-    if (unit == 'tin') {
-      parts.add('${tradeIntelFormatQty(qty)} TIN');
-    } else if (unit == 'bag' || unit == 'sack' || unit == 'box') {
-      parts.add('${tradeIntelFormatQty(qty)} ${unit.toUpperCase()}');
-    } else if (unit.isNotEmpty && (kg == null || kg <= 1e-6)) {
-      parts.add('${tradeIntelFormatQty(qty)} ${unit.toUpperCase()}');
-    }
-  }
-  return parts.isEmpty ? '' : parts.join(' • ');
+  return '';
 }
 
 /// Volume from category trade-summary rows (`period_weight_kg`, `period_qty_bags`).
@@ -62,7 +63,7 @@ String tradeIntelPeriodVolumeLine(Map<String, dynamic> m) {
 String tradeIntelPeriodAmountLine(Map<String, dynamic> m) {
   final a = tradeIntelToDouble(m['period_line_total']);
   if (a == null || a <= 1e-6) return '';
-  return 'Spend: ${tradeIntelFormatInr(a)}';
+  return 'Amount: ${tradeIntelFormatInr(a)}';
 }
 
 /// Last purchase → last selling (confirmed [last_selling_rate] only — no catalog defaults).

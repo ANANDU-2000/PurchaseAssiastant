@@ -415,7 +415,7 @@ def test_compute_totals_plain_line():
 
 
 def test_compute_totals_line_tax_multiplier():
-    """Header total sums qty × rate; line-level tax/discount is applied elsewhere (e.g. _line_money)."""
+    """Header total uses tax-inclusive [_line_money] (parity with Flutter computeTradeTotals)."""
     req = TradePurchaseCreateRequest(
         purchase_date=date.today(),
         supplier_id=uuid.uuid4(),
@@ -432,7 +432,7 @@ def test_compute_totals_line_tax_multiplier():
     )
     qty, amt = compute_totals(req)
     assert qty == Decimal("10")
-    assert amt == Decimal("1000")
+    assert amt == Decimal("1050")
 
 
 def test_compute_totals_line_discount():
@@ -453,7 +453,7 @@ def test_compute_totals_line_discount():
     )
     qty, amt = compute_totals(req)
     assert qty == Decimal("10")
-    assert amt == Decimal("1000")
+    assert amt == Decimal("900")
 
 
 def test_compute_totals_header_discount_and_commission():

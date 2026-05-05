@@ -355,6 +355,26 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ),
           const SizedBox(height: 12),
+          Text('Purchases & sharing',
+              style: tt.titleSmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          Card(
+            color: context.adaptiveCard,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Purchase PDFs are shared manually (detail screen, broker ledger). '
+                'There is no scheduled auto-send to WhatsApp in this build.',
+                style: tt.bodySmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
           Text('Business',
               style: tt.titleSmall?.copyWith(
                   color: cs.onSurfaceVariant,

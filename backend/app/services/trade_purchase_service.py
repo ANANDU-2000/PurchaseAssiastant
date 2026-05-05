@@ -315,7 +315,7 @@ def _line_profit(li: TradePurchaseLineIn, req: TradePurchaseCreateRequest) -> De
     if li.selling_rate is None:
         return None
     revenue = _dec(li.qty) * _dec(li.selling_rate)
-    total_cost = _line_total(li) + _line_item_charges(li, req)
+    total_cost = _line_money(li) + _line_item_charges(li, req)
     return dp.total(revenue - total_cost)
 
 
@@ -385,8 +385,8 @@ def _header_commission_rupees(req: TradePurchaseCreateRequest, after_header: Dec
 def aggregate_landing_selling_profit(
     req: TradePurchaseCreateRequest,
 ) -> tuple[Decimal, Decimal | None, Decimal | None]:
-    """SSOT line subtotals (matches DB backfill in migration 008)."""
-    land = sum((_line_total(li) + _line_item_charges(li, req)) for li in req.lines)
+    """SSOT line subtotals (tax/disc-inclusive line money + per-line charges)."""
+    land = sum((_line_money(li) + _line_item_charges(li, req)) for li in req.lines)
     sell = sum((_dec(li.qty) * _dec(li.selling_rate)) for li in req.lines if li.selling_rate is not None)
     if sell <= 0:
         return dp.total(land), None, None
@@ -399,7 +399,7 @@ def compute_totals(req: TradePurchaseCreateRequest) -> tuple[Decimal, Decimal]:
         li.freight_value is not None or li.delivered_rate is not None or li.billty_rate is not None
         for li in req.lines
     )
-    amt_sum = sum((_line_total(li) + _line_item_charges(li, req)) for li in req.lines)
+    amt_sum = sum((_line_money(li) + _line_item_charges(li, req)) for li in req.lines)
     header_disc = _dec(req.discount) if req.discount is not None else Decimal("0")
     after_header = amt_sum
     if header_disc > 0:
@@ -690,11 +690,9 @@ async def last_purchase_defaults(
         li, p = row
         kpu_raw = getattr(li, "weight_per_unit", None) or li.kg_per_unit
         kpu = dp.weight(kpu_raw) if kpu_raw is not None else None
-        purchase_rate = (
-            dp.rate(getattr(li, "purchase_rate", None))
-            if getattr(li, "purchase_rate", None) is not None
-            else (dp.rate(li.landing_cost_per_kg) if li.landing_cost_per_kg is not None else dp.rate(li.landing_cost))
-        )
+        lcpk_dec = dp.rate(li.landing_cost_per_kg) if li.landing_cost_per_kg is not None else None
+        # Per-bag (line unit) rupees — what the Flutter ₹/bag field expects.
+        purchase_rate = dp.rate(getattr(li, "purchase_rate", None) or li.landing_cost)
         selling_raw = getattr(li, "selling_rate", None) or li.selling_cost
         selling_rate = dp.rate(selling_raw) if selling_raw is not None else None
         tax_pct = dp.percent(li.tax_percent) if li.tax_percent is not None else None
@@ -711,6 +709,7 @@ async def last_purchase_defaults(
             "unit": li.unit,
             "purchase_rate": purchase_rate,
             "landing_cost": purchase_rate,
+            "landing_cost_per_kg": float(lcpk_dec) if lcpk_dec is not None else None,
             "selling_rate": selling_rate,
             "selling_cost": selling_rate,
             "weight_per_unit": kpu,
@@ -803,7 +802,7 @@ async def create_trade_purchase(
     db.add(tp)
     await db.flush()
     for li in body.lines:
-        line_total = _line_total(li)
+        line_total = _line_money(li)
         line_weight = _line_total_weight(li)
         line_profit = _line_profit(li, body)
         db.add(
@@ -927,7 +926,7 @@ async def update_trade_purchase(
     await db.execute(delete(TradePurchaseLine).where(TradePurchaseLine.trade_purchase_id == tp.id))
     await db.flush()
     for li in body.lines:
-        line_total = _line_total(li)
+        line_total = _line_money(li)
         line_weight = _line_total_weight(li)
         line_profit = _line_profit(li, body)
         db.add(

@@ -7,6 +7,8 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../../core/auth/auth_error_messages.dart';
 import '../../../../core/auth/session_notifier.dart';
+import '../../../../core/providers/suppliers_list_provider.dart';
+import '../../../../core/search/catalog_fuzzy.dart';
 import '../../../../core/theme/hexa_colors.dart';
 import '../../domain/purchase_draft.dart';
 
@@ -44,6 +46,48 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
   List<int>? _jpegBytes;
 
   final _supplierCtrl = TextEditingController();
+  String? _supplierDirectoryId;
+  Map<String, dynamic>? _supplierFuzzySuggestion;
+
+  void _refreshSupplierDirectoryLink() {
+    final q = _supplierCtrl.text.trim();
+    if (q.isEmpty) {
+      _supplierDirectoryId = null;
+      _supplierFuzzySuggestion = null;
+      return;
+    }
+    final suppliers = ref.read(suppliersListProvider).valueOrNull ?? [];
+    for (final m in suppliers) {
+      final n = m['name']?.toString().trim() ?? '';
+      if (n.isEmpty) continue;
+      if (normalizeCatalogSearch(n) == normalizeCatalogSearch(q)) {
+        _supplierDirectoryId = m['id']?.toString();
+        _supplierFuzzySuggestion = null;
+        return;
+      }
+    }
+    _supplierDirectoryId = null;
+    final ranked = catalogFuzzyRank(
+      q,
+      suppliers,
+      (m) => m['name']?.toString() ?? '',
+      minScore: 82,
+      limit: 1,
+    );
+    if (ranked.isEmpty) {
+      _supplierFuzzySuggestion = null;
+      return;
+    }
+    final top = ranked.first;
+    final name = top['name']?.toString().trim() ?? '';
+    if (name.isEmpty ||
+        normalizeCatalogSearch(name) == normalizeCatalogSearch(q) ||
+        catalogFuzzyScore(q, name) < 88) {
+      _supplierFuzzySuggestion = null;
+      return;
+    }
+    _supplierFuzzySuggestion = top;
+  }
 
   Future<void> _pick(ImageSource src) async {
     final x = await ImagePicker().pickImage(source: src);
@@ -128,6 +172,7 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
         _missing.addAll(nextMiss);
         _rows = nextRows.isEmpty ? [_BillRowEdit.empty()] : nextRows;
         _note = res['note']?.toString();
+        _refreshSupplierDirectoryLink();
       });
       HapticFeedback.selectionClick();
     } on DioException catch (e) {
@@ -167,7 +212,7 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
     }
     return PurchaseDraft(
       purchaseDate: DateTime.now(),
-      supplierId: null,
+      supplierId: _supplierDirectoryId,
       supplierName: _supplierCtrl.text.trim().isEmpty
           ? null
           : _supplierCtrl.text.trim(),
@@ -235,7 +280,9 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
           ),
         ),
       ),
-      onChanged: (_) => setState(() {}),
+      onChanged: (_) => setState(() {
+        _refreshSupplierDirectoryLink();
+      }),
     );
   }
 
@@ -250,6 +297,12 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(suppliersListProvider, (previous, next) {
+      if (!next.hasValue || !mounted) return;
+      if (_supplierCtrl.text.trim().isEmpty) return;
+      setState(() => _refreshSupplierDirectoryLink());
+    });
+
     return SingleChildScrollView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.all(16),
@@ -319,6 +372,69 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
           ),
           const SizedBox(height: 8),
           _supplierField(_missingSupplier()),
+          if (_supplierDirectoryId != null &&
+              _supplierCtrl.text.trim().isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Matched to a supplier in your directory',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: Colors.teal.shade800,
+              ),
+            ),
+          ],
+          if (_supplierFuzzySuggestion != null) ...[
+            const SizedBox(height: 8),
+            Material(
+              color: Colors.amber.shade50,
+              borderRadius: BorderRadius.circular(10),
+              child: InkWell(
+                onTap: () {
+                  final m = _supplierFuzzySuggestion!;
+                  final name = m['name']?.toString().trim() ?? '';
+                  final id = m['id']?.toString();
+                  setState(() {
+                    _supplierCtrl.text = name;
+                    _supplierDirectoryId = id;
+                    _supplierFuzzySuggestion = null;
+                  });
+                },
+                borderRadius: BorderRadius.circular(10),
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Row(
+                    children: [
+                      Icon(Icons.merge_type_rounded,
+                          color: Colors.amber.shade900, size: 22),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Similar directory supplier',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 12,
+                                color: Colors.amber.shade900,
+                              ),
+                            ),
+                            Text(
+                              '${_supplierFuzzySuggestion!['name']} — tap to link (avoid duplicate)',
+                              style: const TextStyle(fontSize: 11, height: 1.25),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.chevron_right_rounded,
+                          color: Colors.grey.shade700),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           if (_rows.isEmpty)
             const Text(

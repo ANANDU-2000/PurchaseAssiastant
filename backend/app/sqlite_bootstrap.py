@@ -257,6 +257,8 @@ def _ensure_broker_phone_column(sync_conn):
         alters.append("ALTER TABLE brokers ADD COLUMN default_billty_rate NUMERIC(12, 2)")
     if "freight_type" not in cols:
         alters.append("ALTER TABLE brokers ADD COLUMN freight_type VARCHAR(16)")
+    if "image_url" not in cols:
+        alters.append("ALTER TABLE brokers ADD COLUMN image_url VARCHAR(1024)")
     for sql in alters:
         try:
             sync_conn.exec_driver_sql(sql)

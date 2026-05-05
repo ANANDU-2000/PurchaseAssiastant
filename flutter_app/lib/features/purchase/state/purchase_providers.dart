@@ -9,6 +9,7 @@ import '../../../core/calc_engine.dart';
 import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/providers/business_write_revision.dart';
 import '../../../core/utils/trade_purchase_commission.dart';
+import '../../../core/utils/trade_purchase_rate_display.dart';
 
 export 'purchase_draft_provider.dart';
 
@@ -122,7 +123,7 @@ LedgerLineRow ledgerRowFromPurchaseLine({
     unit: l.unit.trim(),
     kg: kg,
     rateInr: rate,
-    sellingRateInr: l.sellingRate,
+    sellingRateInr: tradePurchaseLineDisplaySellingRate(l),
     amountInr: amount,
     commissionInr: allocateCommission ? tradePurchaseLineCommissionInr(p, l) : 0,
   );

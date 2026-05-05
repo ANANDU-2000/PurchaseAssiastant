@@ -9,6 +9,7 @@ import '../../../../core/calc_engine.dart';
 import '../../../../core/json_coerce.dart';
 import '../../../../core/strict_decimal.dart';
 import '../../../../core/theme/hexa_colors.dart';
+import '../../../../core/utils/line_display.dart';
 import '../../../../core/utils/unit_classifier.dart';
 import '../../../../shared/widgets/inline_search_field.dart';
 import '../../../../shared/widgets/keyboard_safe_form_viewport.dart';
@@ -649,47 +650,42 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     return '${lower[0].toUpperCase()}${lower.length > 1 ? lower.substring(1) : ''}';
   }
 
+  String _qtyFieldLabel() {
+    final u = _unitCtrl.text.trim().toLowerCase();
+    if (u == 'bag') return 'No. of bags *';
+    if (u == 'sack') return 'No. of sacks *';
+    if (u == 'box') return 'No. of boxes *';
+    if (u == 'tin') return 'No. of tins *';
+    if (u == 'kg' || u == 'kgs' || u == 'quintal' || u == 'qtl') {
+      return 'Qty (kg) *';
+    }
+    return 'Qty *';
+  }
+
   String _qtyAndUnitWeightSummaryLine() {
     final q = _qtyVal();
     final u = _unitCtrl.text.trim();
-    final unitWord = _capitalUnitWord(u.isEmpty ? 'unit' : u);
-    final qtyTxt = _inQtyWtFmt.format(q);
+    if (q <= 0 || u.isEmpty) return '—';
     final c = _activeClassification();
 
-    switch (c.type) {
-      case UnitType.weightBag:
-        final kg = _sheetPhysicalKgTotal();
-        return '$qtyTxt $unitWord • ${_inQtyWtFmt.format(kg)} Kg';
-      case UnitType.multiPackBox:
-        final items = classifierTotalItems(
-          type: c.type,
-          qty: q,
-          itemsPerBox: _parseD(_itemsPerBoxCtrl.text),
-        );
-        final boxWord = _capitalUnitWord('box');
-        return '$qtyTxt $boxWord • ${_inQtyWtFmt.format(items)} Items';
-      case UnitType.singlePack:
-        final kn = c.kgFromName;
-        if (kn != null &&
-            kn > 0 &&
-            (_lineUnitIsBox(u) || _lineUnitIsTin(u))) {
-          final packWord =
-              _lineUnitIsTin(u) ? _capitalUnitWord('tin') : _capitalUnitWord('box');
-          final kg = classifierLineWeightKg(
-            type: UnitType.singlePack,
-            qty: q,
-            kgPerUnit: _kgPer(),
-            kgFromName: kn,
-            itemsPerBox: null,
-            weightPerItem: null,
-          );
-          return '$qtyTxt $packWord • ${_inQtyWtFmt.format(kg)} Kg';
-        }
-        if (u.toLowerCase() == 'kg') {
-          return '$qtyTxt Kg • ${_inQtyWtFmt.format(q)} Kg';
-        }
-        return qtyTxt.isEmpty ? '—' : '$qtyTxt $unitWord';
+    if (c.type == UnitType.multiPackBox) {
+      final qtyTxt = _inQtyWtFmt.format(q);
+      final items = classifierTotalItems(
+        type: c.type,
+        qty: q,
+        itemsPerBox: _parseD(_itemsPerBoxCtrl.text),
+      );
+      final boxWord = _capitalUnitWord('box');
+      return '$qtyTxt $boxWord • ${_inQtyWtFmt.format(items)} Items';
     }
+
+    final totalKg = _sheetPhysicalKgTotal();
+    return formatLineQtyWeight(
+      qty: q,
+      unit: u,
+      kgPerUnit: _kgPer(),
+      totalWeightKg: totalKg > 1e-9 ? totalKg : null,
+    );
   }
 
   TradeCalcLine _currentLine() {
@@ -926,6 +922,83 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
               child: const Text('Use 1 bag'),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// Bag qty × kg/bag implies a huge total — user may have meant **kg** as the unit.
+  Widget? _didYouMeanKgNotBagsBanner() {
+    final u = _unitCtrl.text.trim().toLowerCase();
+    if (u != 'bag' && u != 'sack') return null;
+    final k = _kgPer();
+    if (k == null || k <= 0) return null;
+    final q = _qtyVal();
+    if (q <= 0) return null;
+    final totalK = q * k;
+    if (totalK <= 50000 && q <= 200) return null;
+    final theme = Theme.of(context);
+    return Material(
+      color: const Color(0xFFFFF7ED),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                'Did you mean ${_inQtyWtFmt.format(q)} kg (not ${_inQtyWtFmt.format(q)} bags × ${_fmtQty(k)} kg)?',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF9A3412),
+                  height: 1.25,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _unitCtrl.text = 'kg';
+                  _qtyCtrl.text = _fmtQty(q);
+                  _weightPricing = false;
+                  _kgPerUnit = null;
+                  _kgPerBagCtrl.clear();
+                  _recomputeModeFromUnitAndCatalog();
+                });
+              },
+              child: const Text('Use kg'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Name encodes a weight bag but unit is kg — qty is **kg**, not bag count.
+  Widget? _nameImpliesBagButKgUnitBanner() {
+    final c = _activeClassification();
+    if (c.type != UnitType.weightBag || c.kgFromName == null || c.kgFromName! <= 0) {
+      return null;
+    }
+    if (_unitCtrl.text.trim().toLowerCase() != 'kg') return null;
+    final theme = Theme.of(context);
+    final kn = c.kgFromName!;
+    final knLabel = (kn - kn.roundToDouble()).abs() < 1e-6
+        ? '${kn.round()}'
+        : kn.toStringAsFixed(1);
+    return Material(
+      color: const Color(0xFFECFDF5),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: Text(
+          'Name looks like a $knLabel kg/bag item — quantity is in **kg**, not bags. Switch unit to bag to count sacks.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFF065F46),
+            height: 1.25,
+          ),
         ),
       ),
     );
@@ -1515,12 +1588,6 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
           _kgPerBagCtrl.text = _fmtQty(kpu);
         }
       }
-      if (purchaseRate != null && purchaseRate > 0) {
-        _landingCtrl.text = _fmtMoney(purchaseRate);
-      }
-      if (sellingRate != null && sellingRate >= 0) {
-        _sellingCtrl.text = _fmtMoney(sellingRate);
-      }
       if (taxPercent != null && taxPercent >= 0) {
         _taxCtrl.text =
             taxPercent > 0 ? StrictDecimal.fromObject(taxPercent).format(2) : '';
@@ -1552,6 +1619,45 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
               rr?['subcategory']?.toString(),
         );
         _adjustBoxFixedForClassification(bc);
+      }
+      final rr = _rowForClassification();
+      final clfRates = UnitClassifier.classify(
+        itemName: _itemCtrl.text.trim(),
+        lineUnit: _unitCtrl.text,
+        catalogDefaultUnit: rr?['default_unit']?.toString(),
+        catalogDefaultKgPerBag: _catalogKpb(rr),
+        categoryName:
+            rr?['category_name']?.toString() ?? rr?['category']?.toString(),
+        subcategoryName: rr?['subcategory_name']?.toString() ??
+            rr?['subcategory']?.toString(),
+      );
+      final kEff = _kgPer();
+      final lcpkApi = _numD(d['landing_cost_per_kg']);
+      final isWeightBagRates =
+          clfRates.type == UnitType.weightBag && kEff != null && kEff > 0;
+      if (isWeightBagRates) {
+        if (lcpkApi != null && lcpkApi > 0) {
+          _rateFieldsPerKg = true;
+          _landingCtrl.text = _fmtMoney(lcpkApi);
+          if (sellingRate != null && sellingRate >= 0) {
+            _sellingCtrl.text = _fmtMoney(sellingRate / kEff);
+          }
+        } else {
+          _rateFieldsPerKg = false;
+          if (purchaseRate != null && purchaseRate > 0) {
+            _landingCtrl.text = _fmtMoney(purchaseRate);
+          }
+          if (sellingRate != null && sellingRate >= 0) {
+            _sellingCtrl.text = _fmtMoney(sellingRate);
+          }
+        }
+      } else {
+        if (purchaseRate != null && purchaseRate > 0) {
+          _landingCtrl.text = _fmtMoney(purchaseRate);
+        }
+        if (sellingRate != null && sellingRate >= 0) {
+          _sellingCtrl.text = _fmtMoney(sellingRate);
+        }
       }
       _lastPurchaseAutofillHint = _hintForLastPurchaseDefaults(d);
     });
@@ -1735,8 +1841,18 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
 
     if (_showPerKgLandingLabels) {
       if (k != null && k > 0 && q > 0) {
+        final totalK = q * k;
         lines.add(Text(
-          '${_inQtyWtFmt.format(q)} × ${_fmtQty(k)} kg × ₹${per.toStringAsFixed(2)}/kg → ₹${total.toStringAsFixed(2)}',
+          '${_inQtyWtFmt.format(q)} × ${_fmtQty(k)} kg/bag = ${_inQtyWtFmt.format(totalK)} kg',
+          style: theme.textTheme.bodySmall?.copyWith(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            height: 1.2,
+            color: Colors.blueGrey[800],
+          ),
+        ));
+        lines.add(Text(
+          '${_inQtyWtFmt.format(totalK)} kg × ₹${per.toStringAsFixed(2)}/kg → ₹${total.toStringAsFixed(2)}',
           style: theme.textTheme.bodySmall?.copyWith(
             fontSize: 12,
             fontWeight: FontWeight.w700,
@@ -1933,7 +2049,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                                     decimal: true),
                             inputFormatters: [_decimalFormatter(3)],
                             textInputAction: TextInputAction.next,
-                            decoration: _deco('Qty *', errorText: _errQty),
+                            decoration: _deco(_qtyFieldLabel(), errorText: _errQty),
                             onChanged: (_) {
                               _clearFieldErrors();
                               _schedulePreviewRebuild();
@@ -2006,7 +2122,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                               decimal: true),
                           inputFormatters: [_decimalFormatter(3)],
                           textInputAction: TextInputAction.next,
-                          decoration: _deco('Qty *', errorText: _errQty),
+                          decoration: _deco(_qtyFieldLabel(), errorText: _errQty),
                           onChanged: (_) {
                             _clearFieldErrors();
                             _schedulePreviewRebuild();
@@ -2065,11 +2181,26 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
               ListenableBuilder(
                 listenable: _lineTotalsListenable,
                 builder: (cx, _) {
-                  final b = _suggestOneBagInsteadOfKgBanner();
-                  if (b == null) return const SizedBox.shrink();
+                  final chips = <Widget>[
+                    for (final w in [
+                      _nameImpliesBagButKgUnitBanner(),
+                      _suggestOneBagInsteadOfKgBanner(),
+                      _didYouMeanKgNotBagsBanner(),
+                    ])
+                      if (w != null) w,
+                  ];
+                  if (chips.isEmpty) return const SizedBox.shrink();
                   return Padding(
                     padding: EdgeInsets.only(top: gapField * 0.5),
-                    child: b,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (var i = 0; i < chips.length; i++) ...[
+                          if (i > 0) SizedBox(height: gapField * 0.35),
+                          chips[i],
+                        ],
+                      ],
+                    ),
                   );
                 },
               ),
