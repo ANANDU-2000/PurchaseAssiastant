@@ -385,7 +385,6 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
     final st = p.statusEnum;
     final paidPending = st == PurchaseStatus.paid ||
         (p.remaining <= 0.009 && st != PurchaseStatus.cancelled);
-    final mismatch = (p.totalAmount - agg.finalComputed).abs() > 1.0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -422,7 +421,7 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
                     const SizedBox(height: 10),
                     ..._itemsAsCards(context, p, cs),
                     const SizedBox(height: 18),
-                    _chargesAndBalanceCollapsible(context, p, agg, cs, mismatch),
+                    _chargesAndBalanceCollapsible(context, p, agg, cs),
                   ],
                 ),
               ),
@@ -544,7 +543,6 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
           '${_qtyFmt(agg.totalTin)} ${agg.totalTin == 1 ? 'tin' : 'tins'}');
     }
     final explicitSell = _hasExplicitSellRates(p);
-    final hasSellDisplay = explicitSell && agg.sumSellingGross > 1e-6;
     final showProfit = agg.sumProfit.abs() > 1e-6 &&
         (p.totalLineProfit != null || explicitSell);
     final smallHdr = TextStyle(
@@ -633,18 +631,8 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
               ),
             ],
           ),
-          if (hasSellDisplay) ...[
-            const SizedBox(height: 10),
-            Text(
-              'Est. sell value ${_inr(agg.sumSellingGross, fractionDigits: 0)}',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: cs.onSurfaceVariant,
-              ),
-            ),
-          ],
+          // Removed "Est. sell value" (confusing/misleading when sell rates absent
+          // or interpreted per-unit vs per-kg for bag-family lines). Profit is shown above.
         ],
       ),
     );
@@ -655,7 +643,6 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
     TradePurchase p,
     _Agg agg,
     ColorScheme cs,
-    bool mismatch,
   ) {
     return Theme(
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -676,21 +663,8 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
           _miniCharges(context, agg, cs),
           const SizedBox(height: 8),
           _balanceRows(context, p, cs),
-          if (mismatch)
-            Padding(
-              padding: const EdgeInsets.only(top: 10, bottom: 4),
-              child: Text(
-                'Stored total ${_inr(p.totalAmount)} differs from calculated '
-                '${_inr(agg.finalComputed)} by ${_inr((p.totalAmount - agg.finalComputed).abs())}.',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: (p.totalAmount - agg.finalComputed).abs() <= 5
-                      ? cs.onSurfaceVariant
-                      : cs.error,
-                  height: 1.3,
-                ),
-              ),
-            ),
+          // Total mismatch warning removed from UI — totals are now kept in parity
+          // by computeTradeTotals + stored total updates; showing this confuses users.
         ],
       ),
     );

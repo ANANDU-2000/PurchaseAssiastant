@@ -11,24 +11,17 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
   const PurchaseTermsOnlyStep({
     super.key,
     required this.paymentDaysCtrl,
-    required this.deliveredRateCtrl,
-    required this.billtyRateCtrl,
-    required this.freightCtrl,
     required this.commissionCtrl,
     required this.headerDiscCtrl,
-    required this.freightType,
-    required this.onFreightTypeChanged,
+    required this.narrationCtrl,
     required this.onDraftChanged,
   });
 
   final TextEditingController paymentDaysCtrl;
-  final TextEditingController deliveredRateCtrl;
-  final TextEditingController billtyRateCtrl;
-  final TextEditingController freightCtrl;
   final TextEditingController commissionCtrl;
   final TextEditingController headerDiscCtrl;
-  final String freightType;
-  final ValueChanged<String> onFreightTypeChanged;
+  /// Stored on wire as `invoice_number`; UX label = Narration/Ref.
+  final TextEditingController narrationCtrl;
   final VoidCallback onDraftChanged;
 
   static String _duePreview(WidgetRef ref, TextEditingController c) {
@@ -341,72 +334,24 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
           ],
           const SizedBox(height: 8),
         ],
-        Text(
-          'Charges (once for this bill)',
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-        ),
-        const SizedBox(height: 6),
-        field(
-          deliveredRateCtrl,
-          'Delivered rate',
-          keyboard: const TextInputType.numberWithOptions(decimal: true),
-          onChanged: (s) {
-            ref.read(purchaseDraftProvider.notifier).setDeliveredText(s);
-            onDraftChanged();
-          },
-        ),
-        field(
-          billtyRateCtrl,
-          'Billty rate',
-          keyboard: const TextInputType.numberWithOptions(decimal: true),
-          onChanged: (s) {
-            ref.read(purchaseDraftProvider.notifier).setBilltyText(s);
-            onDraftChanged();
-          },
-        ),
-        field(
-          freightCtrl,
-          'Freight amount',
-          keyboard: const TextInputType.numberWithOptions(decimal: true),
-          onChanged: (s) {
-            ref.read(purchaseDraftProvider.notifier).setFreightText(s);
-            onDraftChanged();
-          },
-        ),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: InputDecorator(
-            decoration: densePurchaseFieldDecoration('Freight type'),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: freightType,
-                isExpanded: true,
-                items: const [
-                  DropdownMenuItem(value: 'separate', child: Text('Separate')),
-                  DropdownMenuItem(value: 'included', child: Text('Included')),
-                ],
-                onChanged: (v) {
-                  if (v == null) return;
-                  onFreightTypeChanged(v);
-                },
-              ),
-            ),
-          ),
-        ),
         field(
           headerDiscCtrl,
-          'Discount % (purchase)',
+          'Discount %',
           keyboard: const TextInputType.numberWithOptions(decimal: true),
           onChanged: (s) {
             ref.read(purchaseDraftProvider.notifier).setHeaderDiscountFromText(s);
             onDraftChanged();
           },
         ),
-        Text(
-          'Freight, delivered, billty, and purchase discount apply once to this bill — not per line.',
-          style: TextStyle(fontSize: 11, height: 1.25, color: sub),
+        field(
+          narrationCtrl,
+          'Narration / ref (optional)',
+          keyboard: TextInputType.text,
+          maxLines: 2,
+          onChanged: (s) {
+            ref.read(purchaseDraftProvider.notifier).setInvoiceText(s);
+            onDraftChanged();
+          },
         ),
       ],
     );

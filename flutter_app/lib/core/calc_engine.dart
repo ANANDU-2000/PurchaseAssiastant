@@ -396,6 +396,14 @@ double ledgerTradeLineWeightKg({
     itemsPerBox: itemsPerBox,
     weightPerItem: weightPerItem,
   );
+  // If classifier fell back to "qty as kg/count" for pack units, prefer the
+  // explicit physical snapshot logic (kgPerUnit, box/tin fields) instead.
+  if (kgPerUnit != null &&
+      kgPerUnit > 1e-9 &&
+      (ul == 'bag' || ul == 'sack' || ul == 'box' || ul == 'tin') &&
+      (kg - qty).abs() < 1e-6) {
+    kg = 0;
+  }
   if (kg <= 0) {
     kg = linePhysicalWeightKg(
       unit: unit,

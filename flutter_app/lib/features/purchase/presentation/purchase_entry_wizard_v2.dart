@@ -109,7 +109,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
   final _billtyRateCtrl = TextEditingController();
   final _freightCtrl = TextEditingController();
   final _invoiceCtrl = TextEditingController();
-  String _freightType = 'separate';
 
   void _partyFieldFocusNotify() {
     if (!mounted) return;
@@ -200,7 +199,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
 
   void _syncControllersFromDraft() {
     final d = ref.read(purchaseDraftProvider);
-    _freightType = d.freightType;
 
     /// Party fields: never blank a picked row just because prefs/API omitted the
     /// display name (`supplier_name`/`broker_name`). Only overwrite when draft
@@ -1569,17 +1567,9 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       case 1:
         step = PurchaseTermsOnlyStep(
           paymentDaysCtrl: _paymentDaysCtrl,
-          deliveredRateCtrl: _deliveredRateCtrl,
-          billtyRateCtrl: _billtyRateCtrl,
-          freightCtrl: _freightCtrl,
           commissionCtrl: _commissionCtrl,
           headerDiscCtrl: _headerDiscCtrl,
-          freightType: _freightType,
-          onFreightTypeChanged: (v) {
-            setState(() => _freightType = v);
-            ref.read(purchaseDraftProvider.notifier).setFreightType(v);
-            _onDraftChanged();
-          },
+          narrationCtrl: _invoiceCtrl,
           onDraftChanged: _onDraftChanged,
         );
         break;

@@ -14,6 +14,7 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/models/trade_purchase_models.dart';
+import '../../../core/calc_engine.dart';
 import '../../../core/utils/line_display.dart';
 import '../../../core/providers/business_profile_provider.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart'
@@ -38,20 +39,12 @@ String _purchaseItemsSummary(TradePurchase p) {
   if (p.lines.isEmpty) return 'No items';
   if (p.lines.length == 1) {
     final ln = p.lines.first;
-    return '${ln.itemName} × ${ln.qty} ${ln.unit}';
+    return ln.itemName;
   }
   final a = p.lines[0], b = p.lines[1];
-  var s = '${a.itemName} × ${a.qty} ${a.unit}, ${b.itemName} × ${b.qty} ${b.unit}';
+  var s = '${a.itemName}, ${b.itemName}';
   if (p.lines.length > 2) s += ' +${p.lines.length - 2} more';
   return s;
-}
-
-double _totalBagsOnPurchase(TradePurchase p) {
-  var b = 0.0;
-  for (final ln in p.lines) {
-    if (unitCountsAsBagFamily(ln.unit)) b += ln.qty;
-  }
-  return b;
 }
 
 String _purchaseSearchHaystack(TradePurchase p) {
@@ -809,19 +802,69 @@ class _PurchaseRow extends StatelessWidget {
   final VoidCallback onDelete;
   final VoidCallback onShare;
 
+  static String _fmtKg(double kg) {
+    if (kg <= 0) return '0 kg';
+    final rounded = (kg - kg.roundToDouble()).abs() < 1e-6;
+    final fmt = NumberFormat(rounded ? '#,##,##0' : '#,##,##0.##', 'en_IN');
+    return '${fmt.format(rounded ? kg.round() : kg)} kg';
+  }
+
+  static ({
+    double kg,
+    double bags,
+    double boxes,
+    double tins,
+  }) _totals(TradePurchase p) {
+    var kg = 0.0;
+    var bags = 0.0;
+    var boxes = 0.0;
+    var tins = 0.0;
+    for (final ln in p.lines) {
+      final ul = ln.unit.trim().toLowerCase();
+      if (unitCountsAsBagFamily(ln.unit)) bags += ln.qty;
+      if (ul == 'box') boxes += ln.qty;
+      if (ul == 'tin') tins += ln.qty;
+      kg += ledgerTradeLineWeightKg(
+        itemName: ln.itemName,
+        unit: ln.unit,
+        qty: ln.qty,
+        catalogDefaultUnit: ln.defaultPurchaseUnit ?? ln.defaultUnit,
+        catalogDefaultKgPerBag: ln.defaultKgPerBag,
+        kgPerUnit: ln.kgPerUnit,
+        boxMode: ln.boxMode,
+        itemsPerBox: ln.itemsPerBox,
+        weightPerItem: ln.weightPerItem,
+        kgPerBox: ln.kgPerBox,
+        weightPerTin: ln.weightPerTin,
+      );
+    }
+    return (kg: kg, bags: bags, boxes: boxes, tins: tins);
+  }
+
   @override
   Widget build(BuildContext context) {
     final st = p.statusEnum;
     final supp = p.supplierName ?? p.supplierId?.toString() ?? '—';
     final df = DateFormat('d MMM yyyy');
-    final bags = _totalBagsOnPurchase(p);
-    final bagsText = bags > 0
-        ? '${(bags - bags.floor()).abs() < 1e-6 ? bags.toInt() : bags.toStringAsFixed(1)} bags'
-        : '';
     final dueFoot = _dueFooterLine(p);
     final footColor = st == PurchaseStatus.overdue
         ? HexaColors.loss
         : (st == PurchaseStatus.dueSoon ? const Color(0xFFCA8A04) : HexaColors.neutral);
+    final t = _totals(p);
+    final bagTxt = t.bags > 1e-6
+        ? '${(t.bags - t.bags.roundToDouble()).abs() < 1e-6 ? t.bags.round() : t.bags.toStringAsFixed(1)} bags'
+        : null;
+    final boxTxt = t.boxes > 1e-6
+        ? '${(t.boxes - t.boxes.roundToDouble()).abs() < 1e-6 ? t.boxes.round() : t.boxes.toStringAsFixed(1)} box'
+        : null;
+    final tinTxt = t.tins > 1e-6
+        ? '${(t.tins - t.tins.roundToDouble()).abs() < 1e-6 ? t.tins.round() : t.tins.toStringAsFixed(1)} tin'
+        : null;
+    final containers = <String>[
+      if (bagTxt != null) bagTxt,
+      if (boxTxt != null) boxTxt,
+      if (tinTxt != null) tinTxt,
+    ].join(' · ');
 
     final card = Material(
       color: Colors.white,
@@ -837,20 +880,10 @@ class _PurchaseRow extends StatelessWidget {
                 color: selected ? HexaColors.brandPrimary : HexaColors.brandBorder,
                 width: selected ? 2 : 1),
           ),
-          padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(
-                width: 22,
-                child: Text(
-                  '$serial',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 11,
-                      color: HexaColors.neutral),
-                ),
-              ),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -867,28 +900,19 @@ class _PurchaseRow extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      _purchaseItemsSummary(p),
+                      '${_fmtKg(t.kg)}${containers.isNotEmpty ? ' · $containers' : ''}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          fontSize: 12,
-                          color: HexaColors.neutral,
-                          height: 1.2,
-                          fontWeight: FontWeight.w600),
-                    ),
-                    if (bagsText.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        bagsText,
-                        style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: HexaColors.neutral),
+                        fontSize: 12,
+                        color: Color(0xFF0F172A),
+                        height: 1.2,
+                        fontWeight: FontWeight.w800,
                       ),
-                    ],
-                    const SizedBox(height: 4),
+                    ),
+                    const SizedBox(height: 2),
                     Text(
-                      '${p.humanId} · ${df.format(p.purchaseDate)}',
+                      '${_purchaseItemsSummary(p)} · ${p.humanId} · ${df.format(p.purchaseDate)}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -897,33 +921,13 @@ class _PurchaseRow extends StatelessWidget {
                         color: HexaColors.neutral,
                       ),
                     ),
-                    if (p.hasMissingDetails) ...[
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(Icons.warning_amber_rounded,
-                              size: 14, color: Colors.orange.shade800),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              'Complete details pending',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.orange.shade900,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
                     if (dueFoot != null)
                       Padding(
-                        padding: const EdgeInsets.only(top: 4),
+                        padding: const EdgeInsets.only(top: 2),
                         child: Text(
                           dueFoot,
                           style: TextStyle(
-                            fontSize: 11,
+                            fontSize: 10,
                             fontWeight: FontWeight.w700,
                             color: footColor,
                           ),
@@ -948,7 +952,7 @@ class _PurchaseRow extends StatelessWidget {
                       p.remaining > 0.01) ...[
                     const SizedBox(height: 2),
                     Text(
-                      'Bal ${_inr(p.remaining.round())}',
+                      'Balance ${_inr(p.remaining.round())}',
                       style: HexaDsType.purchaseQtyUnit.copyWith(
                         fontSize: 10,
                         color: HexaColors.neutral,

@@ -96,6 +96,9 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   String _freightType = 'separate';
   bool _boxFixedWeight = true;
 
+  /// For bag/sack lines: allow qty entry as **bags** or **kg** (converted to bags on save).
+  String _qtyEntryMode = 'bags'; // 'bags' | 'kg'
+
   /// For weight-bag ₹/kg economics: text fields hold **per kg** vs **per bag** amounts.
   bool _rateFieldsPerKg = true;
 
@@ -171,6 +174,21 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     });
   }
 
+  void _maybeCoerceQtyModeForUnit() {
+    if (!_isBagFamilyUnit()) {
+      if (_qtyEntryMode != 'bags') {
+        setState(() => _qtyEntryMode = 'bags');
+      }
+      return;
+    }
+    final k = _kgPer();
+    if (k == null || k <= 0) {
+      if (_qtyEntryMode != 'bags') {
+        setState(() => _qtyEntryMode = 'bags');
+      }
+    }
+  }
+
   void _schedulePreviewRebuild() {}
 
   @override
@@ -191,6 +209,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         _qtyCtrl.text = '';
       }
       _unitCtrl.text = init['unit']?.toString() ?? 'kg';
+      _qtyEntryMode = 'bags';
 
       final kpu = coerceToDoubleNullable(
           init['kg_per_unit'] ?? init['weight_per_unit']);
@@ -588,7 +607,35 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     }
   }
 
-  double _qtyVal() => _parseD(_qtyCtrl.text) ?? 0;
+  double _enteredQtyRaw() => _parseD(_qtyCtrl.text) ?? 0;
+
+  bool _isBagFamilyUnit() {
+    final u = _unitCtrl.text.trim().toLowerCase();
+    return u == 'bag' || u == 'sack';
+  }
+
+  bool _bagQtyIsWhole(double bags) =>
+      (bags - bags.roundToDouble()).abs() < 1e-6;
+
+  /// Quantity interpreted as **bags/sacks** for calculations and payload.
+  /// When [_qtyEntryMode] == 'kg', interpret the input as kg and convert to bags.
+  double _qtyVal() {
+    final raw = _enteredQtyRaw();
+    if (raw <= 0) return 0;
+    if (_qtyEntryMode != 'kg') return raw;
+    if (!_isBagFamilyUnit()) return raw;
+    final k = _kgPer();
+    if (k == null || k <= 0) return raw;
+    return raw / k;
+  }
+
+  /// Entered kg when in kg-mode for bag/sack.
+  double? _enteredKgForBagMode() {
+    if (_qtyEntryMode != 'kg') return null;
+    if (!_isBagFamilyUnit()) return null;
+    final raw = _enteredQtyRaw();
+    return raw > 0 ? raw : null;
+  }
 
   String _fmtQty(double q) =>
       StrictDecimal.fromObject(q).format(3, trim: true);
@@ -652,6 +699,9 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
 
   String _qtyFieldLabel() {
     final u = _unitCtrl.text.trim().toLowerCase();
+    if (_qtyEntryMode == 'kg' && (u == 'bag' || u == 'sack')) {
+      return 'Qty (kg) *';
+    }
     if (u == 'bag') return 'No. of bags *';
     if (u == 'sack') return 'No. of sacks *';
     if (u == 'box') return 'No. of boxes *';
@@ -685,6 +735,102 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       unit: u,
       kgPerUnit: _kgPer(),
       totalWeightKg: totalKg > 1e-9 ? totalKg : null,
+    );
+  }
+
+  Widget? _qtyEntryModeSegmented() {
+    if (!_isBagFamilyUnit()) return null;
+    final k = _kgPer();
+    if (k == null || k <= 0) return null;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'bags', label: Text('Bags')),
+            ButtonSegment(value: 'kg', label: Text('Kg')),
+          ],
+          selected: {_qtyEntryMode},
+          onSelectionChanged: (s) {
+            if (s.isEmpty) return;
+            setState(() {
+              _qtyEntryMode = s.first;
+              _errQty = null;
+            });
+            _schedulePreviewRebuild();
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget? _kgEntryConversionHint() {
+    final k = _kgPer();
+    if (k == null || k <= 0) return null;
+    final enteredKg = _enteredKgForBagMode();
+    if (enteredKg == null || enteredKg <= 0) return null;
+    final bags = enteredKg / k;
+    final theme = Theme.of(context);
+
+    final bagsTxt =
+        _bagQtyIsWhole(bags) ? '${bags.round()}' : _fmtQty(bags);
+    final kgTxt = _inQtyWtFmt.format(enteredKg);
+    final totalKgTxt = _inQtyWtFmt.format(bags * k);
+    final needsWhole = !_bagQtyIsWhole(bags);
+
+    return Material(
+      color: needsWhole ? const Color(0xFFFFF7ED) : const Color(0xFFECFDF5),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                '$kgTxt kg → $bagsTxt ${_unitCtrl.text.trim()}'
+                '${needsWhole ? ' (needs whole bags)' : ''}'
+                '  ·  $bagsTxt × ${_fmtQty(k)} kg/bag = $totalKgTxt kg',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: needsWhole
+                      ? const Color(0xFF9A3412)
+                      : const Color(0xFF065F46),
+                  height: 1.25,
+                ),
+              ),
+            ),
+            if (needsWhole) ...[
+              const SizedBox(width: 8),
+              TextButton(
+                onPressed: () {
+                  final flo = (bags).floorToDouble();
+                  final nextKg = flo * k;
+                  setState(() {
+                    _qtyCtrl.text = _fmtQty(nextKg);
+                    _errQty = null;
+                  });
+                  _schedulePreviewRebuild();
+                },
+                child: const Text('Round down'),
+              ),
+              TextButton(
+                onPressed: () {
+                  final cei = (bags).ceilToDouble();
+                  final nextKg = cei * k;
+                  setState(() {
+                    _qtyCtrl.text = _fmtQty(nextKg);
+                    _errQty = null;
+                  });
+                  _schedulePreviewRebuild();
+                },
+                child: const Text('Round up'),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
@@ -1055,6 +1201,20 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
           : fracPack
               ? 'Use a whole number for $unitLow lines (no decimals)'
               : null;
+      if (_errQty == null &&
+          _qtyEntryMode == 'kg' &&
+          (unitLow == 'bag' || unitLow == 'sack')) {
+        final k = _kgPer();
+        final enteredKg = _enteredKgForBagMode();
+        if (k != null && k > 0 && enteredKg != null && enteredKg > 0) {
+          final bags = enteredKg / k;
+          if (!_bagQtyIsWhole(bags)) {
+            _errQty =
+                'Kg must convert to a whole ${unitLow == 'sack' ? 'sack' : 'bag'} count. '
+                'Use a multiple of ${_fmtQty(k)} kg.';
+          }
+        }
+      }
       _errUnit = unit.isEmpty ? 'Unit is required' : null;
       _errKgPerBag = null;
       if (unitLow == 'box') {
@@ -2041,28 +2201,41 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                         flex: 5,
                         child: KeyedSubtree(
                           key: _qtyKey,
-                          child: TextField(
-                            controller: _qtyCtrl,
-                            focusNode: _qtyFocus,
-                            keyboardType:
-                                const TextInputType.numberWithOptions(
-                                    decimal: true),
-                            inputFormatters: [_decimalFormatter(3)],
-                            textInputAction: TextInputAction.next,
-                            decoration: _deco(_qtyFieldLabel(), errorText: _errQty),
-                            onChanged: (_) {
-                              _clearFieldErrors();
-                              _schedulePreviewRebuild();
-                            },
-                            onSubmitted: (_) {
-                              if (showManualKgField) {
-                                FocusScope.of(context)
-                                    .requestFocus(_kgManualFocus);
-                              } else {
-                                FocusScope.of(context)
-                                    .requestFocus(_landingFocus);
-                              }
-                            },
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (_qtyEntryModeSegmented() != null)
+                                _qtyEntryModeSegmented()!,
+                              TextField(
+                                controller: _qtyCtrl,
+                                focusNode: _qtyFocus,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                        decimal: true),
+                                inputFormatters: [_decimalFormatter(3)],
+                                textInputAction: TextInputAction.next,
+                                decoration: _deco(_qtyFieldLabel(),
+                                    errorText: _errQty),
+                                onChanged: (_) {
+                                  _clearFieldErrors();
+                                  _schedulePreviewRebuild();
+                                },
+                                onSubmitted: (_) {
+                                  if (showManualKgField) {
+                                    FocusScope.of(context)
+                                        .requestFocus(_kgManualFocus);
+                                  } else {
+                                    FocusScope.of(context)
+                                        .requestFocus(_landingFocus);
+                                  }
+                                },
+                              ),
+                              if (_kgEntryConversionHint() != null) ...[
+                                SizedBox(height: gapField * 0.6),
+                                _kgEntryConversionHint()!,
+                              ],
+                            ],
                           ),
                         ),
                       ),
@@ -2095,6 +2268,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                                       _kgPerBagCtrl.clear();
                                     }
                                     _recomputeModeFromUnitAndCatalog();
+                                    _maybeCoerceQtyModeForUnit();
                                     setState(() {
                                       _adjustBoxFixedForClassification(
                                         _activeClassification(),
@@ -2115,27 +2289,40 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                       flex: 5,
                       child: KeyedSubtree(
                         key: _qtyKey,
-                        child: TextField(
-                          controller: _qtyCtrl,
-                          focusNode: _qtyFocus,
-                          keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
-                          inputFormatters: [_decimalFormatter(3)],
-                          textInputAction: TextInputAction.next,
-                          decoration: _deco(_qtyFieldLabel(), errorText: _errQty),
-                          onChanged: (_) {
-                            _clearFieldErrors();
-                            _schedulePreviewRebuild();
-                          },
-                          onSubmitted: (_) {
-                            if (showManualKgField) {
-                              FocusScope.of(context)
-                                  .requestFocus(_kgManualFocus);
-                            } else {
-                              FocusScope.of(context)
-                                  .requestFocus(_landingFocus);
-                            }
-                          },
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_qtyEntryModeSegmented() != null)
+                              _qtyEntryModeSegmented()!,
+                            TextField(
+                              controller: _qtyCtrl,
+                              focusNode: _qtyFocus,
+                              keyboardType: const TextInputType.numberWithOptions(
+                                  decimal: true),
+                              inputFormatters: [_decimalFormatter(3)],
+                              textInputAction: TextInputAction.next,
+                              decoration:
+                                  _deco(_qtyFieldLabel(), errorText: _errQty),
+                              onChanged: (_) {
+                                _clearFieldErrors();
+                                _schedulePreviewRebuild();
+                              },
+                              onSubmitted: (_) {
+                                if (showManualKgField) {
+                                  FocusScope.of(context)
+                                      .requestFocus(_kgManualFocus);
+                                } else {
+                                  FocusScope.of(context)
+                                      .requestFocus(_landingFocus);
+                                }
+                              },
+                            ),
+                            if (_kgEntryConversionHint() != null) ...[
+                              SizedBox(height: gapField * 0.6),
+                              _kgEntryConversionHint()!,
+                            ],
+                          ],
                         ),
                       ),
                     ),

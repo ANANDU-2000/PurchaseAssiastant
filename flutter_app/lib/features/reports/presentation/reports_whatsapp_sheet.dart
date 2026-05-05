@@ -241,7 +241,7 @@ class _ReportsWhatsAppSheetState extends State<ReportsWhatsAppSheet> {
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
-            value: _freq,
+            initialValue: _freq,
             decoration: const InputDecoration(
               labelText: 'Reminder frequency',
               border: OutlineInputBorder(),

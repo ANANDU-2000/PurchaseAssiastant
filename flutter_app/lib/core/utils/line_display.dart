@@ -10,7 +10,6 @@ String _qtyStr(double qty) {
 
 String _kgStr(double kg) {
   if (kg <= 0) return '';
-  if (kg >= 1000) return '${NumberFormat('#,##,##0.#', 'en_IN').format(kg / 1000)} t';
   final rounded = kg == kg.roundToDouble();
   return rounded
       ? '${NumberFormat('#,##,##0', 'en_IN').format(kg.round())} kg'

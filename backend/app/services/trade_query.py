@@ -29,11 +29,23 @@ def trade_line_amount_expr() -> ColumnElement:
     """Line spend: prefer stored canonical line total, fallback to legacy math."""
     kpu = TradePurchaseLine.kg_per_unit
     lcpk = TradePurchaseLine.landing_cost_per_kg
-    weight_ok = and_(kpu.isnot(None), lcpk.isnot(None), kpu > 0, lcpk > 0)
+    # Weight-priced lines are qty * kg_per_unit * landing_cost_per_kg, BUT older
+    # clients may send inconsistent snapshots (landing_cost not matching kpu*lcpk).
+    # For reports, treat weight pricing as authoritative only when snapshots agree.
+    derived_unit_cost = kpu * lcpk
+    landing = func.coalesce(TradePurchaseLine.purchase_rate, TradePurchaseLine.landing_cost)
+    weight_ok = and_(
+        kpu.isnot(None),
+        lcpk.isnot(None),
+        kpu > 0,
+        lcpk > 0,
+        landing.isnot(None),
+        func.abs(derived_unit_cost - landing) <= 0.05,
+    )
     computed = case(
         (weight_ok, TradePurchaseLine.qty * kpu * lcpk),
         else_=TradePurchaseLine.qty
-        * func.coalesce(TradePurchaseLine.purchase_rate, TradePurchaseLine.landing_cost),
+        * landing,
     )
     return func.coalesce(TradePurchaseLine.line_total, computed)
 

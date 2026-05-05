@@ -90,7 +90,8 @@ def test_trade_items_suppliers_categories_endpoints():
     assert len(items) >= 1
     row = next(x for x in items if x.get("item_name") == "RTItem")
     assert row["total_qty"] == 10.0
-    assert abs(float(row["total_purchase"]) - 500.0) < 0.01  # qty * landing_cost line amount
+    # Weight-priced line: qty * kg_per_unit * landing_cost_per_kg
+    assert abs(float(row["total_purchase"]) - 20000.0) < 0.01
 
     sr = client.get(f"/v1/businesses/{bid}/reports/trade-suppliers?{q}", headers=h)
     assert sr.status_code == 200, sr.text
