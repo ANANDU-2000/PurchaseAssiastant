@@ -115,4 +115,35 @@ void main() {
     ));
     expect(t.amountSum, 105.0);
   });
+
+  group('ledgerTradeLineWeightKg / UnitClassifier safety', () {
+    test('KG unit: qty is physical kg (ignore "50 KG" in name)', () {
+      final kg = ledgerTradeLineWeightKg(
+        itemName: 'SUGAR 50 KG',
+        unit: 'KG',
+        qty: 5000,
+        kgPerUnit: 50, // even if present, must NOT multiply for KG lines
+      );
+      expect(kg, 5000.0);
+    });
+
+    test('BAG unit: qty × kgPerUnit', () {
+      final kg = ledgerTradeLineWeightKg(
+        itemName: 'SUGAR 50 KG',
+        unit: 'BAG',
+        qty: 100,
+        kgPerUnit: 50,
+      );
+      expect(kg, 5000.0);
+    });
+
+    test('BOX unit: single-pack uses kgFromName when present', () {
+      final kg = ledgerTradeLineWeightKg(
+        itemName: 'OIL 10 KG',
+        unit: 'BOX',
+        qty: 10,
+      );
+      expect(kg, 100.0);
+    });
+  });
 }
