@@ -11,8 +11,6 @@ import '../../core/utils/trade_purchase_rate_display.dart';
 
 double lineKgEstimate(TradePurchaseLine ln) {
   if (ln.totalWeight != null && ln.totalWeight! > 0) return ln.totalWeight!;
-  final kpu = ln.kgPerUnit;
-  if (kpu != null && kpu > 0) return ln.qty * kpu;
   final u = ln.unit.trim().toLowerCase();
   if (u == 'kg' ||
       u == 'kgs' ||
@@ -22,6 +20,9 @@ double lineKgEstimate(TradePurchaseLine ln) {
       u == 'qtl') {
     return ln.qty;
   }
+  // Only non-kg lines may use kg_per_unit as a weight hint.
+  final kpu = ln.kgPerUnit;
+  if (kpu != null && kpu > 0) return ln.qty * kpu;
   return 0;
 }
 

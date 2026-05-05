@@ -385,7 +385,7 @@ double ledgerTradeLineWeightKg({
   );
   double? kgName = c.kgFromName;
   if (!(c.type == UnitType.singlePack &&
-      (ul == 'box' || ul == 'tin' || ul == 'kg'))) {
+      (ul == 'box' || ul == 'tin'))) {
     kgName = null;
   }
   var kg = classifierLineWeightKg(

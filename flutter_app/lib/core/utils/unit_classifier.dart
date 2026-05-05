@@ -48,7 +48,10 @@ class UnitClassifier {
     if (effU == 'KG') {
       return UnitClassification(
         type: UnitType.singlePack,
-        kgFromName: _parseKgFromName(itemName),
+        // For lines already recorded in KG, the quantity is the physical weight.
+        // Do NOT apply "50 KG" from name as a multiplier (that is only meaningful
+        // for pack/count units like BOX/TIN, not for KG itself).
+        kgFromName: null,
       );
     }
 
