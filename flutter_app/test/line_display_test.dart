@@ -28,6 +28,14 @@ void main() {
     );
   });
 
+  test('unitCountsAsBagFamily: sack counts like bag', () {
+    expect(unitCountsAsBagFamily('sack'), true);
+    expect(unitCountsAsBagFamily('SACK'), true);
+    expect(unitCountsAsBagFamily('bag'), true);
+    expect(unitCountsAsBagFamily('BAGS'), true);
+    expect(unitCountsAsBagFamily('kg'), false);
+  });
+
   test('formatLineQtyWeightFromTradeLine uses ledger weight', () {
     final l = TradePurchaseLine(
       id: '1',

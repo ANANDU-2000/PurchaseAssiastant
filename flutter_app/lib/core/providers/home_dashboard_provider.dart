@@ -9,6 +9,7 @@ import '../api/hexa_api.dart';
 import '../auth/session_notifier.dart';
 import '../models/trade_purchase_models.dart';
 import '../services/offline_store.dart';
+import '../utils/line_display.dart';
 
 /// Period chips on the home dashboard. [custom] uses
 /// [homeCustomDateRangeProvider] (inclusive start/end dates).
@@ -797,7 +798,7 @@ double _lineKg(TradePurchaseLine ln) {
   }
   final u = ln.unit.toUpperCase().trim();
   if (u == 'KG' || u.endsWith('KG')) return ln.qty;
-  if (u.contains('BAG')) {
+  if (unitCountsAsBagFamily(ln.unit)) {
     final k = ln.defaultKgPerBag ?? ln.kgPerUnit;
     if (k != null && k > 0) return ln.qty * k;
   }
@@ -890,7 +891,7 @@ HomeDashboardData _aggregate({
       agg.totalAmount += amt;
       agg.totalQty += ln.qty;
 
-      if (u.contains('BAG')) agg.units.bags += ln.qty;
+      if (unitCountsAsBagFamily(ln.unit)) agg.units.bags += ln.qty;
       if (u.contains('BOX')) agg.units.boxes += ln.qty;
       if (u.contains('TIN')) agg.units.tins += ln.qty;
 

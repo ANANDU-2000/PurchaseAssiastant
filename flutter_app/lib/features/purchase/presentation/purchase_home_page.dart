@@ -14,6 +14,7 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/models/trade_purchase_models.dart';
+import '../../../core/utils/line_display.dart';
 import '../../../core/providers/business_profile_provider.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart'
     show invalidatePurchaseWorkspace;
@@ -48,7 +49,7 @@ String _purchaseItemsSummary(TradePurchase p) {
 double _totalBagsOnPurchase(TradePurchase p) {
   var b = 0.0;
   for (final ln in p.lines) {
-    if (ln.unit.toUpperCase().contains('BAG')) b += ln.qty;
+    if (unitCountsAsBagFamily(ln.unit)) b += ln.qty;
   }
   return b;
 }

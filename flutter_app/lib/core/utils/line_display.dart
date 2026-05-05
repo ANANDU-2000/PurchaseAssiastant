@@ -101,3 +101,9 @@ String formatLineQtyWeightFromTradeLine(TradePurchaseLine l) {
         : (w > 1e-9 ? w : null),
   );
 }
+
+/// Bag/sack lines for KPI and history **bag** counts (sugar often uses `sack` without "bag" in the string).
+bool unitCountsAsBagFamily(String? unit) {
+  final u = (unit ?? '').trim().toLowerCase();
+  return u.contains('bag') || u.contains('sack');
+}

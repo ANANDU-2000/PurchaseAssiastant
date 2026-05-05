@@ -330,7 +330,7 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
 
   static void _addUnitQty(TradePurchaseLine l, Map<String, double> u) {
     final up = l.unit.toUpperCase();
-    if (up.contains('BAG')) {
+    if (unitCountsAsBagFamily(l.unit)) {
       u['bag'] = (u['bag'] ?? 0) + l.qty;
     } else if (up.contains('BOX')) {
       u['box'] = (u['box'] ?? 0) + l.qty;

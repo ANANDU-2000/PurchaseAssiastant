@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/session_notifier.dart';
 import '../models/trade_purchase_models.dart';
+import '../utils/line_display.dart';
 
 /// Allowed `status=` values for [HexaApi.listTradePurchases] (omit = all).
 const _tradeListApiStatuses = {'draft', 'due_soon', 'overdue', 'paid'};
@@ -122,7 +123,7 @@ final purchaseUnitTotalsProvider =
         for (final ln in p.lines) {
           final u = ln.unit.toUpperCase();
           final q = ln.qty.round();
-          if (u.contains('BAG')) bags += q;
+          if (unitCountsAsBagFamily(ln.unit)) bags += q;
           if (u.contains('BOX')) boxes += q;
           if (u.contains('TIN')) tins += q;
         }
