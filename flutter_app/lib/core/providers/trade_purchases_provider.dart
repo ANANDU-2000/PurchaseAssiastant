@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/session_notifier.dart';
@@ -37,7 +39,9 @@ final purchaseHistorySecondaryFilterProvider =
 /// Unfiltered list for due/overdue alert derivation (ignores history tab filters).
 final tradePurchasesForAlertsProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  ref.keepAlive();
+  final link = ref.keepAlive();
+  final t = Timer(const Duration(minutes: 5), link.close);
+  ref.onDispose(t.cancel);
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   return ref.read(hexaApiProvider).listTradePurchases(
@@ -48,7 +52,9 @@ final tradePurchasesForAlertsProvider =
 
 final tradePurchasesListProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  ref.keepAlive();
+  final link = ref.keepAlive();
+  final t = Timer(const Duration(minutes: 5), link.close);
+  ref.onDispose(t.cancel);
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   final primary = ref.watch(purchaseHistoryPrimaryFilterProvider);
@@ -137,6 +143,9 @@ final purchaseUnitTotalsProvider =
 /// Trade list for catalog item intel — full list, not tied to History tab filters.
 final tradePurchasesCatalogIntelProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  final link = ref.keepAlive();
+  final t = Timer(const Duration(minutes: 5), link.close);
+  ref.onDispose(t.cancel);
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   return ref.read(hexaApiProvider).listTradePurchases(

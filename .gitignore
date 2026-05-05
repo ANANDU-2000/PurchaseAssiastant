@@ -31,6 +31,19 @@ flutter_app/.flutter-plugins-dependencies
 # Platform toolchains regenerate these (local plugins, intermediates)
 flutter_app/**/ephemeral/
 
+# Release / packaging artifacts
+release_pack/
+*.zip
+
+# Local data (images from chat / screenshots)
+data/*.jpg
+data/*.jpeg
+data/*.png
+data/*.webp
+
+# Cursor project settings
+.cursor/settings.json
+
 # IDE
 .idea/
 .vscode/

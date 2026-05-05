@@ -7,7 +7,10 @@ import 'package:intl/intl.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
+import '../../../core/providers/business_profile_provider.dart';
+import '../../../core/providers/trade_purchases_provider.dart';
 import '../../../core/router/navigation_ext.dart';
+import '../../../core/services/broker_statement_pdf.dart';
 import '../../purchase/state/purchase_providers.dart';
 
 final _brokerHistoryHeaderProvider =
@@ -124,6 +127,7 @@ class BrokerHistoryPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(brokerHistoryLinesProvider(brokerId));
     final headerAsync = ref.watch(_brokerHistoryHeaderProvider(brokerId));
+    final purchasesAsync = ref.watch(tradePurchasesParsedProvider);
     final fmt = DateFormat.yMMMd();
     final notifier = ref.read(brokerHistoryLinesProvider(brokerId).notifier);
 
@@ -138,6 +142,63 @@ class BrokerHistoryPage extends ConsumerWidget {
         ),
         title: const Text('Broker history'),
         actions: [
+          IconButton(
+            tooltip: 'Commission statement (PDF)',
+            onPressed: () async {
+              final biz = ref.read(invoiceBusinessProfileProvider);
+              final header = headerAsync.asData?.value;
+              final brokerName =
+                  (header?['name'] ?? header?['display_name'])?.toString().trim();
+              final brokerPhone = header?['phone']?.toString().trim();
+
+              final merged = purchasesAsync.asData?.value;
+              if (merged == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Loading purchases… try again in a moment')),
+                );
+                return;
+              }
+
+              final now = DateTime.now();
+              final today = DateTime(now.year, now.month, now.day);
+              final seedFrom = today.subtract(const Duration(days: 29));
+              final picked = await showDateRangePicker(
+                context: context,
+                firstDate: DateTime(now.year - 5),
+                lastDate: DateTime(now.year + 1, 12, 31),
+                initialDateRange: DateTimeRange(start: seedFrom, end: today),
+              );
+              if (picked == null) return;
+              final from = DateTime(picked.start.year, picked.start.month, picked.start.day);
+              final to = DateTime(picked.end.year, picked.end.month, picked.end.day);
+
+              final filtered = merged.where((p) {
+                if (p.brokerId == null || p.brokerId!.isEmpty) return false;
+                if (p.brokerId != brokerId) return false;
+                final d = DateTime(p.purchaseDate.year, p.purchaseDate.month, p.purchaseDate.day);
+                return !d.isBefore(from) && !d.isAfter(to);
+              }).toList();
+
+              if (filtered.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('No broker purchases in this period')),
+                );
+                return;
+              }
+
+              await shareBrokerStatementPdfForChat(
+                business: biz,
+                brokerName: (brokerName != null && brokerName.isNotEmpty)
+                    ? brokerName
+                    : 'Broker',
+                brokerPhone: brokerPhone,
+                purchases: filtered,
+                fromDate: from,
+                toDate: to,
+              );
+            },
+            icon: const Icon(Icons.receipt_long_outlined),
+          ),
           IconButton(
             tooltip: 'Refresh',
             onPressed: state.loadingInitial ? null : () => notifier.refresh(),

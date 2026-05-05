@@ -88,7 +88,15 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
       unawaited(() async {
         try {
           final api = container.read(hexaApiProvider);
-          await ApiWarmupService.pingHealth(api);
+          await ApiWarmupService.pingHealth(
+            api,
+            onSlow: () {
+              container.read(apiDegradedProvider.notifier).notifyDegraded(
+                    'Connecting to server…',
+                  );
+            },
+          );
+          container.read(apiDegradedProvider.notifier).clear();
           ApiWarmupService.startPeriodicHealth(api);
           try {
             await api.healthReady().timeout(const Duration(seconds: 8));

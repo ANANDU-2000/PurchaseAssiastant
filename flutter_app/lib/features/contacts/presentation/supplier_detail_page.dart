@@ -446,7 +446,7 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                             ),
                             _SupplierVBar(cs: cs),
                             _QuickStat(
-                              label: 'Amount',
+                              label: 'Purchased',
                               value: inr.format(spendN.round()),
                             ),
                             _SupplierVBar(cs: cs),
@@ -516,41 +516,38 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                   ),
                 ],
                 const SizedBox(height: 8),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      for (final label in <String>[
-                        'This Month',
-                        '3 Months',
-                        '6 Months',
-                        'All',
-                      ])
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: ChoiceChip(
-                            label: Text(
-                              label,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: _dateChip == label
-                                    ? FontWeight.w800
-                                    : FontWeight.w600,
-                                color: _dateChip == label
-                                    ? Colors.white
-                                    : chipText,
-                              ),
-                            ),
-                            selected: _dateChip == label,
-                            onSelected: (_) => _applyDateChip(label),
-                            selectedColor: chipTeal,
-                            backgroundColor: cs.surfaceContainerHighest
-                                .withValues(alpha: 0.6),
-                            side: BorderSide.none,
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final label in <String>[
+                      'This Month',
+                      '3 Months',
+                      '6 Months',
+                      'All',
+                    ])
+                      ChoiceChip(
+                        label: Text(
+                          label,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: _dateChip == label
+                                ? FontWeight.w800
+                                : FontWeight.w600,
+                            color:
+                                _dateChip == label ? Colors.white : chipText,
                           ),
                         ),
-                    ],
-                  ),
+                        selected: _dateChip == label,
+                        onSelected: (_) => _applyDateChip(label),
+                        selectedColor: chipTeal,
+                        backgroundColor: cs.surfaceContainerHighest
+                            .withValues(alpha: 0.6),
+                        side: BorderSide.none,
+                        showCheckmark: false,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Text(

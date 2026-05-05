@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -28,7 +27,6 @@ import '../../purchase/state/purchase_draft_provider.dart';
 import '../../contacts/presentation/broker_wizard_page.dart';
 import '../../contacts/presentation/supplier_create_simple.dart';
 import '../../../shared/widgets/inline_search_field.dart';
-import '../../../shared/widgets/keyboard_safe_form_viewport.dart';
 import 'wizard/purchase_fast_items_step.dart';
 import 'wizard/purchase_party_step.dart';
 import 'wizard/purchase_review_tally_step.dart';
@@ -1044,7 +1042,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
           initial: initial,
           isEdit: editIndex != null,
           fullPage: true,
-          omitLineFreightDeliveredBilltyDiscount: true,
+          omitLineFreightDeliveredBilltyDiscount: false,
           navigateCatalogQuickAddItem: session == null || catalog.isEmpty
               ? null
               : () async {
@@ -1472,6 +1470,22 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     FocusScope.of(context).unfocus();
   }
 
+  void _autoSelectCommissionUnitFromLinesIfNeeded() {
+    final draft = ref.read(purchaseDraftProvider);
+    final lines = draft.lines;
+
+    // Wizard order is Party → Terms → Items → Review, so on first entry to Terms
+    // there may be zero lines. Only auto-select when lines actually exist.
+    if (lines.isEmpty) return;
+
+    // Only auto-set if the user hasn't already chosen a fixed-₹ basis.
+    final current = (draft.commissionMode).trim().toLowerCase();
+    if (current.isNotEmpty && current != kPurchaseCommissionModePercent) return;
+
+    final suggested = suggestedBrokerFigureModeFromLines(lines);
+    ref.read(purchaseDraftProvider.notifier).setCommissionMode(suggested);
+  }
+
   void _wizNext() {
     if (_wizStep != 0) {
       FocusScope.of(context).unfocus();
@@ -1509,6 +1523,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         });
         return;
       }
+      _autoSelectCommissionUnitFromLinesIfNeeded();
       setState(() => _wizStep = 3);
     }
   }
@@ -1725,6 +1740,43 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     );
   }
 
+  Widget _buildWizardBody(
+    BuildContext context,
+    Widget stepContent,
+    bool isEdit,
+    List<Map<String, dynamic>> catalog,
+  ) {
+    return MediaQuery.removePadding(
+      context: context,
+      removeTop: false,
+      child: LayoutBuilder(
+        builder: (ctx, _) {
+          final kb = MediaQuery.viewInsetsOf(ctx).bottom;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.fromLTRB(16, 16, 16, kb > 0 ? 8 : 16),
+                  child: stepContent,
+                ),
+              ),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                color: Theme.of(ctx).scaffoldBackgroundColor,
+                padding: EdgeInsets.fromLTRB(16, 8, 16, kb > 0 ? kb + 8 : 16),
+                child: _wizardFooterChrome(catalog, isEdit),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen(catalogItemsListProvider, (_, next) {
@@ -1812,15 +1864,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
               _ => 'Edit purchase — Review',
             };
 
-    final theme = Theme.of(context);
-    final viewInsetsBottom = MediaQuery.viewInsetsOf(context).bottom;
-    final hideFooterForPartyKeyboard = _wizStep == 0 &&
-        viewInsetsBottom > 8 &&
-        (_partySupplierFocus.hasFocus || _partyBrokerFocus.hasFocus);
-    final showWizardFooter = !_isBootstrapping &&
-        _editBootstrapError == null &&
-        !hideFooterForPartyKeyboard;
-
     Widget purchaseWizardMainContent() {
       return Builder(
         builder: (bodyContext) {
@@ -1870,6 +1913,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
           final showCatalogErrorStrip =
               catalogAsync.hasError && emptyCache;
 
+          final step = _wizBody(bodyContext, catalog, isEdit);
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -1882,49 +1926,19 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
                 Material(
                   color: Colors.orange.shade50,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     child: Text(
                       'Catalog could not refresh. ${catalogAsync.error}',
                       style: TextStyle(
-                          color: Colors.orange.shade900, fontSize: 12),
+                        color: Colors.orange.shade900,
+                        fontSize: 12,
+                      ),
                     ),
                   ),
                 ),
               Expanded(
-                child: LayoutBuilder(
-                  builder: (bodyContext, cts) {
-                    final minFields =
-                        math.max(220.0, cts.maxHeight - 280);
-                    return KeyboardSafeFormViewport(
-                      horizontalPadding: 16,
-                      topPadding: 16,
-                      bottomExtraInset: 24,
-                      minFieldsHeight:
-                          cts.hasBoundedHeight ? minFields : 220,
-                      fields: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _wizBody(bodyContext, catalog, isEdit),
-                        ],
-                      ),
-                      footer: showWizardFooter
-                          ? Material(
-                              elevation: 8,
-                              surfaceTintColor: Colors.transparent,
-                              color: theme.colorScheme.surface,
-                              child: Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                    8, 4, 8, 6),
-                                child: _wizardFooterChrome(
-                                    catalog, isEdit),
-                              ),
-                            )
-                          : const SizedBox.shrink(),
-                    );
-                  },
-                ),
+                child: _buildWizardBody(bodyContext, step, isEdit, catalog),
               ),
             ],
           );
@@ -1944,7 +1958,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         await _handleWizardExitFromRoot();
       },
       child: Scaffold(
-        resizeToAvoidBottomInset: true,
+        resizeToAvoidBottomInset: false,
         appBar: AppBar(
           title: Text(appBarTitle),
           elevation: 0,

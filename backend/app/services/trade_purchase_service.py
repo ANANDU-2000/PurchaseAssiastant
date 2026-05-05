@@ -1262,6 +1262,7 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
     supplier_whatsapp: str | None = None
     broker_phone: str | None = None
     broker_location: str | None = None
+    broker_image_url: str | None = None
     sr = getattr(tp, "supplier_row", None)
     if sr is not None:
         sup_name = getattr(sr, "name", None)
@@ -1274,6 +1275,7 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
         bro_name = getattr(br, "name", None)
         broker_phone = getattr(br, "phone", None) or None
         broker_location = getattr(br, "location", None) or None
+        broker_image_url = getattr(br, "image_url", None) or None
     items_count = len(tp.lines) if tp.lines is not None else 0
     tls = getattr(tp, "total_landing_subtotal", None)
     tss = getattr(tp, "total_selling_subtotal", None)
@@ -1320,6 +1322,7 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
         supplier_whatsapp=supplier_whatsapp,
         broker_phone=broker_phone,
         broker_location=broker_location,
+        broker_image_url=broker_image_url,
         created_at=tp.created_at,
         updated_at=getattr(tp, "updated_at", None),
         lines=lines,

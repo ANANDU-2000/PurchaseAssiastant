@@ -132,7 +132,7 @@ class TradeLedgerSummaryStrip extends StatelessWidget {
               runSpacing: 10,
               children: [
                 _ChipStat(label: 'Bills', value: '$bills'),
-                _ChipStat(label: 'Amount', value: inrSpend),
+                _ChipStat(label: 'Purchased', value: inrSpend),
                 _ChipStat(label: 'Est. kg', value: _fmtKg(kg)),
               ],
             ),
@@ -206,13 +206,27 @@ class TradeLedgerCardList extends StatelessWidget {
         decimalDigits: 0,
       ).format(v);
 
-  String _rateL(TradePurchaseLine ln) {
+  String _rateP(TradePurchaseLine ln) {
     final r = tradePurchaseLineDisplayPurchaseRate(ln);
-    final u = ln.unit.trim();
-    final ul = u.toLowerCase();
-    final suffix =
-        (tradePurchaseLineIsWeightPriced(ln) || ul == 'kg') ? '/kg' : '/$u';
-    return 'L ${_inr(r)}$suffix';
+    final u = ln.unit.trim().toLowerCase();
+    final perKg = tradePurchaseLineIsWeightPriced(ln) ||
+        u == 'kg' ||
+        ((u == 'bag' || u == 'sack' || u == 'box') &&
+            (ln.kgPerUnit ?? 0) > 1e-9);
+    final suffix = perKg ? '/kg' : '/${ln.unit.trim().isEmpty ? 'unit' : ln.unit.trim()}';
+    return 'P:${_inr(r)}$suffix';
+  }
+
+  String? _rateS(TradePurchaseLine ln) {
+    final r = tradePurchaseLineDisplaySellingRate(ln);
+    if (r == null) return null;
+    final u = ln.unit.trim().toLowerCase();
+    final perKg = tradePurchaseLineIsWeightPriced(ln) ||
+        u == 'kg' ||
+        ((u == 'bag' || u == 'sack' || u == 'box') &&
+            (ln.kgPerUnit ?? 0) > 1e-9);
+    final suffix = perKg ? '/kg' : '/${ln.unit.trim().isEmpty ? 'unit' : ln.unit.trim()}';
+    return 'S:${_inr(r)}$suffix';
   }
 
   @override
@@ -313,16 +327,14 @@ class TradeLedgerCardList extends StatelessWidget {
                                                 style: tt.labelSmall,
                                               ),
                                               Text(
-                                                _rateL(ln),
+                                                _rateP(ln),
                                                 style: tt.labelSmall?.copyWith(
                                                     color:
                                                         cs.onSurfaceVariant),
                                               ),
-                                              if (tradePurchaseLineDisplaySellingRate(
-                                                      ln) !=
-                                                  null)
+                                              if (_rateS(ln) != null)
                                                 Text(
-                                                  'S ${_inr(tradePurchaseLineDisplaySellingRate(ln)!)}',
+                                                  _rateS(ln)!,
                                                   style:
                                                       tt.labelSmall?.copyWith(
                                                           color: cs
@@ -370,19 +382,18 @@ class TradeLedgerCardList extends StatelessWidget {
                                     Expanded(
                                       flex: 2,
                                       child: Text(
-                                        _rateL(ln),
+                                        _rateP(ln),
                                         textAlign: TextAlign.right,
                                         style: tt.labelSmall?.copyWith(
                                             color: cs.onSurfaceVariant),
                                       ),
                                     ),
-                                    if (tradePurchaseLineDisplaySellingRate(ln) !=
-                                        null) ...[
+                                    if (_rateS(ln) != null) ...[
                                       const SizedBox(width: 4),
                                       Expanded(
                                         flex: 2,
                                         child: Text(
-                                          'S ${_inr(tradePurchaseLineDisplaySellingRate(ln)!)}',
+                                          _rateS(ln)!,
                                           textAlign: TextAlign.right,
                                           style: tt.labelSmall?.copyWith(
                                               color: cs.onSurfaceVariant),

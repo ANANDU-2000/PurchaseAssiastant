@@ -76,6 +76,45 @@ class ReportsItemDetailPage extends ConsumerWidget {
                   fontWeight: FontWeight.w900,
                 ),
           ),
+          const SizedBox(height: 10),
+          Card(
+            margin: EdgeInsets.zero,
+            color: Colors.white,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'TOTAL PURCHASED',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.8,
+                      color: Color(0xFF888888),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  if (qtyLine.isNotEmpty)
+                    Text(
+                      qtyLine,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF1A1A1A),
+                          ),
+                    ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _inr0(sumAmt.round()),
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          color: const Color(0xFF1A1A1A),
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          ),
           const SizedBox(height: 20),
           Text(
             'Transactions',
@@ -104,6 +143,7 @@ class ReportsItemDetailPage extends ConsumerWidget {
                       '${i + 1}. ${df.format(t.date)} — ${t.supplierName}',
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.w700,
+                            color: const Color(0xFF1A1A1A),
                           ),
                     ),
                     const SizedBox(height: 4),
@@ -111,13 +151,14 @@ class ReportsItemDetailPage extends ConsumerWidget {
                       '${_kg(t.kg)} kg',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             fontWeight: FontWeight.w600,
+                            color: const Color(0xFF333333),
                           ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       '${_inr0(t.buyRate.round())} → $sell',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: HexaColors.textBody,
+                            color: const Color(0xFF555555),
                             fontWeight: FontWeight.w600,
                           ),
                     ),

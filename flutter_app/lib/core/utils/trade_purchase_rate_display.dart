@@ -29,5 +29,13 @@ double? tradePurchaseLineDisplaySellingRate(TradePurchaseLine l) {
   }
   final u = l.unit.trim().toLowerCase();
   if (u == 'kg') return sp;
+  // For bag-family lines, wire selling rate is frequently stored as per-bag.
+  // Display must be per-kg when we have kg-per-unit, to avoid showing S ₹1350
+  // instead of S ₹27/kg.
+  if ((u == 'bag' || u == 'sack' || u == 'box') &&
+      l.kgPerUnit != null &&
+      l.kgPerUnit! > 0) {
+    return sp / l.kgPerUnit!;
+  }
   return sp;
 }

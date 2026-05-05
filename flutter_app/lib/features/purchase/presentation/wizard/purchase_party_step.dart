@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -784,6 +782,7 @@ class PurchasePartyStep extends ConsumerWidget {
         ),
         const SizedBox(height: 8),
         brokerCell,
+        const SizedBox(height: 240),
       ],
     );
   }
@@ -825,14 +824,7 @@ class PurchasePartyStep extends ConsumerWidget {
               ),
             ),
           ),
-        SizedBox(
-          height: math.max(
-            48.0,
-            MediaQuery.viewInsetsOf(context).bottom +
-                MediaQuery.paddingOf(context).bottom +
-                56,
-          ),
-        ),
+        const SizedBox(height: 12),
       ],
     );
   }

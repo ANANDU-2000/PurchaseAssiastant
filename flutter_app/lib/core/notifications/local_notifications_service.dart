@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'dart:async';
 
 import '../config/app_config.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
@@ -13,6 +14,7 @@ class LocalNotificationsService {
       LocalNotificationsService._();
 
   static const _dailyId = 91001;
+  static const _waReportId = 9001;
   static const int _maintId0 = 92101;
   static const int _maintId1 = 92102;
   static const int _maintId2 = 92103;
@@ -24,6 +26,11 @@ class LocalNotificationsService {
 
   final FlutterLocalNotificationsPlugin _p = FlutterLocalNotificationsPlugin();
   bool _inited = false;
+
+  static final StreamController<String> _payloads =
+      StreamController<String>.broadcast();
+
+  Stream<String> get payloadStream => _payloads.stream;
 
   Future<void> init() async {
     if (kIsWeb) return;
@@ -38,7 +45,28 @@ class LocalNotificationsService {
           guid: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
         ),
       ),
+      onDidReceiveNotificationResponse: (r) {
+        final p = r.payload;
+        if (p != null && p.trim().isNotEmpty) {
+          _payloads.add(p.trim());
+        }
+      },
     );
+
+    // Cold start: if the app was launched by tapping a notification, surface payload.
+    try {
+      final details = await _p.getNotificationAppLaunchDetails();
+      final resp = details?.notificationResponse;
+      final p = resp?.payload;
+      if (details?.didNotificationLaunchApp == true &&
+          p != null &&
+          p.trim().isNotEmpty) {
+        Future<void>.delayed(const Duration(milliseconds: 300), () {
+          _payloads.add(p.trim());
+        });
+      }
+    } catch (_) {}
+
     tzdata.initializeTimeZones();
     try {
       tz.setLocalLocation(tz.getLocation('Asia/Kolkata'));
@@ -89,6 +117,60 @@ class LocalNotificationsService {
       body: 'Review purchases, margins, and alerts for today.',
       matchDateTimeComponents: DateTimeComponents.time,
     );
+  }
+
+  /// Schedule or cancel WhatsApp report reminders.
+  /// Type: daily | weekly | monthly. Payload is always 'whatsapp_report'.
+  Future<void> scheduleWhatsAppReport({
+    required bool enabled,
+    required String type,
+    required int hour,
+    required int minute,
+  }) async {
+    if (kIsWeb || !_inited) return;
+    await _p.cancel(id: _waReportId);
+    if (!enabled) return;
+
+    final when = _nextAt(hour: hour, minute: minute);
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'wa_reports',
+        'WhatsApp Reports',
+        channelDescription: 'Reminders to send purchase summary to WhatsApp.',
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+      ),
+      iOS: DarwinNotificationDetails(),
+      windows: WindowsNotificationDetails(),
+    );
+
+    final t = type.trim().toLowerCase();
+    final match = switch (t) {
+      'daily' => DateTimeComponents.time,
+      'monthly' => DateTimeComponents.dayOfMonthAndTime,
+      _ => DateTimeComponents.dayOfWeekAndTime,
+    };
+
+    await _p.zonedSchedule(
+      id: _waReportId,
+      scheduledDate: when,
+      notificationDetails: details,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      title: 'WhatsApp Report',
+      body: 'Tap to open WhatsApp with today’s purchase report.',
+      matchDateTimeComponents: match,
+      payload: 'whatsapp_report',
+    );
+  }
+
+  tz.TZDateTime _nextAt({required int hour, required int minute}) {
+    final loc = tz.local;
+    final now = tz.TZDateTime.now(loc);
+    var scheduled = tz.TZDateTime(loc, now.year, now.month, now.day, hour, minute);
+    if (!scheduled.isAfter(now)) {
+      scheduled = scheduled.add(const Duration(days: 1));
+    }
+    return scheduled;
   }
 
   tz.TZDateTime _nextNineAm() {

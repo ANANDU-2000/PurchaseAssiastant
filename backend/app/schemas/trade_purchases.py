@@ -304,6 +304,7 @@ class TradePurchaseOut(DecimalModel):
     supplier_whatsapp: str | None = None
     broker_phone: str | None = None
     broker_location: str | None = None
+    broker_image_url: str | None = None
     created_at: datetime
     updated_at: datetime | None = None
     lines: list[TradePurchaseLineOut]

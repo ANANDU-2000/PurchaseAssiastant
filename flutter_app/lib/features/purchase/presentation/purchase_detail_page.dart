@@ -97,14 +97,6 @@ double? _effectiveLineProfit(TradePurchaseLine l) {
   return l.sellingGross - l.landingGross;
 }
 
-bool _hasExplicitSellRates(TradePurchase p) {
-  for (final l in p.lines) {
-    if (l.sellingRate != null && l.sellingRate! > 0) return true;
-    if (l.sellingCost != null && l.sellingCost! > 0) return true;
-  }
-  return false;
-}
-
 class _Agg {
   const _Agg({
     required this.linesInclusive,
@@ -299,6 +291,37 @@ class _LoadedPurchaseScaffold extends ConsumerWidget {
     await printPurchasePdf(p, biz);
   }
 
+  Future<void> _runSharePdf(BuildContext context, WidgetRef ref) async {
+    final biz = ref.read(invoiceBusinessProfileProvider);
+    await sharePurchasePdf(p, biz);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('PDF ready to share')),
+      );
+    }
+  }
+
+  Future<void> _runDownloadPdf(BuildContext context, WidgetRef ref) async {
+    final biz = ref.read(invoiceBusinessProfileProvider);
+    await downloadPurchasePdf(p, biz);
+    if (!context.mounted) return;
+    if (kIsWeb) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Use the browser print/save dialog to download PDF'),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Use Save as PDF or share from the dialog to save the file',
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
@@ -322,20 +345,17 @@ class _LoadedPurchaseScaffold extends ConsumerWidget {
           IconButton(
             tooltip: 'Share',
             icon: const Icon(Icons.share_outlined),
-            onPressed: () async {
-              final biz = ref.read(invoiceBusinessProfileProvider);
-              await sharePurchasePdf(p, biz);
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('PDF ready to share')),
-                );
-              }
-            },
+            onPressed: () => _runSharePdf(context, ref),
+          ),
+          IconButton(
+            tooltip: 'Print',
+            icon: const Icon(Icons.print_outlined),
+            onPressed: () => _runPrintPdf(context, ref),
           ),
           IconButton(
             tooltip: 'PDF',
             icon: const Icon(Icons.picture_as_pdf_outlined),
-            onPressed: () => _runPrintPdf(context, ref),
+            onPressed: () => _runDownloadPdf(context, ref),
           ),
           if (p.statusEnum != PurchaseStatus.cancelled)
             PopupMenuButton<String>(
@@ -377,6 +397,80 @@ class _PurchaseDetailBody extends ConsumerStatefulWidget {
 }
 
 class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
+  Widget _buildSummaryStrip(BuildContext context, _Agg agg, ColorScheme cs) {
+    final profit = agg.sumProfit;
+    final profitColor =
+        profit >= 0 ? const Color(0xFF1B6B5A) : Colors.red.shade700;
+
+    String buildWeightText() {
+      final kg = formatLineQtyWeight(qty: agg.totalKg, unit: 'kg');
+      final parts = <String>[];
+      if (agg.totalBags > 1e-6) parts.add('${_qtyFmt(agg.totalBags)} bags');
+      if (agg.totalBox > 1e-6) parts.add('${_qtyFmt(agg.totalBox)} boxes');
+      if (agg.totalTin > 1e-6) parts.add('${_qtyFmt(agg.totalTin)} tins');
+      if (parts.isEmpty) return kg;
+      return '$kg\n${parts.join(' · ')}';
+    }
+
+    Widget summaryCol(String label, String value, Color valueColor) {
+      return Expanded(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.8,
+                color: Color(0xFF888888),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: valueColor,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(0, 0, 0, 14),
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: IntrinsicHeight(
+        child: Row(
+          children: [
+            summaryCol(
+              'AMOUNT',
+              _inr(agg.finalComputed, fractionDigits: 0),
+              cs.onSurface,
+            ),
+            VerticalDivider(width: 1, color: Colors.grey.shade200),
+            summaryCol('WEIGHT', buildWeightText(), cs.onSurface),
+            VerticalDivider(width: 1, color: Colors.grey.shade200),
+            summaryCol(
+              'PROFIT',
+              _inr(profit, fractionDigits: 0),
+              profitColor,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = widget.p;
@@ -409,7 +503,7 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
                     if (p.hasMissingDetails) _pendingDetailsChip(context, p, cs),
                     _compactMeta(context, p, st, paidPending, cs),
                     const SizedBox(height: 18),
-                    _summaryHeroCard(context, p, agg, cs),
+                    _buildSummaryStrip(context, agg, cs),
                     const SizedBox(height: 18),
                     Text(
                       'Items',
@@ -467,6 +561,7 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
   ) {
     final sup = (p.supplierName ?? '—').trim();
     final bro = (p.brokerName ?? '—').trim();
+    final broImg = (p.brokerImageUrl ?? '').trim();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -497,13 +592,23 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
           ],
         ),
         const SizedBox(height: 4),
-        Text(
-          'Broker: ${bro.isEmpty ? '—' : bro}',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: cs.onSurfaceVariant,
-          ),
+        Row(
+          children: [
+            _brokerAvatar(broImg, bro.isEmpty ? '—' : bro),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Broker: ${bro.isEmpty ? '—' : bro}',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onSurfaceVariant,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 4),
         Text(
@@ -524,116 +629,34 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
     );
   }
 
-  Widget _summaryHeroCard(
-      BuildContext context, TradePurchase p, _Agg agg, ColorScheme cs) {
-    final profitColor =
-        agg.sumProfit >= 0 ? const Color(0xFF0F766E) : HexaColors.loss;
-    final volParts = <String>[];
-    if (agg.totalKg > 1e-6) volParts.add('${_qtyFmt(agg.totalKg)} kg');
-    if (agg.totalBags > 1e-6) {
-      volParts.add(
-          '${_qtyFmt(agg.totalBags)} ${agg.totalBags == 1 ? 'bag' : 'bags'}');
+  Widget _brokerAvatar(String imageUrl, String name) {
+    final initials = name.trim().isEmpty
+        ? '—'
+        : name
+            .trim()
+            .split(RegExp(r'\s+'))
+            .where((w) => w.isNotEmpty)
+            .take(2)
+            .map((w) => w[0].toUpperCase())
+            .join();
+    if (imageUrl.isNotEmpty) {
+      return CircleAvatar(
+        radius: 14,
+        backgroundColor: const Color(0xFFE5E7EB),
+        backgroundImage: NetworkImage(imageUrl),
+        onBackgroundImageError: (_, __) {},
+      );
     }
-    if (agg.totalBox > 1e-6) {
-      volParts.add(
-          '${_qtyFmt(agg.totalBox)} ${agg.totalBox == 1 ? 'box' : 'boxes'}');
-    }
-    if (agg.totalTin > 1e-6) {
-      volParts.add(
-          '${_qtyFmt(agg.totalTin)} ${agg.totalTin == 1 ? 'tin' : 'tins'}');
-    }
-    final explicitSell = _hasExplicitSellRates(p);
-    final showProfit = agg.sumProfit.abs() > 1e-6 &&
-        (p.totalLineProfit != null || explicitSell);
-    final smallHdr = TextStyle(
-      fontSize: 11,
-      fontWeight: FontWeight.w700,
-      color: cs.onSurfaceVariant,
-    );
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outline.withValues(alpha: 0.22)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Amount', style: smallHdr),
-                    const SizedBox(height: 4),
-                    SelectableText(
-                      _inr(agg.finalComputed, fractionDigits: 0),
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        color: cs.onSurface,
-                        height: 1.05,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Text('Volume', style: smallHdr),
-                    const SizedBox(height: 4),
-                    Text(
-                      volParts.isEmpty ? '—' : volParts.join('\n'),
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: cs.primary,
-                        height: 1.25,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text('Profit', style: smallHdr),
-                    const SizedBox(height: 4),
-                    if (showProfit)
-                      SelectableText(
-                        _inr(agg.sumProfit, fractionDigits: 0),
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
-                          color: profitColor,
-                          height: 1.05,
-                        ),
-                      )
-                    else
-                      Text(
-                        '—',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          // Removed "Est. sell value" (confusing/misleading when sell rates absent
-          // or interpreted per-unit vs per-kg for bag-family lines). Profit is shown above.
-        ],
+    return CircleAvatar(
+      radius: 14,
+      backgroundColor: const Color(0xFF1B6B5A),
+      child: Text(
+        initials,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w800,
+          fontSize: 12,
+        ),
       ),
     );
   }
@@ -900,28 +923,68 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     Widget cell(Widget child) => Expanded(child: child);
 
-    Future<void> download() async {
+    Future<void> share() async {
+      final biz = ref.read(invoiceBusinessProfileProvider);
+      try {
+        await sharePurchasePdf(p, biz);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('PDF ready to share')),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                e is DioException
+                    ? friendlyApiError(e)
+                    : 'Something went wrong. Please try again.',
+              ),
+            ),
+          );
+        }
+      }
+    }
+
+    Future<void> printPdf() async {
+      final biz = ref.read(invoiceBusinessProfileProvider);
+      try {
+        await printPurchasePdf(p, biz);
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                e is DioException
+                    ? friendlyApiError(e)
+                    : 'Something went wrong. Please try again.',
+              ),
+            ),
+          );
+        }
+      }
+    }
+
+    Future<void> downloadPdf() async {
       final biz = ref.read(invoiceBusinessProfileProvider);
       try {
         await downloadPurchasePdf(p, biz);
-        if (context.mounted) {
-          if (kIsWeb) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Use the browser print/save dialog to download PDF',
-                ),
+        if (!context.mounted) return;
+        if (kIsWeb) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Use the browser print/save dialog to download PDF'),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Use Save as PDF or share from the dialog to save the file',
               ),
-            );
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Use Save as PDF or share from the dialog to save the file',
-                ),
-              ),
-            );
-          }
+            ),
+          );
         }
       } catch (e) {
         if (context.mounted) {
@@ -947,50 +1010,53 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (p.statusEnum != PurchaseStatus.paid &&
+                p.statusEnum != PurchaseStatus.cancelled)
+              SizedBox(
+                height: 52,
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => _markPaidSheet(context, ref, p),
+                  icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
+                  label: const Text('Mark as Paid'),
+                ),
+              ),
+            if (p.statusEnum != PurchaseStatus.paid &&
+                p.statusEnum != PurchaseStatus.cancelled)
+              const SizedBox(height: 10),
             Row(
               children: [
                 cell(
-                  OutlinedButton(
-                    onPressed: p.statusEnum == PurchaseStatus.paid ||
-                            p.statusEnum == PurchaseStatus.cancelled
-                        ? null
-                        : () => _markPaidSheet(context, ref, p),
-                    child: const Text('Mark paid'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                cell(
-                  OutlinedButton(
-                    onPressed: () async {
-                      final biz = ref.read(invoiceBusinessProfileProvider);
-                      await sharePurchasePdf(p, biz);
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('PDF ready to share')),
-                        );
-                      }
-                    },
-                    child: const Text('Share'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                cell(
-                  OutlinedButton(
+                  OutlinedButton.icon(
                     onPressed: p.statusEnum == PurchaseStatus.cancelled
                         ? null
                         : () => context.push('/purchase/edit/${p.id}'),
-                    child: const Text('Edit'),
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    label: const Text('Edit'),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 cell(
-                  OutlinedButton(
-                    onPressed: download,
-                    child: const Text('Download'),
+                  OutlinedButton.icon(
+                    onPressed: share,
+                    icon: const Icon(Icons.share_outlined, size: 18),
+                    label: const Text('Share'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                cell(
+                  OutlinedButton.icon(
+                    onPressed: printPdf,
+                    icon: const Icon(Icons.print_outlined, size: 18),
+                    label: const Text('Print'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                cell(
+                  OutlinedButton.icon(
+                    onPressed: downloadPdf,
+                    icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+                    label: const Text('PDF'),
                   ),
                 ),
               ],

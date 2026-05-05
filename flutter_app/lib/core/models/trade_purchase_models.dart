@@ -273,6 +273,7 @@ class TradePurchase {
     this.supplierWhatsapp,
     this.brokerPhone,
     this.brokerLocation,
+    this.brokerImageUrl,
     this.discount,
     this.commissionMode = 'percent',
     this.commissionPercent,
@@ -313,6 +314,7 @@ class TradePurchase {
   final String? supplierWhatsapp;
   final String? brokerPhone;
   final String? brokerLocation;
+  final String? brokerImageUrl;
   final double? discount;
   final String commissionMode;
   final double? commissionPercent;
@@ -388,6 +390,7 @@ class TradePurchase {
       supplierWhatsapp: j['supplier_whatsapp']?.toString(),
       brokerPhone: j['broker_phone']?.toString(),
       brokerLocation: j['broker_location']?.toString(),
+      brokerImageUrl: j['broker_image_url']?.toString(),
       discount: _decNullableDouble(j['discount']),
       commissionMode: cm,
       commissionPercent: cm == 'percent' ? cPct : null,

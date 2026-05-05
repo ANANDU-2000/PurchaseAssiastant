@@ -20,8 +20,14 @@ import '../../../core/maintenance/maintenance_payment_constants.dart';
 import '../../../core/providers/cloud_expense_provider.dart';
 import '../../../core/providers/cloud_payment_local_provider.dart';
 import '../../../core/providers/maintenance_payment_provider.dart';
+import '../../../core/providers/prefs_provider.dart';
+import '../../../core/providers/reports_provider.dart';
+import '../../../core/providers/analytics_kpi_provider.dart';
+import '../../../core/reporting/trade_report_aggregate.dart';
+import '../../../core/notifications/local_notifications_service.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/theme/theme_context_ext.dart';
+import '../../reports/reports_prefs.dart';
 import '../../../shared/widgets/search_picker_sheet.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
@@ -47,10 +53,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _billingQuoteLoading = false;
   bool _checkoutBusy = false;
 
+  bool _waSchedEnabled = false;
+  String _waSchedType = 'weekly';
+  TimeOfDay _waSchedTime = const TimeOfDay(hour: 8, minute: 0);
+  late final TextEditingController _waPhoneCtrl;
+  bool _waSchedBusy = false;
+
   @override
   void initState() {
     super.initState();
     _brandingTitleCtrl = TextEditingController();
+    _waPhoneCtrl = TextEditingController();
     if (!kIsWeb) {
       _razorpay = Razorpay();
       _razorpay!.on(Razorpay.EVENT_PAYMENT_SUCCESS, (dynamic response) {
@@ -76,6 +89,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           _brandingTitleCtrl.text = pb.brandingTitle ?? '';
         });
       }
+      unawaited(_loadWhatsAppSchedulePrefs());
     });
   }
 
@@ -83,8 +97,107 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   void dispose() {
     _razorpay?.clear();
     _brandingTitleCtrl.dispose();
+    _waPhoneCtrl.dispose();
     super.dispose();
   }
+
+  Future<void> _loadWhatsAppSchedulePrefs() async {
+    final enabled = await ReportsPrefs.getScheduleEnabled();
+    final type = await ReportsPrefs.getScheduleType();
+    final timeStr = await ReportsPrefs.getScheduleTime();
+    final phone = await ReportsPrefs.getSchedulePhone();
+    final parts = timeStr.split(':');
+    final h = int.tryParse(parts.isNotEmpty ? parts[0] : '') ?? 8;
+    final m = int.tryParse(parts.length > 1 ? parts[1] : '') ?? 0;
+    if (!mounted) return;
+    setState(() {
+      _waSchedEnabled = enabled;
+      _waSchedType = (type == 'daily' || type == 'weekly' || type == 'monthly')
+          ? type
+          : 'weekly';
+      _waSchedTime = TimeOfDay(hour: h.clamp(0, 23), minute: m.clamp(0, 59));
+      _waPhoneCtrl.text = phone;
+    });
+  }
+
+  Future<void> _applyWhatsAppSchedule() async {
+    if (_waSchedBusy) return;
+    setState(() => _waSchedBusy = true);
+    try {
+      await ReportsPrefs.setScheduleEnabled(_waSchedEnabled);
+      await ReportsPrefs.setScheduleType(_waSchedType);
+      await ReportsPrefs.setScheduleTime(
+        '${_waSchedTime.hour.toString().padLeft(2, '0')}:${_waSchedTime.minute.toString().padLeft(2, '0')}',
+      );
+      await ReportsPrefs.setSchedulePhone(_waPhoneCtrl.text);
+      await LocalNotificationsService.instance.scheduleWhatsAppReport(
+        enabled: _waSchedEnabled,
+        type: _waSchedType,
+        hour: _waSchedTime.hour,
+        minute: _waSchedTime.minute,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_waSchedEnabled ? 'WhatsApp auto-report scheduled' : 'WhatsApp auto-report disabled'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _waSchedBusy = false);
+    }
+  }
+
+  Future<void> _sendTestWhatsAppReportNow() async {
+    final phone = _waPhoneCtrl.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (phone.length < 10) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid phone number')),
+      );
+      return;
+    }
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final (from, to) = switch (_waSchedType) {
+      'daily' => (today, today),
+      'monthly' => (today.subtract(const Duration(days: 29)), today),
+      _ => (today.subtract(const Duration(days: 6)), today),
+    };
+    ref.read(analyticsDateRangeProvider.notifier).state = (from: from, to: to);
+    ref.invalidate(reportsPurchasesPayloadProvider);
+    await ref.read(reportsPurchasesPayloadProvider.future);
+    final purchases = ref.read(reportsPurchasesMergedProvider);
+    final agg = buildTradeReportAgg(purchases);
+
+    final df = DateFormat('d MMM');
+    final t = agg.totals;
+    final parts = <String>[
+      'Purchase Report (${df.format(from)} → ${df.format(to)})',
+      '',
+      'Total: ${NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(t.inr)}',
+      _qtyLine(t),
+    ]..removeWhere((e) => e.trim().isEmpty);
+    final msg = Uri.encodeComponent(parts.join('\n'));
+    final uri = Uri.parse('https://wa.me/$phone?text=$msg');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('WhatsApp not available')),
+      );
+    }
+  }
+
+  String _qtyLine(TradeReportTotals t) {
+    final p = <String>[];
+    if (t.kg > 1e-9) p.add('${_n0(t.kg)} KG');
+    if (t.bags > 1e-9) p.add('${_n0(t.bags)} BAGS');
+    if (t.boxes > 1e-9) p.add('${_n0(t.boxes)} BOX');
+    if (t.tins > 1e-9) p.add('${_n0(t.tins)} TIN');
+    return p.join(' • ');
+  }
+
+  String _n0(double v) =>
+      (v - v.roundToDouble()).abs() < 1e-6 ? '${v.round()}' : v.toStringAsFixed(1);
 
   Future<void> _fetchBillingQuote() async {
     final session = ref.read(sessionProvider);
@@ -313,6 +426,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         isOwner && (ModalRoute.of(context)?.settings.name == '/settings/billing');
     final pb = session?.primaryBusiness;
     final onSurf = cs.onSurface;
+    final notifOptIn = ref.watch(localNotificationsOptInProvider);
 
     return Scaffold(
       backgroundColor: context.adaptiveScaffold,
@@ -364,13 +478,86 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             color: context.adaptiveCard,
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Text(
-                'Purchase PDFs are shared manually (detail screen, broker ledger). '
-                'There is no scheduled auto-send to WhatsApp in this build.',
-                style: tt.bodySmall?.copyWith(
-                  color: cs.onSurfaceVariant,
-                  height: 1.35,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Local notifications'),
+                    subtitle: const Text('Reminders and follow-ups on this device'),
+                    value: notifOptIn,
+                    onChanged: (v) => unawaited(
+                      ref.read(localNotificationsOptInProvider.notifier).setValue(v),
+                    ),
+                  ),
+                  const Divider(height: 16),
+                  Text(
+                    'WhatsApp Reports',
+                    style: tt.labelLarge?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 6),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Auto-report'),
+                    subtitle: const Text('Shows a local reminder notification'),
+                    value: _waSchedEnabled,
+                    onChanged: (v) => setState(() => _waSchedEnabled = v),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    initialValue: _waSchedType,
+                    decoration: const InputDecoration(
+                      labelText: 'Schedule',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'daily', child: Text('Daily')),
+                      DropdownMenuItem(value: 'weekly', child: Text('Weekly')),
+                      DropdownMenuItem(value: 'monthly', child: Text('Monthly')),
+                    ],
+                    onChanged: (v) => setState(() => _waSchedType = v ?? 'weekly'),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final picked = await showTimePicker(
+                        context: context,
+                        initialTime: _waSchedTime,
+                      );
+                      if (picked == null || !mounted) return;
+                      setState(() => _waSchedTime = picked);
+                    },
+                    icon: const Icon(Icons.schedule_rounded),
+                    label: Text('Time: ${_waSchedTime.format(context)}'),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _waPhoneCtrl,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(
+                      labelText: 'Send to (phone)',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: _waSchedBusy ? null : () => unawaited(_applyWhatsAppSchedule()),
+                    child: _waSchedBusy
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Save WhatsApp schedule'),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton(
+                    onPressed: () => unawaited(_sendTestWhatsAppReportNow()),
+                    child: const Text('Send test report now'),
+                  ),
+                ],
               ),
             ),
           ),

@@ -19,7 +19,8 @@ class ResumePurchaseDraftBanner extends ConsumerWidget {
     ref.watch(businessDataWriteRevisionProvider);
     final s = ref.watch(sessionProvider);
     if (s == null) return const SizedBox.shrink();
-    final raw = OfflineStore.getPurchaseWizardDraft(s.primaryBusiness.id);
+    final bid = s.primaryBusiness.id;
+    final raw = OfflineStore.getPurchaseWizardDraft(bid);
     if (raw == null || raw.isEmpty) return const SizedBox.shrink();
 
     var subtitle = 'Continue where you left off';
@@ -30,6 +31,11 @@ class ResumePurchaseDraftBanner extends ConsumerWidget {
         if (meta is Map && meta['savedAt'] != null) {
           final dt = DateTime.tryParse(meta['savedAt'].toString());
           if (dt != null) {
+            if (DateTime.now().difference(dt) > const Duration(hours: 24)) {
+              // Auto-clear stale drafts so users don't keep seeing dead banners.
+              OfflineStore.clearPurchaseWizardDraft(bid);
+              return const SizedBox.shrink();
+            }
             subtitle = 'Saved ${DateFormat('MMM d · h:mm a').format(dt)}';
           }
         }
@@ -65,13 +71,13 @@ class ResumePurchaseDraftBanner extends ConsumerWidget {
                     Text(
                       subtitle,
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: Colors.grey.shade700,
+                            color: const Color(0xFF555555),
                           ),
                     ),
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right_rounded, color: Colors.grey.shade600),
+              const Icon(Icons.chevron_right_rounded, color: Color(0xFF333333)),
             ],
           ),
         ),
