@@ -460,10 +460,8 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                     children: [
                       _MetricTile(label: 'Total kg', value: _kgReadable(t.kg)),
                       _MetricTile(label: 'Total bags', value: _qtyReadable(t.bags)),
-                      if (t.boxes > 1e-9)
-                        _MetricTile(label: 'Total boxes', value: _qtyReadable(t.boxes)),
-                      if (t.tins > 1e-9)
-                        _MetricTile(label: 'Total tins', value: _qtyReadable(t.tins)),
+                      _MetricTile(label: 'Total boxes', value: _qtyReadable(t.boxes)),
+                      _MetricTile(label: 'Total tins', value: _qtyReadable(t.tins)),
                     ],
                   ),
                 ],
@@ -845,6 +843,57 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
         purchasesAsync.isLoading && merged.isEmpty && !_stallBanner;
     final showEmpty = merged.isEmpty && (!purchasesAsync.isLoading || _stallBanner);
 
+    Widget emptyCard() {
+      final canRetry = !purchasesAsync.isLoading;
+      final msg = (liveErr != null && liveErr.trim().isNotEmpty)
+          ? 'Could not refresh live data.\n$liveErr'
+          : 'No purchases in this period.';
+      return Card(
+        margin: const EdgeInsets.symmetric(vertical: 10),
+        color: HexaColors.brandCard,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                msg,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: HexaColors.textBody,
+                      height: 1.35,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilledButton.tonal(
+                    onPressed: canRetry
+                        ? () {
+                            _bumpInvalidate();
+                            ref.invalidate(reportsPurchasesPayloadProvider);
+                          }
+                        : null,
+                    child: const Text('Retry'),
+                  ),
+                  OutlinedButton(
+                    onPressed: canRetry ? _syncRangeWithHome : null,
+                    child: const Text('Match Home period'),
+                  ),
+                  OutlinedButton(
+                    onPressed: canRetry ? _pickCustomRange : null,
+                    child: const Text('Pick date range'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: HexaColors.brandBackground,
       appBar: AppBar(
@@ -1111,17 +1160,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                         padding: EdgeInsets.fromLTRB(0, 0, 0, 24),
                       )
                     else if (showEmpty)
-                      Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Text(
-                          'No purchases in selected period',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 15,
-                            color: HexaColors.textBody,
-                          ),
-                        ),
-                      )
+                      emptyCard()
                     else
                       _listBody(aggList, aggAll, merged),
                   ],
