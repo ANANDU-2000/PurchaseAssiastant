@@ -16,5 +16,5 @@ class AddItemEntryPage extends PurchaseItemEntrySheet {
     super.resolveLastDefaults,
     super.onDefaultsResolved,
     super.navigateCatalogQuickAddItem,
-  }) : super(fullPage: true);
+  }) : super(fullPage: true, omitLineFreightDeliveredBilltyDiscount: false);
 }
