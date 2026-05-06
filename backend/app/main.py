@@ -1,4 +1,5 @@
 import logging
+import os
 import re
 import time
 import uuid
@@ -88,6 +89,18 @@ async def lifespan(app: FastAPI):
                 "Postgres: schema is managed by Alembic only — run `alembic upgrade head` before deploy. "
                 "Startup does not execute create_all or ad-hoc ALTERs."
             )
+
+    if not is_sqlite_runtime() and os.getenv("AUTO_MIGRATE", "").strip() in {"1", "true", "TRUE", "yes", "YES"}:
+        try:
+            from alembic import command
+            from alembic.config import Config
+
+            cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+            command.upgrade(cfg, "head")
+            logger.info("Alembic: upgraded to head (AUTO_MIGRATE enabled)")
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Alembic: upgrade failed (AUTO_MIGRATE enabled): %s", e)
+            raise
 
     if not is_sqlite_runtime():
         try:
