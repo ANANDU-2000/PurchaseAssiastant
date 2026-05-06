@@ -19,6 +19,7 @@ from app.models.api_usage_log import ApiUsageLog
 from app.models.admin_audit_log import AdminAuditLog
 from app.models.platform_monthly_expense import PlatformMonthlyExpense
 from app.models.cloud_expense import CloudExpense, CloudPaymentHistory
+from app.models.whatsapp_report_schedule import WhatsAppReportSchedule
 
 __all__ = [
     "Base",
@@ -53,4 +54,5 @@ __all__ = [
     "BusinessGoal",
     "FeatureFlag",
     "PlatformIntegration",
+    "WhatsAppReportSchedule",
 ]

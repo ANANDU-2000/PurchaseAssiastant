@@ -969,6 +969,38 @@ class HexaApi {
     return Map<String, dynamic>.from(res.data ?? {});
   }
 
+  Future<Map<String, dynamic>> getWhatsAppReportSchedule({
+    required String businessId,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/whatsapp-reports/schedule',
+    );
+    return Map<String, dynamic>.from(res.data ?? {});
+  }
+
+  Future<void> patchWhatsAppReportSchedule({
+    required String businessId,
+    bool? enabled,
+    String? scheduleType, // daily|weekly|monthly
+    int? hour,
+    int? minute,
+    String? timezone,
+    String? toE164,
+  }) async {
+    final data = <String, dynamic>{
+      if (enabled != null) 'enabled': enabled,
+      if (scheduleType != null) 'schedule_type': scheduleType,
+      if (hour != null) 'hour': hour,
+      if (minute != null) 'minute': minute,
+      if (timezone != null) 'timezone': timezone,
+      if (toE164 != null) 'to_e164': toE164,
+    };
+    await _dio.patch<dynamic>(
+      '/v1/businesses/$businessId/whatsapp-reports/schedule',
+      data: data,
+    );
+  }
+
   Future<List<Map<String, dynamic>>> listSuppliers(
       {required String businessId}) async {
     final res = await _dio.get<dynamic>('/v1/businesses/$businessId/suppliers');

@@ -196,6 +196,23 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         '${_waSchedTime.hour.toString().padLeft(2, '0')}:${_waSchedTime.minute.toString().padLeft(2, '0')}',
       );
       await ReportsPrefs.setSchedulePhone(_waPhoneCtrl.text);
+      // Best-effort: also save server-side schedule when backend supports it.
+      // If the endpoint isn't deployed yet, we keep local reminders.
+      try {
+        final session = ref.read(sessionProvider);
+        final bid = session?.primaryBusiness.id;
+        if (bid != null && bid.isNotEmpty) {
+          await ref.read(hexaApiProvider).patchWhatsAppReportSchedule(
+                businessId: bid,
+                enabled: _waSchedEnabled,
+                scheduleType: _waSchedType,
+                hour: _waSchedTime.hour,
+                minute: _waSchedTime.minute,
+                timezone: 'Asia/Kolkata',
+                toE164: _waPhoneCtrl.text,
+              );
+        }
+      } catch (_) {}
       if (_waSchedEnabled) {
         final ok = await LocalNotificationsService.instance
             .notificationPermissionGrantedForScheduling();

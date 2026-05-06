@@ -198,6 +198,12 @@ class Settings(BaseSettings):
 
     enable_ai: bool = True
     enable_ocr: bool = False
+
+    # WhatsApp Cloud API (server-side scheduled auto-send; optional)
+    whatsapp_cloud_access_token: str | None = None
+    whatsapp_cloud_phone_number_id: str | None = None
+    # Secret for Render cron → internal sender endpoint (set long random value in production)
+    whatsapp_reports_cron_secret: str | None = None
     enable_voice: bool = False
     enable_realtime: bool = True
 

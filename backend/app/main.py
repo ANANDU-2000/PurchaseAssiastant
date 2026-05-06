@@ -42,6 +42,7 @@ from app.routers import (
     reports_trade,
     search,
     trade_purchases,
+    whatsapp_reports,
 )
 
 logger = logging.getLogger(__name__)
@@ -266,6 +267,8 @@ app.include_router(me.router)
 app.include_router(entries.router)
 app.include_router(trade_purchases.router)
 app.include_router(reports_trade.router)
+app.include_router(whatsapp_reports.router)
+app.include_router(whatsapp_reports.internal_router)
 app.include_router(search.router)
 app.include_router(ai_chat.router)
 app.include_router(analytics.router)
