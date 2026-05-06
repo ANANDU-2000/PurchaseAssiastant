@@ -88,8 +88,8 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
         title: const Text('Save draft?'),
         content: const Text('You have unsaved item changes.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Discard')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Stay')),
+          TextButton(onPressed: () => ctx.pop(true), child: const Text('Discard')),
+          FilledButton(onPressed: () => ctx.pop(false), child: const Text('Stay')),
         ],
       ),
     );

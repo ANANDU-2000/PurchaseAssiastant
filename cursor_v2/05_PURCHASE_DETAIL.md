@@ -1,25 +1,30 @@
 # SPEC 05 — PURCHASE DETAIL PAGE
+
 > Reference: `@.cursor/00_AGENT_RULES.md` first
 
 ---
 
 ## STATUS
-| Task | Status |
-|------|--------|
-| 3-column summary strip (Amount / Weight / Profit) | ⚠️ Implemented (verify) |
-| Correct bag weight display in line items | ⚠️ Partial |
-| Correct selling rate display (₹/kg not ₹/bag) | ⚠️ Implemented (verify) |
-| Remove "stored total differs" error box | ✅ Done |
-| Remove "Est. sell value" | ✅ Done |
-| Remove "Total spend" wording | ✅ Done |
-| Zero-value charges hidden (Freight: —) | ✅ Shows "—" |
-| Print button in AppBar | ✅ Done |
-| Better action buttons layout | ⚠️ Implemented (verify) |
-| "Complete details pending" banner — tap to edit | ✅ Done |
+
+
+| Task                                              | Status                               |
+| ------------------------------------------------- | ------------------------------------ |
+| 3-column summary strip (Amount / Weight / Profit) | ✅ Done (`_buildSummaryStrip`)        |
+| Correct bag weight display in line items          | ✅ Done (`formatLineQtyWeightFromTradeLine`) |
+| Correct selling rate display (₹/kg not ₹/bag)     | ✅ Done (`tradePurchaseLineDisplaySellingRate`, tin aligned) |
+| Remove "stored total differs" error box           | ✅ Done (removed from UI)             |
+| Remove "Est. sell value"                          | ✅ Done (not present in page)         |
+| Remove "Total spend" wording                      | ✅ Done (not present in page)       |
+| Zero-value charges hidden (Freight: —)            | ✅ Shows "—"                          |
+| Print button in AppBar                            | ✅ Done (`_runPrintPdf`)             |
+| Better action buttons layout                      | ✅ Done (Mark paid + Edit/Share/Print/PDF) |
+| "Complete details pending" banner — tap to edit   | ✅ Done                               |
+
 
 ---
 
 ## FILES TO EDIT
+
 ```
 flutter_app/lib/features/purchase/presentation/purchase_detail_page.dart
 flutter_app/lib/core/services/purchase_pdf.dart
@@ -115,6 +120,7 @@ String _buildWeightText(PurchaseDetailData data) {
 **File:** `purchase_detail_page.dart`
 
 Search for the widget that shows the mismatch error:
+
 ```
 "Stored total ₹X,XX,XXX differs from calculated ₹X,XX,XXX"
 ```
@@ -124,7 +130,7 @@ backend (see `10_PERFORMANCE.md` TASK 10-D for DB fix), not displayed to the use
 
 ---
 
-### ❌ TASK 05-C: Remove "Est. sell value" 
+### ❌ TASK 05-C: Remove "Est. sell value"
 
 **File:** `purchase_detail_page.dart`
 
@@ -187,6 +193,7 @@ Ensure `printing` package is in `pubspec.yaml` (it likely already is as `pdf` an
 Current: 2×2 grid with [Mark paid, Share, Edit, Download].
 
 Replace with cleaner layout:
+
 ```dart
 // Primary action full width:
 if (!isPaid)
@@ -251,10 +258,12 @@ Paid: ₹0.00    Balance: ₹1,37,800    Due: 6 May 2026
 ---
 
 ## VALIDATION
-- [ ] "100 bags • 5,000 kg" shown in weight column (not "250000 kg")
-- [ ] "S ₹27/kg" shown (not "S ₹1,350")
-- [ ] No "Stored total differs" text anywhere
-- [ ] No "Est. sell value" anywhere
-- [ ] No "Total spend" text
-- [ ] Print button opens system print dialog
-- [ ] 3-column summary renders correctly on 393pt wide screen
+
+- "100 bags • 5,000 kg" shown in weight column (not "250000 kg")
+- "S ₹27/kg" shown (not "S ₹1,350")
+- No "Stored total differs" text anywhere
+- No "Est. sell value" anywhere
+- No "Total spend" text
+- Print button opens system print dialog
+- 3-column summary renders correctly on 393pt wide screen
+

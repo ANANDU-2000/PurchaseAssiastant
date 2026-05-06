@@ -74,6 +74,8 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                 '${n.title} ${n.subtitle}'.toLowerCase().contains(q))
             .toList();
     final rel = DateFormat.Hm();
+    final filterEmptyButHasItems =
+        items.isNotEmpty && filtered.isEmpty && q.isEmpty;
 
     final onSurf = Theme.of(context).colorScheme.onSurface;
     return Scaffold(
@@ -200,7 +202,9 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                           Text(
                             q.isNotEmpty
                                 ? 'No matches'
-                                : 'No alerts yet',
+                                : filterEmptyButHasItems
+                                    ? 'Nothing in this tab'
+                                    : 'No alerts yet',
                             textAlign: TextAlign.center,
                             style: tt.titleMedium?.copyWith(
                               fontWeight: FontWeight.w800,
@@ -211,8 +215,10 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                           const SizedBox(height: 8),
                           Text(
                             q.isNotEmpty
-                                ? 'Try a different search or filter.'
-                                : 'Payment due alerts and reminders will appear here.',
+                                ? 'Try a different search or clear the search box.'
+                                : filterEmptyButHasItems
+                                    ? 'Switch to All or another category — your notifications are only hidden by the current filter.'
+                                    : 'Payment due alerts and reminders will appear here.',
                             textAlign: TextAlign.center,
                             style: tt.bodySmall?.copyWith(
                               color: Theme.of(context)
@@ -221,7 +227,15 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                               height: 1.35,
                             ),
                           ),
-                          if (filtered.isEmpty) ...[
+                          if (filterEmptyButHasItems) ...[
+                            const SizedBox(height: 20),
+                            FilledButton(
+                              onPressed: () =>
+                                  setState(() => _filter = 'all'),
+                              child: const Text('Show all'),
+                            ),
+                          ],
+                          if (items.isEmpty) ...[
                             const SizedBox(height: 20),
                             FilledButton.icon(
                               onPressed: () => context.push('/purchase/new'),

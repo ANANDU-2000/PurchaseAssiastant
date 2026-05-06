@@ -451,7 +451,10 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                   const SizedBox(height: 4),
                   SelectableText(
                     _inr0(t.inr.round()),
-                    style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                    style: tt.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      color: const Color(0xFF1A1A1A),
+                    ),
                   ),
                   const SizedBox(height: 6),
                   Wrap(
@@ -982,7 +985,12 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                   physics: const AlwaysScrollableScrollPhysics(
                     parent: BouncingScrollPhysics(),
                   ),
-                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
+                  padding: EdgeInsets.fromLTRB(
+                    12,
+                    4,
+                    12,
+                    24 + MediaQuery.viewPaddingOf(context).bottom,
+                  ),
                   children: [
                     if (purchasesAsync.isLoading && merged.isNotEmpty)
                       const LinearProgressIndicator(minHeight: 2),
@@ -1042,94 +1050,126 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                         ),
                       ),
                     _summaryHeader(aggAll.totals, rangeFmt),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        for (final tab in ReportsMainTab.values)
-                          ChoiceChip(
-                            label: Text(
-                              switch (tab) {
-                                ReportsMainTab.overview => 'Overview',
-                                ReportsMainTab.items => 'Items',
-                                ReportsMainTab.suppliers => 'Suppliers',
-                                ReportsMainTab.brokers => 'Brokers',
-                              },
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
+                    const SizedBox(height: 4),
+                    SizedBox(
+                      height: 36,
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            for (final tab in ReportsMainTab.values) ...[
+                              ChoiceChip(
+                                label: Text(
+                                  switch (tab) {
+                                    ReportsMainTab.overview => 'Overview',
+                                    ReportsMainTab.items => 'Items',
+                                    ReportsMainTab.suppliers => 'Suppliers',
+                                    ReportsMainTab.brokers => 'Brokers',
+                                  },
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                selected: _mainTab == tab,
+                                onSelected: (_) => setState(() {
+                                  _mainTab = tab;
+                                  _visibleCap = 40;
+                                }),
+                                showCheckmark: false,
+                                visualDensity: VisualDensity.compact,
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
                               ),
-                            ),
-                            selected: _mainTab == tab,
-                            onSelected: (_) => setState(() {
-                              _mainTab = tab;
-                              _visibleCap = 40;
-                            }),
-                            showCheckmark: false,
-                            visualDensity: VisualDensity.compact,
-                          ),
-                      ],
+                              const SizedBox(width: 6),
+                            ],
+                          ],
+                        ),
+                      ),
                     ),
                     if (_mainTab == ReportsMainTab.items) ...[
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          const Text(
-                            'Group:',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF333333),
-                            ),
-                          ),
-                          for (final f in ReportsPackFilter.values)
-                            ChoiceChip(
-                              label: Text(
-                                switch (f) {
-                                  ReportsPackFilter.all => 'All',
-                                  ReportsPackFilter.bag => 'Bags',
-                                  ReportsPackFilter.box => 'Box',
-                                  ReportsPackFilter.tin => 'Tin',
-                                },
+                      const SizedBox(height: 6),
+                      SizedBox(
+                        height: 36,
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              const Text(
+                                'Group:',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                  color: Color(0xFF333333),
+                                ),
                               ),
-                              selected: _packFilter == f,
-                              onSelected: (_) => setState(() {
-                                _packFilter = f;
-                                _visibleCap = 40;
-                              }),
-                              showCheckmark: false,
-                              visualDensity: VisualDensity.compact,
-                            ),
-                          const SizedBox(width: 8),
-                          const Text(
-                            'Sort:',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF333333),
-                            ),
+                              const SizedBox(width: 6),
+                              for (final f in ReportsPackFilter.values) ...[
+                                ChoiceChip(
+                                  label: Text(
+                                    switch (f) {
+                                      ReportsPackFilter.all => 'All',
+                                      ReportsPackFilter.bag => 'Bags',
+                                      ReportsPackFilter.box => 'Box',
+                                      ReportsPackFilter.tin => 'Tin',
+                                    },
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                  selected: _packFilter == f,
+                                  onSelected: (_) => setState(() {
+                                    _packFilter = f;
+                                    _visibleCap = 40;
+                                  }),
+                                  showCheckmark: false,
+                                  visualDensity: VisualDensity.compact,
+                                  materialTapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                const SizedBox(width: 6),
+                              ],
+                              const SizedBox(width: 10),
+                              const Text(
+                                'Sort:',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                  color: Color(0xFF333333),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              ChoiceChip(
+                                label: const Text(
+                                  'Latest',
+                                  style: TextStyle(fontSize: 11),
+                                ),
+                                selected:
+                                    _itemSort == TradeReportItemSort.latest,
+                                onSelected: (_) => setState(() {
+                                  _itemSort = TradeReportItemSort.latest;
+                                }),
+                                showCheckmark: false,
+                                visualDensity: VisualDensity.compact,
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              ChoiceChip(
+                                label: const Text(
+                                  'High qty',
+                                  style: TextStyle(fontSize: 11),
+                                ),
+                                selected:
+                                    _itemSort == TradeReportItemSort.highQty,
+                                onSelected: (_) => setState(() {
+                                  _itemSort = TradeReportItemSort.highQty;
+                                }),
+                                showCheckmark: false,
+                                visualDensity: VisualDensity.compact,
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                              ),
+                            ],
                           ),
-                          ChoiceChip(
-                            label: const Text('Latest'),
-                            selected: _itemSort == TradeReportItemSort.latest,
-                            onSelected: (_) => setState(() {
-                              _itemSort = TradeReportItemSort.latest;
-                            }),
-                            showCheckmark: false,
-                            visualDensity: VisualDensity.compact,
-                          ),
-                          ChoiceChip(
-                            label: const Text('High qty'),
-                            selected: _itemSort == TradeReportItemSort.highQty,
-                            onSelected: (_) => setState(() {
-                              _itemSort = TradeReportItemSort.highQty;
-                            }),
-                            showCheckmark: false,
-                            visualDensity: VisualDensity.compact,
-                          ),
-                        ],
+                        ),
                       ),
                     ],
                     const SizedBox(height: 8),

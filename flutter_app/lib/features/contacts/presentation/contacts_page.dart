@@ -569,7 +569,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                   final n = nameCtrl.text.trim();
                   if (n.isEmpty) return;
                   final e = emojiCtrl.text.trim();
-                  Navigator.pop(ctx, e.isEmpty ? n : '$e $n');
+                  ctx.pop(e.isEmpty ? n : '$e $n');
                 },
               ),
               const SizedBox(height: 20),
@@ -578,7 +578,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                   final n = nameCtrl.text.trim();
                   if (n.isEmpty) return;
                   final e = emojiCtrl.text.trim();
-                  Navigator.pop(ctx, e.isEmpty ? n : '$e $n');
+                  ctx.pop(e.isEmpty ? n : '$e $n');
                 },
                 child: const Text('Save category'),
               ),
@@ -659,10 +659,10 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
             'This cannot be undone. No purchase entries must reference this supplier.'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
+              onPressed: () => ctx.pop(false),
               child: const Text('Cancel')),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
+              onPressed: () => ctx.pop(true),
               child: const Text('Delete')),
         ],
       ),
@@ -720,10 +720,10 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
             'Removes broker only if no entries or suppliers reference them.'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
+              onPressed: () => ctx.pop(false),
               child: const Text('Cancel')),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
+              onPressed: () => ctx.pop(true),
               child: const Text('Delete')),
         ],
       ),

@@ -259,8 +259,8 @@ class _LoadedPurchaseScaffold extends ConsumerWidget {
         title: const Text('Delete this purchase?'),
         content: Text('Remove ${p.humanId}?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+          TextButton(onPressed: () => ctx.pop(false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => ctx.pop(true), child: const Text('Delete')),
         ],
       ),
     );
@@ -748,7 +748,7 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
     final purchase = '${_inr(pk)}$pSuffix';
     if (sk != null) {
       final sSuffix =
-          (tradePurchaseLineIsWeightPriced(l) || ul == 'kg') ? '/kg' : '/$u';
+          tradePurchaseLineDisplaySellingRateIsPerKg(l) ? '/kg' : '/$u';
       return (purchase: purchase, selling: '${_inr(sk)}$sSuffix');
     }
     if (l.kgPerUnit != null &&
@@ -1098,7 +1098,7 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
             ),
             const SizedBox(height: 12),
             FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
+              onPressed: () => ctx.pop(true),
               child: const Text('Save'),
             ),
           ],

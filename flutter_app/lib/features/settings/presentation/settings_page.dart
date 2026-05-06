@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, Uint8List;
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart'
+    show kIsWeb, Uint8List, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -58,6 +60,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   TimeOfDay _waSchedTime = const TimeOfDay(hour: 8, minute: 0);
   late final TextEditingController _waPhoneCtrl;
   bool _waSchedBusy = false;
+  bool _waSendingTest = false;
 
   @override
   void initState() {
@@ -120,6 +123,69 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     });
   }
 
+  Future<void> _pickWhatsAppScheduleTime() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) {
+      final picked = await showTimePicker(
+        context: context,
+        initialTime: _waSchedTime,
+      );
+      if (picked != null && mounted) setState(() => _waSchedTime = picked);
+      return;
+    }
+    final initial =
+        DateTime(2020, 1, 1, _waSchedTime.hour, _waSchedTime.minute);
+    var current = initial;
+    await showCupertinoModalPopup<void>(
+      context: context,
+      builder: (modalCtx) => Container(
+        height: 280,
+        padding: const EdgeInsets.only(bottom: 8),
+        margin: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(modalCtx).bottom),
+        decoration: BoxDecoration(
+          color: CupertinoColors.systemBackground.resolveFrom(modalCtx),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  CupertinoButton(
+                    onPressed: () => modalCtx.pop(),
+                    child: const Text('Cancel'),
+                  ),
+                  CupertinoButton(
+                    onPressed: () {
+                      modalCtx.pop();
+                      if (!mounted) return;
+                      setState(() {
+                        _waSchedTime = TimeOfDay(
+                          hour: current.hour,
+                          minute: current.minute,
+                        );
+                      });
+                    },
+                    child: const Text('Done'),
+                  ),
+                ],
+              ),
+              Expanded(
+                child: CupertinoDatePicker(
+                  mode: CupertinoDatePickerMode.time,
+                  initialDateTime: initial,
+                  use24hFormat: false,
+                  onDateTimeChanged: (d) => current = d,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _applyWhatsAppSchedule() async {
     if (_waSchedBusy) return;
     setState(() => _waSchedBusy = true);
@@ -130,6 +196,22 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         '${_waSchedTime.hour.toString().padLeft(2, '0')}:${_waSchedTime.minute.toString().padLeft(2, '0')}',
       );
       await ReportsPrefs.setSchedulePhone(_waPhoneCtrl.text);
+      if (_waSchedEnabled) {
+        final ok = await LocalNotificationsService.instance
+            .notificationPermissionGrantedForScheduling();
+        if (!ok) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Allow notifications in system settings to enable auto-report reminders.',
+                ),
+                duration: Duration(seconds: 4),
+              ),
+            );
+          }
+        }
+      }
       await LocalNotificationsService.instance.scheduleWhatsAppReport(
         enabled: _waSchedEnabled,
         type: _waSchedType,
@@ -139,15 +221,30 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(_waSchedEnabled ? 'WhatsApp auto-report scheduled' : 'WhatsApp auto-report disabled'),
+          content: Text(
+            _waSchedEnabled
+                ? 'WhatsApp report schedule saved'
+                : 'WhatsApp auto-report disabled',
+          ),
+          backgroundColor: const Color(0xFF1B6B5A),
         ),
       );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Save failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _waSchedBusy = false);
     }
   }
 
   Future<void> _sendTestWhatsAppReportNow() async {
+    if (_waSendingTest) return;
     final phone = _waPhoneCtrl.text.replaceAll(RegExp(r'[^0-9]'), '');
     if (phone.length < 10) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -155,35 +252,46 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       );
       return;
     }
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final (from, to) = switch (_waSchedType) {
-      'daily' => (today, today),
-      'monthly' => (today.subtract(const Duration(days: 29)), today),
-      _ => (today.subtract(const Duration(days: 6)), today),
-    };
-    ref.read(analyticsDateRangeProvider.notifier).state = (from: from, to: to);
-    ref.invalidate(reportsPurchasesPayloadProvider);
-    await ref.read(reportsPurchasesPayloadProvider.future);
-    final purchases = ref.read(reportsPurchasesMergedProvider);
-    final agg = buildTradeReportAgg(purchases);
+    setState(() => _waSendingTest = true);
+    try {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final (from, to) = switch (_waSchedType) {
+        'daily' => (today, today),
+        'monthly' => (today.subtract(const Duration(days: 29)), today),
+        _ => (today.subtract(const Duration(days: 6)), today),
+      };
+      ref.read(analyticsDateRangeProvider.notifier).state = (from: from, to: to);
+      ref.invalidate(reportsPurchasesPayloadProvider);
+      await ref.read(reportsPurchasesPayloadProvider.future);
+      final purchases = ref.read(reportsPurchasesMergedProvider);
+      final agg = buildTradeReportAgg(purchases);
 
-    final df = DateFormat('d MMM');
-    final t = agg.totals;
-    final parts = <String>[
-      'Purchase Report (${df.format(from)} → ${df.format(to)})',
-      '',
-      'Total: ${NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(t.inr)}',
-      _qtyLine(t),
-    ]..removeWhere((e) => e.trim().isEmpty);
-    final msg = Uri.encodeComponent(parts.join('\n'));
-    final uri = Uri.parse('https://wa.me/$phone?text=$msg');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('WhatsApp not available')),
-      );
+      final df = DateFormat('d MMM');
+      final t = agg.totals;
+      final parts = <String>[
+        'Purchase Report (${df.format(from)} → ${df.format(to)})',
+        '',
+        'Total: ${NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(t.inr)}',
+        _qtyLine(t),
+      ]..removeWhere((e) => e.trim().isEmpty);
+      final msg = Uri.encodeComponent(parts.join('\n'));
+      final uri = Uri.parse('https://wa.me/$phone?text=$msg');
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('WhatsApp not installed or number invalid')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _waSendingTest = false);
     }
   }
 
@@ -495,11 +603,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     'WhatsApp Reports',
                     style: tt.labelLarge?.copyWith(fontWeight: FontWeight.w800),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Schedules a reminder on this device. Tapping the notification builds the report and opens WhatsApp — nothing is sent automatically without your action.',
+                    style: tt.bodySmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('Auto-report'),
-                    subtitle: const Text('Shows a local reminder notification'),
+                    subtitle: const Text('Local reminder at the time you choose'),
                     value: _waSchedEnabled,
                     onChanged: (v) => setState(() => _waSchedEnabled = v),
                   ),
@@ -520,14 +636,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   ),
                   const SizedBox(height: 10),
                   OutlinedButton.icon(
-                    onPressed: () async {
-                      final picked = await showTimePicker(
-                        context: context,
-                        initialTime: _waSchedTime,
-                      );
-                      if (picked == null || !mounted) return;
-                      setState(() => _waSchedTime = picked);
-                    },
+                    onPressed: () => unawaited(_pickWhatsAppScheduleTime()),
                     icon: const Icon(Icons.schedule_rounded),
                     label: Text('Time: ${_waSchedTime.format(context)}'),
                   ),
@@ -554,8 +663,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   ),
                   const SizedBox(height: 8),
                   OutlinedButton(
-                    onPressed: () => unawaited(_sendTestWhatsAppReportNow()),
-                    child: const Text('Send test report now'),
+                    onPressed: _waSendingTest
+                        ? null
+                        : () => unawaited(_sendTestWhatsAppReportNow()),
+                    child: _waSendingTest
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Send test report now'),
                   ),
                 ],
               ),
@@ -1090,9 +1207,9 @@ class _CloudSettingsCard extends ConsumerWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => ctx.pop(false), child: const Text('Cancel')),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
+            onPressed: () => ctx.pop(true),
             child: const Text('Save'),
           ),
         ],
@@ -1208,7 +1325,7 @@ class _CloudSettingsCard extends ConsumerWidget {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
+            onPressed: () => ctx.pop(),
             child: const Text('Close'),
           ),
         ],
@@ -1227,11 +1344,11 @@ class _CloudSettingsCard extends ConsumerWidget {
         content: const Text('Only confirm after you have completed the UPI transfer.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
+            onPressed: () => ctx.pop(false),
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
+            onPressed: () => ctx.pop(true),
             child: const Text('Confirm'),
           ),
         ],

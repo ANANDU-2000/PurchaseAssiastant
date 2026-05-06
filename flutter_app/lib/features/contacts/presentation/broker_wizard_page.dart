@@ -31,7 +31,7 @@ class BrokerWizardPage extends ConsumerStatefulWidget {
   });
 
   final String? brokerId;
-  /// When true (purchase quick-create): [Navigator.pop] with `{'id','name'}` on successful save.
+  /// When true (purchase quick-create): `context.pop` with `{'id','name'}` on successful save.
   final bool selectionReturnOnSave;
 
   @override
@@ -283,8 +283,8 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
           title: const Text('Similar broker'),
           content: Text('$_dupHint\n\nContinue saving this broker?'),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Go back')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Continue')),
+            TextButton(onPressed: () => ctx.pop(false), child: const Text('Go back')),
+            FilledButton(onPressed: () => ctx.pop(true), child: const Text('Continue')),
           ],
         ),
       );
@@ -459,8 +459,8 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
         title: const Text('Save changes?'),
         content: const Text('You have unsaved broker changes.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Discard')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Stay')),
+          TextButton(onPressed: () => ctx.pop(false), child: const Text('Discard')),
+          FilledButton(onPressed: () => ctx.pop(true), child: const Text('Stay')),
         ],
       ),
     );

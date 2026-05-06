@@ -1,18 +1,22 @@
 # SPEC 11 — BROKER IMAGES & SUPABASE MCP DATA
+
 > Reference: `@.cursor/00_AGENT_RULES.md` first
 
 ---
 
 ## STATUS
-| Task | Status |
-|------|--------|
-| Find user ID from email | ⚠️ Not done (no matching auth user found via MCP query) |
-| Find business ID | ⚠️ Not done (blocked on user id) |
-| Add image_url column to brokers table | ✅ Done (backend model + sqlite bootstrap already include `image_url`) |
+
+
+| Task                                     | Status     |
+| ---------------------------------------- | ---------- |
+| Find user ID from email                  | ❌ Not done |
+| Find business ID                         | ❌ Not done |
+| Add image_url column to brokers table    | ❌ Not done |
 | Upload broker images to Supabase Storage | ❌ Not done |
-| Link images to broker records | ❌ Not done |
-| Display broker image in detail page | ✅ Done (already present) |
-| Display broker image in purchase detail | ✅ Done |
+| Link images to broker records            | ❌ Not done |
+| Display broker image in detail page      | ❌ Not done |
+| Display broker image in purchase detail  | ❌ Not done |
+
 
 ---
 
@@ -78,6 +82,7 @@ Show this list to the user and ask which broker each image file belongs to.
 ```
 
 Storage policy:
+
 ```sql
 -- Allow authenticated users to read broker images:
 CREATE POLICY "Authenticated read broker images"
@@ -97,6 +102,7 @@ WITH CHECK (bucket_id = 'broker-images');
 ### STEP 5: Upload images (via Supabase MCP or dashboard)
 
 For each image file in the `data/` folder:
+
 1. Upload to `broker-images/{BUSINESS_ID}/{broker_name}.jpg`
 2. Get the public URL from Supabase Storage
 3. Update the broker record:
@@ -139,6 +145,7 @@ Widget _buildBrokerAvatar(String? imageUrl, String name) {
 ```
 
 **Also show broker avatar in purchase detail page next to broker name:**
+
 ```dart
 Row(children: [
   _buildBrokerAvatar(brokerImageUrl, brokerName, radius: 16),
@@ -165,6 +172,7 @@ class BrokerOut(BaseModel):
 ```
 
 In the query:
+
 ```python
 select(Broker.id, Broker.name, Broker.phone, Broker.image_url, ...)
 ```
@@ -172,8 +180,10 @@ select(Broker.id, Broker.name, Broker.phone, Broker.image_url, ...)
 ---
 
 ## VALIDATION
-- [ ] `brokers` table has `image_url` column
-- [ ] Broker images uploaded to Storage bucket
-- [ ] Broker detail page shows photo (not just initials)
-- [ ] Purchase detail shows broker avatar next to broker name
-- [ ] API returns `image_url` in broker list response
+
+- `brokers` table has `image_url` column
+- Broker images uploaded to Storage bucket
+- Broker detail page shows photo (not just initials)
+- Purchase detail shows broker avatar next to broker name
+- API returns `image_url` in broker list response
+

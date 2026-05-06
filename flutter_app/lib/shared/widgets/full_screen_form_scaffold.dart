@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import 'keyboard_safe_form_viewport.dart';
 
@@ -33,7 +34,10 @@ class FullScreenFormScaffold extends StatelessWidget {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: onBackPressed ?? () => Navigator.of(context).maybePop(),
+          onPressed: onBackPressed ??
+              () {
+                if (context.canPop()) context.pop();
+              },
         ),
         automaticallyImplyLeading: false,
         centerTitle: true,

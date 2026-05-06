@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -125,7 +126,7 @@ Future<String?> showPurchaseSavedSheet(
                           children: [
                             Expanded(
                               child: OutlinedButton(
-                                onPressed: () => Navigator.pop(ctx, 'later_missing'),
+                                onPressed: () => ctx.pop('later_missing'),
                                 child: const Text('Later'),
                               ),
                             ),
@@ -133,7 +134,7 @@ Future<String?> showPurchaseSavedSheet(
                             Expanded(
                               child: FilledButton(
                                 onPressed: () =>
-                                    Navigator.pop(ctx, 'edit_missing'),
+                                    ctx.pop( 'edit_missing'),
                                 child: const Text('Edit now'),
                               ),
                             ),
@@ -148,18 +149,18 @@ Future<String?> showPurchaseSavedSheet(
               leading: const Icon(Icons.home_outlined),
               title: const Text('Home dashboard'),
               subtitle: const Text('Close entry and go to overview'),
-              onTap: () => Navigator.pop(ctx, 'home'),
+              onTap: () => ctx.pop('home'),
             ),
             ListTile(
               leading: const Icon(Icons.visibility_rounded),
               title: const Text('View purchase'),
-              onTap: () => Navigator.pop(ctx, 'detail'),
+              onTap: () => ctx.pop('detail'),
             ),
             ListTile(
               leading: const Icon(Icons.share_rounded),
               title: const Text('Share PDF'),
               onTap: () async {
-                Navigator.pop(ctx, 'home');
+                ctx.pop('home');
                 await sharePurchasePdf(p, biz);
               },
             ),
@@ -167,7 +168,7 @@ Future<String?> showPurchaseSavedSheet(
               leading: const Icon(Icons.print_rounded),
               title: const Text('Print'),
               onTap: () async {
-                Navigator.pop(ctx, 'home');
+                ctx.pop('home');
                 await printPurchasePdf(p, biz);
               },
             ),
@@ -176,7 +177,7 @@ Future<String?> showPurchaseSavedSheet(
               title: const Text('WhatsApp (summary)'),
               subtitle: const Text('Opens WhatsApp with text — attach PDF from Share PDF if needed'),
               onTap: () async {
-                Navigator.pop(ctx, 'home');
+                ctx.pop('home');
                 await _openWhatsAppSummary(p);
               },
             ),
@@ -184,7 +185,7 @@ Future<String?> showPurchaseSavedSheet(
               leading: const Icon(Icons.email_outlined),
               title: const Text('Email'),
               onTap: () async {
-                Navigator.pop(ctx, 'home');
+                ctx.pop('home');
                 final sub = Uri.encodeComponent('Purchase ${p.humanId}');
                 final body = Uri.encodeComponent('Please find purchase ${p.humanId} attached.');
                 final uri = Uri.parse('mailto:?subject=$sub&body=$body');

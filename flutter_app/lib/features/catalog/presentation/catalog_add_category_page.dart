@@ -65,8 +65,8 @@ class _CatalogAddCategoryPageState extends ConsumerState<CatalogAddCategoryPage>
                   : 'Close matches include "$sample". Create "$n" anyway?',
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Go back')),
-              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Create')),
+              TextButton(onPressed: () => ctx.pop(false), child: const Text('Go back')),
+              FilledButton(onPressed: () => ctx.pop(true), child: const Text('Create')),
             ],
           ),
         );

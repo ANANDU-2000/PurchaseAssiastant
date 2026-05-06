@@ -31,11 +31,6 @@ class ResumePurchaseDraftBanner extends ConsumerWidget {
         if (meta is Map && meta['savedAt'] != null) {
           final dt = DateTime.tryParse(meta['savedAt'].toString());
           if (dt != null) {
-            if (DateTime.now().difference(dt) > const Duration(hours: 24)) {
-              // Auto-clear stale drafts so users don't keep seeing dead banners.
-              OfflineStore.clearPurchaseWizardDraft(bid);
-              return const SizedBox.shrink();
-            }
             subtitle = 'Saved ${DateFormat('MMM d · h:mm a').format(dt)}';
           }
         }

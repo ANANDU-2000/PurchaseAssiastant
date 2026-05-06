@@ -88,8 +88,8 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
       builder: (d) => AlertDialog(
         title: Text('Delete “$name”?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Delete')),
+          TextButton(onPressed: () => d.pop(false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => d.pop(true), child: const Text('Delete')),
         ],
       ),
     );
@@ -131,8 +131,8 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
         title: Text('Delete ${_selected.length} item(s)?'),
         content: const Text('This cannot be undone.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+          TextButton(onPressed: () => ctx.pop(false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => ctx.pop(true), child: const Text('Delete')),
         ],
       ),
     );
@@ -329,7 +329,7 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
                             onPressed: targetCat == null || targetType == null
                                 ? null
                                 : () async {
-                                    Navigator.pop(ctx);
+                                    ctx.pop();
                                     final session = ref.read(sessionProvider);
                                     if (session == null) return;
                                     for (final id in _selected.toList()) {
@@ -394,7 +394,7 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
                 title: const Text('Edit on detail'),
                 subtitle: const Text('Change defaults, see history'),
                 onTap: () {
-                  Navigator.pop(ctx);
+                  ctx.pop();
                   context.push('/catalog/item/$id');
                 },
               ),
@@ -402,7 +402,7 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
                 leading: Icon(Icons.delete_outline, color: Colors.red.shade700),
                 title: Text('Delete', style: TextStyle(color: Colors.red.shade800)),
                 onTap: () async {
-                  Navigator.pop(ctx);
+                  ctx.pop();
                   await _deleteItemById(id, name);
                 },
               ),
@@ -410,7 +410,7 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
                 leading: const Icon(Icons.checklist_rounded),
                 title: const Text('Select multiple'),
                 onTap: () {
-                  Navigator.pop(ctx);
+                  ctx.pop();
                   setState(() {
                     _selectionMode = true;
                     _selected

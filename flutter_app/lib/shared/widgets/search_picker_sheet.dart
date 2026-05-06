@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/search/catalog_fuzzy.dart';
 import '../../core/search/search_highlight.dart';
@@ -11,7 +12,7 @@ const int kSearchPickerMaxRows = 25;
 const double _kSearchPickerRowApproxH = 56.0;
 const double _kSearchPickerHeaderBlockH = 168.0;
 
-/// Single-select list with fuzzy search — tap row to `Navigator.pop(context, value)`.
+/// Single-select list with fuzzy search — tap row to `context.pop(value)`.
 ///
 /// [pinnedRows] show first when the query is empty (e.g. recent suppliers).
 /// Query is debounced by [queryDebounce] before filtering (default 150ms).
@@ -253,7 +254,7 @@ class _SearchPickerBodyState<T> extends State<_SearchPickerBody<T>> {
           trailing: sel
               ? Icon(Icons.check_rounded, color: cs.primary)
               : null,
-          onTap: () => Navigator.pop(context, r.value),
+          onTap: () => context.pop(r.value),
         ),
       );
     }

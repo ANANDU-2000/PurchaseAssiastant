@@ -179,7 +179,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                 leading: const Icon(Icons.hourglass_top_rounded),
                 title: const Text('Pending'),
                 onTap: () {
-                  Navigator.pop(ctx);
+                  ctx.pop();
                   _selectSecondary('pending');
                 },
               ),
@@ -187,7 +187,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                 leading: const Icon(Icons.payments_rounded),
                 title: const Text('Paid'),
                 onTap: () {
-                  Navigator.pop(ctx);
+                  ctx.pop();
                   _selectSecondary('paid');
                 },
               ),
@@ -195,7 +195,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                 leading: const Icon(Icons.warning_amber_rounded),
                 title: const Text('Overdue'),
                 onTap: () {
-                  Navigator.pop(ctx);
+                  ctx.pop();
                   _selectSecondary('overdue');
                 },
               ),
@@ -237,8 +237,8 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
         title: const Text('Delete purchase?'),
         content: Text('Remove ${p.humanId}?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+          TextButton(onPressed: () => ctx.pop(false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => ctx.pop(true), child: const Text('Delete')),
         ],
       ),
     );
@@ -282,8 +282,8 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
       builder: (ctx) => AlertDialog(
         title: Text('Delete ${_selected.length} purchases?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+          TextButton(onPressed: () => ctx.pop(false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => ctx.pop(true), child: const Text('Delete')),
         ],
       ),
     );
@@ -394,6 +394,20 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
       backgroundColor: HexaColors.brandBackground,
       appBar: AppBar(
         automaticallyImplyLeading: false,
+        leading: IconButton(
+          tooltip: _selectMode ? 'Cancel selection' : 'Home',
+          icon: Icon(_selectMode ? Icons.close_rounded : Icons.home_outlined),
+          onPressed: () {
+            if (_selectMode) {
+              setState(() {
+                _selectMode = false;
+                _selected.clear();
+              });
+            } else {
+              context.go('/home');
+            }
+          },
+        ),
         backgroundColor: HexaColors.brandBackground,
         surfaceTintColor: Colors.transparent,
         scrolledUnderElevation: 0,
@@ -603,7 +617,12 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                   parent: BouncingScrollPhysics()),
                               key: PageStorageKey<String>('hist_${primary}_${secondary ?? ''}_${ref.watch(purchaseHistorySearchProvider)}'),
                               controller: _scroll,
-                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                              padding: EdgeInsets.fromLTRB(
+                                16,
+                                8,
+                                16,
+                                12 + MediaQuery.viewPaddingOf(context).bottom,
+                              ),
                       itemCount: visible.length + (showLocalWipRow ? 1 : 0),
                       separatorBuilder: (_, __) => const SizedBox(height: 4),
                               itemBuilder: (context, i) {
@@ -833,14 +852,14 @@ class _PurchaseRow extends StatelessWidget {
         onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(8),
         child: Container(
-          constraints: const BoxConstraints(minHeight: 78),
+          constraints: const BoxConstraints(minHeight: 64),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
                 color: selected ? HexaColors.brandPrimary : HexaColors.brandBorder,
                 width: selected ? 2 : 1),
           ),
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -853,32 +872,34 @@ class _PurchaseRow extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: HexaDsType.purchaseQtyUnit.copyWith(
-                        fontSize: 13,
+                        fontSize: 12.5,
                         fontWeight: FontWeight.w900,
                         color: const Color(0xFF0F172A),
+                        height: 1.15,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 1),
                     Text(
                       '$itemName$moreCount  •  $weightStr',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 12,
+                        fontSize: 11.5,
                         color: Color(0xFF0F172A),
-                        height: 1.2,
+                        height: 1.15,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 1),
                     Text(
                       '${p.humanId}  ·  ${df.format(p.purchaseDate)}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 10,
+                        fontSize: 9.5,
                         fontWeight: FontWeight.w700,
                         color: HexaColors.neutral,
+                        height: 1.1,
                       ),
                     ),
                   ],
@@ -890,11 +911,12 @@ class _PurchaseRow extends StatelessWidget {
                   Text(
                     _inr(p.totalAmount.round()),
                     style: HexaDsType.purchaseLineMoney.copyWith(
-                      fontSize: 16,
+                      fontSize: 15,
                       letterSpacing: -0.3,
+                      height: 1.1,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 1),
                   _MiniBadge(st),
                 ],
               ),
@@ -953,7 +975,7 @@ class _MiniBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
       decoration: BoxDecoration(
         color: st.color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(20),
@@ -961,7 +983,7 @@ class _MiniBadge extends StatelessWidget {
       child: Text(
         st.label,
         style: TextStyle(
-            fontSize: 10, fontWeight: FontWeight.w700, color: st.color),
+            fontSize: 9, fontWeight: FontWeight.w700, height: 1.05, color: st.color),
       ),
     );
   }

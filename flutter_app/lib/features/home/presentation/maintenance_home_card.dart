@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -198,11 +199,11 @@ Future<void> _showMarkPaidDialog(BuildContext context, WidgetRef ref) async {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(ctx).pop(false),
+          onPressed: () => ctx.pop(false),
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: () => Navigator.of(ctx).pop(true),
+          onPressed: () => ctx.pop(true),
           child: const Text('Confirm'),
         ),
       ],

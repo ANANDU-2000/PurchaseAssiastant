@@ -349,6 +349,11 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     String? raw = OfflineStore.getPurchaseWizardDraft(bid);
     raw ??= ref.read(sharedPreferencesProvider).getString(k);
     if (raw == null || raw.isEmpty) return;
+    if (OfflineStore.purchaseWizardDraftJsonIsExpired(raw)) {
+      await OfflineStore.clearPurchaseWizardDraft(bid);
+      await ref.read(sharedPreferencesProvider).remove(k);
+      return;
+    }
     try {
       final dec = jsonDecode(raw);
       if (dec is! Map) return;
@@ -357,7 +362,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       if (meta is! Map) return;
       final at = DateTime.tryParse(meta['savedAt']?.toString() ?? '');
       if (at == null) return;
-      if (DateTime.now().difference(at) > const Duration(hours: 24)) return;
       final items = m['items'] ?? m['lines'];
       final hasLines = items is List && items.isNotEmpty;
       final hasSupplier = (m['supplierId'] ?? m['supplier_id'] ?? '')
@@ -1138,18 +1142,18 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         actions: [
           CupertinoDialogAction(
             onPressed: () =>
-                Navigator.pop(ctx, _WizardExitDraftChoice.keepEditing),
+                ctx.pop(_WizardExitDraftChoice.keepEditing),
             child: const Text('Keep editing'),
           ),
           CupertinoDialogAction(
             onPressed: () =>
-                Navigator.pop(ctx, _WizardExitDraftChoice.saveDraft),
+                ctx.pop(_WizardExitDraftChoice.saveDraft),
             child: const Text('Save draft'),
           ),
           CupertinoDialogAction(
             isDestructiveAction: true,
             onPressed: () =>
-                Navigator.pop(ctx, _WizardExitDraftChoice.discard),
+                ctx.pop(_WizardExitDraftChoice.discard),
             child: const Text('Discard'),
           ),
         ],
@@ -1243,11 +1247,11 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
+            onPressed: () => ctx.pop(false),
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
+            onPressed: () => ctx.pop(true),
             child: const Text('Save'),
           ),
         ],
@@ -1399,11 +1403,11 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
+                onPressed: () => ctx.pop(false),
                 child: const Text('Cancel'),
               ),
               FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
+                onPressed: () => ctx.pop(true),
                 child: const Text('Save anyway'),
               ),
             ],

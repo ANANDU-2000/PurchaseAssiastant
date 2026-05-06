@@ -35,7 +35,9 @@ class SupplierLedgerPage extends ConsumerWidget {
   Map<String, dynamic> _rowIntel(LedgerLineRow row) {
     final u = row.unit.trim().toLowerCase();
     double? kpu;
-    if ((u == 'bag' || u == 'sack') && row.qty > 1e-9 && row.kg > 1e-9) {
+    if ((u == 'bag' || u == 'sack' || u == 'box' || u == 'tin') &&
+        row.qty > 1e-9 &&
+        row.kg > 1e-9) {
       kpu = row.kg / row.qty;
     }
     return {
@@ -45,6 +47,8 @@ class SupplierLedgerPage extends ConsumerWidget {
       'last_line_unit': row.unit,
       'last_line_weight_kg': row.kg,
       if (kpu != null) 'kg_per_unit': kpu,
+      if (row.purchaseRateDim.isNotEmpty) 'purchase_rate_dim': row.purchaseRateDim,
+      if (row.sellingRateDim.isNotEmpty) 'selling_rate_dim': row.sellingRateDim,
     };
   }
 
@@ -63,12 +67,12 @@ class SupplierLedgerPage extends ConsumerWidget {
               ListTile(
                 leading: const Icon(Icons.edit_outlined),
                 title: const Text('Edit'),
-                onTap: () => Navigator.pop(ctx, 'edit'),
+                onTap: () => ctx.pop('edit'),
               ),
               ListTile(
                 leading: Icon(Icons.delete_outline, color: Theme.of(ctx).colorScheme.error),
                 title: Text('Delete', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
-                onTap: () => Navigator.pop(ctx, 'delete'),
+                onTap: () => ctx.pop('delete'),
               ),
             ],
           ),
@@ -87,8 +91,8 @@ class SupplierLedgerPage extends ConsumerWidget {
         title: const Text('Delete purchase?'),
         content: Text('Remove bill ${row.humanId ?? row.purchaseId}?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+          TextButton(onPressed: () => ctx.pop(false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => ctx.pop(true), child: const Text('Delete')),
         ],
       ),
     );
@@ -191,7 +195,7 @@ class SupplierLedgerPage extends ConsumerWidget {
               ),
               TextField(
                 decoration: const InputDecoration(
-                  hintText: 'Filter by item…',
+                  hintText: 'Search item, invoice (PUR-…), id…',
                   isDense: true,
                   prefixIcon: Icon(Icons.search_rounded, size: 22),
                   border: OutlineInputBorder(),

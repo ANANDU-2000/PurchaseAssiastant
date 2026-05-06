@@ -1,4 +1,4 @@
-"""Idempotent catalog + GST suppliers seed for one business (sync SQLAlchemy Session)."""
+"""Idempotent catalog + GST suppliers + optional brokers seed for one business (sync Session)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.catalog import CatalogItem, CategoryType, ItemCategory
-from app.models.contacts import Supplier
+from app.models.contacts import Broker, Supplier
 
 _REQUIRED_SEED_NAMES = (
     "categories_seed.json",
@@ -108,6 +108,22 @@ def _opt_float(v: object) -> float | None:
         return None
 
 
+def _resolve_brokers_seed_path(seed_base: Path) -> Path | None:
+    """Optional brokers_seed.json: same dir as category seeds, sibling data/, or repo data/."""
+    here = Path(__file__).resolve()
+    repo_root = here.parents[3]
+    candidates = [
+        seed_base / "brokers_seed.json",
+        repo_root / "data" / "brokers_seed.json",
+    ]
+    if seed_base.name == "files":
+        candidates.insert(1, seed_base.parent / "brokers_seed.json")
+    for p in candidates:
+        if p.is_file():
+            return p
+    return None
+
+
 def _supplier_seed_notes(row: dict) -> str | None:
     """Merge optional `email` / `notes` from JSON into `Supplier.notes`."""
     parts: list[str] = []
@@ -152,6 +168,8 @@ def run_catalog_suppliers_seed(
         "items_skipped": 0,
         "suppliers_inserted": 0,
         "suppliers_skipped": 0,
+        "brokers_inserted": 0,
+        "brokers_skipped": 0,
     }
 
     type_key_to_ids: dict[str, tuple[uuid.UUID, uuid.UUID]] = {}
@@ -283,5 +301,29 @@ def run_catalog_suppliers_seed(
         )
         db.add(sup)
         stats["suppliers_inserted"] += 1
+
+    brokers_path = _resolve_brokers_seed_path(base)
+    if brokers_path is not None:
+        raw_brokers = json.loads(brokers_path.read_text(encoding="utf-8"))
+        if not isinstance(raw_brokers, list):
+            raise ValueError(f"brokers_seed.json must be a JSON array: {brokers_path}")
+        for row in raw_brokers:
+            if isinstance(row, str):
+                name = row.strip()
+            elif isinstance(row, dict):
+                name = (row.get("name") or "").strip()
+            else:
+                continue
+            if not name:
+                continue
+            bq = select(Broker).where(
+                Broker.business_id == business_id,
+                func.lower(Broker.name) == _norm(name),
+            )
+            if db.execute(bq).scalar_one_or_none():
+                stats["brokers_skipped"] += 1
+                continue
+            db.add(Broker(business_id=business_id, name=name))
+            stats["brokers_inserted"] += 1
 
     return stats

@@ -75,7 +75,14 @@ String tradeIntelRatePairLine(Map<String, dynamic> m) {
   }
   final b = buy != null && buy > 0 ? tradeIntelFormatInr(buy) : '—';
   final s = sell != null && sell > 0 ? tradeIntelFormatInr(sell) : '—';
-  return 'Last: $b → $s';
+  String suf(dynamic v) {
+    final q = v?.toString().trim() ?? '';
+    return q.isEmpty ? '' : '/$q';
+  }
+
+  final buyQ = m['purchase_rate_dim'];
+  final sellQ = m['selling_rate_dim'];
+  return 'Last: $b${suf(buyQ)} → $s${suf(sellQ)}';
 }
 
 /// Last-line bags / tins / est. bags from kg ÷ kg-per-bag (compact).

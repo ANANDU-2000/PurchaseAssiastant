@@ -43,6 +43,8 @@ class LedgerLineRow {
     this.sellingRateInr,
     required this.amountInr,
     required this.commissionInr,
+    this.purchaseRateDim = '',
+    this.sellingRateDim = '',
   });
 
   final String stableKey;
@@ -58,6 +60,10 @@ class LedgerLineRow {
   final double? sellingRateInr;
   final double amountInr;
   final double commissionInr;
+  /// Suffix dimension for [rateInr] in intel strings (`kg`, `bag`, …).
+  final String purchaseRateDim;
+  /// Suffix dimension for [sellingRateInr] in intel strings.
+  final String sellingRateDim;
 }
 
 String ledgerStableRowKey(TradePurchase p, TradePurchaseLine l) {
@@ -112,6 +118,7 @@ LedgerLineRow ledgerRowFromPurchaseLine({
     landingCostPerKg: l.landingCostPerKg,
     lineTotal: l.lineTotal,
   );
+  final sellDisplay = tradePurchaseLineDisplaySellingRate(l);
   return LedgerLineRow(
     stableKey: ledgerStableRowKey(p, l),
     purchaseId: p.id,
@@ -123,9 +130,13 @@ LedgerLineRow ledgerRowFromPurchaseLine({
     unit: l.unit.trim(),
     kg: kg,
     rateInr: rate,
-    sellingRateInr: tradePurchaseLineDisplaySellingRate(l),
+    sellingRateInr: sellDisplay,
     amountInr: amount,
     commissionInr: allocateCommission ? tradePurchaseLineCommissionInr(p, l) : 0,
+    purchaseRateDim: rate > 1e-9 ? ledgerPurchaseRateDisplayDim(l) : '',
+    sellingRateDim: (sellDisplay != null && sellDisplay > 1e-9)
+        ? ledgerSellingRateDisplayDim(l)
+        : '',
   );
 }
 
@@ -181,15 +192,24 @@ List<LedgerLineRow> ledgerAppendFlattenedDedup({
   return merged;
 }
 
+/// Supplier/broker/item ledger search: item, counterparty name, human id, purchase id.
+bool ledgerLineRowMatchesSearch(LedgerLineRow r, String queryRaw) {
+  final q = queryRaw.trim().toLowerCase();
+  if (q.isEmpty) return true;
+  if (r.itemName.toLowerCase().contains(q)) return true;
+  if (r.supplierName.toLowerCase().contains(q)) return true;
+  final hid = (r.humanId ?? '').toLowerCase();
+  if (hid.contains(q)) return true;
+  if (r.purchaseId.toLowerCase().contains(q)) return true;
+  return false;
+}
+
 int ledgerFilteredLength(List<LedgerLineRow> rows, String effectiveQuery) {
   final q = effectiveQuery.trim().toLowerCase();
   if (q.isEmpty) return rows.length;
   var c = 0;
   for (final r in rows) {
-    if (r.itemName.toLowerCase().contains(q) ||
-        r.supplierName.toLowerCase().contains(q)) {
-      c++;
-    }
+    if (ledgerLineRowMatchesSearch(r, q)) c++;
   }
   return c;
 }
@@ -238,9 +258,7 @@ class LedgerLinesState {
     if (q.isEmpty) return rows;
     return [
       for (final r in rows)
-        if (r.itemName.toLowerCase().contains(q) ||
-            r.supplierName.toLowerCase().contains(q))
-          r,
+        if (ledgerLineRowMatchesSearch(r, q)) r,
     ];
   }
 

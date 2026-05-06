@@ -137,12 +137,12 @@ class ItemHistoryPage extends ConsumerWidget {
               ListTile(
                 leading: const Icon(Icons.edit_outlined),
                 title: const Text('Edit'),
-                onTap: () => Navigator.pop(ctx, 'edit'),
+                onTap: () => ctx.pop('edit'),
               ),
               ListTile(
                 leading: Icon(Icons.delete_outline, color: Theme.of(ctx).colorScheme.error),
                 title: Text('Delete', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
-                onTap: () => Navigator.pop(ctx, 'delete'),
+                onTap: () => ctx.pop('delete'),
               ),
             ],
           ),
@@ -161,8 +161,8 @@ class ItemHistoryPage extends ConsumerWidget {
         title: const Text('Delete purchase?'),
         content: Text('Remove bill ${row.humanId ?? row.purchaseId}?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+          TextButton(onPressed: () => ctx.pop(false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => ctx.pop(true), child: const Text('Delete')),
         ],
       ),
     );
@@ -270,7 +270,7 @@ class ItemHistoryPage extends ConsumerWidget {
               ),
               TextField(
                 decoration: const InputDecoration(
-                  hintText: 'Filter by supplier / text…',
+                  hintText: 'Search supplier, invoice (PUR-…), id…',
                   isDense: true,
                   prefixIcon: Icon(Icons.search_rounded, size: 22),
                   border: OutlineInputBorder(),

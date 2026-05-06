@@ -272,10 +272,11 @@ String _pdfPurchaseRateStr(TradePurchaseLine l) {
 String _pdfSellingRateStr(TradePurchaseLine l) {
   final r = tradePurchaseLineDisplaySellingRate(l);
   if (r == null) return '—';
-  final u = l.unit.trim().toLowerCase();
-  if (tradePurchaseLineIsWeightPriced(l)) return '${_rsPdf(r)}/kg';
-  if (u == 'kg') return '${_rsPdf(r)}/kg';
-  return '${_rsPdf(r)}/${safePdfText(l.unit.trim())}';
+  if (tradePurchaseLineDisplaySellingRateIsPerKg(l)) {
+    return '${_rsPdf(r)}/kg';
+  }
+  final u = l.unit.trim();
+  return '${_rsPdf(r)}/${safePdfText(u)}';
 }
 
 double _pdfLineWeightKg(TradePurchaseLine l) {

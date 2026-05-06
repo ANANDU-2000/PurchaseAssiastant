@@ -363,6 +363,7 @@ class HexaApi {
   /// Owner: optional in-app title + logo URL (HTTPS recommended).
   Future<Map<String, dynamic>> patchBusinessBranding({
     required String businessId,
+    String? name,
     String? brandingTitle,
     String? brandingLogoUrl,
     String? gstNumber,
@@ -375,6 +376,7 @@ class HexaApi {
     final res = await _dio.patch<Map<String, dynamic>>(
       '/v1/me/businesses/$businessId/branding',
       data: {
+        if (name != null) 'name': name,
         if (brandingTitle != null) 'branding_title': brandingTitle,
         if (brandingLogoUrl != null) 'branding_logo_url': brandingLogoUrl,
         if (gstNumber != null) 'gst_number': gstNumber,

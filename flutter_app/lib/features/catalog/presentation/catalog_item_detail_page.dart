@@ -203,10 +203,10 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
+                onPressed: () => ctx.pop(false),
                 child: const Text('Cancel')),
             FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
+                onPressed: () => ctx.pop(true),
                 child: const Text('Save')),
           ],
         ),

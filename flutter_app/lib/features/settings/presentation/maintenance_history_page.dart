@@ -75,7 +75,7 @@ void _detail(BuildContext context, MaintenanceMonthRecord r) {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(ctx).pop(),
+          onPressed: () => ctx.pop(),
           child: const Text('Close'),
         ),
       ],

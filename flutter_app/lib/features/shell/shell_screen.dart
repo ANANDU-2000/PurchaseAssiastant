@@ -38,7 +38,8 @@ class ShellScreen extends ConsumerWidget {
     final hideShellChrome = loc == '/assistant' ||
         loc.startsWith('/assistant/') ||
         loc == '/reports' ||
-        loc.startsWith('/reports/');
+        loc.startsWith('/reports/') ||
+        loc == '/purchase';
 
     final bottomFabClearance = hideShellChrome
         ? 0.0

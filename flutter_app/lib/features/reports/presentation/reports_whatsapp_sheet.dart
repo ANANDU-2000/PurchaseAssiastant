@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -137,7 +138,7 @@ class _ReportsWhatsAppSheetState extends State<ReportsWhatsAppSheet> {
     await ReportsPrefs.setPhone(_phone.text);
     await ReportsPrefs.setFrequency(_freq);
     if (!mounted) return;
-    Navigator.pop(context);
+    context.pop();
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Saved — use Send to open WhatsApp')),
     );

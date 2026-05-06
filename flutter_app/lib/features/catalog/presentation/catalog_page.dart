@@ -56,8 +56,8 @@ class _CatalogPageState extends ConsumerState<CatalogPage> {
         title: const Text('Rename category'),
         content: TextField(controller: ctrl, decoration: const InputDecoration(labelText: 'Name')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+          TextButton(onPressed: () => ctx.pop(false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => ctx.pop(true), child: const Text('Save')),
         ],
       ),
     );
@@ -91,8 +91,8 @@ class _CatalogPageState extends ConsumerState<CatalogPage> {
         title: const Text('Delete category?'),
         content: Text('Delete “$name”? It must have no items.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+          TextButton(onPressed: () => ctx.pop(false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => ctx.pop(true), child: const Text('Delete')),
         ],
       ),
     );

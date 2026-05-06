@@ -1,29 +1,34 @@
 # SPEC 03 — TERMS STEP (Step 2: Deal Terms)
+
 > Reference: `@.cursor/00_AGENT_RULES.md` first
 
 ---
 
 ## STATUS
-| Task | Status |
-|------|--------|
-| Payment days field | ✅ Done |
-| Commission % mode | ✅ Done |
-| Commission flat (₹) mode | ✅ Done |
-| Commission unit — per kg / per bag / per bill | ✅ Done |
-| Commission unit auto-preselect based on item units | ⚠️ Implemented (verify) |
-| Broker commission only shown when broker selected | ✅ Done |
-| Discount % field | ✅ Done |
-| Freight field + type dropdown | ✅ Done |
-| Delivered rate field | ✅ Done |
-| Billty rate field | ✅ Done |
-| Narration/memo field | ✅ Done |
-| Keyboard overlap on terms fields | ⚠️ Needs verify (wizard padding should cover) |
-| Cost breakdown summary shown on this step | ⚠️ Shown on Review step (step 3), not terms |
-| "Save Purchase" button on review step | ✅ Done |
+
+
+| Task                                               | Status                                      |
+| -------------------------------------------------- | ------------------------------------------- |
+| Payment days field                                 | ✅ Done                                      |
+| Commission % mode                                  | ✅ Done                                      |
+| Commission flat (₹) mode                           | ✅ Done                                      |
+| Commission unit — per kg / per bag / per bill      | ✅ Done                                      |
+| Commission unit auto-preselect based on item units | ✅ Done (figure mode coercion + suggestion on Fixed ₹) |
+| Broker commission only shown when broker selected  | ✅ Done                                      |
+| Discount % field                                   | ✅ Done                                      |
+| Freight field + type dropdown                      | ✅ Done                                      |
+| Delivered rate field                               | ✅ Done                                      |
+| Billty rate field                                  | ✅ Done                                      |
+| Narration/memo field                               | ✅ Done                                      |
+| Keyboard overlap on terms fields                   | ✅ Done (`scrollPadding` + wizard body inset) |
+| Cost breakdown summary shown on this step          | ⚠️ Shown on Review step (step 3), not terms |
+| "Save Purchase" button on review step              | ✅ Done                                      |
+
 
 ---
 
 ## FILES TO EDIT
+
 ```
 flutter_app/lib/features/purchase/presentation/wizard/purchase_terms_only_step.dart
 flutter_app/lib/features/purchase/presentation/wizard/purchase_review_tally_step.dart
@@ -35,11 +40,13 @@ flutter_app/lib/features/purchase/presentation/purchase_entry_wizard_v2.dart
 ## WHAT TO DO
 
 ### ❌ TASK 03-A: Commission unit — auto-preselect based on items
+
 **File:** `purchase_terms_only_step.dart`
 
 When the terms step initialises, read the draft lines and auto-set commission unit:
 
 **Add to the wizard's `_onProceedToTerms()` or when `_wizStep` changes to 2:**
+
 ```dart
 void _autoSelectCommissionUnit() {
   final lines = ref.read(purchaseDraftProvider).lines;
@@ -72,6 +79,7 @@ Call `_autoSelectCommissionUnit()` when transitioning to `_wizStep == 2`.
 ---
 
 ### ❌ TASK 03-B: Keyboard overlap on terms step
+
 **File:** `purchase_terms_only_step.dart`
 
 The terms step is rendered inside the wizard's `SingleChildScrollView`.
@@ -143,7 +151,9 @@ Profit                          ₹5,000  ← green
 ---
 
 ## COMMISSION MODE REFERENCE
+
 Modes defined in `purchase_draft.dart`:
+
 ```
 kPurchaseCommissionModePercent      = 'percent'        → % of total
 kPurchaseCommissionModeFlatInvoice  = 'flat_invoice'   → ₹ per bill
@@ -153,6 +163,7 @@ kPurchaseCommissionModeFlatTin      = 'flat_tin'       → ₹ per tin
 ```
 
 The terms step commission row shows:
+
 1. A mode dropdown: `[% | ₹/bill | ₹/unit]`
 2. If `₹/unit`: a unit dropdown `[kg | bag | tin]` (auto-selected from items)
 3. A value TextField
@@ -160,9 +171,11 @@ The terms step commission row shows:
 ---
 
 ## VALIDATION
-- [ ] Add bag item → go to terms → commission mode auto-sets to "₹/bag"
-- [ ] Add kg item → commission mode auto-sets to "₹/kg"
-- [ ] Keyboard opens on payment days → Save button still above keyboard
-- [ ] Commission % mode: change % → cost breakdown updates in real time
-- [ ] Commission ₹/bag mode: change unit price → breakdown updates
-- [ ] "Save Purchase" saves and redirects to detail page
+
+- Add bag item → go to terms → commission mode auto-sets to "₹/bag"
+- Add kg item → commission mode auto-sets to "₹/kg"
+- Keyboard opens on payment days → Save button still above keyboard
+- Commission % mode: change % → cost breakdown updates in real time
+- Commission ₹/bag mode: change unit price → breakdown updates
+- "Save Purchase" saves and redirects to detail page
+

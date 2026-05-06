@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -34,6 +35,11 @@ final purchaseLocalWipDraftForHistoryProvider =
   var raw = OfflineStore.getPurchaseWizardDraft(bid);
   raw ??= ref.watch(sharedPreferencesProvider).getString(k);
   if (raw == null || raw.isEmpty) return null;
+  if (OfflineStore.purchaseWizardDraftJsonIsExpired(raw)) {
+    unawaited(OfflineStore.clearPurchaseWizardDraft(bid));
+    unawaited(ref.read(sharedPreferencesProvider).remove(k));
+    return null;
+  }
   try {
     final dec = jsonDecode(raw);
     if (dec is! Map) return null;
@@ -42,9 +48,6 @@ final purchaseLocalWipDraftForHistoryProvider =
     if (meta is! Map) return null;
     final at = DateTime.tryParse(meta['savedAt']?.toString() ?? '');
     if (at == null) return null;
-    if (DateTime.now().difference(at) > const Duration(hours: 24)) {
-      return null;
-    }
     final items = m['items'] ?? m['lines'];
     final hasLines = items is List && items.isNotEmpty;
     final hasSupplier = (m['supplierId'] ?? m['supplier_id'] ?? '')

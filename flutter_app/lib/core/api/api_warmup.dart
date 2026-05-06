@@ -11,20 +11,25 @@ class ApiWarmupService {
   static Timer? _keepAlive;
 
   /// Call before authenticated traffic: probes `/health/ready` (DB) then `/health`.
+  /// Extra attempts / timeouts help sleepy PaaS cold starts (e.g. free-tier spin-up).
   static Future<void> pingHealth(HexaApi api, {VoidCallback? onSlow}) async {
     final slow = Timer(const Duration(seconds: 3), () => onSlow?.call());
-    for (var attempt = 0; attempt < 3; attempt++) {
+    const attempts = 5;
+    const timeout = Duration(seconds: 12);
+    for (var attempt = 0; attempt < attempts; attempt++) {
       try {
-        await api.healthReady().timeout(const Duration(seconds: 8));
+        await api.healthReady().timeout(timeout);
         slow.cancel();
         return;
       } catch (_) {
         try {
-          await api.health().timeout(const Duration(seconds: 8));
+          await api.health().timeout(timeout);
           slow.cancel();
           return;
         } catch (_) {
-          await Future<void>.delayed(Duration(seconds: attempt + 1));
+          if (attempt < attempts - 1) {
+            await Future<void>.delayed(Duration(seconds: attempt + 1));
+          }
         }
       }
     }

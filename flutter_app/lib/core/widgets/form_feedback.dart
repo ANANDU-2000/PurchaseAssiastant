@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../auth/auth_error_messages.dart';
 
@@ -21,7 +22,7 @@ Future<bool> confirmDestructiveAction(
       content: Text(message),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(ctx, false),
+          onPressed: () => ctx.pop(false),
           child: Text(cancelLabel),
         ),
         FilledButton(
@@ -29,7 +30,7 @@ Future<bool> confirmDestructiveAction(
             backgroundColor: bg,
             foregroundColor: fg,
           ),
-          onPressed: () => Navigator.pop(ctx, true),
+          onPressed: () => ctx.pop(true),
           child: Text(confirmLabel),
         ),
       ],

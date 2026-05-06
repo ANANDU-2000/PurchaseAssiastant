@@ -1,23 +1,28 @@
 # SPEC 07 — DRAFT AUTO-SAVE & RESUME
+
 > Reference: `@.cursor/00_AGENT_RULES.md` first
 
 ---
 
 ## STATUS
-| Task | Status |
-|------|--------|
-| Auto-save draft every 800ms | ✅ Done |
-| `OfflineStore.getPurchaseWizardDraft()` used | ✅ Done |
-| Resume banner on purchase home page | ✅ Done |
-| Draft shown in History tab with "Draft" badge | ✅ Done |
-| Draft older than 24h auto-cleared | ✅ Done |
-| `_savedAt` timestamp in draft JSON | ✅ Done |
-| Draft cleared after successful save | ✅ Done |
+
+
+| Task                                                        | Status                                |
+| ----------------------------------------------------------- | ------------------------------------- |
+| Auto-save draft every 800ms                                 | ✅ Done                                |
+| `OfflineStore.getPurchaseWizardDraft()` used                | ✅ Done                                |
+| Resume banner on purchase home page                         | ✅ Done                                |
+| Draft shown in History tab with "Draft" badge               | ✅ Done (`_LocalWipDraftHistoryRow`)   |
+| Draft older than 24h auto-cleared                           | ✅ Done (`OfflineStore` + prefs wipe) |
+| `_savedAt` timestamp in draft JSON                          | ✅ Done                                |
+| Draft cleared after successful save                         | ✅ Done                                |
 | Resume restores all fields (supplier, broker, items, terms) | ⚠️ Supplier/broker restore unverified |
+
 
 ---
 
 ## FILES TO EDIT
+
 ```
 flutter_app/lib/features/purchase/presentation/purchase_home_page.dart
 flutter_app/lib/features/purchase/presentation/purchase_entry_wizard_v2.dart
@@ -104,6 +109,7 @@ Widget _buildWipDraftCard(BuildContext context, String rawJson) {
 ```
 
 **In the list build:**
+
 ```dart
 // Before the main ListView:
 Builder(builder: (ctx) {
@@ -123,12 +129,14 @@ Builder(builder: (ctx) {
 **File:** `purchase_entry_wizard_v2.dart`
 
 When `_resumeDraft(json)` is called, it must restore:
+
 1. `supplierId` and `supplierName` → set text in supplier field controller
 2. `brokerId` and `brokerName` → set text in broker field controller
 3. All `lines` → restore items list
 4. Terms fields: `paymentDaysCtrl`, `commissionCtrl`, etc.
 
 Find `_syncControllersFromDraft()` or similar and ensure it sets:
+
 ```dart
 _supplierCtrl.text = draft.supplierName ?? '';
 _brokerCtrl.text = draft.brokerName ?? '';
@@ -144,6 +152,7 @@ Also ensure `_pickInProgress` guard doesn't block the restore.
 **File:** `resume_purchase_draft_banner.dart`
 
 Confirm the banner already has age check. If missing, add:
+
 ```dart
 // In ResumePurchaseDraftBanner.build():
 final savedAtStr = (meta['savedAt']?.toString() ?? '');
@@ -172,8 +181,10 @@ Draft older than 24h → auto-cleared, not shown
 ---
 
 ## VALIDATION
-- [ ] Fill in supplier → close app → reopen → banner shown "Resume draft from X"
-- [ ] Tap Resume → wizard at step 0 with supplier field filled
-- [ ] Draft card shown in History tab with amber badge
-- [ ] After save, draft card disappears from History
-- [ ] Draft >24h old → not shown (auto-cleared)
+
+- Fill in supplier → close app → reopen → banner shown "Resume draft from X"
+- Tap Resume → wizard at step 0 with supplier field filled
+- Draft card shown in History tab with amber badge
+- After save, draft card disappears from History
+- Draft >24h old → not shown (auto-cleared)
+

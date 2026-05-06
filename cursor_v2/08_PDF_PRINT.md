@@ -1,24 +1,29 @@
 # SPEC 08 — PDF, PRINT & BROKER STATEMENT
+
 > Reference: `@.cursor/00_AGENT_RULES.md` first
 
 ---
 
 ## STATUS
-| Task | Status |
-|------|--------|
-| Purchase invoice PDF generation | ✅ Done |
-| PDF shows purchase rate column | ✅ Done |
-| PDF shows selling rate column | ✅ Done |
-| PDF shows total weight per item | ✅ Done |
-| Print button in detail page | ✅ Done |
-| Broker statement PDF | ✅ Done |
-| Supplier statement PDF | ✅ Done (existing) |
-| Item statement PDF | ✅ Done (existing) |
-| WhatsApp auto-report PDF | ⚠️ MVP sheet exists, scheduling missing |
+
+
+| Task                            | Status                                  |
+| ------------------------------- | --------------------------------------- |
+| Purchase invoice PDF generation | ✅ Done                                  |
+| PDF shows purchase rate column  | ✅ Done (`P rate` column)                |
+| PDF shows selling rate column   | ✅ Done (`S rate` + per-kg suffix fix)   |
+| PDF shows total weight per item | ✅ Done (`Kg` column + qty/unit)        |
+| Print button in detail page     | ✅ Done (AppBar + `printPurchasePdf`)    |
+| Broker statement PDF            | ✅ Done (`shareBrokerStatementPdf` + broker history) |
+| Supplier statement PDF          | ✅ Done (existing)                       |
+| Item statement PDF              | ✅ Done (existing)                       |
+| WhatsApp auto-report PDF        | ⚠️ MVP sheet exists, scheduling missing |
+
 
 ---
 
 ## FILES TO EDIT
+
 ```
 flutter_app/lib/core/services/purchase_invoice_pdf_layout.dart
 flutter_app/lib/core/services/purchase_pdf.dart
@@ -61,6 +66,7 @@ String _displayRate(double rate, String unit, double? kpu) {
 ```
 
 **Also add to footer totals:**
+
 ```
 Total weight: 5,000 kg · 100 bags
 Total purchase: ₹1,30,000
@@ -74,11 +80,13 @@ Total purchase: ₹1,30,000
 
 Add `printing` package usage. The package is likely already in `pubspec.yaml`
 (check with `grep 'printing:' pubspec.yaml`). If not, add:
+
 ```yaml
 printing: ^5.12.0
 ```
 
 **Add print function:**
+
 ```dart
 Future<void> _onPrint() async {
   try {
@@ -98,6 +106,7 @@ Future<void> _onPrint() async {
 ```
 
 **Add to AppBar actions:**
+
 ```dart
 IconButton(
   icon: const Icon(Icons.print_outlined, size: 22),
@@ -266,6 +275,7 @@ String _fmtAmt(dynamic v) {
 ```
 
 **Add broker statement download button** in `broker_detail_page.dart` or `broker_history_page.dart`:
+
 ```dart
 IconButton(
   icon: const Icon(Icons.receipt_long_outlined),
@@ -277,9 +287,11 @@ IconButton(
 ---
 
 ## VALIDATION
-- [ ] Purchase PDF has P-Rate and S-Rate columns
-- [ ] Purchase PDF bag items show "₹26/kg" not "₹1,300/bag"
-- [ ] PDF shows "100 bags • 5,000 kg" not "250000 kg"
-- [ ] Print button opens iOS system print dialog
-- [ ] Broker statement PDF downloads with correct commission totals
-- [ ] Broker statement table shows all purchases in date range
+
+- Purchase PDF has P-Rate and S-Rate columns
+- Purchase PDF bag items show "₹26/kg" not "₹1,300/bag"
+- PDF shows "100 bags • 5,000 kg" not "250000 kg"
+- Print button opens iOS system print dialog
+- Broker statement PDF downloads with correct commission totals
+- Broker statement table shows all purchases in date range
+

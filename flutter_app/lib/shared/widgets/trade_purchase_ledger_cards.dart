@@ -215,7 +215,7 @@ class TradeLedgerCardList extends StatelessWidget {
     final u = ln.unit.trim().toLowerCase();
     final perKg = tradePurchaseLineIsWeightPriced(ln) ||
         u == 'kg' ||
-        ((u == 'bag' || u == 'sack' || u == 'box') &&
+        ((u == 'bag' || u == 'sack' || u == 'box' || u == 'tin') &&
             (ln.kgPerUnit ?? 0) > 1e-9);
     final suffix = perKg ? '/kg' : '/${ln.unit.trim().isEmpty ? 'unit' : ln.unit.trim()}';
     return 'P:${_inr(r)}$suffix';
@@ -227,7 +227,7 @@ class TradeLedgerCardList extends StatelessWidget {
     final u = ln.unit.trim().toLowerCase();
     final perKg = tradePurchaseLineIsWeightPriced(ln) ||
         u == 'kg' ||
-        ((u == 'bag' || u == 'sack' || u == 'box') &&
+        ((u == 'bag' || u == 'sack' || u == 'box' || u == 'tin') &&
             (ln.kgPerUnit ?? 0) > 1e-9);
     final suffix = perKg ? '/kg' : '/${ln.unit.trim().isEmpty ? 'unit' : ln.unit.trim()}';
     return 'S:${_inr(r)}$suffix';

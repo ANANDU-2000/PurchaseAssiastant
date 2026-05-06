@@ -12,11 +12,11 @@
 | Date filter uses `purchase_date` (not `created_at`) | ✅ Fixed in trade_query.py                      |
 | "Match Home period" sync button                     | ✅ Done                                         |
 | Overview / Items / Suppliers / Brokers tabs         | ✅ Done                                         |
-| Gray text → readable dark text                      | ⚠️ Implemented (verify)                        |
-| Total weight shown per period                       | ⚠️ Implemented (verify)                        |
-| Reports page shows ₹0 (API loading issue)           | ⚠️ Date query fixed, API timing may still fail |
-| "Total spend" wording removed                       | ✅ Done                                         |
-| Horizontal scroll tables removed → cards            | ✅ Done                                         |
+| Gray text → readable dark text                      | ✅ Done (`HexaColors.textBody` + explicit dark amounts) |
+| Total weight shown per period                       | ✅ Done (`_summaryHeader` kg/bags/boxes/tins)   |
+| Reports page shows ₹0 (empty list vs Home)         | ✅ Mitigated (`trade-summary` deals check + unfiltered fetch + local date filter + Hive) |
+| "Total spend" wording removed                       | ✅ Done (not used; "TOTAL AMOUNT" / purchased copy) |
+| Horizontal scroll tables removed → cards            | ✅ Done (`ReportsItemTile` + item detail list)  |
 
 
 ---

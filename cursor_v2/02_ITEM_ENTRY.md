@@ -1,27 +1,33 @@
 # SPEC 02 — ITEM ENTRY (Add Item Sheet)
+
 > Reference: `@.cursor/00_AGENT_RULES.md` first
 
 ---
 
 ## STATUS
-| Task | Status |
-|------|--------|
-| Item search suggestion tap fix (InkWell) | ✅ Done |
-| ML auto-fill purchase rate from last trade | ✅ Done |
-| ML auto-fill selling rate from last trade | ✅ Done |
-| Auto-detect unit from item name (50 KG → bag) | ✅ Done |
-| `kgPerBag` resolved from catalog `default_kg_per_bag` | ✅ Done |
-| Dynamic qty field label ("No. of bags" for bag items) | ✅ Done |
-| Live calc preview: bags × kg/bag = total kg | ✅ Done |
-| `formatLineQtyWeight` helper used in preview | ✅ Done |
-| Keyboard overlap in item entry bottom sheet | ✅ Done |
-| Advanced section: delivered/billty/freight per item | ✅ Done |
-| "Classified: weight bag" hint visible | ✅ Done |
-| ₹/kg vs ₹/bag toggle for bag items | ✅ Done |
+
+
+| Task                                                  | Status                                                 |
+| ----------------------------------------------------- | ------------------------------------------------------ |
+| Item search suggestion tap fix (InkWell)              | ✅ Done                                                 |
+| ML auto-fill purchase rate from last trade            | ✅ Done                                                 |
+| ML auto-fill selling rate from last trade             | ✅ Done                                                 |
+| Auto-detect unit from item name (50 KG → bag)         | ✅ Done                                                 |
+| `kgPerBag` resolved from catalog `default_kg_per_bag` | ✅ Done                                                 |
+| Dynamic qty field label ("No. of bags" for bag items) | ✅ Done (`_qtyFieldLabel`)                              |
+| Live calc preview: bags × kg/bag = total kg           | ✅ Done (totals card / bag↔kg hints)                    |
+| `formatLineQtyWeight` helper used in preview          | ✅ Done (`line_display.dart`)                           |
+| Keyboard overlap in item entry bottom sheet           | ✅ Done (extra bottom inset + full-page viewport)       |
+| Advanced section: delivered/billty/freight per item   | ⚠️ Partial (fields exist but missing delivered/billty) |
+| "Classified: weight bag" hint visible                 | ✅ Done                                                 |
+| ₹/kg vs ₹/bag toggle for bag items                    | ✅ Done                                                 |
+| Unit field: dropdown (kg, bag, sack, box, tin, …)    | ✅ Done (`DropdownButtonFormField` + rare units via key) |
+
 
 ---
 
 ## FILES TO EDIT
+
 ```
 flutter_app/lib/features/purchase/presentation/widgets/purchase_item_entry_sheet.dart
 flutter_app/lib/core/utils/line_display.dart   ← CREATE THIS NEW FILE
@@ -39,6 +45,7 @@ flutter_app/lib/features/purchase/presentation/widgets/add_item_entry_page.dart
 **Find the Qty `TextFormField`.** Its `labelText` currently says `'Qty *'` (or similar static string).
 
 **Add this getter:**
+
 ```dart
 String get _qtyFieldLabel {
   final u = _unitCtrl.text.trim().toLowerCase();
@@ -62,6 +69,7 @@ This label must update when the unit changes. Since unit changes call `setState`
 **Find `_buildCalcPreview()` or the teal calculation box** (the Container with green background showing qty × rate).
 
 **Replace its content with:**
+
 ```dart
 Widget _buildCalcPreview() {
   final qty = _parseD(_qtyCtrl.text) ?? 0;
@@ -244,6 +252,7 @@ String _addComma(String s) {
 ```
 
 **After creating this file, import and use `formatLineQtyWeight` in:**
+
 1. `purchase_detail_page.dart` — line item qty display
 2. `trade_purchase_ledger_cards.dart` — history card weight
 3. `supplier_detail_page.dart` — purchase history rows
@@ -259,6 +268,7 @@ The sheet is opened as `showModalBottomSheet`. Inside its build, the content mus
 pad itself for the keyboard.
 
 **Find the root widget of the sheet build method. Wrap with:**
+
 ```dart
 @override
 Widget build(BuildContext context) {
@@ -271,6 +281,7 @@ Widget build(BuildContext context) {
 ```
 
 **Also ensure the showModalBottomSheet call has:**
+
 ```dart
 showModalBottomSheet(
   context: context,
@@ -320,9 +331,11 @@ showModalBottomSheet(
 ---
 
 ## VALIDATION
-- [ ] Select "SUGAR 50 KG" → qty label shows "Number of bags *"
-- [ ] Enter qty=100 → preview shows "100 bags × 50 kg/bag = 5,000 kg"
-- [ ] Enter purchase rate ₹26 → preview shows "5,000 kg × ₹26.00/kg → ₹1,30,000"
-- [ ] Keyboard open → "Save" button stays above keyboard
-- [ ] Select kg item → qty label shows "Qty (kg) *"
-- [ ] Select box item → qty label shows "Number of boxes *"
+
+- Select "SUGAR 50 KG" → qty label shows "Number of bags *"
+- Enter qty=100 → preview shows "100 bags × 50 kg/bag = 5,000 kg"
+- Enter purchase rate ₹26 → preview shows "5,000 kg × ₹26.00/kg → ₹1,30,000"
+- Keyboard open → "Save" button stays above keyboard
+- Select kg item → qty label shows "Qty (kg) *"
+- Select box item → qty label shows "Number of boxes *"
+

@@ -38,45 +38,49 @@ String _fmtRate(num? n) {
       .format(n);
 }
 
-/// Qty-weighted average purchase and selling rates (per line unit qty).
+/// Kg-weighted average **₹/kg** purchase and selling rates for the item key.
+///
+/// Using [TradePurchaseLine.landingGross] / kg avoids bag lines showing
+/// ₹1,300→₹1,350 when economics are ₹26→₹27/kg.
 ({double? buy, double? sell}) reportItemWeightedRates(
   List<TradePurchase> purchases,
   String itemKey,
 ) {
-  var buyNum = 0.0;
-  var sellNum = 0.0;
-  var sellDen = 0.0;
-  var w = 0.0;
+  var totalKgBuy = 0.0;
+  var totalLanding = 0.0;
+  var totalKgSell = 0.0;
+  var totalSelling = 0.0;
   for (final p in purchases) {
     for (final l in p.lines) {
       final eff = reportEffectivePack(l);
       if (eff == null) continue;
       if (reportItemKey(l) != itemKey) continue;
-      if (eff.packQty <= 1e-12) continue;
-      final br = (l.purchaseRate != null && l.purchaseRate! > 0)
-          ? l.purchaseRate!
-          : l.landingCost;
-      buyNum += br * eff.packQty;
-      w += eff.packQty;
-      final sr = l.sellingRate ?? l.sellingCost;
-      if (sr != null && sr > 0) {
-        sellNum += sr * eff.packQty;
-        sellDen += eff.packQty;
+      final kg = eff.kg;
+      if (kg <= 1e-9) continue;
+      final lg = l.landingGross;
+      if (lg > 1e-9) {
+        totalLanding += lg;
+        totalKgBuy += kg;
+      }
+      final sg = l.sellingGross;
+      if (sg > 1e-9) {
+        totalSelling += sg;
+        totalKgSell += kg;
       }
     }
   }
-  if (w < 1e-9) return (buy: null, sell: null);
-  final buy = buyNum / w;
-  final sell = sellDen > 1e-9 ? sellNum / sellDen : null;
+  if (totalKgBuy < 1e-9) return (buy: null, sell: null);
+  final buy = totalLanding / totalKgBuy;
+  final sell = totalKgSell > 1e-9 ? totalSelling / totalKgSell : null;
   return (buy: buy, sell: sell);
 }
 
 String reportItemRateArrowLine(List<TradePurchase> purchases, String itemKey) {
   final r = reportItemWeightedRates(purchases, itemKey);
-  if ((r.buy == null || r.buy! <= 0) && (r.sell == null || r.sell! <= 0)) {
-    return '';
-  }
-  return '${_fmtRate(r.buy)} → ${_fmtRate(r.sell)}';
+  final buyS = (r.buy != null && r.buy! > 0) ? '${_fmtRate(r.buy)}/kg' : '—';
+  final sellS = (r.sell != null && r.sell! > 0) ? '${_fmtRate(r.sell)}/kg' : '—';
+  if (buyS == '—' && sellS == '—') return '';
+  return '$buyS → $sellS';
 }
 
 class ReportItemTxnView {
@@ -107,10 +111,9 @@ List<ReportItemTxnView> reportItemTransactions(
       if (eff == null) continue;
       if (reportItemKey(l) != itemKey) continue;
       final kg = eff.kg;
-      final br = (l.purchaseRate != null && l.purchaseRate! > 0)
-          ? l.purchaseRate!
-          : l.landingCost;
-      final sr = l.sellingRate ?? l.sellingCost;
+      final br = kg > 1e-9 ? l.landingGross / kg : 0.0;
+      final sg = l.sellingGross;
+      final sr = (sg > 1e-9 && kg > 1e-9) ? sg / kg : null;
       out.add(
         ReportItemTxnView(
           date: p.purchaseDate,

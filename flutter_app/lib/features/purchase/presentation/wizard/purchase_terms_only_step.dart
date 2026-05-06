@@ -76,6 +76,7 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
         keyboardType: keyboard,
         maxLines: maxLines,
         minLines: maxLines > 1 ? 1 : null,
+        scrollPadding: const EdgeInsets.only(bottom: 200),
         textCapitalization: maxLines > 1
             ? TextCapitalization.sentences
             : TextCapitalization.none,
@@ -221,6 +222,7 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
               height: kPurchaseFieldHeight + 14,
               child: TextField(
                 controller: commissionCtrl,
+                scrollPadding: const EdgeInsets.only(bottom: 200),
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
                 decoration: densePurchaseFieldDecoration('Commission %')
@@ -270,6 +272,7 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
                       height: kPurchaseFieldHeight + 14,
                       child: TextField(
                         controller: commissionCtrl,
+                        scrollPadding: const EdgeInsets.only(bottom: 200),
                         keyboardType: const TextInputType.numberWithOptions(
                             decimal: true),
                         decoration: densePurchaseFieldDecoration(

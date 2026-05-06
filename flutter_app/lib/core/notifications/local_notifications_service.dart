@@ -90,6 +90,43 @@ class LocalNotificationsService {
     await ios?.requestPermissions(alert: true, badge: true, sound: true);
   }
 
+  /// Returns whether the OS allows showing scheduled local notifications.
+  /// Call before [scheduleWhatsAppReport] when enabling reminders.
+  Future<bool> notificationPermissionGrantedForScheduling() async {
+    if (kIsWeb || !_inited) return false;
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final android = _p.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      final enabled = await android?.areNotificationsEnabled();
+      if (enabled == true) return true;
+      final req = await android?.requestNotificationsPermission();
+      return req == true;
+    }
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      final ios = _p.resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin>();
+      final cur = await ios?.checkPermissions();
+      final ok = cur != null &&
+          (cur.isEnabled ||
+              cur.isAlertEnabled ||
+              cur.isProvisionalEnabled);
+      if (ok) return true;
+      final granted = await ios?.requestPermissions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+      if (granted != true) return false;
+      final after = await ios?.checkPermissions();
+      return after != null &&
+          (after.isEnabled ||
+              after.isAlertEnabled ||
+              after.isProvisionalEnabled);
+    }
+    // Windows / other: plugin init succeeded; treat as schedulable.
+    return true;
+  }
+
   Future<void> setOptIn(bool enabled) async {
     if (kIsWeb || !_inited) return;
     await _p.cancel(id: _dailyId);

@@ -387,15 +387,15 @@ class _SupplierCreateWizardPageState
         content: const Text('Save a draft to continue later, or discard your changes.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, 'cancel'),
+            onPressed: () => ctx.pop('cancel'),
             child: const Text('Stay'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(ctx, 'discard'),
+            onPressed: () => ctx.pop('discard'),
             child: const Text('Discard'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, 'draft'),
+            onPressed: () => ctx.pop('draft'),
             child: const Text('Save draft'),
           ),
         ],
@@ -477,11 +477,11 @@ class _SupplierCreateWizardPageState
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
+            onPressed: () => ctx.pop(false),
             child: const Text('Go back'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
+            onPressed: () => ctx.pop(true),
             child: const Text('Continue'),
           ),
         ],
@@ -648,11 +648,11 @@ class _SupplierCreateWizardPageState
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
+            onPressed: () => ctx.pop(false),
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
+            onPressed: () => ctx.pop(true),
             child: const Text('Save'),
           ),
         ],

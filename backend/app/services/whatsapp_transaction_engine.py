@@ -821,7 +821,9 @@ async def handle_transactional_message(
             },
         )
         await _wa(
-            f"*New supplier*\n{name}\nPhone: {phone or '—'}\n\nReply *YES* to add or *NO* to cancel.",
+            "Preview (not saved):\n"
+            f"Type: Supplier\nName: {name}\nPhone: {phone or '—'}\n\n"
+            "Reply YES to save, NO to cancel.",
             scene="preview",
         )
         return {"ok": True, "handled": True, "preview": True}
@@ -846,7 +848,10 @@ async def handle_transactional_message(
             },
         )
         await _wa(
-            f"*New broker*\n{name}\nCommission: {cflat if cflat is not None else '—'}\n\nReply *YES* to add.",
+            "Preview (not saved):\n"
+            f"Type: Broker\nName: {name}\n"
+            f"Commission: {cflat if cflat is not None else '—'}\n\n"
+            "Reply YES to save, NO to cancel.",
             scene="preview",
         )
         return {"ok": True, "handled": True, "preview": True}
@@ -880,9 +885,9 @@ async def handle_transactional_message(
             },
         )
         await _wa(
-            (
-                f"*New catalog item*\n{item_name}\nCategory: {cat}\n\nReply *YES* to create or *NO* to cancel."
-            ),
+            "Preview (not saved):\n"
+            f"Type: Item\nName: {item_name}\nCategory: {cat}\n\n"
+            "Reply YES to save, NO to cancel.",
             scene="preview",
         )
         return {"ok": True, "handled": True, "preview": True}

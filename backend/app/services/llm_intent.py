@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any
 
 import httpx
@@ -303,6 +304,19 @@ Rules:
 - Do not invent prices, qty, or dates.
 - Purchases need buy + landing at minimum for create_entry (or list missing_fields).
 - If user chats about weather, news, jokes → intent out_of_scope.
+
+Examples (typos are common on WhatsApp):
+- "create broker raju" → intent create_broker
+- "cretae broker name raju" → intent create_broker
+- "add broker edison" → intent create_broker
+- "new broker rice and rice" → intent create_broker
+- "add supplier surag" → intent create_supplier
+- "new supplier vk traders" → intent create_supplier
+
+IMPORTANT keyword routing:
+- If the user message clearly mentions "broker" (including common typos like "brokr", "broekr") → intent MUST be create_broker (never create_supplier).
+- If the user message clearly mentions "supplier" → intent MUST be create_supplier (never create_broker).
+- If BOTH appear, the first mentioned keyword wins.
 """
 )
 
@@ -355,14 +369,81 @@ def _normalize_whatsapp_payload(raw: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def _parse_whatsapp_openai_style(data: dict[str, Any]) -> dict[str, Any] | None:
+_BROKER_HINT = re.compile(
+    r"(?i)\b(brokers?|brokr|broekr|brokre|brk)\b",
+)
+_SUPPLIER_HINT = re.compile(r"(?i)\b(suppliers?|suplier|suppiler)\b")
+
+
+def _apply_whatsapp_keyword_intent_overrides(user_text: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Hard guardrails: broker/supplier keywords must not be misrouted by the LLM."""
+    t = (user_text or "").strip()
+    if not t:
+        return payload
+    b = _BROKER_HINT.search(t)
+    s = _SUPPLIER_HINT.search(t)
+    if b and s:
+        first = "broker" if b.start() <= s.start() else "supplier"
+    elif b:
+        first = "broker"
+    elif s:
+        first = "supplier"
+    else:
+        return payload
+
+    intent = str(payload.get("intent") or "")
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return payload
+
+    if first == "broker":
+        if intent == "create_supplier":
+            sn = data.get("supplier_name")
+            if data.get("broker_name") in (None, "") and sn not in (None, ""):
+                data["broker_name"] = sn
+            data.pop("supplier_name", None)
+            data.pop("supplier_phone", None)
+            payload["intent"] = "create_broker"
+        elif intent != "create_broker" and intent in (
+            "create_supplier",
+            "create_item",
+            "create_entry",
+            "update_entry",
+            "query",
+        ):
+            # If user explicitly asked for a broker, don't silently treat as supplier/item flows.
+            payload["intent"] = "create_broker"
+    else:
+        if intent == "create_broker":
+            bn = data.get("broker_name")
+            if data.get("supplier_name") in (None, "") and bn not in (None, ""):
+                data["supplier_name"] = bn
+            data.pop("broker_name", None)
+            data.pop("broker_commission_flat", None)
+            payload["intent"] = "create_supplier"
+        elif intent != "create_supplier" and intent in (
+            "create_broker",
+            "create_item",
+            "create_entry",
+            "update_entry",
+            "query",
+        ):
+            payload["intent"] = "create_supplier"
+
+    return payload
+
+
+def _parse_whatsapp_openai_style(data: dict[str, Any], *, user_text: str) -> dict[str, Any] | None:
     try:
         content = data["choices"][0]["message"]["content"]
         raw = json.loads(content)
     except (KeyError, IndexError, json.JSONDecodeError, TypeError) as e:
         logger.warning("Bad WhatsApp LLM JSON: %s", e)
         return None
-    return _normalize_whatsapp_payload(raw)
+    norm = _normalize_whatsapp_payload(raw)
+    if norm is None:
+        return None
+    return _apply_whatsapp_keyword_intent_overrides(user_text, norm)
 
 
 async def extract_whatsapp_transactional_json(
@@ -398,7 +479,7 @@ async def extract_whatsapp_transactional_json(
             if res.status_code >= 400:
                 logger.warning("OpenAI WhatsApp intent failed %s", res.status_code)
                 return None
-            return _parse_whatsapp_openai_style(res.json())
+            return _parse_whatsapp_openai_style(res.json(), user_text=user_text)
 
     if prov == "groq":
         key = await effective_groq_key(settings, db)
@@ -421,7 +502,7 @@ async def extract_whatsapp_transactional_json(
             if res.status_code >= 400:
                 logger.warning("Groq WhatsApp intent failed %s", res.status_code)
                 return None
-            return _parse_whatsapp_openai_style(res.json())
+            return _parse_whatsapp_openai_style(res.json(), user_text=user_text)
 
     if prov == "gemini":
         key = await effective_google_ai_key(settings, db)
@@ -444,7 +525,10 @@ async def extract_whatsapp_transactional_json(
             raw = json.loads(raw_text)
         except (KeyError, IndexError, json.JSONDecodeError, TypeError):
             return None
-        return _normalize_whatsapp_payload(raw)
+        norm = _normalize_whatsapp_payload(raw)
+        if norm is None:
+            return None
+        return _apply_whatsapp_keyword_intent_overrides(user_text, norm)
 
     return None
 

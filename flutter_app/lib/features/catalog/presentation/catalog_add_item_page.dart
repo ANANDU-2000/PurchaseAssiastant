@@ -103,8 +103,8 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
         title: const Text('Resume item creation?'),
         content: const Text('You have an unsaved draft for this subcategory.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Discard')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Continue')),
+          TextButton(onPressed: () => ctx.pop(false), child: const Text('Discard')),
+          FilledButton(onPressed: () => ctx.pop(true), child: const Text('Continue')),
         ],
       ),
     );
@@ -205,7 +205,7 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
               for (final c in cl)
                 ListTile(
                   title: Text(c['name']?.toString() ?? ''),
-                  onTap: () => Navigator.pop(ctx, c['id']?.toString()),
+                  onTap: () => ctx.pop(c['id']?.toString()),
                 ),
             ],
           ),
@@ -229,7 +229,7 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
               for (final t in tl)
                 ListTile(
                   title: Text(t['name']?.toString() ?? ''),
-                  onTap: () => Navigator.pop(ctx, t['id']?.toString()),
+                  onTap: () => ctx.pop(t['id']?.toString()),
                 ),
             ],
           ),
@@ -350,8 +350,8 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
             title: const Text('Similar item exists'),
             content: const Text('Open the existing catalog item?'),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Open')),
+              TextButton(onPressed: () => ctx.pop(false), child: const Text('Cancel')),
+              FilledButton(onPressed: () => ctx.pop(true), child: const Text('Open')),
             ],
           ),
         );
@@ -692,7 +692,7 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
         if (didPop) return;
         await _saveDraft();
         if (!mounted) return;
-        Navigator.of(context).pop(false);
+        context.pop(false);
       },
       child: Scaffold(
         resizeToAvoidBottomInset: true,

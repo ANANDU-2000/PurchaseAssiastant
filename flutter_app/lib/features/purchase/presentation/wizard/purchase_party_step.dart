@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/models/session.dart';
@@ -124,11 +125,11 @@ class PurchasePartyStep extends ConsumerWidget {
                     children: [
                       CupertinoButton(
                         child: const Text('Cancel'),
-                        onPressed: () => Navigator.pop(ctx),
+                        onPressed: () => ctx.pop(),
                       ),
                       CupertinoButton(
                         child: const Text('Done'),
-                        onPressed: () => Navigator.pop(ctx, provisional),
+                        onPressed: () => ctx.pop(provisional),
                       ),
                     ],
                   ),

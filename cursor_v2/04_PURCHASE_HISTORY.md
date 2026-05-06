@@ -7,18 +7,18 @@
 ## STATUS
 
 
-| Task                                               | Status                          |
-| -------------------------------------------------- | ------------------------------- |
-| "Total spend" text removed                         | ✅ Done (no matches in `lib/`)   |
-| "Complete details pending" removed from list cards | ✅ Done (not present in UI code) |
-| Compact card layout (72–80pt height)               | ⚠️ Implemented (verify)         |
-| Weight display: bags • kg (not just kg)            | ⚠️ Implemented (verify)         |
-| Zero values hidden (0 bags, 0 box, 0 tin)          | ✅ Done                          |
-| History page full viewport (hide top nav)          | ⚠️ Implemented (verify)         |
-| Draft WIP card shown at top of list                | ✅ Banner exists on home         |
-| Filter chips (All / Draft / Due soon)              | ✅ Done                          |
-| Search by supplier / item                          | ✅ Done                          |
-| Pull-to-refresh                                    | ✅ Done                          |
+| Task                                               | Status                                        |
+| -------------------------------------------------- | --------------------------------------------- |
+| "Total spend" text removed                         | ✅ Done (not used in `_PurchaseRow`)           |
+| "Complete details pending" removed from list cards | ✅ Done (string absent in app)                 |
+| Compact card layout (≈64–76pt height)               | ✅ Done (`minHeight: 64`, padding 6, tighter type) |
+| Weight display: bags • kg (not just kg)            | ✅ Done (`formatLineQtyWeight`)                |
+| Zero values hidden (0 bags, 0 box, 0 tin)          | ⚠️ Partial (path picks first non-zero family) |
+| History page — shell chrome + Home affordance      | ✅ Bottom bar hidden; AppBar **Home** (like Reports) |
+| Draft WIP card shown at top of list                | ✅ Banner exists on home                       |
+| Filter chips (All / Draft / Due soon)              | ✅ Done                                        |
+| Search by supplier / item                          | ✅ Done                                        |
+| Pull-to-refresh                                    | ✅ Done                                        |
 
 
 ---

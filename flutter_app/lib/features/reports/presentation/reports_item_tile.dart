@@ -66,7 +66,7 @@ class ReportsItemTile extends StatelessWidget {
                     Text(
                       rateLine,
                       style: tt.bodySmall?.copyWith(
-                        color: HexaColors.textBody,
+                        color: const Color(0xFF333333),
                         fontWeight: FontWeight.w600,
                       ),
                     ),

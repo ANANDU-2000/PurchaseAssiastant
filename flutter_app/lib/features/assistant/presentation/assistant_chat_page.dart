@@ -144,11 +144,11 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
+            onPressed: () => ctx.pop(false),
             child: const Text('Back'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
+            onPressed: () => ctx.pop(true),
             child: const Text('Confirm & save'),
           ),
         ],
@@ -322,7 +322,7 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
                 title: Text('Copy', style: AssistantChatTheme.inter(16, w: FontWeight.w600)),
                 onTap: () {
                   Clipboard.setData(ClipboardData(text: t));
-                  Navigator.pop(ctx);
+                  ctx.pop();
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Copied')),
                   );
@@ -333,7 +333,7 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
                   leading: Icon(Icons.delete_outline_rounded, color: Colors.red.shade700),
                   title: Text('Delete', style: AssistantChatTheme.inter(16, w: FontWeight.w600, c: Colors.red.shade800)),
                   onTap: () {
-                    Navigator.pop(ctx);
+                    ctx.pop();
                     setState(() {
                       _msgs.removeWhere((m) => m.isUser && m.text == t);
                     });
@@ -535,7 +535,7 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
                 leading: const Icon(Icons.vertical_align_bottom_rounded),
                 title: const Text('Jump to latest'),
                 onTap: () {
-                  Navigator.pop(ctx);
+                  ctx.pop();
                   _scrollEnd();
                   _inputFocus.requestFocus();
                 },
@@ -544,7 +544,7 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
                 leading: const Icon(Icons.mic_rounded),
                 title: const Text('Voice mode'),
                 onTap: () {
-                  Navigator.pop(ctx);
+                  ctx.pop();
                   context.push('/voice');
                 },
               ),
@@ -552,7 +552,7 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
                 leading: const Icon(Icons.home_outlined),
                 title: const Text('Home'),
                 onTap: () {
-                  Navigator.pop(ctx);
+                  ctx.pop();
                   context.go('/home');
                 },
               ),

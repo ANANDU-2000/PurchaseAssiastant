@@ -56,3 +56,29 @@ def test_patch_branding_uppercases_gst_and_round_trips():
     assert lr.status_code == 200, lr.text
     row = next(x for x in lr.json() if x["id"] == bid)
     assert row["gst_number"] == "32AAAAA0000A1Z5"
+
+
+def test_patch_branding_updates_registered_business_name():
+    h, bid = _register_owner()
+    pr = client.patch(
+        f"/v1/me/businesses/{bid}/branding",
+        headers=h,
+        json={"name": "  Acme Traders LLP  "},
+    )
+    assert pr.status_code == 200, pr.text
+    assert pr.json()["name"] == "Acme Traders LLP"
+
+    lr = client.get("/v1/me/businesses", headers=h)
+    assert lr.status_code == 200, lr.text
+    row = next(x for x in lr.json() if x["id"] == bid)
+    assert row["name"] == "Acme Traders LLP"
+
+
+def test_patch_branding_rejects_empty_name():
+    h, bid = _register_owner()
+    pr = client.patch(
+        f"/v1/me/businesses/{bid}/branding",
+        headers=h,
+        json={"name": "  "},
+    )
+    assert pr.status_code == 400, pr.text

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/calc_engine.dart';
@@ -468,6 +469,69 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   static bool _isWeightUnit(String? u) {
     final x = (u ?? '').trim().toLowerCase();
     return x == 'bag' || x == 'sack';
+  }
+
+  static const _unitDropdownChoices = <String>[
+    'kg',
+    'bag',
+    'sack',
+    'box',
+    'tin',
+    'piece',
+    'quintal',
+  ];
+
+  String _unitDropdownValue() {
+    var t = _unitCtrl.text.trim().toLowerCase();
+    if (t == 'qtl') t = 'quintal';
+    if (t.isNotEmpty && !_unitDropdownChoices.contains(t)) return t;
+    if (_unitDropdownChoices.contains(t)) return t;
+    return 'kg';
+  }
+
+  void _onUnitDropdownChanged(String? v) {
+    if (v == null) return;
+    _clearFieldErrors();
+    if (!_isWeightUnit(v) && !_hasCatalogKg()) {
+      _kgPerUnit = null;
+      _kgPerBagCtrl.clear();
+    }
+    _recomputeModeFromUnitAndCatalog();
+    _maybeCoerceQtyModeForUnit();
+    setState(() {
+      _unitCtrl.text = v;
+      _adjustBoxFixedForClassification(_activeClassification());
+    });
+  }
+
+  Widget _unitDropdownField({required String? errorText}) {
+    final v = _unitDropdownValue();
+    final itemSet = <String>{..._unitDropdownChoices, v};
+    final ordered = <String>[
+      for (final c in _unitDropdownChoices)
+        if (itemSet.contains(c)) c,
+      for (final x in itemSet)
+        if (!_unitDropdownChoices.contains(x)) x,
+    ];
+    return KeyedSubtree(
+      key: ValueKey<String>('unit|$v'),
+      child: DropdownButtonFormField<String>(
+        isExpanded: true,
+        initialValue: v,
+        decoration: _deco('Unit *', errorText: errorText),
+        items: [
+          for (final u in ordered)
+            DropdownMenuItem<String>(
+              value: u,
+              child: Text(
+                u,
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              ),
+            ),
+        ],
+        onChanged: _onUnitDropdownChanged,
+      ),
+    );
   }
 
   /// Weight bags: ₹/kg landing × total kg purchased.
@@ -997,22 +1061,22 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         content: const Text('You will lose edits to this line.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
+            onPressed: () => ctx.pop(false),
             child: const Text('Keep editing'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
+            onPressed: () => ctx.pop(true),
             child: const Text('Leave'),
           ),
         ],
       ),
     );
-    if (ok == true && mounted) Navigator.of(context).pop();
+    if (ok == true && mounted) context.pop();
   }
 
   Future<void> _handleLeadingBack() async {
     if (!_isDirtySheet()) {
-      if (mounted) Navigator.of(context).maybePop();
+      if (mounted && context.canPop()) context.pop();
       return;
     }
     await _confirmDiscardAndPop();
@@ -1453,8 +1517,8 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     widget.onCommitted(line);
     if (!widget.fullPage) {
       if (closeSheet) {
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
+        if (context.canPop()) {
+          context.pop();
         }
       } else {
         _resetAfterAdd();
@@ -1462,8 +1526,8 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       return;
     }
     // Full-screen page: caller may chain another add via pop result.
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop<bool>(!closeSheet);
+    if (context.canPop()) {
+      context.pop<bool>(!closeSheet);
     }
   }
 
@@ -2256,26 +2320,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                                     ),
                                   ),
                                 )
-                              : TextField(
-                                  controller: _unitCtrl,
-                                  decoration:
-                                      _deco('Unit *', errorText: _errUnit),
-                                  onChanged: (v) {
-                                    _clearFieldErrors();
-                                    if (!_isWeightUnit(v) &&
-                                        !_hasCatalogKg()) {
-                                      _kgPerUnit = null;
-                                      _kgPerBagCtrl.clear();
-                                    }
-                                    _recomputeModeFromUnitAndCatalog();
-                                    _maybeCoerceQtyModeForUnit();
-                                    setState(() {
-                                      _adjustBoxFixedForClassification(
-                                        _activeClassification(),
-                                      );
-                                    });
-                                  },
-                                ),
+                              : _unitDropdownField(errorText: _errUnit),
                         ),
                       ),
                     ],
@@ -2343,24 +2388,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                                   ),
                                 ),
                               )
-                            : TextField(
-                                controller: _unitCtrl,
-                                decoration:
-                                    _deco('Unit *', errorText: _errUnit),
-                                onChanged: (v) {
-                                  _clearFieldErrors();
-                                  if (!_isWeightUnit(v) && !_hasCatalogKg()) {
-                                    _kgPerUnit = null;
-                                    _kgPerBagCtrl.clear();
-                                  }
-                                  _recomputeModeFromUnitAndCatalog();
-                                  setState(() {
-                                    _adjustBoxFixedForClassification(
-                                      _activeClassification(),
-                                    );
-                                  });
-                                },
-                              ),
+                            : _unitDropdownField(errorText: _errUnit),
                       ),
                     ),
                   ],
@@ -2883,7 +2911,9 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         top: widget.fullPage ? 8 : 4,
         right: widget.fullPage ? 16 : 10,
         bottom: keyboardBottom +
-            (widget.fullPage ? homeBottomInset + 76 : 10),
+            (widget.fullPage
+                ? homeBottomInset + 76
+                : homeBottomInset + 88),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

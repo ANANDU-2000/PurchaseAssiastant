@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:hive_flutter/hive_flutter.dart';
 
 /// Local persistence for offline-first UX (dashboard cache, future entry queue).
@@ -22,10 +25,30 @@ class OfflineStore {
     await _purchaseWizardDraft.put(businessId, json);
   }
 
+  /// True when [json] has `draftWizardMeta.savedAt` older than 24 hours.
+  /// Malformed JSON is treated as expired.
+  static bool purchaseWizardDraftJsonIsExpired(String json) {
+    try {
+      final o = jsonDecode(json);
+      if (o is! Map) return true;
+      final meta = o['draftWizardMeta'];
+      if (meta is! Map) return false;
+      final at = DateTime.tryParse(meta['savedAt']?.toString() ?? '');
+      if (at == null) return false;
+      return DateTime.now().difference(at) > const Duration(hours: 24);
+    } catch (_) {
+      return true;
+    }
+  }
+
   static String? getPurchaseWizardDraft(String businessId) {
     final v = _purchaseWizardDraft.get(businessId);
-    if (v is String && v.isNotEmpty) return v;
-    return null;
+    if (v is! String || v.isEmpty) return null;
+    if (purchaseWizardDraftJsonIsExpired(v)) {
+      unawaited(clearPurchaseWizardDraft(businessId));
+      return null;
+    }
+    return v;
   }
 
   static Future<void> clearPurchaseWizardDraft(String businessId) async {

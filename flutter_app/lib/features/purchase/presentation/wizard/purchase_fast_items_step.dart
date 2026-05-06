@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/strict_decimal.dart';
@@ -50,12 +51,12 @@ class _PurchaseFastItemsStepState extends ConsumerState<PurchaseFastItemsStep> {
             ),
             actions: [
               CupertinoDialogAction(
-                onPressed: () => Navigator.pop(ctx, false),
+                onPressed: () => ctx.pop(false),
                 child: const Text('Cancel'),
               ),
               CupertinoDialogAction(
                 isDestructiveAction: true,
-                onPressed: () => Navigator.pop(ctx, true),
+                onPressed: () => ctx.pop(true),
                 child: const Text('Clear all'),
               ),
             ],

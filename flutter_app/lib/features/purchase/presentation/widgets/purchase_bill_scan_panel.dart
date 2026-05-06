@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../../core/auth/auth_error_messages.dart';
 import '../../../../core/auth/session_notifier.dart';
+import '../../../../core/providers/brokers_list_provider.dart';
 import '../../../../core/providers/suppliers_list_provider.dart';
 import '../../../../core/search/catalog_fuzzy.dart';
 import '../../../../core/theme/hexa_colors.dart';
@@ -50,7 +51,9 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
   String? _supplierDirectoryId;
   Map<String, dynamic>? _supplierFuzzySuggestion;
 
-  String? _brokerName;
+  final _brokerCtrl = TextEditingController();
+  String? _brokerDirectoryId;
+  Map<String, dynamic>? _brokerFuzzySuggestion;
   final _deliveredCtrl = TextEditingController();
   final _billtyCtrl = TextEditingController();
   final _freightCtrl = TextEditingController();
@@ -96,6 +99,46 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
     _supplierFuzzySuggestion = top;
   }
 
+  void _refreshBrokerDirectoryLink() {
+    final q = _brokerCtrl.text.trim();
+    if (q.isEmpty) {
+      _brokerDirectoryId = null;
+      _brokerFuzzySuggestion = null;
+      return;
+    }
+    final brokers = ref.read(brokersListProvider).valueOrNull ?? [];
+    for (final m in brokers) {
+      final n = m['name']?.toString().trim() ?? '';
+      if (n.isEmpty) continue;
+      if (normalizeCatalogSearch(n) == normalizeCatalogSearch(q)) {
+        _brokerDirectoryId = m['id']?.toString();
+        _brokerFuzzySuggestion = null;
+        return;
+      }
+    }
+    _brokerDirectoryId = null;
+    final ranked = catalogFuzzyRank(
+      q,
+      brokers,
+      (m) => m['name']?.toString() ?? '',
+      minScore: 82,
+      limit: 1,
+    );
+    if (ranked.isEmpty) {
+      _brokerFuzzySuggestion = null;
+      return;
+    }
+    final top = ranked.first;
+    final name = top['name']?.toString().trim() ?? '';
+    if (name.isEmpty ||
+        normalizeCatalogSearch(name) == normalizeCatalogSearch(q) ||
+        catalogFuzzyScore(q, name) < 88) {
+      _brokerFuzzySuggestion = null;
+      return;
+    }
+    _brokerFuzzySuggestion = top;
+  }
+
   Future<void> _pick(ImageSource src) async {
     final x = await ImagePicker().pickImage(source: src);
     if (x == null) return;
@@ -108,6 +151,17 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
       _rows = [];
       _missing.clear();
       _note = null;
+      _supplierCtrl.clear();
+      _supplierDirectoryId = null;
+      _supplierFuzzySuggestion = null;
+      _brokerCtrl.clear();
+      _brokerDirectoryId = null;
+      _brokerFuzzySuggestion = null;
+      _deliveredCtrl.clear();
+      _billtyCtrl.clear();
+      _freightCtrl.clear();
+      _freightType = 'separate';
+      _userConfirmedPreview = false;
     });
     try {
       final compressed = await _compressForUpload(raw);
@@ -148,7 +202,10 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
       }
       final supplier = res['supplier_name']?.toString().trim();
       _supplierCtrl.text = supplier ?? '';
-      _brokerName = res['broker_name']?.toString().trim();
+      final broker = res['broker_name']?.toString().trim();
+      _brokerCtrl.text = broker ?? '';
+      final sid = res['supplier_id']?.toString().trim();
+      final bid = res['broker_id']?.toString().trim();
       final charges = res['charges'];
       if (charges is Map) {
         final ch = Map<String, dynamic>.from(charges);
@@ -192,13 +249,39 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
       for (final old in _rows) {
         old.dispose();
       }
+      final meta = res['meta'];
+      final warns = <String>[];
+      if (meta is Map) {
+        final pw = meta['parse_warnings'];
+        if (pw is List) {
+          for (final w in pw) {
+            final t = w?.toString().trim() ?? '';
+            if (t.isNotEmpty) warns.add(t);
+          }
+        }
+      }
       setState(() {
         _missing.clear();
         _missing.addAll(nextMiss);
         _rows = nextRows.isEmpty ? [_BillRowEdit.empty()] : nextRows;
-        _note = res['note']?.toString();
+        final baseNote = res['note']?.toString() ?? '';
+        if (warns.isEmpty) {
+          _note = baseNote.isEmpty ? null : baseNote;
+        } else {
+          final extra = warns.join('\n');
+          _note = baseNote.isEmpty ? extra : '$baseNote\n$extra';
+        }
         _userConfirmedPreview = false;
+        if (sid != null && sid.isNotEmpty) {
+          _supplierDirectoryId = sid;
+          _supplierFuzzySuggestion = null;
+        }
+        if (bid != null && bid.isNotEmpty) {
+          _brokerDirectoryId = bid;
+          _brokerFuzzySuggestion = null;
+        }
         _refreshSupplierDirectoryLink();
+        _refreshBrokerDirectoryLink();
       });
       HapticFeedback.selectionClick();
     } on DioException catch (e) {
@@ -246,6 +329,9 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
       supplierName: _supplierCtrl.text.trim().isEmpty
           ? null
           : _supplierCtrl.text.trim(),
+      brokerId: _brokerDirectoryId,
+      brokerName:
+          _brokerCtrl.text.trim().isEmpty ? null : _brokerCtrl.text.trim(),
       invoiceNumber: null,
       deliveredRate: double.tryParse(_deliveredCtrl.text.trim()),
       billtyRate: double.tryParse(_billtyCtrl.text.trim()),
@@ -320,9 +406,39 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
     );
   }
 
+  Widget _brokerField(bool highlight) {
+    return TextField(
+      controller: _brokerCtrl,
+      decoration: InputDecoration(
+        labelText: 'Broker (optional)',
+        border: OutlineInputBorder(
+          borderSide: BorderSide(
+            color: highlight ? Colors.red : Colors.grey,
+            width: highlight ? 1.5 : 1,
+          ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderSide: BorderSide(
+            color: highlight ? Colors.red : Colors.grey[300]!,
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderSide: BorderSide(
+            color: highlight ? Colors.red : HexaColors.brandPrimary,
+            width: 1.5,
+          ),
+        ),
+      ),
+      onChanged: (_) => setState(() {
+        _refreshBrokerDirectoryLink();
+      }),
+    );
+  }
+
   @override
   void dispose() {
     _supplierCtrl.dispose();
+    _brokerCtrl.dispose();
     _deliveredCtrl.dispose();
     _billtyCtrl.dispose();
     _freightCtrl.dispose();
@@ -334,6 +450,11 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
 
   bool _canApply() {
     if (_supplierDirectoryId == null || _supplierDirectoryId!.trim().isEmpty) {
+      return false;
+    }
+    final b = _brokerCtrl.text.trim();
+    if (b.isNotEmpty &&
+        (_brokerDirectoryId == null || _brokerDirectoryId!.trim().isEmpty)) {
       return false;
     }
     if (_rows.isEmpty) return false;
@@ -354,309 +475,408 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
       if (_supplierCtrl.text.trim().isEmpty) return;
       setState(() => _refreshSupplierDirectoryLink());
     });
+    ref.listen(brokersListProvider, (previous, next) {
+      if (!next.hasValue || !mounted) return;
+      if (_brokerCtrl.text.trim().isEmpty) return;
+      setState(() => _refreshBrokerDirectoryLink());
+    });
 
-    return SingleChildScrollView(
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      padding: const EdgeInsets.all(16),
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + bottomInset),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
         children: [
-          if (!widget.compactHeading)
-            const Text(
-              'Take or choose a bill photo — preview only until you tap Apply. '
-              'Confirm every row; supplier name may need matching to your directory.',
-              style: TextStyle(height: 1.35, fontSize: 13),
-            )
-          else
-            Text(
-              'Scan bill → edit → Apply to this purchase',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
+          Expanded(
+            child: ListView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              children: [
+                if (!widget.compactHeading)
+                  const Text(
+                    'Take or choose a bill photo — preview only until you tap Apply. '
+                    'Confirm every row; supplier name may need matching to your directory.',
+                    style: TextStyle(height: 1.35, fontSize: 13),
+                  )
+                else
+                  Text(
+                    'Scan bill → edit → Apply to this purchase',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
                   ),
-            ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _busy ? null : () => _pick(ImageSource.camera),
-                  icon: const Icon(Icons.photo_camera_rounded),
-                  label: const Text('Camera'),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _busy ? null : () => _pick(ImageSource.camera),
+                        icon: const Icon(Icons.photo_camera_rounded),
+                        label: const Text('Camera'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _busy ? null : () => _pick(ImageSource.gallery),
+                        icon: const Icon(Icons.photo_library_rounded),
+                        label: const Text('Gallery'),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _busy ? null : () => _pick(ImageSource.gallery),
-                  icon: const Icon(Icons.photo_library_rounded),
-                  label: const Text('Gallery'),
+                if (_jpegBytes != null) ...[
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: _busy ? null : _scan,
+                    icon: _busy
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.document_scanner_rounded),
+                    label: Text(_busy ? 'Scanning…' : 'Extract text'),
+                  ),
+                ],
+                if (_note != null && _note!.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    _note!,
+                    style: TextStyle(fontSize: 12, color: Colors.grey[800]),
+                  ),
+                ],
+                const SizedBox(height: 16),
+                Text(
+                  'Review',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w800),
                 ),
-              ),
-            ],
-          ),
-          if (_jpegBytes != null) ...[
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: _busy ? null : _scan,
-              icon: _busy
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Icon(Icons.document_scanner_rounded),
-              label: Text(_busy ? 'Scanning…' : 'Extract text'),
-            ),
-          ],
-          if (_note != null && _note!.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(_note!, style: TextStyle(fontSize: 12, color: Colors.grey[800])),
-          ],
-          const SizedBox(height: 16),
-          Text(
-            'Review',
-            style: Theme.of(context)
-                .textTheme
-                .titleMedium
-                ?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 8),
-          _supplierField(_missingSupplier()),
-          if (_supplierDirectoryId != null &&
-              _supplierCtrl.text.trim().isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(
-              'Matched to a supplier in your directory',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: Colors.teal.shade800,
-              ),
-            ),
-          ],
-          if (_supplierFuzzySuggestion != null) ...[
-            const SizedBox(height: 8),
-            Material(
-              color: Colors.amber.shade50,
-              borderRadius: BorderRadius.circular(10),
-              child: InkWell(
-                onTap: () {
-                  final m = _supplierFuzzySuggestion!;
-                  final name = m['name']?.toString().trim() ?? '';
-                  final id = m['id']?.toString();
-                  setState(() {
-                    _supplierCtrl.text = name;
-                    _supplierDirectoryId = id;
-                    _supplierFuzzySuggestion = null;
-                  });
-                },
-                borderRadius: BorderRadius.circular(10),
-                child: Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: Row(
-                    children: [
-                      Icon(Icons.merge_type_rounded,
-                          color: Colors.amber.shade900, size: 22),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                const SizedBox(height: 8),
+                _supplierField(_missingSupplier()),
+                if (_supplierDirectoryId != null &&
+                    _supplierCtrl.text.trim().isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Matched to a supplier in your directory',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.teal.shade800,
+                    ),
+                  ),
+                ],
+                if (_supplierFuzzySuggestion != null) ...[
+                  const SizedBox(height: 8),
+                  Material(
+                    color: Colors.amber.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    child: InkWell(
+                      onTap: () {
+                        final m = _supplierFuzzySuggestion!;
+                        final name = m['name']?.toString().trim() ?? '';
+                        final id = m['id']?.toString();
+                        setState(() {
+                          _supplierCtrl.text = name;
+                          _supplierDirectoryId = id;
+                          _supplierFuzzySuggestion = null;
+                        });
+                      },
+                      borderRadius: BorderRadius.circular(10),
+                      child: Padding(
+                        padding: const EdgeInsets.all(10),
+                        child: Row(
                           children: [
-                            Text(
-                              'Similar directory supplier',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 12,
-                                color: Colors.amber.shade900,
+                            Icon(Icons.merge_type_rounded,
+                                color: Colors.amber.shade900, size: 22),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Similar directory supplier',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 12,
+                                      color: Colors.amber.shade900,
+                                    ),
+                                  ),
+                                  Text(
+                                    '${_supplierFuzzySuggestion!['name']} — tap to link (avoid duplicate)',
+                                    style:
+                                        const TextStyle(fontSize: 11, height: 1.25),
+                                  ),
+                                ],
                               ),
                             ),
-                            Text(
-                              '${_supplierFuzzySuggestion!['name']} — tap to link (avoid duplicate)',
-                              style: const TextStyle(fontSize: 11, height: 1.25),
+                            Icon(Icons.chevron_right_rounded,
+                                color: Colors.grey.shade700),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                _brokerField(
+                  _brokerCtrl.text.trim().isNotEmpty &&
+                      (_brokerDirectoryId == null ||
+                          _brokerDirectoryId!.trim().isEmpty),
+                ),
+                if (_brokerDirectoryId != null &&
+                    _brokerCtrl.text.trim().isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Matched to a broker in your directory',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.teal.shade800,
+                    ),
+                  ),
+                ],
+                if (_brokerFuzzySuggestion != null) ...[
+                  const SizedBox(height: 8),
+                  Material(
+                    color: Colors.amber.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    child: InkWell(
+                      onTap: () {
+                        final m = _brokerFuzzySuggestion!;
+                        final name = m['name']?.toString().trim() ?? '';
+                        final id = m['id']?.toString();
+                        setState(() {
+                          _brokerCtrl.text = name;
+                          _brokerDirectoryId = id;
+                          _brokerFuzzySuggestion = null;
+                        });
+                      },
+                      borderRadius: BorderRadius.circular(10),
+                      child: Padding(
+                        padding: const EdgeInsets.all(10),
+                        child: Row(
+                          children: [
+                            Icon(Icons.merge_type_rounded,
+                                color: Colors.amber.shade900, size: 22),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Similar directory broker',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 12,
+                                      color: Colors.amber.shade900,
+                                    ),
+                                  ),
+                                  Text(
+                                    '${_brokerFuzzySuggestion!['name']} — tap to link (avoid duplicate)',
+                                    style:
+                                        const TextStyle(fontSize: 11, height: 1.25),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Icon(Icons.chevron_right_rounded,
+                                color: Colors.grey.shade700),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+                ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  title: const Text(
+                    'Charges (optional)',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  children: [
+                    TextField(
+                      controller: _deliveredCtrl,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: 'Delivered (₹)',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _billtyCtrl,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: 'Billty (₹)',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _freightCtrl,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: 'Freight (₹)',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      initialValue: _freightType,
+                      decoration: const InputDecoration(
+                        labelText: 'Freight type',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'separate', child: Text('Separate')),
+                        DropdownMenuItem(value: 'included', child: Text('Included')),
+                      ],
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setState(() => _freightType = v);
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+                if (_rows.isEmpty)
+                  const Text(
+                    'No lines yet — scan or add rows manually.',
+                    style: TextStyle(fontSize: 12),
+                  )
+                else
+                  ..._rows.asMap().entries.map((e) {
+                    final i = e.key;
+                    final r = e.value;
+                    final rowWarn = _missing.any((m) => m.startsWith('line_$i.'));
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      shape: RoundedRectangleBorder(
+                        side: BorderSide(
+                          color: rowWarn
+                              ? Colors.red.withValues(alpha: 0.65)
+                              : Colors.grey.shade300,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(10),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              children: [
+                                Text('Line ${i + 1}',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w700)),
+                                const Spacer(),
+                                IconButton(
+                                  tooltip: 'Remove',
+                                  icon: const Icon(Icons.close_rounded),
+                                  onPressed: () => _removeRow(i),
+                                ),
+                              ],
+                            ),
+                            TextField(
+                              controller: r.name,
+                              decoration: _lineDeco('Item name',
+                                  warn: _warnLineCell(i, 'item_name')),
+                            ),
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                SizedBox(
+                                  width: 120,
+                                  child: TextField(
+                                    controller: r.qty,
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                            decimal: true),
+                                    decoration: _lineDeco('Qty',
+                                        warn: _warnLineCell(i, 'qty')),
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: 110,
+                                  child: TextField(
+                                    controller: r.unit,
+                                    decoration: _lineDeco('Unit',
+                                        warn: _warnLineCell(i, 'unit')),
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: 120,
+                                  child: TextField(
+                                    controller: r.kgPerUnit,
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                            decimal: true),
+                                    decoration:
+                                        _lineDeco('Kg/unit', warn: false),
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: 120,
+                                  child: TextField(
+                                    controller: r.pRate,
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                            decimal: true),
+                                    decoration: _lineDeco('P rate',
+                                        warn: _warnLineCell(i, 'purchase_rate')),
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: 120,
+                                  child: TextField(
+                                    controller: r.sRate,
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                            decimal: true),
+                                    decoration:
+                                        _lineDeco('S rate', warn: false),
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
                       ),
-                      Icon(Icons.chevron_right_rounded,
-                          color: Colors.grey.shade700),
-                    ],
-                  ),
+                    );
+                  }),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    setState(() => _rows = [..._rows, _BillRowEdit.empty()]);
+                  },
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add blank line'),
                 ),
-              ),
+              ],
             ),
-          ],
-          const SizedBox(height: 12),
-          if ((_brokerName ?? '').trim().isNotEmpty) ...[
-            Text(
-              'Broker (from bill): ${_brokerName!.trim()}',
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 10),
-          ],
-          ExpansionTile(
-            tilePadding: EdgeInsets.zero,
-            title: const Text(
-              'Charges (optional)',
-              style: TextStyle(fontWeight: FontWeight.w800),
-            ),
-            children: [
-              TextField(
-                controller: _deliveredCtrl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
-                  labelText: 'Delivered (₹)',
-                  isDense: true,
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _billtyCtrl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
-                  labelText: 'Billty (₹)',
-                  isDense: true,
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _freightCtrl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
-                  labelText: 'Freight (₹)',
-                  isDense: true,
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                initialValue: _freightType,
-                decoration: const InputDecoration(
-                  labelText: 'Freight type',
-                  isDense: true,
-                  border: OutlineInputBorder(),
-                ),
-                items: const [
-                  DropdownMenuItem(value: 'separate', child: Text('Separate')),
-                  DropdownMenuItem(value: 'included', child: Text('Included')),
-                ],
-                onChanged: (v) {
-                  if (v == null) return;
-                  setState(() => _freightType = v);
-                },
-              ),
-              const SizedBox(height: 8),
-            ],
-          ),
-          if (_rows.isEmpty)
-            const Text(
-              'No lines yet — scan or add rows manually.',
-              style: TextStyle(fontSize: 12),
-            )
-          else
-            ..._rows.asMap().entries.map((e) {
-              final i = e.key;
-              final r = e.value;
-              final rowWarn =
-                  _missing.any((m) => m.startsWith('line_$i.'));
-              return Card(
-                margin: const EdgeInsets.only(bottom: 8),
-                shape: RoundedRectangleBorder(
-                  side: BorderSide(
-                    color: rowWarn
-                        ? Colors.red.withValues(alpha: 0.65)
-                        : Colors.grey.shade300,
-                  ),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          Text('Line ${i + 1}',
-                              style: const TextStyle(fontWeight: FontWeight.w700)),
-                          const Spacer(),
-                          IconButton(
-                            tooltip: 'Remove',
-                            icon: const Icon(Icons.close_rounded),
-                            onPressed: () => _removeRow(i),
-                          ),
-                        ],
-                      ),
-                      TextField(
-                        controller: r.name,
-                        decoration: _lineDeco('Item name',
-                            warn: _warnLineCell(i, 'item_name')),
-                      ),
-                      const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          SizedBox(
-                            width: 120,
-                            child: TextField(
-                              controller: r.qty,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              decoration: _lineDeco('Qty', warn: _warnLineCell(i, 'qty')),
-                            ),
-                          ),
-                          SizedBox(
-                            width: 110,
-                            child: TextField(
-                              controller: r.unit,
-                              decoration: _lineDeco('Unit', warn: _warnLineCell(i, 'unit')),
-                            ),
-                          ),
-                          SizedBox(
-                            width: 120,
-                            child: TextField(
-                              controller: r.kgPerUnit,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              decoration: _lineDeco('Kg/unit', warn: false),
-                            ),
-                          ),
-                          SizedBox(
-                            width: 120,
-                            child: TextField(
-                              controller: r.pRate,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              decoration: _lineDeco('P rate', warn: _warnLineCell(i, 'purchase_rate')),
-                            ),
-                          ),
-                          SizedBox(
-                            width: 120,
-                            child: TextField(
-                              controller: r.sRate,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              decoration: _lineDeco('S rate', warn: false),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }),
-          const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: () {
-              setState(() => _rows = [..._rows, _BillRowEdit.empty()]);
-            },
-            icon: const Icon(Icons.add),
-            label: const Text('Add blank line'),
           ),
           const SizedBox(height: 12),
           CheckboxListTile(
             value: _userConfirmedPreview,
-            onChanged: (_supplierDirectoryId != null && _rows.isNotEmpty)
+            onChanged: (_supplierDirectoryId != null &&
+                    _rows.isNotEmpty &&
+                    (_brokerCtrl.text.trim().isEmpty ||
+                        (_brokerDirectoryId != null &&
+                            _brokerDirectoryId!.trim().isNotEmpty)))
                 ? (v) => setState(() => _userConfirmedPreview = v ?? false)
                 : null,
             dense: true,
@@ -669,7 +889,11 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
             subtitle: Text(
               _supplierDirectoryId == null
                   ? 'Supplier must be matched to your directory (tap the suggestion if shown).'
-                  : 'Required: item, qty, unit, and purchase rate for each row.',
+                  : (_brokerCtrl.text.trim().isNotEmpty &&
+                          (_brokerDirectoryId == null ||
+                              _brokerDirectoryId!.trim().isEmpty))
+                      ? 'Broker name is filled — match it to your directory (or clear the field).'
+                      : 'Required: item, qty, unit, and purchase rate for each row.',
               style: const TextStyle(fontSize: 11, height: 1.25),
             ),
           ),

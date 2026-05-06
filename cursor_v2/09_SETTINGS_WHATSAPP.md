@@ -1,21 +1,26 @@
 # SPEC 09 — SETTINGS & WHATSAPP AUTO-REPORT
+
 > Reference: `@.cursor/00_AGENT_RULES.md` first
 
 ---
 
 ## STATUS
-| Task | Status |
-|------|--------|
-| WhatsApp report MVP sheet | ✅ Done |
-| Scheduled WhatsApp report (daily/weekly/monthly) | ✅ Done |
-| Settings — remove app logo/name | ⚠️ Not targeted (no app logo/name section found) |
-| Settings — remove "Get started" after complete | ✅ Done (not present) |
-| Settings — clean layout | ⚠️ Implemented (WhatsApp + notifications consolidated) |
-| Date field → iOS native `CupertinoDatePicker` | ✅ Done |
+
+
+| Task                                             | Status     |
+| ------------------------------------------------ | ---------- |
+| WhatsApp report MVP sheet                        | ✅ Done     |
+| Scheduled WhatsApp report (daily/weekly/monthly) | ✅ Local schedule + permissions; tap notification → `wa.me` with summary (not auto-send) |
+| Settings — remove app logo/name                  | ⏭️ N/A (no marketing header; owner branding stays) |
+| Settings — remove "Get started" after complete   | ⏭️ N/A (not shown on Settings) |
+| Settings — clean layout                          | ⚠️ Incremental (cards/sections as now) |
+| WhatsApp schedule time → `CupertinoDatePicker` (iOS) | ✅ Done (`settings_page.dart`) |
+
 
 ---
 
 ## FILES TO EDIT
+
 ```
 flutter_app/lib/features/settings/presentation/settings_page.dart
 flutter_app/lib/features/reports/presentation/reports_whatsapp_sheet.dart
@@ -32,12 +37,14 @@ flutter_app/lib/core/notifications/local_notifications_service.dart
 **File:** `settings_page.dart`
 
 **REMOVE from settings:**
+
 - App logo image widget (if any)
 - App name text "PurchaseAssistant" or similar branding section
 - "Get started" guide section (check if `onboardingComplete` flag — hide if true)
 - Any debug/developer options section
 
 **KEEP:**
+
 - Profile (name, business name)
 - Notifications toggle
 - WhatsApp reports section (see 09-B)
@@ -110,6 +117,7 @@ Future<void> _scheduleReportNotification() async {
 ```
 
 **Handle notification tap in app router:**
+
 ```dart
 // When payload == 'whatsapp_report':
 // Generate report PDF → open WhatsApp deeplink
@@ -128,6 +136,7 @@ Future<void> _sendWhatsAppReport() async {
 ```
 
 **UI in settings:**
+
 ```
 WhatsApp Reports
 ─────────────────────────────────────────
@@ -192,9 +201,11 @@ Future<void> _pickDate(BuildContext context) async {
 ---
 
 ## VALIDATION
-- [ ] Settings page has no app logo or "PurchaseAssistant" header
-- [ ] "Get started" not shown if user has purchases
-- [ ] WhatsApp auto-report toggle saves preference
-- [ ] Scheduled notification fires at set time
-- [ ] Tapping notification opens WhatsApp with report text
-- [ ] Date picker uses iOS native wheel picker (not Material calendar)
+
+- Settings page has no app logo or "PurchaseAssistant" header
+- "Get started" not shown if user has purchases
+- WhatsApp auto-report toggle saves preference
+- Scheduled notification fires at set time
+- Tapping notification opens WhatsApp with report text
+- Date picker uses iOS native wheel picker (not Material calendar)
+

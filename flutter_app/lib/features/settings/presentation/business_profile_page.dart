@@ -81,6 +81,14 @@ class _BusinessProfilePageState extends ConsumerState<BusinessProfilePage> {
     final session = ref.read(sessionProvider);
     if (session == null || session.primaryBusiness.role != 'owner') return;
 
+    final name = _nameCtrl.text.trim();
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Registered business name cannot be empty')),
+      );
+      return;
+    }
+
     final gstErr = _validateGst(_gstCtrl.text);
     final phErr = _validatePhone(_phoneCtrl.text);
     if (gstErr != null || phErr != null) {
@@ -95,6 +103,7 @@ class _BusinessProfilePageState extends ConsumerState<BusinessProfilePage> {
     try {
       await ref.read(hexaApiProvider).patchBusinessBranding(
             businessId: session.primaryBusiness.id,
+            name: name,
             brandingTitle: _titleCtrl.text.trim(),
             gstNumber: _gstCtrl.text.trim().toUpperCase(),
             address: _addressCtrl.text.trim(),
@@ -152,7 +161,7 @@ class _BusinessProfilePageState extends ConsumerState<BusinessProfilePage> {
                 children: [
                   TextField(
                     controller: _nameCtrl,
-                    readOnly: true,
+                    textCapitalization: TextCapitalization.words,
                     decoration: const InputDecoration(
                       labelText: 'Registered business name',
                       border: OutlineInputBorder(),

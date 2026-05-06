@@ -1,5 +1,6 @@
 """
-Idempotent seed: categories (ItemCategory + CategoryType), catalog items, GST suppliers.
+Idempotent seed: categories (ItemCategory + CategoryType), catalog items, GST suppliers,
+optional brokers from data/brokers_seed.json.
 
 Run from backend/:
 
@@ -79,6 +80,7 @@ def run_seed(
         f"types +{stats['types']}",
         f"items +{stats['items_inserted']} skipped {stats['items_skipped']}",
         f"suppliers +{stats['suppliers_inserted']} skipped {stats['suppliers_skipped']}",
+        f"brokers +{stats['brokers_inserted']} skipped {stats['brokers_skipped']}",
     )
 
 

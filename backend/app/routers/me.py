@@ -1,4 +1,5 @@
 import uuid
+from difflib import get_close_matches
 from pathlib import Path
 from typing import Annotated
 
@@ -11,6 +12,7 @@ from app.config import Settings, get_settings
 from app.database import get_db
 from app.deps import get_current_user, require_membership, require_owner_membership
 from app.models import Business, Membership, User
+from app.models.contacts import Broker, Supplier
 from app.services.feature_flags import is_ocr_enabled
 from app.services.default_workspace import bootstrap_user_workspace
 
@@ -122,6 +124,7 @@ async def my_businesses(
 
 
 class BusinessBrandingPatch(BaseModel):
+    name: str | None = Field(None, max_length=255)
     branding_title: str | None = Field(None, max_length=128)
     branding_logo_url: str | None = Field(None, max_length=512)
     gst_number: str | None = Field(None, max_length=20)
@@ -145,6 +148,15 @@ async def patch_my_business_branding(
     if not b:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Business not found")
     data = body.model_dump(exclude_unset=True)
+    if "name" in data:
+        n = data["name"]
+        if n is None or (isinstance(n, str) and not n.strip()):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail="Business name cannot be empty",
+            )
+        if isinstance(n, str):
+            b.name = n.strip()
     if "branding_title" in data:
         t = data["branding_title"]
         b.branding_title = (t.strip() or None) if isinstance(t, str) else t
@@ -259,7 +271,9 @@ class ScanPurchaseResponse(BaseModel):
     text: str = ""
     confidence: float = 0.0
     supplier_name: str | None = None
+    supplier_id: uuid.UUID | None = None
     broker_name: str | None = None
+    broker_id: uuid.UUID | None = None
     charges: ScanPurchaseChargesOut = Field(default_factory=ScanPurchaseChargesOut)
     items: list[ScanPurchaseLineOut] = Field(default_factory=list)
     missing_fields: list[str] = Field(default_factory=list)
@@ -267,6 +281,38 @@ class ScanPurchaseResponse(BaseModel):
     auto_save_allowed: bool = False
     note: str = ""
     meta: ScanPurchaseMetaOut = Field(default_factory=ScanPurchaseMetaOut)
+
+
+def _norm_dir_name(s: str) -> str:
+    t = (s or "").strip().lower()
+    out: list[str] = []
+    for ch in t:
+        if ch.isalnum() or ch.isspace():
+            out.append(ch)
+        else:
+            out.append(" ")
+    return " ".join("".join(out).split())
+
+
+def _fuzzy_duplicate_hint(name: str, candidates: list[tuple[str, uuid.UUID]], *, cutoff: float) -> uuid.UUID | None:
+    """If name is close to an existing directory entry (but not exact), return that id."""
+    q = _norm_dir_name(name)
+    if len(q) < 3:
+        return None
+    pool = [( _norm_dir_name(n), i) for (n, i) in candidates if n.strip()]
+    norm_names = [n for (n, _) in pool if n]
+    if not norm_names:
+        return None
+    if q in norm_names:
+        return None
+    matches = get_close_matches(q, norm_names, n=1, cutoff=cutoff)
+    if not matches:
+        return None
+    m0 = matches[0]
+    for n, i in pool:
+        if n == m0:
+            return i
+    return None
 
 
 @router.post("/scan-purchase", response_model=ScanPurchaseResponse)
@@ -292,7 +338,8 @@ async def scan_purchase_bill(
 
     text, conf = await pss.image_bytes_to_text(settings, raw)
     if not text.strip():
-        text = op.normalize_scan_text(raw)
+        # BUGFIX (C2): never treat raw image bytes as text.
+        text = ""
 
     line_strs = [ln.strip() for ln in text.splitlines() if ln.strip()]
     supplier_hint = op.extract_supplier_candidate(line_strs)
@@ -309,6 +356,17 @@ async def scan_purchase_bill(
     charges = ScanPurchaseChargesOut()
     broker_hint: str | None = None
     meta_out = ScanPurchaseMetaOut()
+    supplier_id: uuid.UUID | None = None
+    broker_id: uuid.UUID | None = None
+
+    sup_rows = (
+        await db.execute(select(Supplier.id, Supplier.name).where(Supplier.business_id == business_id))
+    ).all()
+    bro_rows = (
+        await db.execute(select(Broker.id, Broker.name).where(Broker.business_id == business_id))
+    ).all()
+    supplier_candidates: list[tuple[str, uuid.UUID]] = [(str(n), i) for (i, n) in sup_rows]
+    broker_candidates: list[tuple[str, uuid.UUID]] = [(str(n), i) for (i, n) in bro_rows]
 
     # AI parse: best-effort enrich (supplier/broker/items/charges). Never blocks.
     try:
@@ -362,8 +420,50 @@ async def scan_purchase_bill(
         # AI is best-effort; fallback remains heuristic parser.
         pass
 
+    # Regex header charges (fills gaps when LLM misses shorthand like delhead/billty)
+    rx_ch = op.extract_header_charges(text)
+    if charges.delivered_rate is None and isinstance(rx_ch.get("delivered_rate"), (int, float)):
+        charges.delivered_rate = float(rx_ch["delivered_rate"])
+    if charges.billty_rate is None and isinstance(rx_ch.get("billty_rate"), (int, float)):
+        charges.billty_rate = float(rx_ch["billty_rate"])
+    if charges.freight_amount is None and isinstance(rx_ch.get("freight_amount"), (int, float)):
+        charges.freight_amount = float(rx_ch["freight_amount"])
+    if charges.freight_type is None and isinstance(rx_ch.get("freight_type"), str):
+        charges.freight_type = rx_ch["freight_type"]
+
     if not supplier_hint:
         missing.append("supplier_name")
+    else:
+        qn = _norm_dir_name(str(supplier_hint))
+        for nm, sid in supplier_candidates:
+            if _norm_dir_name(nm) == qn:
+                supplier_id = sid
+                break
+        if supplier_id is None:
+            dup = _fuzzy_duplicate_hint(str(supplier_hint), supplier_candidates, cutoff=0.86)
+            if dup is not None:
+                dup_name = next((nm for nm, i in supplier_candidates if i == dup), None)
+                warn = (
+                    "supplier_duplicate_risk: extracted name may match an existing supplier "
+                    f"({dup_name or 'directory'}) — confirm before creating a duplicate."
+                )
+                meta_out.parse_warnings = [*meta_out.parse_warnings, warn]
+
+    if broker_hint:
+        qb = _norm_dir_name(str(broker_hint))
+        for nm, bid in broker_candidates:
+            if _norm_dir_name(nm) == qb:
+                broker_id = bid
+                break
+        if broker_id is None:
+            dup_b = _fuzzy_duplicate_hint(str(broker_hint), broker_candidates, cutoff=0.86)
+            if dup_b is not None:
+                dup_name = next((nm for nm, i in broker_candidates if i == dup_b), None)
+                warn = (
+                    "broker_duplicate_risk: extracted name may match an existing broker "
+                    f"({dup_name or 'directory'}) — confirm before creating a duplicate."
+                )
+                meta_out.parse_warnings = [*meta_out.parse_warnings, warn]
 
     ocr_on = await is_ocr_enabled(db, settings)
     if not text.strip():
@@ -381,7 +481,9 @@ async def scan_purchase_bill(
             text=text[:5000],
             confidence=conf if conf > 0 else (0.35 if items_out else 0.0),
             supplier_name=supplier_hint,
+            supplier_id=supplier_id,
             broker_name=broker_hint,
+            broker_id=broker_id,
             charges=charges,
             items=items_out,
             missing_fields=sorted(set(uniq_missing + (["enable_ocr"] if not items_out else []))),
@@ -395,7 +497,9 @@ async def scan_purchase_bill(
         text=text[:5000],
         confidence=conf if conf > 0 else (0.5 if items_out else 0.25),
         supplier_name=supplier_hint,
+        supplier_id=supplier_id,
         broker_name=broker_hint,
+        broker_id=broker_id,
         charges=charges,
         items=items_out,
         missing_fields=uniq_missing,

@@ -7,19 +7,19 @@
 ## STATUS
 
 
-| Task                                                          | Status                  |
-| ------------------------------------------------------------- | ----------------------- |
-| 3-step wizard flow (party → items → terms)                    | ✅ Done                  |
-| Suggestion tap — `_pick()` sync fix                           | ✅ Done                  |
-| Keyboard overlap — wizard body                                | ⚠️ Implemented (verify) |
-| Keyboard overlap — item entry sheet                           | ❌ Not done              |
-| Auto-advance removed (supplier pick stays on party step)      | ✅ Done                  |
-| Exit guard (PopScope + discard dialog)                        | ✅ Done                  |
-| Draft auto-save every 800ms                                   | ✅ Done                  |
-| Resume draft banner on home                                   | ✅ Done                  |
-| "New supplier" / "New broker" — Navigator rootNavigator       | ✅ Done                  |
-| Bottom bar always above keyboard                              | ⚠️ Implemented (verify) |
-| Single "Continue" button on party step (no Save draft button) | ⚠️ Implemented (verify) |
+| Task                                                          | Status                    |
+| ------------------------------------------------------------- | ------------------------- |
+| 3-step wizard flow (party → items → terms)                    | ✅ Done                    |
+| Suggestion tap — `_pick()` sync fix                           | ✅ Done                    |
+| Keyboard overlap — wizard body                                | ✅ Done (`_buildWizardBody` + footer inset) |
+| Keyboard overlap — item entry sheet                           | ✅ Done (sheet scroll padding + `KeyboardSafeFormViewport` full page) |
+| Auto-advance removed (supplier pick stays on party step)      | ✅ Done                    |
+| Exit guard (PopScope + discard dialog)                        | ✅ Done                    |
+| Draft auto-save every 800ms                                   | ✅ Done                    |
+| Resume draft banner on home                                   | ✅ Done                    |
+| "New supplier" / "New broker" — Navigator rootNavigator       | ✅ Done                    |
+| Bottom bar always above keyboard                              | ✅ Done                   |
+| Single "Continue" button on party step (no Save draft button) | ✅ Done (no Save draft in party step) |
 
 
 ---

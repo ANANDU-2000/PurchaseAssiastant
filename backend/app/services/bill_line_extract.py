@@ -6,12 +6,13 @@ import re
 from typing import Any
 
 # qty [unit] name [@₹] rate  OR  name qty unit rate
+_UNIT = r"bags?|bag|sacks?|sack|boxes?|box|tins?|tin|pcs?|pieces?|kgs?|kg"
 _PAT_A = re.compile(
-    r"^(?P<qty>\d+(?:\.\d+)?)\s*(?P<unit>bags?|bag|kgs?|kg)\s+(?P<name>.+?)\s*(?:@|at|₹|rs\.?)?\s*(?P<rate>\d+(?:\.\d+)?)\s*$",
+    rf"^(?P<qty>\d+(?:\.\d+)?)\s*(?P<unit>{_UNIT})\s+(?P<name>.+?)\s*(?:@|at|₹|rs\.?)?\s*(?P<rate>\d+(?:\.\d+)?)\s*$",
     re.IGNORECASE,
 )
 _PAT_B = re.compile(
-    r"^(?P<name>.+?)\s+(?P<qty>\d+(?:\.\d+)?)\s*(?P<unit>bags?|bag|kgs?|kg)\s*(?:@|at|₹|rs\.?)?\s*(?P<rate>\d+(?:\.\d+)?)\s*$",
+    rf"^(?P<name>.+?)\s+(?P<qty>\d+(?:\.\d+)?)\s*(?P<unit>{_UNIT})\s*(?:@|at|₹|rs\.?)?\s*(?P<rate>\d+(?:\.\d+)?)\s*$",
     re.IGNORECASE,
 )
 _PAT_C = re.compile(
@@ -24,6 +25,14 @@ def _norm_unit(u: str) -> str:
     u = (u or "").strip().lower()
     if u.startswith("bag"):
         return "bag"
+    if u.startswith("sack"):
+        return "sack"
+    if u.startswith("box"):
+        return "box"
+    if u.startswith("tin"):
+        return "tin"
+    if u.startswith("pc") or u.startswith("piece"):
+        return "unit"
     if u.startswith("kg"):
         return "kg"
     return "kg"
