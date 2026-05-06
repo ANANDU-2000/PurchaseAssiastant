@@ -95,7 +95,22 @@ async def lifespan(app: FastAPI):
             from alembic import command
             from alembic.config import Config
 
-            cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+            # Render start command does `cd backend && uvicorn ...`, so `alembic.ini`
+            # is often available as a relative path. We keep a few fallbacks to
+            # avoid fragile assumptions about the current working directory.
+            candidates = [
+                Path("alembic.ini"),
+                Path(__file__).resolve().parents[2] / "alembic.ini",
+                Path(__file__).resolve().parents[3] / "alembic.ini",
+            ]
+            ini_path = next((p for p in candidates if p.exists()), None)
+            if ini_path is None:
+                raise RuntimeError("alembic.ini not found (AUTO_MIGRATE enabled)")
+
+            cfg = Config(str(ini_path))
+            # Defensive: if config did not load, force the script location.
+            if not cfg.get_main_option("script_location"):
+                cfg.set_main_option("script_location", "alembic")
             command.upgrade(cfg, "head")
             logger.info("Alembic: upgraded to head (AUTO_MIGRATE enabled)")
         except Exception as e:  # noqa: BLE001
