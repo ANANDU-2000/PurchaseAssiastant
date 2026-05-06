@@ -94,4 +94,3 @@ All tasks complete.
 
 - Do not move to the next task until **all validations pass** (see `context/98_VALIDATION.md`).
 - Keep engineering constraints aligned with `context/00_AGENT_RULES.md` (keyboard-safe viewport, try/catch patterns, protected API payloads).
-

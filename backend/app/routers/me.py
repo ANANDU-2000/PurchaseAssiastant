@@ -237,18 +237,36 @@ class ScanPurchaseLineOut(BaseModel):
     name: str
     qty: float
     unit: str
-    rate: float
+    purchase_rate: float
+    selling_rate: float | None = None
+    weight_per_unit_kg: float | None = None
+
+
+class ScanPurchaseChargesOut(BaseModel):
+    delivered_rate: float | None = None
+    billty_rate: float | None = None
+    freight_amount: float | None = None
+    freight_type: str | None = None
+
+
+class ScanPurchaseMetaOut(BaseModel):
+    provider_used: str | None = None
+    failover: list[dict] = Field(default_factory=list)
+    parse_warnings: list[str] = Field(default_factory=list)
 
 
 class ScanPurchaseResponse(BaseModel):
     text: str = ""
     confidence: float = 0.0
     supplier_name: str | None = None
+    broker_name: str | None = None
+    charges: ScanPurchaseChargesOut = Field(default_factory=ScanPurchaseChargesOut)
     items: list[ScanPurchaseLineOut] = Field(default_factory=list)
     missing_fields: list[str] = Field(default_factory=list)
     requires_user_confirmation: bool = True
     auto_save_allowed: bool = False
     note: str = ""
+    meta: ScanPurchaseMetaOut = Field(default_factory=ScanPurchaseMetaOut)
 
 
 @router.post("/scan-purchase", response_model=ScanPurchaseResponse)
@@ -270,6 +288,7 @@ async def scan_purchase_bill(
 
     from app.services import ocr_parser as op
     from app.services import purchase_scan_service as pss
+    from app.services import purchase_scan_ai as psai
 
     text, conf = await pss.image_bytes_to_text(settings, raw)
     if not text.strip():
@@ -279,9 +298,69 @@ async def scan_purchase_bill(
     supplier_hint = op.extract_supplier_candidate(line_strs)
     items_raw, missing = op.extract_item_rows(text)
     items_out = [
-        ScanPurchaseLineOut(name=e["name"], qty=float(e["qty"]), unit=e["unit"], rate=float(e["rate"]))
+        ScanPurchaseLineOut(
+            name=e["name"],
+            qty=float(e["qty"]),
+            unit=e["unit"],
+            purchase_rate=float(e["rate"]),
+        )
         for e in items_raw
     ]
+    charges = ScanPurchaseChargesOut()
+    broker_hint: str | None = None
+    meta_out = ScanPurchaseMetaOut()
+
+    # AI parse: best-effort enrich (supplier/broker/items/charges). Never blocks.
+    try:
+        ai, meta = await psai.parse_scan_text_with_ai(text=text, settings=settings, db=db)
+        if ai and isinstance(ai.get("payload"), dict):
+            payload = ai["payload"]
+            meta_out = ScanPurchaseMetaOut(
+                provider_used=meta.get("provider_used"),
+                failover=meta.get("failover") or [],
+                parse_warnings=ai.get("parse_warnings") or [],
+            )
+            if isinstance(payload.get("supplier_name"), str) and payload.get("supplier_name").strip():
+                supplier_hint = payload.get("supplier_name").strip()
+            if isinstance(payload.get("broker_name"), str) and payload.get("broker_name").strip():
+                broker_hint = payload.get("broker_name").strip()
+            if isinstance(payload.get("charges"), dict):
+                ch = payload.get("charges") or {}
+                charges = ScanPurchaseChargesOut(
+                    delivered_rate=ch.get("delivered_rate"),
+                    billty_rate=ch.get("billty_rate"),
+                    freight_amount=ch.get("freight_amount"),
+                    freight_type=ch.get("freight_type"),
+                )
+            if isinstance(payload.get("items"), list) and payload.get("items"):
+                next_items: list[ScanPurchaseLineOut] = []
+                for it in payload.get("items"):
+                    if not isinstance(it, dict):
+                        continue
+                    nm = (it.get("name") or "").strip() or "Unknown item"
+                    qty = float(it.get("qty") or 0)
+                    unit = (it.get("unit") or "kg").strip().lower() or "kg"
+                    pr = float(it.get("purchase_rate") or 0)
+                    sr = it.get("selling_rate")
+                    wpu = it.get("weight_per_unit_kg")
+                    next_items.append(
+                        ScanPurchaseLineOut(
+                            name=nm,
+                            qty=qty,
+                            unit=unit,
+                            purchase_rate=pr,
+                            selling_rate=(float(sr) if sr is not None else None),
+                            weight_per_unit_kg=(float(wpu) if wpu is not None else None),
+                        )
+                    )
+                if next_items:
+                    items_out = next_items
+                ai_missing = ai.get("missing_fields") or []
+                if isinstance(ai_missing, list):
+                    missing.extend([str(x) for x in ai_missing if x is not None])
+    except Exception:
+        # AI is best-effort; fallback remains heuristic parser.
+        pass
 
     if not supplier_hint:
         missing.append("supplier_name")
@@ -302,20 +381,26 @@ async def scan_purchase_bill(
             text=text[:5000],
             confidence=conf if conf > 0 else (0.35 if items_out else 0.0),
             supplier_name=supplier_hint,
+            broker_name=broker_hint,
+            charges=charges,
             items=items_out,
             missing_fields=sorted(set(uniq_missing + (["enable_ocr"] if not items_out else []))),
             requires_user_confirmation=True,
             auto_save_allowed=False,
             note="OCR/cloud vision is off — parsing may be incomplete; confirm before saving.",
+            meta=meta_out,
         )
 
     return ScanPurchaseResponse(
         text=text[:5000],
         confidence=conf if conf > 0 else (0.5 if items_out else 0.25),
         supplier_name=supplier_hint,
+        broker_name=broker_hint,
+        charges=charges,
         items=items_out,
         missing_fields=uniq_missing,
         requires_user_confirmation=True,
         auto_save_allowed=False,
         note="Review and edit extracted fields — no purchase is saved from this endpoint.",
+        meta=meta_out,
     )

@@ -39,6 +39,7 @@ class PurchaseBillScanPanel extends ConsumerStatefulWidget {
 class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
   bool _busy = false;
   String? _note;
+  bool _userConfirmedPreview = false;
 
   /// Server keys for red borders after scan.
   final Set<String> _missing = {};
@@ -48,6 +49,12 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
   final _supplierCtrl = TextEditingController();
   String? _supplierDirectoryId;
   Map<String, dynamic>? _supplierFuzzySuggestion;
+
+  String? _brokerName;
+  final _deliveredCtrl = TextEditingController();
+  final _billtyCtrl = TextEditingController();
+  final _freightCtrl = TextEditingController();
+  String _freightType = 'separate';
 
   void _refreshSupplierDirectoryLink() {
     final q = _supplierCtrl.text.trim();
@@ -141,6 +148,16 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
       }
       final supplier = res['supplier_name']?.toString().trim();
       _supplierCtrl.text = supplier ?? '';
+      _brokerName = res['broker_name']?.toString().trim();
+      final charges = res['charges'];
+      if (charges is Map) {
+        final ch = Map<String, dynamic>.from(charges);
+        _deliveredCtrl.text = (ch['delivered_rate'] as num?)?.toString() ?? '';
+        _billtyCtrl.text = (ch['billty_rate'] as num?)?.toString() ?? '';
+        _freightCtrl.text = (ch['freight_amount'] as num?)?.toString() ?? '';
+        final ft = ch['freight_type']?.toString();
+        if (ft == 'included' || ft == 'separate') _freightType = ft!;
+      }
       final items = res['items'];
       final nextRows = <_BillRowEdit>[];
       if (items is List) {
@@ -155,8 +172,16 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
               ),
               unit:
                   TextEditingController(text: m['unit']?.toString() ?? 'kg'),
-              rate: TextEditingController(
-                text: ((m['rate'] as num?)?.toDouble() ?? 0)
+              pRate: TextEditingController(
+                text: ((m['purchase_rate'] as num?)?.toDouble() ?? 0)
+                    .toStringAsFixed(2),
+              ),
+              sRate: TextEditingController(
+                text: ((m['selling_rate'] as num?)?.toDouble() ?? 0)
+                    .toStringAsFixed(2),
+              ),
+              kgPerUnit: TextEditingController(
+                text: ((m['weight_per_unit_kg'] as num?)?.toDouble() ?? 0)
                     .toStringAsFixed(2),
               ),
             ),
@@ -172,6 +197,7 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
         _missing.addAll(nextMiss);
         _rows = nextRows.isEmpty ? [_BillRowEdit.empty()] : nextRows;
         _note = res['note']?.toString();
+        _userConfirmedPreview = false;
         _refreshSupplierDirectoryLink();
       });
       HapticFeedback.selectionClick();
@@ -198,7 +224,9 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
       final name = r.name.text.trim();
       final qty = double.tryParse(r.qty.text.trim()) ?? 0;
       final unit = r.unit.text.trim().toLowerCase();
-      final rate = double.tryParse(r.rate.text.trim()) ?? 0;
+      final rate = double.tryParse(r.pRate.text.trim()) ?? 0;
+      final sell = double.tryParse(r.sRate.text.trim()) ?? 0;
+      final kpu = double.tryParse(r.kgPerUnit.text.trim()) ?? 0;
       if (name.isEmpty && qty <= 0 && rate <= 0) continue;
       lines.add(
         PurchaseLineDraft(
@@ -207,6 +235,8 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
           qty: qty > 0 ? qty : 1,
           unit: unit.isEmpty ? 'kg' : unit,
           landingCost: rate > 0 ? rate : 0.01,
+          sellingPrice: sell > 0 ? sell : null,
+          kgPerUnit: kpu > 0 ? kpu : null,
         ),
       );
     }
@@ -217,6 +247,10 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
           ? null
           : _supplierCtrl.text.trim(),
       invoiceNumber: null,
+      deliveredRate: double.tryParse(_deliveredCtrl.text.trim()),
+      billtyRate: double.tryParse(_billtyCtrl.text.trim()),
+      freightAmount: double.tryParse(_freightCtrl.text.trim()),
+      freightType: _freightType,
       lines: lines,
     );
   }
@@ -289,10 +323,28 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
   @override
   void dispose() {
     _supplierCtrl.dispose();
+    _deliveredCtrl.dispose();
+    _billtyCtrl.dispose();
+    _freightCtrl.dispose();
     for (final r in _rows) {
       r.dispose();
     }
     super.dispose();
+  }
+
+  bool _canApply() {
+    if (_supplierDirectoryId == null || _supplierDirectoryId!.trim().isEmpty) {
+      return false;
+    }
+    if (_rows.isEmpty) return false;
+    for (final r in _rows) {
+      final name = r.name.text.trim();
+      final qty = double.tryParse(r.qty.text.trim()) ?? 0;
+      final unit = r.unit.text.trim();
+      final pr = double.tryParse(r.pRate.text.trim()) ?? 0;
+      if (name.isEmpty || qty <= 0 || unit.isEmpty || pr <= 0) return false;
+    }
+    return _userConfirmedPreview;
   }
 
   @override
@@ -436,6 +488,69 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
             ),
           ],
           const SizedBox(height: 12),
+          if ((_brokerName ?? '').trim().isNotEmpty) ...[
+            Text(
+              'Broker (from bill): ${_brokerName!.trim()}',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 10),
+          ],
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            title: const Text(
+              'Charges (optional)',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+            children: [
+              TextField(
+                controller: _deliveredCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'Delivered (₹)',
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _billtyCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'Billty (₹)',
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _freightCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'Freight (₹)',
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                initialValue: _freightType,
+                decoration: const InputDecoration(
+                  labelText: 'Freight type',
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'separate', child: Text('Separate')),
+                  DropdownMenuItem(value: 'included', child: Text('Included')),
+                ],
+                onChanged: (v) {
+                  if (v == null) return;
+                  setState(() => _freightType = v);
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
           if (_rows.isEmpty)
             const Text(
               'No lines yet — scan or add rows manually.',
@@ -480,36 +595,47 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
                             warn: _warnLineCell(i, 'item_name')),
                       ),
                       const SizedBox(height: 6),
-                      Row(
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
                         children: [
-                          Expanded(
-                            flex: 3,
+                          SizedBox(
+                            width: 120,
                             child: TextField(
                               controller: r.qty,
-                              keyboardType: const TextInputType.numberWithOptions(
-                                  decimal: true),
-                              decoration:
-                                  _lineDeco('Qty', warn: _warnLineCell(i, 'qty')),
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              decoration: _lineDeco('Qty', warn: _warnLineCell(i, 'qty')),
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            flex: 3,
+                          SizedBox(
+                            width: 110,
                             child: TextField(
                               controller: r.unit,
-                              decoration: _lineDeco('Unit',
-                                  warn: _warnLineCell(i, 'unit')),
+                              decoration: _lineDeco('Unit', warn: _warnLineCell(i, 'unit')),
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            flex: 4,
+                          SizedBox(
+                            width: 120,
                             child: TextField(
-                              controller: r.rate,
-                              keyboardType: const TextInputType.numberWithOptions(
-                                  decimal: true),
-                              decoration: _lineDeco('Rate ₹',
-                                  warn: _warnLineCell(i, 'rate')),
+                              controller: r.kgPerUnit,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              decoration: _lineDeco('Kg/unit', warn: false),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 120,
+                            child: TextField(
+                              controller: r.pRate,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              decoration: _lineDeco('P rate', warn: _warnLineCell(i, 'purchase_rate')),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 120,
+                            child: TextField(
+                              controller: r.sRate,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              decoration: _lineDeco('S rate', warn: false),
                             ),
                           ),
                         ],
@@ -527,13 +653,43 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
             icon: const Icon(Icons.add),
             label: const Text('Add blank line'),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 12),
+          CheckboxListTile(
+            value: _userConfirmedPreview,
+            onChanged: (_supplierDirectoryId != null && _rows.isNotEmpty)
+                ? (v) => setState(() => _userConfirmedPreview = v ?? false)
+                : null,
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            title: const Text(
+              'I confirm supplier + all item rows are correct',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+            ),
+            subtitle: Text(
+              _supplierDirectoryId == null
+                  ? 'Supplier must be matched to your directory (tap the suggestion if shown).'
+                  : 'Required: item, qty, unit, and purchase rate for each row.',
+              style: const TextStyle(fontSize: 11, height: 1.25),
+            ),
+          ),
+          const SizedBox(height: 10),
           FilledButton.icon(
             onPressed: (_rows.any((r) => r.name.text.trim().isNotEmpty) ||
                     _supplierCtrl.text.trim().isNotEmpty)
-                ? () {
-                    widget.onApplyDraft(buildDraftFromUi());
-                  }
+                ? (_canApply()
+                    ? () {
+                        widget.onApplyDraft(buildDraftFromUi());
+                      }
+                    : () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Cannot apply yet: match supplier + fill required fields, then tick confirmation.',
+                            ),
+                          ),
+                        );
+                      })
                 : null,
             icon: Icon(widget.applyButtonIcon),
             label: Text(widget.applyButtonLabel),
@@ -549,7 +705,9 @@ class _BillRowEdit {
     required this.name,
     required this.qty,
     required this.unit,
-    required this.rate,
+    required this.pRate,
+    required this.sRate,
+    required this.kgPerUnit,
   });
 
   factory _BillRowEdit.empty() {
@@ -557,19 +715,25 @@ class _BillRowEdit {
       name: TextEditingController(),
       qty: TextEditingController(text: '1'),
       unit: TextEditingController(text: 'kg'),
-      rate: TextEditingController(),
+      pRate: TextEditingController(),
+      sRate: TextEditingController(),
+      kgPerUnit: TextEditingController(),
     );
   }
 
   final TextEditingController name;
   final TextEditingController qty;
   final TextEditingController unit;
-  final TextEditingController rate;
+  final TextEditingController pRate;
+  final TextEditingController sRate;
+  final TextEditingController kgPerUnit;
 
   void dispose() {
     name.dispose();
     qty.dispose();
     unit.dispose();
-    rate.dispose();
+    pRate.dispose();
+    sRate.dispose();
+    kgPerUnit.dispose();
   }
 }
