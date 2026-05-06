@@ -14,6 +14,7 @@ import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/cloud_expense_provider.dart';
 import '../../../core/providers/purchase_post_save_provider.dart';
+import '../../../core/providers/reports_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart'
     show invalidateTradePurchaseCaches;
 import '../../../core/theme/hexa_colors.dart';
@@ -475,6 +476,13 @@ class _HomePageState extends ConsumerState<HomePage>
         _handlingPurchasePostSave = false;
         return;
       }
+      // Immediately invalidate dashboards + reports so Home/Reports reflect the new bill
+      // even if the user switches tabs before the next periodic refresh.
+      ref.invalidate(homeDashboardDataProvider);
+      ref.invalidate(homeShellReportsProvider);
+      ref.invalidate(reportsPurchasesPayloadProvider);
+      invalidateTradePurchaseCaches(ref);
+
       ref.read(purchasePostSaveProvider.notifier).state = null;
       _handlingPurchasePostSave = false;
       final route = await showPurchaseSavedSheet(
