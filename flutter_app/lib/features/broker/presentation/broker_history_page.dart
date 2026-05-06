@@ -11,6 +11,7 @@ import '../../../core/providers/business_profile_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
 import '../../../core/router/navigation_ext.dart';
 import '../../../core/services/broker_statement_pdf.dart';
+import '../../../core/utils/line_display.dart';
 import '../../purchase/state/purchase_providers.dart';
 
 final _brokerHistoryHeaderProvider =
@@ -28,17 +29,156 @@ class BrokerHistoryPage extends ConsumerWidget {
 
   final String brokerId;
 
-  TextStyle _numStyle(BuildContext context) => Theme.of(context).textTheme.bodySmall!.copyWith(
-        fontFeatures: const [FontFeature.tabularFigures()],
-        fontWeight: FontWeight.w700,
-        fontFamily: 'monospace',
-      );
-
   String _inr(num n) => NumberFormat.currency(
         locale: 'en_IN',
         symbol: '₹',
         decimalDigits: n % 1 == 0 ? 0 : 2,
       ).format(n);
+
+  String _fmtQty(double q) =>
+      (q - q.roundToDouble()).abs() < 1e-6 ? '${q.round()}' : q.toStringAsFixed(1);
+
+  Widget _summaryCard(BuildContext context, LedgerLinesState s) {
+    final rows = s.filtered();
+    final deals = rows.map((e) => e.purchaseId).toSet().length;
+    final comm = rows.fold<double>(0, (a, r) => a + r.commissionInr);
+    var kg = 0.0;
+    var bags = 0.0;
+    var boxes = 0.0;
+    var tins = 0.0;
+    for (final r in rows) {
+      kg += r.kg;
+      final u = r.unit.trim().toLowerCase();
+      if (u == 'bag' || u == 'sack') bags += r.qty;
+      if (u == 'box') boxes += r.qty;
+      if (u == 'tin') tins += r.qty;
+    }
+    final parts = <String>[
+      if (kg > 1e-9) '${_fmtQty(kg)} kg',
+      if (bags > 1e-9) '${_fmtQty(bags)} bags',
+      if (boxes > 1e-9) '${_fmtQty(boxes)} boxes',
+      if (tins > 1e-9) '${_fmtQty(tins)} tins',
+    ];
+    final tt = Theme.of(context).textTheme;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                Text('Deals (filtered) $deals',
+                    style: tt.labelLarge?.copyWith(fontWeight: FontWeight.w800)),
+                Text('Commission Σ ${_inr(comm)}',
+                    style: tt.labelLarge?.copyWith(fontWeight: FontWeight.w800)),
+              ],
+            ),
+            if (parts.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                parts.join(' · '),
+                style: tt.labelSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _rowCard(
+    BuildContext context,
+    WidgetRef ref,
+    LedgerLineRow row,
+    DateFormat fmt,
+  ) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final qtySummary = formatLineQtyWeight(
+      qty: row.qty,
+      unit: row.unit,
+      totalWeightKg: row.kg > 1e-9 ? row.kg : null,
+      kgPerUnit: null,
+    );
+    return InkWell(
+      onTap: () => context.push('/purchase/detail/${row.purchaseId}'),
+      onLongPress: () => _openRowActions(context, ref, row),
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.4)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        row.itemName.isEmpty ? '—' : row.itemName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        qtySummary,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: tt.bodySmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${row.supplierName.isEmpty ? '—' : row.supplierName} · ${row.humanId ?? row.purchaseId} · ${fmt.format(row.purchaseDate)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      _inr(row.amountInr),
+                      style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Comm ${_inr(row.commissionInr)}',
+                      style: tt.labelSmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Future<void> _openRowActions(BuildContext context, WidgetRef ref, LedgerLineRow row) async {
     if (!context.mounted) return;
@@ -105,22 +245,7 @@ class BrokerHistoryPage extends ConsumerWidget {
   }
 
   Widget _metrics(BuildContext context, LedgerLinesState s) {
-    final rows = s.filtered();
-    final deals = rows.map((e) => e.purchaseId).toSet().length;
-    final comm = rows.fold<double>(0, (a, r) => a + r.commissionInr);
-    final tt = Theme.of(context).textTheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Wrap(
-        spacing: 12,
-        runSpacing: 8,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          Text('Deals (filtered) $deals', style: tt.labelLarge?.copyWith(fontWeight: FontWeight.w800)),
-          Text('Commission Σ ${_inr(comm)}', style: tt.labelLarge?.copyWith(fontWeight: FontWeight.w800)),
-        ],
-      ),
-    );
+    return _summaryCard(context, s);
   }
 
   @override
@@ -250,106 +375,14 @@ class BrokerHistoryPage extends ConsumerWidget {
                 const Expanded(child: Center(child: CircularProgressIndicator()))
               else ...[
                 Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, lc) {
-                      final tableW = lc.maxWidth < 720 ? 720.0 : lc.maxWidth;
-                      return Scrollbar(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: SizedBox(
-                            width: tableW,
-                            height: lc.maxHeight,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                const Divider(height: 1),
-                                Table(
-                                  columnWidths: const {
-                                    0: FixedColumnWidth(100),
-                                    1: FixedColumnWidth(140),
-                                    2: FixedColumnWidth(160),
-                                    3: FixedColumnWidth(98),
-                                    4: FixedColumnWidth(98),
-                                  },
-                                  children: [
-                                    TableRow(
-                                      children: [
-                                        _h(context, 'Date'),
-                                        _h(context, 'Supplier'),
-                                        _h(context, 'Item'),
-                                        _h(context, 'Amount'),
-                                        _h(context, 'Comm'),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                                const Divider(height: 1),
-                                Expanded(
-                                  child: state.visibleRows().isEmpty
-                                      ? const Center(child: Text('No matching lines'))
-                                      : ListView.builder(
-                                          itemExtent: 40,
-                                          itemCount: state.visibleRows().length,
-                                          itemBuilder: (ctx, i) {
-                                            final row = state.visibleRows()[i];
-                                            final num = _numStyle(context);
-                                            return InkWell(
-                                              onTap: () => context
-                                                  .push('/purchase/detail/${row.purchaseId}'),
-                                              onLongPress: () =>
-                                                  _openRowActions(context, ref, row),
-                                              child: Table(
-                                                columnWidths: const {
-                                                  0: FixedColumnWidth(100),
-                                                  1: FixedColumnWidth(140),
-                                                  2: FixedColumnWidth(160),
-                                                  3: FixedColumnWidth(98),
-                                                  4: FixedColumnWidth(98),
-                                                },
-                                                children: [
-                                                  TableRow(
-                                                    children: [
-                                                      _c(context,
-                                                          Text(fmt.format(row.purchaseDate), style: num)),
-                                                      _c(
-                                                        context,
-                                                        Text(
-                                                          row.supplierName.isEmpty
-                                                              ? '—'
-                                                              : row.supplierName,
-                                                          maxLines: 1,
-                                                          overflow: TextOverflow.ellipsis,
-                                                        ),
-                                                      ),
-                                                      _c(
-                                                        context,
-                                                        Text(
-                                                          row.itemName,
-                                                          maxLines: 1,
-                                                          overflow: TextOverflow.ellipsis,
-                                                        ),
-                                                      ),
-                                                      _c(
-                                                          context,
-                                                          Text(_inr(row.amountInr), style: num)),
-                                                      _c(
-                                                          context,
-                                                          Text(_inr(row.commissionInr), style: num)),
-                                                    ],
-                                                  ),
-                                                ],
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                ),
-                              ],
-                            ),
-                          ),
+                  child: state.visibleRows().isEmpty
+                      ? const Center(child: Text('No matching lines'))
+                      : ListView.separated(
+                          itemCount: state.visibleRows().length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          itemBuilder: (ctx, i) =>
+                              _rowCard(context, ref, state.visibleRows()[i], fmt),
                         ),
-                      );
-                    },
-                  ),
                 ),
                 if (showLoadMore)
                   Padding(
@@ -377,20 +410,4 @@ class BrokerHistoryPage extends ConsumerWidget {
       ),
     );
   }
-
-  Widget _h(BuildContext context, String t) => Padding(
-        padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
-        child: Text(
-          t,
-          style:
-              Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w800),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-      );
-
-  Widget _c(BuildContext context, Widget child) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-        child: Align(alignment: Alignment.centerLeft, child: child),
-      );
 }
