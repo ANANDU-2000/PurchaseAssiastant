@@ -4,6 +4,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../calc_engine.dart';
 import '../models/business_profile.dart';
 import '../models/trade_purchase_models.dart';
 import '../utils/trade_purchase_commission.dart';
@@ -32,9 +33,42 @@ pw.Document _buildBrokerStatementDocument({
 }) {
   final doc = pw.Document();
   var commissionSum = 0.0;
+  var totalKg = 0.0;
+  var totalBags = 0.0;
+  var totalBoxes = 0.0;
+  var totalTins = 0.0;
   for (final p in purchases) {
     commissionSum += tradePurchaseCommissionInr(p);
+    for (final l in p.lines) {
+      totalKg += ledgerTradeLineWeightKg(
+        itemName: l.itemName,
+        unit: l.unit,
+        qty: l.qty,
+        catalogDefaultUnit: l.defaultPurchaseUnit ?? l.defaultUnit,
+        catalogDefaultKgPerBag: l.defaultKgPerBag,
+        kgPerUnit: l.kgPerUnit,
+        boxMode: l.boxMode,
+        itemsPerBox: l.itemsPerBox,
+        weightPerItem: l.weightPerItem,
+        kgPerBox: l.kgPerBox,
+        weightPerTin: l.weightPerTin,
+      );
+      final u = l.unit.trim().toLowerCase();
+      if (u == 'bag' || u == 'sack') {
+        totalBags += l.qty;
+      } else if (u == 'box') {
+        totalBoxes += l.qty;
+      } else if (u == 'tin') {
+        totalTins += l.qty;
+      }
+    }
   }
+  final totalsParts = <String>[
+    if (totalKg > 1e-6) '${totalKg.toStringAsFixed(0)} kg',
+    if (totalBags > 1e-6) '${totalBags % 1 == 0 ? totalBags.toInt() : totalBags.toStringAsFixed(1)} bags',
+    if (totalBoxes > 1e-6) '${totalBoxes % 1 == 0 ? totalBoxes.toInt() : totalBoxes.toStringAsFixed(1)} boxes',
+    if (totalTins > 1e-6) '${totalTins % 1 == 0 ? totalTins.toInt() : totalTins.toStringAsFixed(1)} tins',
+  ];
 
   doc.addPage(
     pw.MultiPage(
@@ -83,12 +117,14 @@ pw.Document _buildBrokerStatementDocument({
         pw.Table(
           border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.3),
           columnWidths: {
-            0: const pw.FlexColumnWidth(1.2),
-            1: const pw.FlexColumnWidth(1.1),
-            2: const pw.FlexColumnWidth(1.6),
-            3: const pw.FlexColumnWidth(1.5),
-            4: const pw.FlexColumnWidth(0.95),
-            5: const pw.FlexColumnWidth(0.95),
+            0: const pw.FlexColumnWidth(1.1),
+            1: const pw.FlexColumnWidth(1.0),
+            2: const pw.FlexColumnWidth(1.7),
+            3: const pw.FlexColumnWidth(1.6),
+            4: const pw.FlexColumnWidth(0.85),
+            5: const pw.FlexColumnWidth(0.85),
+            6: const pw.FlexColumnWidth(0.95),
+            7: const pw.FlexColumnWidth(0.95),
           },
           children: [
             pw.TableRow(
@@ -98,19 +134,40 @@ pw.Document _buildBrokerStatementDocument({
                 _pcell('Bill', bold: true),
                 _pcell('Supplier', bold: true),
                 _pcell('Items', bold: true),
-                _pcell('Bill ₹', bold: true, right: true),
+                _pcell('Unit', bold: true),
+                _pcell('Qty', bold: true, right: true),
+                _pcell('Kg', bold: true, right: true),
                 _pcell('Comm. ₹', bold: true, right: true),
               ],
             ),
             for (final p in purchases) ...[
               for (var i = 0; i < p.lines.length; i++) ...[
+                final l = p.lines[i],
+                final kgLine = ledgerTradeLineWeightKg(
+                  itemName: l.itemName,
+                  unit: l.unit,
+                  qty: l.qty,
+                  catalogDefaultUnit: l.defaultPurchaseUnit ?? l.defaultUnit,
+                  catalogDefaultKgPerBag: l.defaultKgPerBag,
+                  kgPerUnit: l.kgPerUnit,
+                  boxMode: l.boxMode,
+                  itemsPerBox: l.itemsPerBox,
+                  weightPerItem: l.weightPerItem,
+                  kgPerBox: l.kgPerBox,
+                  weightPerTin: l.weightPerTin,
+                ),
                 pw.TableRow(
                   children: [
                     _pcell(i == 0 ? _df.format(p.purchaseDate) : ''),
                     _pcell(i == 0 ? p.humanId : ''),
                     _pcell(i == 0 ? _safe(p.supplierName) : ''),
-                    _pcell(_safe(p.lines[i].itemName)),
-                    _pcell(i == 0 ? _rs(p.totalAmount) : '', right: true),
+                    _pcell(_safe(l.itemName)),
+                    _pcell(_safe(l.unit)),
+                    _pcell(
+                      l.qty % 1 == 0 ? '${l.qty.toInt()}' : l.qty.toStringAsFixed(1),
+                      right: true,
+                    ),
+                    _pcell(kgLine > 1e-6 ? kgLine.toStringAsFixed(0) : '—', right: true),
                     _pcell(
                       i == 0
                           ? _rs(tradePurchaseCommissionInr(p))
@@ -128,6 +185,13 @@ pw.Document _buildBrokerStatementDocument({
           '${purchases.length} bill(s) · Commission total ${_rs(commissionSum)}',
           style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
         ),
+        if (totalsParts.isNotEmpty) ...[
+          pw.SizedBox(height: 4),
+          pw.Text(
+            'Totals: ${totalsParts.join(' · ')}',
+            style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey800),
+          ),
+        ],
         pw.SizedBox(height: 6),
         pw.Text(
           'This is a computer-generated statement.',
