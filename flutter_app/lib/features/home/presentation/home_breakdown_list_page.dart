@@ -276,8 +276,6 @@ class HomeBreakdownListPage extends ConsumerWidget {
       title: title,
       amount: amt,
       boldLine2: _itemUpperQtyLine(r),
-      rest1: '—',
-      rest2: '—',
       onTap: () => context.go('/catalog'),
     );
   }
@@ -312,8 +310,6 @@ class HomeBreakdownListPage extends ConsumerWidget {
       title: name,
       amount: amt,
       boldLine2: _itemUpperQtyLine(r),
-      rest1: '—',
-      rest2: '—',
       onTap: () {
         if (sid.isNotEmpty) {
           context.push('/supplier/$sid');
@@ -352,8 +348,6 @@ class HomeBreakdownListPage extends ConsumerWidget {
       title: name,
       amount: amt,
       boldLine2: bold,
-      rest1: '—',
-      rest2: '—',
       onTap: () {
         final enc = Uri.encodeComponent(name);
         context.push('/item-analytics/$enc');
@@ -366,10 +360,14 @@ class HomeBreakdownListPage extends ConsumerWidget {
     required String title,
     required double amount,
     required String boldLine2,
-    required String rest1,
-    required String rest2,
+    String? rest1,
+    String? rest2,
     required VoidCallback onTap,
   }) {
+    final tail = <String>[
+      if (rest1 != null && rest1.trim().isNotEmpty && rest1.trim() != '—') rest1.trim(),
+      if (rest2 != null && rest2.trim().isNotEmpty && rest2.trim() != '—') rest2.trim(),
+    ].join(' · ');
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -430,13 +428,14 @@ class HomeBreakdownListPage extends ConsumerWidget {
                           color: Color(0xFF0F172A),
                         ),
                       ),
-                      TextSpan(
-                        text: ' · $rest1 · $rest2',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF64748B),
+                      if (tail.isNotEmpty)
+                        TextSpan(
+                          text: ' · $tail',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF64748B),
+                          ),
                         ),
-                      ),
                     ],
                   ),
                   maxLines: 1,
