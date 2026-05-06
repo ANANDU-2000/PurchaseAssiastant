@@ -2926,54 +2926,10 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                     ? _fpShell(_liveTotalsCard(theme))
                     : _liveTotalsCard(theme),
               ),
-              if (!widget.fullPage) const SizedBox(height: 8),
-              if (!widget.fullPage)
-                if (widget.isEdit)
-                  FilledButton(
-                    onPressed: () => _commit(closeSheet: true),
-                    child: const Text('SAVE'),
-                  )
-                else
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => _commit(closeSheet: false),
-                          child: const Text('ADD MORE'),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: () => _commit(closeSheet: true),
-                          child: const Text('SAVE'),
-                        ),
-                      ),
-                    ],
-                  ),
             ];
 
     final keyboardBottom = MediaQuery.viewInsetsOf(context).bottom;
     final homeBottomInset = MediaQuery.paddingOf(context).bottom;
-    final scroll = SingleChildScrollView(
-      controller: _scrollController,
-      physics: const ClampingScrollPhysics(),
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      padding: EdgeInsets.only(
-        left: widget.fullPage ? 16 : 10,
-        top: widget.fullPage ? 8 : 4,
-        right: widget.fullPage ? 16 : 10,
-        bottom: keyboardBottom +
-            (widget.fullPage
-                ? homeBottomInset + 76
-                : homeBottomInset + 88),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: formChildren,
-      ),
-    );
 
     if (widget.fullPage) {
       final footerPad = const EdgeInsets.fromLTRB(0, 6, 0, 10);
@@ -3091,12 +3047,97 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       );
     }
 
+    final footer = widget.isEdit
+        ? FilledButton(
+            onPressed: () => _commit(closeSheet: true),
+            style: FilledButton.styleFrom(
+              backgroundColor: teal,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 48),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text(
+              'Save',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+          )
+        : Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => _commit(closeSheet: false),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: teal,
+                    side: const BorderSide(color: teal),
+                    minimumSize: const Size(double.infinity, 48),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(12)),
+                    ),
+                  ),
+                  child: const Text(
+                    'Add more',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton(
+                  onPressed: () => _commit(closeSheet: true),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: teal,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(double.infinity, 48),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(12)),
+                    ),
+                  ),
+                  child: const Text(
+                    'Save',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ),
+            ],
+          );
+
     return Theme(
       data: sheetTheme,
       child: Material(
         color: theme.colorScheme.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
-        child: scroll,
+        child: LayoutBuilder(
+          builder: (context, c) {
+            final minFields = math.max(200.0, c.maxHeight - 220);
+            return KeyboardSafeFormViewport(
+              dismissKeyboardOnTap: true,
+              scrollController: _scrollController,
+              horizontalPadding: 10,
+              topPadding: 4,
+              bottomExtraInset: 12,
+              minFieldsHeight: c.hasBoundedHeight ? minFields : 200,
+              fields: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: formChildren,
+              ),
+              footer: Padding(
+                padding: EdgeInsets.only(
+                  left: 10,
+                  right: 10,
+                  top: 8,
+                  bottom: (keyboardBottom > 0 ? keyboardBottom : homeBottomInset) + 10,
+                ),
+                child: footer,
+              ),
+            );
+          },
+        ),
       ),
     );
   }

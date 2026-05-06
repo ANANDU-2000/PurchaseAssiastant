@@ -26,7 +26,6 @@ import '../../../core/services/purchase_pdf.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../core/widgets/list_skeleton.dart';
-import '../../../shared/widgets/shell_quick_ref_actions.dart';
 
 String _inr(num n) =>
     NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
@@ -472,14 +471,17 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
               icon: const Icon(Icons.close_rounded),
             ),
           ] else ...[
-            ShellQuickRefActions(
-              onRefresh: () {
-                invalidatePurchaseWorkspace(ref);
-              },
-            ),
             PopupMenuButton<String>(
               tooltip: 'More',
               itemBuilder: (ctx) => [
+                const PopupMenuItem(
+                  value: 'refresh',
+                  child: ListTile(
+                    leading: Icon(Icons.refresh_rounded),
+                    title: Text('Refresh'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
                 const PopupMenuItem(
                   value: 'select',
                   child: ListTile(
@@ -498,7 +500,9 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                 ),
               ],
               onSelected: (v) {
-                if (v == 'select') {
+                if (v == 'refresh') {
+                  invalidatePurchaseWorkspace(ref);
+                } else if (v == 'select') {
                   setState(() => _selectMode = true);
                 } else if (v == 'scan') {
                   context.push('/purchase/scan');
