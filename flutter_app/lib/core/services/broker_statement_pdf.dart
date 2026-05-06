@@ -70,6 +70,60 @@ pw.Document _buildBrokerStatementDocument({
     if (totalTins > 1e-6) '${totalTins % 1 == 0 ? totalTins.toInt() : totalTins.toStringAsFixed(1)} tins',
   ];
 
+  final tableRows = <pw.TableRow>[
+    pw.TableRow(
+      decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+      children: [
+        _pcell('Date', bold: true),
+        _pcell('Bill', bold: true),
+        _pcell('Supplier', bold: true),
+        _pcell('Items', bold: true),
+        _pcell('Unit', bold: true),
+        _pcell('Qty', bold: true, right: true),
+        _pcell('Kg', bold: true, right: true),
+        _pcell('Comm. ₹', bold: true, right: true),
+      ],
+    ),
+  ];
+  for (final p in purchases) {
+    for (var i = 0; i < p.lines.length; i++) {
+      final l = p.lines[i];
+      final kgLine = ledgerTradeLineWeightKg(
+        itemName: l.itemName,
+        unit: l.unit,
+        qty: l.qty,
+        catalogDefaultUnit: l.defaultPurchaseUnit ?? l.defaultUnit,
+        catalogDefaultKgPerBag: l.defaultKgPerBag,
+        kgPerUnit: l.kgPerUnit,
+        boxMode: l.boxMode,
+        itemsPerBox: l.itemsPerBox,
+        weightPerItem: l.weightPerItem,
+        kgPerBox: l.kgPerBox,
+        weightPerTin: l.weightPerTin,
+      );
+      tableRows.add(
+        pw.TableRow(
+          children: [
+            _pcell(i == 0 ? _df.format(p.purchaseDate) : ''),
+            _pcell(i == 0 ? p.humanId : ''),
+            _pcell(i == 0 ? _safe(p.supplierName) : ''),
+            _pcell(_safe(l.itemName)),
+            _pcell(_safe(l.unit)),
+            _pcell(
+              l.qty % 1 == 0 ? '${l.qty.toInt()}' : l.qty.toStringAsFixed(1),
+              right: true,
+            ),
+            _pcell(kgLine > 1e-6 ? kgLine.toStringAsFixed(0) : '—', right: true),
+            _pcell(
+              i == 0 ? _rs(tradePurchaseCommissionInr(p)) : '',
+              right: true,
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
   doc.addPage(
     pw.MultiPage(
       pageFormat: PdfPageFormat.a4,
@@ -126,59 +180,7 @@ pw.Document _buildBrokerStatementDocument({
             6: const pw.FlexColumnWidth(0.95),
             7: const pw.FlexColumnWidth(0.95),
           },
-          children: [
-            pw.TableRow(
-              decoration: const pw.BoxDecoration(color: PdfColors.grey200),
-              children: [
-                _pcell('Date', bold: true),
-                _pcell('Bill', bold: true),
-                _pcell('Supplier', bold: true),
-                _pcell('Items', bold: true),
-                _pcell('Unit', bold: true),
-                _pcell('Qty', bold: true, right: true),
-                _pcell('Kg', bold: true, right: true),
-                _pcell('Comm. ₹', bold: true, right: true),
-              ],
-            ),
-            for (final p in purchases) ...[
-              for (var i = 0; i < p.lines.length; i++) ...[
-                final l = p.lines[i],
-                final kgLine = ledgerTradeLineWeightKg(
-                  itemName: l.itemName,
-                  unit: l.unit,
-                  qty: l.qty,
-                  catalogDefaultUnit: l.defaultPurchaseUnit ?? l.defaultUnit,
-                  catalogDefaultKgPerBag: l.defaultKgPerBag,
-                  kgPerUnit: l.kgPerUnit,
-                  boxMode: l.boxMode,
-                  itemsPerBox: l.itemsPerBox,
-                  weightPerItem: l.weightPerItem,
-                  kgPerBox: l.kgPerBox,
-                  weightPerTin: l.weightPerTin,
-                ),
-                pw.TableRow(
-                  children: [
-                    _pcell(i == 0 ? _df.format(p.purchaseDate) : ''),
-                    _pcell(i == 0 ? p.humanId : ''),
-                    _pcell(i == 0 ? _safe(p.supplierName) : ''),
-                    _pcell(_safe(l.itemName)),
-                    _pcell(_safe(l.unit)),
-                    _pcell(
-                      l.qty % 1 == 0 ? '${l.qty.toInt()}' : l.qty.toStringAsFixed(1),
-                      right: true,
-                    ),
-                    _pcell(kgLine > 1e-6 ? kgLine.toStringAsFixed(0) : '—', right: true),
-                    _pcell(
-                      i == 0
-                          ? _rs(tradePurchaseCommissionInr(p))
-                          : '',
-                      right: true,
-                    ),
-                  ],
-                ),
-              ],
-            ],
-          ],
+          children: tableRows,
         ),
         pw.SizedBox(height: 12),
         pw.Text(
