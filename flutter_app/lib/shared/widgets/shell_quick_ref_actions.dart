@@ -24,6 +24,12 @@ class ShellQuickRefActions extends ConsumerWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         IconButton(
+          tooltip: 'Home',
+          onPressed: () => context.go('/home'),
+          icon: Icon(Icons.home_outlined, color: icon, size: 22),
+          padding: const EdgeInsets.all(8),
+        ),
+        IconButton(
           tooltip: 'Catalog',
           onPressed: () => context.push('/catalog'),
           icon: Icon(Icons.inventory_2_outlined, color: icon, size: 22),
