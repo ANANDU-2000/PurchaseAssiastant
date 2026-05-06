@@ -17,7 +17,7 @@ import '../../../../shared/widgets/keyboard_safe_form_viewport.dart';
 import 'party_inline_suggest_field.dart';
 
 /// One purchase line: catalog search, qty/unit, landing, selling, optional
-/// tax/discount (per kg for bag/sack with a catalog kg snapshot, else per unit).
+/// tax/discount (per kg for bag with a catalog kg snapshot, else per unit).
 class PurchaseItemEntrySheet extends StatefulWidget {
   const PurchaseItemEntrySheet({
     super.key,
@@ -56,6 +56,9 @@ class PurchaseItemEntrySheet extends StatefulWidget {
 }
 
 class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
+  // Master rebuild default wholesale mode: inventory is count-only for BOX/TIN.
+  // Advanced weight/item tracking for BOX/TIN is intentionally disabled for now.
+  static const bool _advancedInventoryEnabled = false;
   final _scrollController = ScrollController();
   final _itemKey = GlobalKey();
   final _qtyKey = GlobalKey();
@@ -90,14 +93,14 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
 
   /// Persisted catalog row id for the line (`catalog_item_id` on save).
   String? _selectedCatalogItemId;
-  /// When true: bag/sack with kg snapshot — user enters landing & selling per kg.
+  /// When true: bag with kg snapshot — user enters landing & selling per kg.
   bool _weightPricing = false;
-  /// kg per bag/sack (from `default_kg_per_bag` or saved line).
+  /// kg per bag (from `default_kg_per_bag` or saved line).
   double? _kgPerUnit;
   String _freightType = 'separate';
   bool _boxFixedWeight = true;
 
-  /// For bag/sack lines: allow qty entry as **bags** or **kg** (converted to bags on save).
+  /// For bag lines: allow qty entry as **bags** or **kg** (converted to bags on save).
   String _qtyEntryMode = 'bags'; // 'bags' | 'kg'
 
   /// For weight-bag ₹/kg economics: text fields hold **per kg** vs **per bag** amounts.
@@ -167,7 +170,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     final v = _parseD(_kgPerBagCtrl.text);
     if (!mounted) return;
     final u = _unitCtrl.text.trim().toLowerCase();
-    final bagFamily = u == 'bag' || u == 'sack';
+    final bagFamily = u == 'bag' || u == 'sack'; // legacy sack treated as bag
     setState(() {
       _kgPerUnit = (v != null && v > 0) ? v : null;
       _weightPricing = bagFamily && _kgPerUnit != null && _kgPerUnit! > 0;
@@ -407,7 +410,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       case UnitType.weightBag:
         if (row == null) return 'bag';
         final du = row['default_unit']?.toString().trim().toLowerCase();
-        if (du == 'sack') return 'sack';
+        if (du == 'sack') return 'bag';
         return 'bag';
       case UnitType.multiPackBox:
         return 'box';
@@ -427,7 +430,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     switch (c.type) {
       case UnitType.weightBag:
         if (c.kgFromName != null && c.kgFromName! > 0) {
-          return 'Classified: ${_fmtQty(c.kgFromName!)} kg ${wireUnit == 'sack' ? 'sack' : 'bag'}';
+          return 'Classified: ${_fmtQty(c.kgFromName!)} kg bag';
         }
         return 'Classified: weight bag';
       case UnitType.multiPackBox:
@@ -468,13 +471,13 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
 
   static bool _isWeightUnit(String? u) {
     final x = (u ?? '').trim().toLowerCase();
+    // Back-compat: treat legacy `sack` as canonical `bag`.
     return x == 'bag' || x == 'sack';
   }
 
   static const _unitDropdownBaseChoices = <String>[
     'kg',
     'bag',
-    'sack',
     'box',
     'tin',
     'piece',
@@ -491,7 +494,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
 
     // If catalog has an explicit default unit, bias to that family.
     if (du == 'bag' || du == 'sack') {
-      out.addAll(const {'bag', 'sack', 'kg'});
+      out.addAll(const {'bag', 'kg'});
     } else if (du == 'box') {
       out.addAll(const {'box', 'piece', 'kg'});
     } else if (du == 'tin') {
@@ -499,12 +502,12 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     } else if (du == 'piece') {
       out.addAll(const {'piece', 'kg'});
     } else if (du == 'kg') {
-      out.addAll(const {'kg', 'bag', 'sack', 'piece'});
+      out.addAll(const {'kg', 'bag', 'piece'});
     }
 
     // If classifier is confident, reinforce the family.
     if (c.type == UnitType.weightBag) {
-      out.addAll(const {'bag', 'sack', 'kg'});
+      out.addAll(const {'bag', 'kg'});
     } else if (c.type == UnitType.multiPackBox) {
       out.addAll(const {'box', 'piece', 'kg'});
     } else if (c.type == UnitType.singlePack) {
@@ -540,9 +543,27 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     return 'kg';
   }
 
-  void _onUnitDropdownChanged(String? v) {
-    if (v == null) return;
+  void _onUnitDropdownChanged(String? value) {
+    if (value == null) return;
+    var v = value;
+    // Back-compat: normalize legacy `sack` to canonical `bag`.
+    if (v.trim().toLowerCase() == 'sack') v = 'bag';
     _clearFieldErrors();
+    final vLow = v.trim().toLowerCase();
+
+    // Default wholesale mode: BOX/TIN are count-only. Clear any weight fields so
+    // we never accidentally derive kg totals or show hidden inputs.
+    if (!_advancedInventoryEnabled && (vLow == 'box' || vLow == 'tin')) {
+      _weightPricing = false;
+      _rateFieldsPerKg = false;
+      _kgPerUnit = null;
+      _kgPerBagCtrl.clear();
+      _itemsPerBoxCtrl.clear();
+      _weightPerItemCtrl.clear();
+      _kgPerBoxCtrl.clear();
+      _weightPerTinCtrl.clear();
+      if (_qtyEntryMode != 'bags') _qtyEntryMode = 'bags';
+    }
     if (!_isWeightUnit(v) && !_hasCatalogKg()) {
       _kgPerUnit = null;
       _kgPerBagCtrl.clear();
@@ -733,7 +754,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   bool _bagQtyIsWhole(double bags) =>
       (bags - bags.roundToDouble()).abs() < 1e-6;
 
-  /// Quantity interpreted as **bags/sacks** for calculations and payload.
+  /// Quantity interpreted as **bags** for calculations and payload.
   /// When [_qtyEntryMode] == 'kg', interpret the input as kg and convert to bags.
   double _qtyVal() {
     final raw = _enteredQtyRaw();
@@ -745,7 +766,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     return raw / k;
   }
 
-  /// Entered kg when in kg-mode for bag/sack.
+  /// Entered kg when in kg-mode for bag.
   double? _enteredKgForBagMode() {
     if (_qtyEntryMode != 'kg') return null;
     if (!_isBagFamilyUnit()) return null;
@@ -819,7 +840,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       return 'Qty (kg) *';
     }
     if (u == 'bag') return 'No. of bags *';
-    if (u == 'sack') return 'No. of sacks *';
+    if (u == 'sack') return 'No. of bags *';
     if (u == 'box') return 'No. of boxes *';
     if (u == 'tin') return 'No. of tins *';
     if (u == 'kg' || u == 'kgs' || u == 'quintal' || u == 'qtl') {
@@ -1256,7 +1277,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         child: Text(
-          'Name looks like a $knLabel kg/bag item — quantity is in **kg**, not bags. Switch unit to bag to count sacks.',
+          'Name looks like a $knLabel kg/bag item — quantity is in **kg**, not bags. Switch unit to bag to count bags.',
           style: theme.textTheme.bodySmall?.copyWith(
             fontWeight: FontWeight.w700,
             color: const Color(0xFF065F46),
@@ -1327,39 +1348,14 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
           final bags = enteredKg / k;
           if (!_bagQtyIsWhole(bags)) {
             _errQty =
-                'Kg must convert to a whole ${unitLow == 'sack' ? 'sack' : 'bag'} count. '
+                'Kg must convert to a whole bag count. '
                 'Use a multiple of ${_fmtQty(k)} kg.';
           }
         }
       }
       _errUnit = unit.isEmpty ? 'Unit is required' : null;
       _errKgPerBag = null;
-      if (unitLow == 'box') {
-        if (clf.type == UnitType.multiPackBox) {
-          _errKgPerBag = ((_parseD(_itemsPerBoxCtrl.text) ?? 0) <= 0)
-              ? 'Add items per box'
-              : null;
-        } else if (clf.type == UnitType.singlePack) {
-          _errKgPerBag = null;
-        } else {
-          final ok = _boxFixedWeight
-              ? ((_parseD(_kgPerBoxCtrl.text) ?? _kgPer() ?? 0) > 0)
-              : ((_parseD(_itemsPerBoxCtrl.text) ?? 0) > 0 &&
-                  (_parseD(_weightPerItemCtrl.text) ?? 0) > 0);
-          if (!ok) {
-            _errKgPerBag = _boxFixedWeight
-                ? 'Add kg per box'
-                : 'Add box count and item weight';
-          }
-        }
-      } else if (unitLow == 'tin' &&
-          ((_parseD(_weightPerTinCtrl.text) ??
-                  clf.kgFromName ??
-                  _kgPer() ??
-                  0) <=
-              0)) {
-        _errKgPerBag = 'Add weight per tin';
-      } else if (unitLow == 'bag' || unitLow == 'sack') {
+      if (unitLow == 'bag' || unitLow == 'sack') {
         final k = _kgPer();
         if (k == null || k <= 0) {
           _errKgPerBag = 'Kg per bag required';
@@ -1395,11 +1391,10 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       final uLow = unit.toLowerCase();
       final needHsn = (taxV != null && taxV > 0) ||
           uLow == 'bag' ||
-          uLow == 'sack' ||
           clf.type == UnitType.weightBag;
       final hsn = _hsnCode?.trim() ?? '';
       _errHsn = (needHsn && hsn.isEmpty)
-          ? 'HSN is required (from catalog) for taxed or bag/sack lines'
+          ? 'HSN is required (from catalog) for taxed or bag lines'
           : null;
     });
 
@@ -2229,7 +2224,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         ),
         const SizedBox(height: 4),
         Text(
-          'Catalog, qty, rate first. Use Discount / Tax for HSN and bag/sack rules.',
+          'Catalog, qty, rate first. Use Discount / Tax for HSN and bag rules.',
           style: theme.textTheme.bodySmall?.copyWith(
             color: Colors.blueGrey[700],
             fontSize: 12,
@@ -2489,7 +2484,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                   ),
                 ),
               ],
-              if (unitLow == 'box') ...[
+              if (_advancedInventoryEnabled && unitLow == 'box') ...[
                 SizedBox(height: gapField),
                 if (!(cRow.type == UnitType.singlePack ||
                     cRow.type == UnitType.multiPackBox))
@@ -2597,7 +2592,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                     ),
                 ],
               ],
-              if (unitLow == 'tin') ...[
+              if (_advancedInventoryEnabled && unitLow == 'tin') ...[
                 SizedBox(height: gapField),
                 TextField(
                   controller: _weightPerTinCtrl,

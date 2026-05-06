@@ -43,7 +43,7 @@ void main() {
     expect(buildTradeStatementLines([p]).length, 1);
   });
 
-  test('box: kg from qty × items_per_box × weight_per_item', () {
+  test('box: count-only (no kg tracking)', () {
     final p = _purchase(
       id: 'b',
       lines: [
@@ -60,10 +60,11 @@ void main() {
       ],
     );
     final kg = reportLineKg(p.lines.first);
-    expect(kg, 3 * 12 * 0.5);
+    expect(kg, 0);
 
     final aggAll = buildTradeReportAgg([p]);
     expect(aggAll.totals.boxes, 3);
+    expect(aggAll.totals.kg, 0);
     expect(aggAll.itemsBox.length, 1);
 
     final bagsOnly = buildTradeReportAgg([p], onlyKind: ReportPackKind.bag);
@@ -72,7 +73,7 @@ void main() {
     expect(buildTradeStatementLines([p]).length, 1);
   });
 
-  test('tin: kg from qty × weight_per_tin', () {
+  test('tin: count-only (no kg tracking)', () {
     final p = _purchase(
       id: 'c',
       lines: [
@@ -89,7 +90,7 @@ void main() {
     );
     final agg = buildTradeReportAgg([p]);
     expect(agg.totals.tins, 5);
-    expect(agg.totals.kg, 75);
+    expect(agg.totals.kg, 0);
   });
 
   test('classified lines counted once: multi-line purchase', () {

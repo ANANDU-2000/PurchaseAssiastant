@@ -157,13 +157,9 @@ class TradePurchaseLineIn(DecimalModel):
         unit = (self.unit or "").strip().upper()
         if unit == "BAG" and self.weight_per_unit is None:
             raise ValueError("kg_per_bag is required for BAG")
-        if unit == "BOX":
-            has_items_box = self.items_per_box is not None and self.weight_per_item is not None
-            has_fixed_box = self.kg_per_box is not None
-            if not has_items_box and not has_fixed_box and self.weight_per_unit is None:
-                raise ValueError("BOX requires items_per_box + weight_per_item or kg_per_box")
-        if unit == "TIN" and self.weight_per_tin is None and self.weight_per_unit is None:
-            raise ValueError("weight_per_tin is required for TIN")
+        # Master rebuild: default wholesale mode treats BOX/TIN as count-only units.
+        # Weight fields are optional; kg totals for these units are not tracked unless
+        # an explicit future \"advanced inventory\" mode is added.
         return self
 
 

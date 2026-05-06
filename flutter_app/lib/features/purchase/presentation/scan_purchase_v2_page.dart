@@ -1,0 +1,922 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:image/image.dart' as img;
+import 'package:image_picker/image_picker.dart';
+
+import '../../../core/auth/auth_error_messages.dart';
+import '../../../core/auth/session_notifier.dart';
+import '../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../core/theme/hexa_colors.dart';
+
+enum _ScanStage {
+  idle,
+  readingImage,
+  detectingRows,
+  matchingSuppliers,
+  validating,
+  buildingDraft,
+  done,
+  error,
+}
+
+class ScanPurchaseV2Page extends ConsumerStatefulWidget {
+  const ScanPurchaseV2Page({super.key});
+
+  @override
+  ConsumerState<ScanPurchaseV2Page> createState() => _ScanPurchaseV2PageState();
+}
+
+class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
+  List<int>? _jpegBytes;
+  bool _busy = false;
+  _ScanStage _stage = _ScanStage.idle;
+  String? _error;
+
+  Map<String, dynamic>? _scan; // raw ScanResult JSON (table-first UI)
+  bool _creating = false;
+
+  Timer? _stageTimer;
+
+  @override
+  void dispose() {
+    _stageTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<List<int>> _compressForUpload(List<int> raw) async {
+    final decoded = img.decodeImage(Uint8List.fromList(raw));
+    if (decoded == null) return Uint8List.fromList(raw);
+    const maxW = 1600;
+    final resized =
+        decoded.width > maxW ? img.copyResize(decoded, width: maxW) : decoded;
+    return List<int>.from(img.encodeJpg(resized, quality: 82));
+  }
+
+  Future<void> _pick(ImageSource src) async {
+    final x = await ImagePicker().pickImage(source: src);
+    if (x == null) return;
+    final raw = await x.readAsBytes();
+    setState(() {
+      _scan = null;
+      _error = null;
+      _busy = false;
+      _stage = _ScanStage.idle;
+      _jpegBytes = null;
+    });
+    try {
+      final compressed = await _compressForUpload(raw);
+      setState(() => _jpegBytes = compressed);
+    } catch (_) {
+      setState(() => _jpegBytes = raw);
+    }
+  }
+
+  void _startStages() {
+    _stageTimer?.cancel();
+    final stages = <_ScanStage>[
+      _ScanStage.readingImage,
+      _ScanStage.detectingRows,
+      _ScanStage.matchingSuppliers,
+      _ScanStage.validating,
+      _ScanStage.buildingDraft,
+    ];
+    var i = 0;
+    setState(() => _stage = stages.first);
+    _stageTimer = Timer.periodic(const Duration(milliseconds: 650), (_) {
+      if (!mounted) return;
+      if (!_busy) return;
+      i += 1;
+      if (i >= stages.length) i = stages.length - 1;
+      setState(() => _stage = stages[i]);
+    });
+  }
+
+  Future<void> _scanNow() async {
+    final session = ref.read(sessionProvider);
+    final bytes = _jpegBytes;
+    if (session == null || bytes == null || bytes.isEmpty) return;
+    if (_busy) return;
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _busy = true;
+      _error = null;
+      _scan = null;
+    });
+    _startStages();
+    try {
+      final res = await ref.read(hexaApiProvider).scanPurchaseBillV2Multipart(
+            businessId: session.primaryBusiness.id,
+            imageBytes: bytes,
+            filename: 'bill_scan.jpg',
+          );
+      if (!mounted) return;
+      setState(() {
+        _scan = res;
+        _busy = false;
+        _stage = _ScanStage.done;
+      });
+      HapticFeedback.selectionClick();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _stage = _ScanStage.error;
+        _error = friendlyApiError(e);
+      });
+    } finally {
+      _stageTimer?.cancel();
+    }
+  }
+
+  String? _scanToken() {
+    final s = _scan;
+    if (s == null) return null;
+    final t = s['scan_token']?.toString().trim();
+    return (t != null && t.isNotEmpty) ? t : null;
+  }
+
+  void _resetAll() {
+    setState(() {
+      _jpegBytes = null;
+      _scan = null;
+      _busy = false;
+      _creating = false;
+      _stage = _ScanStage.idle;
+      _error = null;
+    });
+  }
+
+  Future<void> _createPurchaseFromReviewedScan() async {
+    final session = ref.read(sessionProvider);
+    final s = _scan;
+    final token = _scanToken();
+    if (session == null || s == null || token == null) return;
+    if (_busy || _creating) return;
+
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _creating = true;
+      _error = null;
+    });
+    try {
+      // Persist the reviewed edits back into the scan cache.
+      await ref.read(hexaApiProvider).scanPurchaseBillV2Update(
+            businessId: session.primaryBusiness.id,
+            body: {'scan_token': token, 'scan': s},
+          );
+
+      // Confirm and create purchase (duplicate prevention enforced on server).
+      final created = await ref.read(hexaApiProvider).scanPurchaseBillV2Confirm(
+            businessId: session.primaryBusiness.id,
+            body: {
+              'scan_token': token,
+              'purchase_date': DateTime.now().toIso8601String().substring(0, 10),
+              'status': 'confirmed',
+              'force_duplicate': false,
+            },
+          );
+
+      final id = created['id']?.toString().trim();
+      if (!mounted) return;
+      if (id != null && id.isNotEmpty) {
+        HapticFeedback.selectionClick();
+        context.go('/purchase/detail/$id');
+        return;
+      }
+      setState(() => _error = 'Created purchase, but could not open it (missing id).');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = friendlyApiError(e));
+    } finally {
+      if (mounted) setState(() => _creating = false);
+    }
+  }
+
+  String _confLabel(Object? v) {
+    final d = (v is num) ? v.toDouble() : double.tryParse(v?.toString() ?? '');
+    if (d == null) return 'Needs review';
+    if (d >= 0.92) return 'High';
+    if (d >= 0.70) return 'Medium';
+    return 'Needs review';
+  }
+
+  Color _confBg(Object? v) {
+    final d = (v is num) ? v.toDouble() : double.tryParse(v?.toString() ?? '');
+    if (d == null) return const Color(0xFFFEF2F2);
+    if (d >= 0.92) return const Color(0xFFECFDF3);
+    if (d >= 0.70) return const Color(0xFFFFFBEB);
+    return const Color(0xFFFEF2F2);
+  }
+
+  Color _confFg(Object? v) {
+    final d = (v is num) ? v.toDouble() : double.tryParse(v?.toString() ?? '');
+    if (d == null) return const Color(0xFF991B1B);
+    if (d >= 0.92) return const Color(0xFF027A48);
+    if (d >= 0.70) return const Color(0xFFB45309);
+    return const Color(0xFF991B1B);
+  }
+
+  Widget _confChip(Object? v) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: _confBg(v),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Text(
+        _confLabel(v),
+        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11, color: _confFg(v)),
+      ),
+    );
+  }
+
+  void _applyDirectoryCandidate(String key, Map<String, dynamic> cand) {
+    final s = _scan;
+    if (s == null) return;
+    final m0 = s[key];
+    if (m0 is! Map) return;
+    final next = Map<String, dynamic>.from(m0);
+    final id = cand['id']?.toString();
+    final name = (cand['name'] ?? '').toString().trim();
+    if (id != null && id.trim().isNotEmpty) next['matched_id'] = id;
+    if (name.isNotEmpty) next['matched_name'] = name;
+    next['confidence'] = 0.99;
+    s[key] = next;
+    setState(() => _scan = Map<String, dynamic>.from(s));
+  }
+
+  Future<void> _editItemRow(int index, Map<String, dynamic> item) async {
+    final nameCtrl = TextEditingController(
+      text: (item['matched_name'] ?? item['raw_name'] ?? '').toString(),
+    );
+    final qtyCtrl = TextEditingController(text: (item['bags'] ?? item['qty'] ?? '').toString());
+    final pCtrl = TextEditingController(text: (item['purchase_rate'] ?? '').toString());
+    final sCtrl = TextEditingController(text: (item['selling_rate'] ?? '').toString());
+    var unit = (item['unit_type'] ?? 'KG').toString().trim().toUpperCase();
+    if (unit.isEmpty) unit = 'KG';
+
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 12,
+            right: 12,
+            top: 8,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('Edit item', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+              const SizedBox(height: 10),
+              TextField(
+                controller: nameCtrl,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(labelText: 'Item'),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: qtyCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      textInputAction: TextInputAction.next,
+                      decoration: const InputDecoration(labelText: 'Qty'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: unit,
+                      items: const [
+                        DropdownMenuItem(value: 'BAG', child: Text('bag')),
+                        DropdownMenuItem(value: 'KG', child: Text('kg')),
+                        DropdownMenuItem(value: 'BOX', child: Text('box')),
+                        DropdownMenuItem(value: 'TIN', child: Text('tin')),
+                        DropdownMenuItem(value: 'PCS', child: Text('piece')),
+                      ],
+                      onChanged: (v) => unit = v ?? unit,
+                      decoration: const InputDecoration(labelText: 'Unit'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: pCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      textInputAction: TextInputAction.next,
+                      decoration: const InputDecoration(labelText: 'Purchase rate'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextField(
+                      controller: sCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      textInputAction: TextInputAction.done,
+                      decoration: const InputDecoration(labelText: 'Selling rate'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(ctx).pop(false),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(ctx).pop(true),
+                      child: const Text('Save'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (saved != true) return;
+    final next = Map<String, dynamic>.from(item);
+    final nm = nameCtrl.text.trim();
+    if (nm.isNotEmpty) {
+      next['matched_name'] = nm;
+      next['raw_name'] = next['raw_name'] ?? nm;
+    }
+    next['unit_type'] = unit;
+    final q = double.tryParse(qtyCtrl.text.trim());
+    if (q != null && q > 0) {
+      if (unit == 'BAG') {
+        next['bags'] = q;
+      } else {
+        next['qty'] = q;
+      }
+    }
+    final pr = double.tryParse(pCtrl.text.trim());
+    if (pr != null && pr > 0) next['purchase_rate'] = pr;
+    final sr = double.tryParse(sCtrl.text.trim());
+    if (sr != null && sr > 0) next['selling_rate'] = sr;
+
+    final s = _scan;
+    if (s == null) return;
+    final items = s['items'];
+    if (items is! List || index < 0 || index >= items.length) return;
+    items[index] = next;
+    setState(() => _scan = Map<String, dynamic>.from(s));
+  }
+
+  String _stageLabel(_ScanStage s) {
+    return switch (s) {
+      _ScanStage.idle => 'Upload a bill photo to begin.',
+      _ScanStage.readingImage => 'Reading image…',
+      _ScanStage.detectingRows => 'Detecting rows…',
+      _ScanStage.matchingSuppliers => 'Matching suppliers…',
+      _ScanStage.validating => 'Validating quantities…',
+      _ScanStage.buildingDraft => 'Building purchase draft…',
+      _ScanStage.done => 'Review detected items',
+      _ScanStage.error => 'Scan failed',
+    };
+  }
+
+  Widget _confidencePill(double c) {
+    final pct = (c * 100).clamp(0, 100).round();
+    final (bg, fg, label) = pct >= 92
+        ? (const Color(0xFFECFDF5), const Color(0xFF065F46), 'High')
+        : (pct >= 70
+            ? (const Color(0xFFFFFBEB), const Color(0xFF92400E), 'Review')
+            : (const Color(0xFFFEF2F2), const Color(0xFF991B1B), 'Low'));
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: fg.withAlpha(35)),
+      ),
+      child: Text(
+        '$label · $pct%',
+        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: fg),
+      ),
+    );
+  }
+
+  Widget _supplierBrokerSummary() {
+    final s = _scan;
+    if (s == null) return const SizedBox.shrink();
+    final sup = s['supplier'];
+    final bro = s['broker'];
+    String supName() {
+      if (sup is Map) {
+        return (sup['matched_name']?.toString().trim().isNotEmpty == true)
+            ? sup['matched_name'].toString()
+            : (sup['raw_text']?.toString() ?? '—');
+      }
+      return '—';
+    }
+
+    double supConf() =>
+        (sup is Map && sup['confidence'] is num) ? (sup['confidence'] as num).toDouble() : 0.0;
+
+    String broName() {
+      if (bro is Map) {
+        return (bro['matched_name']?.toString().trim().isNotEmpty == true)
+            ? bro['matched_name'].toString()
+            : (bro['raw_text']?.toString() ?? '—');
+      }
+      return '—';
+    }
+
+    double broConf() =>
+        (bro is Map && bro['confidence'] is num) ? (bro['confidence'] as num).toDouble() : 0.0;
+
+    List<Map<String, dynamic>> candidatesOf(Object? x) {
+      if (x is! Map) return const [];
+      final c = x['candidates'];
+      if (c is! List) return const [];
+      final out = <Map<String, dynamic>>[];
+      for (final e in c.take(3)) {
+        if (e is Map) out.add(Map<String, dynamic>.from(e));
+      }
+      return out;
+    }
+
+    final supCands = candidatesOf(sup);
+    final broCands = candidatesOf(bro);
+
+    return Card(
+      margin: const EdgeInsets.only(top: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Supplier', style: HexaDsType.formSectionLabel),
+                      const SizedBox(height: 4),
+                      Text(supName(),
+                          style: const TextStyle(
+                              fontSize: 15, fontWeight: FontWeight.w800)),
+                      if (supCands.isNotEmpty && supConf() < 0.92) ...[
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          children: [
+                            for (final c in supCands)
+                              OutlinedButton(
+                                onPressed: () => _applyDirectoryCandidate('supplier', c),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                child: Text(
+                                  (c['name'] ?? 'Select').toString(),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                _confidencePill(supConf()),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Broker', style: HexaDsType.formSectionLabel),
+                      const SizedBox(height: 4),
+                      Text(broName(),
+                          style: const TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w700)),
+                      if (broCands.isNotEmpty && broConf() < 0.92) ...[
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          children: [
+                            for (final c in broCands)
+                              OutlinedButton(
+                                onPressed: () => _applyDirectoryCandidate('broker', c),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                child: Text(
+                                  (c['name'] ?? 'Select').toString(),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                _confidencePill(broConf()),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _chargesSummary() {
+    final s = _scan;
+    if (s == null) return const SizedBox.shrink();
+    final charges = s['charges'];
+    if (charges is! Map) return const SizedBox.shrink();
+    final ch = Map<String, dynamic>.from(charges);
+    final delivered = ch['delivered_rate'];
+    final billty = ch['billty_rate'];
+    final freight = ch['freight_amount'];
+    final paymentDays = s['payment_days'];
+    final hasAny = delivered != null || billty != null || freight != null || paymentDays != null;
+    if (!hasAny) return const SizedBox.shrink();
+
+    String fmtMoney(Object? v) {
+      if (v is num) return '₹${v.toStringAsFixed(0)}';
+      return '—';
+    }
+
+    return Card(
+      margin: const EdgeInsets.only(top: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Detected charges', style: HexaDsType.formSectionLabel),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              children: [
+                if (freight is num) _chip('Freight', fmtMoney(freight)),
+                if (delivered is num) _chip('Delivered', fmtMoney(delivered)),
+                if (billty is num) _chip('Billty', fmtMoney(billty)),
+                if (paymentDays is int) _chip('Payment', '$paymentDays days'),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _warningsSummary() {
+    final s = _scan;
+    if (s == null) return const SizedBox.shrink();
+    final warns = s['warnings'];
+    if (warns is! List || warns.isEmpty) return const SizedBox.shrink();
+    final first = warns.take(3).toList();
+    return Card(
+      margin: const EdgeInsets.only(top: 12),
+      color: const Color(0xFFFFFBEB),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Needs review',
+              style: TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF92400E)),
+            ),
+            const SizedBox(height: 6),
+            for (final w in first)
+              if (w is Map && (w['message']?.toString().trim().isNotEmpty ?? false))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    '• ${w['message']}',
+                    style: const TextStyle(color: Color(0xFF92400E), fontWeight: FontWeight.w600),
+                  ),
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _chip(String k, String v) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3F4F6),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text('$k $v', style: const TextStyle(fontWeight: FontWeight.w800)),
+    );
+  }
+
+  Widget _itemsTable() {
+    final s = _scan;
+    if (s == null) return const SizedBox.shrink();
+    final items = s['items'];
+    if (items is! List || items.isEmpty) {
+      return Card(
+        margin: EdgeInsets.zero,
+        child: const Padding(
+          padding: EdgeInsets.all(12),
+          child: Text('Could not confidently detect item rows. Try better lighting or crop the bill.'),
+        ),
+      );
+    }
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const _ScanTableHeader(),
+            const SizedBox(height: 6),
+            for (var i = 0; i < items.length; i++)
+              if (items[i] is Map)
+                _ScanTableRow(
+                  item: Map<String, dynamic>.from(items[i] as Map),
+                  onTap: () => _editItemRow(i, Map<String, dynamic>.from(items[i] as Map)),
+                  trailing: _confChip((items[i] as Map)['confidence']),
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bytes = _jpegBytes;
+    final hasImage = bytes != null && bytes.isNotEmpty;
+    final hasResult = _scan != null;
+    final isWorking = _busy || _creating;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Scan purchase bill')),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 110),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Scan purchase bill', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 4),
+              const Text(
+                'Take photo or upload invoice. AI extracts supplier, items, rates and quantities.',
+                style: TextStyle(color: Colors.black54),
+              ),
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'Malayalam + English supported · Handwriting supported',
+                        style: TextStyle(fontSize: 12, color: Colors.black54),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: isWorking ? null : () => _pick(ImageSource.camera),
+                              icon: const Icon(Icons.photo_camera_rounded),
+                              label: const Text('Camera'),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: isWorking ? null : () => _pick(ImageSource.gallery),
+                              icon: const Icon(Icons.photo_library_rounded),
+                              label: const Text('Gallery'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if (hasImage) ...[
+                const SizedBox(height: 12),
+                Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      AspectRatio(
+                        aspectRatio: 16 / 9,
+                        child: Image.memory(
+                          Uint8List.fromList(bytes),
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(10),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _stageLabel(_stage),
+                                style: const TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                            if (_busy || _creating)
+                              const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Card(
+                  color: const Color(0xFFFEF2F2),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(
+                      _error!,
+                      style: const TextStyle(
+                        color: Color(0xFF991B1B),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              if (hasResult) ...[
+                _supplierBrokerSummary(),
+                _chargesSummary(),
+                _warningsSummary(),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Text('Detected items', style: HexaDsType.formSectionLabel),
+                    const Spacer(),
+                    Text(
+                      'Tap row to edit',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.black54),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                _itemsTable(),
+              ],
+            ],
+          ),
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: isWorking
+                      ? null
+                      : (hasResult
+                          ? _resetAll
+                          : (hasImage ? _scanNow : null)),
+                  icon: Icon(hasResult ? Icons.refresh_rounded : Icons.document_scanner_rounded),
+                  label: Text(
+                    hasResult ? 'Retake' : (_busy ? 'Scanning…' : 'Scan'),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: (!isWorking && _scan != null) ? _createPurchaseFromReviewedScan : null,
+                  icon: const Icon(Icons.check_circle_rounded),
+                  label: Text(_creating ? 'Creating…' : 'Create Purchase'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: HexaColors.brandPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ScanTableHeader extends StatelessWidget {
+  const _ScanTableHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    final s = Theme.of(context).textTheme.labelSmall?.copyWith(
+          fontWeight: FontWeight.w800,
+          color: Colors.black54,
+        );
+    return Row(
+      children: [
+        Expanded(flex: 6, child: Text('Item', style: s)),
+        Expanded(flex: 2, child: Text('Qty', style: s, textAlign: TextAlign.right)),
+        Expanded(flex: 2, child: Text('Unit', style: s, textAlign: TextAlign.center)),
+        Expanded(flex: 2, child: Text('P', style: s, textAlign: TextAlign.right)),
+        Expanded(flex: 2, child: Text('S', style: s, textAlign: TextAlign.right)),
+      ],
+    );
+  }
+}
+
+class _ScanTableRow extends StatelessWidget {
+  const _ScanTableRow({required this.item, required this.onTap, required this.trailing});
+  final Map<String, dynamic> item;
+  final VoidCallback onTap;
+  final Widget trailing;
+
+  String _s(Object? v, [String fallback = '—']) {
+    final t = v?.toString().trim() ?? '';
+    return t.isEmpty ? fallback : t;
+  }
+
+  String _n(Object? v) {
+    if (v is num) return (v == v.roundToDouble()) ? '${v.round()}' : v.toStringAsFixed(2);
+    final t = v?.toString().trim() ?? '';
+    return t.isEmpty ? '—' : t;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final name = _s(item['matched_name'] ?? item['raw_name']);
+    final qty = _n(item['bags'] ?? item['qty']);
+    final unit = _s(item['unit_type'], '—').toLowerCase();
+    final p = _n(item['purchase_rate']);
+    final s = _n(item['selling_rate']);
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            Expanded(
+              flex: 6,
+              child: Text(
+                name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+            Expanded(flex: 2, child: Text(qty, textAlign: TextAlign.right)),
+            Expanded(flex: 2, child: Text(unit, textAlign: TextAlign.center)),
+            Expanded(flex: 2, child: Text(p, textAlign: TextAlign.right)),
+            Expanded(flex: 2, child: Text(s, textAlign: TextAlign.right)),
+            const SizedBox(width: 8),
+            trailing,
+          ],
+        ),
+      ),
+    );
+  }
+}
+

@@ -15,7 +15,7 @@ def test_bill_line_extract_supports_box_and_piece():
     text = "10 box WHEAT 1200\n5 pc OIL 90"
     raw = extract_purchase_lines_from_text(text)
     assert raw[0]["unit"] == "box"
-    assert raw[1]["unit"] == "unit"
+    assert raw[1]["unit"] == "piece"
 
 
 def test_extract_item_rows_accepts_box_unit():

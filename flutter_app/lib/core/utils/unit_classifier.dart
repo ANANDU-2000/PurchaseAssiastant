@@ -7,7 +7,10 @@ enum UnitType {
   /// One purchasable pack (box/tin/pcs/kg count) with optional fixed kg from name.
   singlePack,
 
-  /// Box/carton without kg in the name — count-style box (items per box).
+  /// Legacy: box/carton without kg in the name — items-per-box mode.
+  ///
+  /// Master rebuild default wholesale mode does NOT use this (boxes are count-only)
+  /// unless a future advanced-inventory mode is enabled.
   multiPackBox,
 }
 
@@ -79,7 +82,8 @@ class UnitClassifier {
           kgFromName: kgFromName,
         );
       }
-      return const UnitClassification(type: UnitType.multiPackBox);
+      // Master rebuild default wholesale mode: BOX/TIN are count-only, not items-per-box.
+      return const UnitClassification(type: UnitType.singlePack);
     }
 
     if (effU == 'PCS' || effU == 'PIECE' || effU == 'PIECES') {
@@ -105,7 +109,7 @@ class UnitClassifier {
   }
 
   static bool _isBagOrSackUnit(String effU) {
-    return effU == 'BAG' || effU == 'SACK';
+    return effU == 'BAG';
   }
 
   static double? _parseKgFromName(String itemName) {

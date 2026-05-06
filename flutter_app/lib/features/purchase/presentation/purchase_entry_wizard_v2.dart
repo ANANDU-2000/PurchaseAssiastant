@@ -20,6 +20,7 @@ import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/prefs_provider.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/services/offline_store.dart';
+import '../../../core/services/offline_sync_service.dart';
 import '../../../core/notifications/local_notifications_service.dart';
 import '../../purchase/domain/purchase_draft.dart';
 import '../../purchase/state/purchase_draft_provider.dart';
@@ -295,7 +296,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         'unit': unit,
         if (tax is num && tax > 0) 'tax_percent': tax.toDouble(),
       };
-      if ((uNorm == 'bag' || uNorm == 'sack') && kpbD != null && land > 0) {
+      if ((uNorm == 'bag') && kpbD != null && land > 0) {
         initial['kg_per_unit'] = kpbD;
         initial['landing_cost_per_kg'] = land / kpbD;
         initial['landing_cost'] = land;
@@ -1388,6 +1389,43 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         }
       }
     } on DioException catch (e) {
+      // Offline-first: queue NEW purchase creates on connectivity failures.
+      final t = e.type;
+      final isNetwork = t == DioExceptionType.connectionError ||
+          t == DioExceptionType.connectionTimeout ||
+          t == DioExceptionType.sendTimeout ||
+          t == DioExceptionType.receiveTimeout;
+      if (!isEdit && isNetwork) {
+        try {
+          final fingerprint =
+              OfflineSyncService.fingerprintForTradePurchaseCreate(body);
+          await OfflineStore.queueEntry({
+            'kind': 'trade_purchase_create',
+            'businessId': bid,
+            'fingerprint': fingerprint,
+            'body': body,
+          });
+        } catch (_) {}
+        ref.read(purchaseDraftProvider.notifier).reset();
+        await _clearDraftInPrefs();
+        if (mounted) {
+          setState(() {
+            _isSaving = false;
+            _formDirty = false;
+            _inlineSaveError = null;
+            _supplierFieldError = null;
+            _brokerFieldError = null;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Saved offline — will sync automatically'),
+              backgroundColor: Colors.blueGrey[700],
+            ),
+          );
+          if (context.canPop()) context.pop();
+        }
+        return;
+      }
       if (!forceDuplicate && _isDuplicatePurchase409(e)) {
         if (mounted) {
           setState(() => _isSaving = false);

@@ -80,15 +80,25 @@ def trade_line_weight_expr() -> ColumnElement:
     kpu = func.coalesce(TradePurchaseLine.weight_per_unit, TradePurchaseLine.kg_per_unit)
     weight_ok = and_(kpu.isnot(None), kpu > 0)
     utype = TradePurchaseLine.unit_type
+    is_bag = or_(
+        utype == literal("bag"),
+        and_(utype.is_(None), func.upper(TradePurchaseLine.unit).like("%BAG%")),
+        and_(utype.is_(None), func.upper(TradePurchaseLine.unit).like("%SACK%")),  # legacy
+    )
     kg_fallback = or_(
         utype == literal("kg"),
         and_(utype.is_(None), func.upper(TradePurchaseLine.unit).like("%KG%")),
     )
     legacy = case(
-        (weight_ok, TradePurchaseLine.qty * kpu),
+        (and_(weight_ok, is_bag), TradePurchaseLine.qty * kpu),
         else_=case((kg_fallback, TradePurchaseLine.qty), else_=literal(0)),
     )
-    return func.coalesce(TradePurchaseLine.total_weight, legacy)
+    # Master rebuild default wholesale mode: ignore BOX/TIN weights even if older
+    # rows persisted `total_weight`.
+    return case(
+        (or_(is_bag, kg_fallback), func.coalesce(TradePurchaseLine.total_weight, legacy)),
+        else_=literal(0),
+    )
 
 
 def trade_line_selling_expr() -> ColumnElement:

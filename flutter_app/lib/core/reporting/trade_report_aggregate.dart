@@ -96,20 +96,11 @@ double reportLineKg(TradePurchaseLine l) {
       if (kpu != null && kpu > 0) return q * kpu;
       return tw();
     case ReportPackKind.box:
-      final ipb = l.itemsPerBox;
-      final wpi = l.weightPerItem;
-      if (ipb != null && wpi != null && ipb > 0 && wpi > 0) {
-        return q * ipb * wpi;
-      }
-      final kpb = l.kgPerBox;
-      if (kpb != null && kpb > 0) return q * kpb;
-      return tw();
+      // Master rebuild default wholesale mode: BOX is count-only (no kg tracking).
+      return 0;
     case ReportPackKind.tin:
-      final wt = l.weightPerTin;
-      if (wt != null && wt > 0) return q * wt;
-      final kpu = l.kgPerUnit;
-      if (kpu != null && kpu > 0) return q * kpu;
-      return tw();
+      // Master rebuild default wholesale mode: TIN is count-only (no kg tracking).
+      return 0;
   }
 }
 

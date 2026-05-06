@@ -163,7 +163,7 @@ class PurchaseQuantityTotals {
     required this.qtyByUnit,
   });
 
-  /// Total mass in kg from all lines that contribute kg (bag/sack lines + plain kg).
+  /// Total mass in kg from all lines that contribute kg (bag lines + plain kg).
   final double totalKg;
   /// e.g. {'bag': 100.0, 'piece': 3.0}
   final Map<String, double> qtyByUnit;
@@ -175,11 +175,13 @@ final purchaseQuantityTotalsProvider =
   var totalKg = 0.0;
   final byUnit = <String, double>{};
   for (final l in d.lines) {
-    final u = l.unit.trim().toLowerCase();
-    if (u.isEmpty) continue;
+    final rawU = l.unit.trim().toLowerCase();
+    if (rawU.isEmpty) continue;
+    // Back-compat: historical rows may contain `sack`; treat as canonical `bag`.
+    final u = rawU == 'sack' ? 'bag' : rawU;
     byUnit[u] = (byUnit[u] ?? 0) + l.qty;
     final kpu = l.kgPerUnit;
-    if (kpu != null && kpu > 0 && (u == 'bag' || u == 'sack')) {
+    if (kpu != null && kpu > 0 && u == 'bag') {
       totalKg += l.qty * kpu;
     } else if (u == 'kg') {
       totalKg += l.qty;

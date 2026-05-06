@@ -279,69 +279,42 @@ String _pdfSellingRateStr(TradePurchaseLine l) {
   return '${_rsPdf(r)}/${safePdfText(u)}';
 }
 
-double _pdfLineWeightKg(TradePurchaseLine l) {
-  return ledgerTradeLineWeightKg(
-    itemName: l.itemName,
-    unit: l.unit,
-    qty: l.qty,
-    catalogDefaultUnit: l.defaultPurchaseUnit ?? l.defaultUnit,
-    catalogDefaultKgPerBag: l.defaultKgPerBag,
-    kgPerUnit: l.kgPerUnit,
-    boxMode: l.boxMode,
-    itemsPerBox: l.itemsPerBox,
-    weightPerItem: l.weightPerItem,
-    kgPerBox: l.kgPerBox,
-    weightPerTin: l.weightPerTin,
-  );
-}
+// (intentionally removed) kg column removed from the PDF items table.
 
 pw.Widget _lineItemsTable(TradePurchase p) {
+  // Master rebuild PDF spec:
+  // Item | Qty | Unit | P Rate | S Rate | Total
   final col = <int, pw.TableColumnWidth>{
-    0: const pw.FixedColumnWidth(14),
-    1: const pw.FlexColumnWidth(2.2),
-    2: const pw.FixedColumnWidth(26),
-    3: const pw.FixedColumnWidth(26),
-    4: const pw.FixedColumnWidth(30),
-    5: const pw.FixedColumnWidth(44),
-    6: const pw.FixedColumnWidth(44),
-    7: const pw.FixedColumnWidth(40),
-    8: const pw.FixedColumnWidth(22),
+    0: const pw.FlexColumnWidth(2.8), // Item
+    1: const pw.FixedColumnWidth(34), // Qty
+    2: const pw.FixedColumnWidth(28), // Unit
+    3: const pw.FixedColumnWidth(54), // P Rate
+    4: const pw.FixedColumnWidth(54), // S Rate
+    5: const pw.FixedColumnWidth(46), // Total
   };
   final header = pw.TableRow(
     children: [
-      _tCell('#', bold: true, align: pw.TextAlign.center, fs: 6.2),
-      _tCell('Item', bold: true, fs: 6.2),
-      _tCell('Unit', bold: true, align: pw.TextAlign.center, fs: 6.2),
-      _tCell('Qty', bold: true, align: pw.TextAlign.right, fs: 6.2),
-      _tCell('Kg', bold: true, align: pw.TextAlign.right, fs: 6.2),
-      _tCell('P rate', bold: true, align: pw.TextAlign.right, fs: 6.2),
-      _tCell('S rate', bold: true, align: pw.TextAlign.right, fs: 6.2),
-      _tCell('Amount', bold: true, align: pw.TextAlign.right, fs: 6.2),
-      _tCell('Tax%', bold: true, align: pw.TextAlign.right, fs: 6.2),
+      _tCell('Item', bold: true, fs: 6.4),
+      _tCell('Qty', bold: true, align: pw.TextAlign.right, fs: 6.4),
+      _tCell('Unit', bold: true, align: pw.TextAlign.center, fs: 6.4),
+      _tCell('P Rate', bold: true, align: pw.TextAlign.right, fs: 6.4),
+      _tCell('S Rate', bold: true, align: pw.TextAlign.right, fs: 6.4),
+      _tCell('Total', bold: true, align: pw.TextAlign.right, fs: 6.4),
     ],
   );
   final rows = <pw.TableRow>[header];
   for (var i = 0; i < p.lines.length; i++) {
     final l = p.lines[i];
     final c = _purchaseLineToCalc(l);
-    final kgLine = _pdfLineWeightKg(l);
-    final kgStr = kgLine > 1e-6 ? _num0.format(kgLine) : '—';
-    final taxP = l.taxPercent;
-    final taxPStr = taxP == null
-        ? '—'
-        : (taxP == taxP.roundToDouble() ? '${taxP.round()}' : _num0.format(taxP));
     rows.add(
       pw.TableRow(
         children: [
-          _tCell('${i + 1}', align: pw.TextAlign.center, fs: 6.2),
           _tCell(safePdfText(l.itemName), fs: 6.2, maxLines: 3),
-          _tCell(safePdfText(l.unit.trim()), align: pw.TextAlign.center, fs: 6.2),
           _tCell(_num0.format(l.qty), align: pw.TextAlign.right, fs: 6.2),
-          _tCell(kgStr, align: pw.TextAlign.right, fs: 6.2),
-          _tCell(_pdfPurchaseRateStr(l), align: pw.TextAlign.right, fs: 5.8),
-          _tCell(_pdfSellingRateStr(l), align: pw.TextAlign.right, fs: 5.8),
-          _tCell(_rsPdf(lineMoney(c)), align: pw.TextAlign.right, fs: 6.0),
-          _tCell(taxPStr, align: pw.TextAlign.right, fs: 6.2),
+          _tCell(safePdfText(l.unit.trim()), align: pw.TextAlign.center, fs: 6.2),
+          _tCell(_pdfPurchaseRateStr(l), align: pw.TextAlign.right, fs: 5.9),
+          _tCell(_pdfSellingRateStr(l), align: pw.TextAlign.right, fs: 5.9),
+          _tCell(_rsPdf(lineMoney(c)), align: pw.TextAlign.right, fs: 6.1),
         ],
       ),
     );
@@ -376,7 +349,6 @@ class _SummaryNumbers {
     required this.afterHeader,
     required this.freight,
     required this.commission,
-    required this.computedTotal,
   });
 
   final double sumLineMoney;
@@ -386,7 +358,6 @@ class _SummaryNumbers {
   final double afterHeader;
   final double freight;
   final double commission;
-  final double computedTotal;
 }
 
 _SummaryNumbers _computeSummaryBreakdown(TradePurchase p) {
@@ -406,9 +377,6 @@ _SummaryNumbers _computeSummaryBreakdown(TradePurchase p) {
   var freight = p.freightAmount ?? 0.0;
   if (p.freightType == 'included') freight = 0.0;
   final commission = tradePurchaseCommissionInr(p);
-  final bill = p.billtyRate ?? 0.0;
-  final del = p.deliveredRate ?? 0.0;
-  final computed = afterHeader + freight + commission + bill + del;
   return _SummaryNumbers(
     sumLineMoney: sumLineMoney,
     sumTaxable: sumTaxable,
@@ -417,7 +385,6 @@ _SummaryNumbers _computeSummaryBreakdown(TradePurchase p) {
     afterHeader: afterHeader,
     freight: freight,
     commission: commission,
-    computedTotal: computed,
   );
 }
 
@@ -609,8 +576,7 @@ Future<pw.Document> buildProfessionalPurchaseInvoiceDoc({
   final totals = computeTradeTotals(req);
   final summary = _computeSummaryBreakdown(purchase);
   final diff1 = (totals.amountSum - purchase.totalAmount).abs();
-  final diff2 = (summary.computedTotal - purchase.totalAmount).abs();
-  final showMismatch = diff1 > 0.02 || diff2 > 0.02;
+  final showMismatch = diff1 > 0.02;
 
   doc.addPage(
     pw.MultiPage(

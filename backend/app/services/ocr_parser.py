@@ -82,21 +82,19 @@ def extract_supplier_candidate(lines: list[str]) -> str | None:
 
 _UNIT_ALIASES = {
     "bags": "bag",
-    "sack": "sack",
-    "sacks": "sack",
+    # Master rebuild: sacks are not supported; normalize to BAG.
+    "sack": "bag",
+    "sacks": "bag",
     "boxes": "box",
     "box": "box",
     "tins": "tin",
     "tin": "tin",
-    "pcs": "unit",
-    "pc": "unit",
-    "piece": "unit",
-    "pieces": "unit",
+    "pcs": "piece",
+    "pc": "piece",
+    "piece": "piece",
+    "pieces": "piece",
     "kgs": "kg",
     "kilogram": "kg",
-    "ltr": "ltr",
-    "litre": "ltr",
-    "liter": "ltr",
 }
 
 
@@ -124,7 +122,7 @@ def extract_item_rows(text: str) -> tuple[list[dict[str, Any]], list[str]]:
             missing.append(f"{pref}.qty")
         if rate <= 0:
             missing.append(f"{pref}.rate")
-        if unit not in ("kg", "bag", "sack", "ltr", "box", "tin", "unit"):
+        if unit not in ("kg", "bag", "box", "tin", "piece"):
             missing.append(f"{pref}.unit")
         out.append(
             {

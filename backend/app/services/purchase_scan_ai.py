@@ -58,10 +58,9 @@ def _post_validate(payload: dict[str, Any]) -> tuple[dict[str, Any], list[str], 
         name = normalize_item_name(_normalize_ws(str(it.get("name") or it.get("item_name") or "")))
         qty = it.get("qty")
         unit = _normalize_ws(str(it.get("unit") or "")).lower() or "kg"
-        if unit in ("bags", "bag"):
+        if unit in ("bags", "bag", "sacks", "sack"):
+            # Master rebuild: sacks are not a supported unit; normalize to BAG.
             unit = "bag"
-        elif unit in ("sacks", "sack"):
-            unit = "sack"
         elif unit in ("boxes", "box"):
             unit = "box"
         elif unit in ("tins", "tin"):
@@ -88,7 +87,7 @@ def _post_validate(payload: dict[str, Any]) -> tuple[dict[str, Any], list[str], 
 
         wpu = it.get("weight_per_unit_kg")
         if wpu is None:
-            wpu = _infer_weight_kg_from_name(name) if unit in ("bag", "sack", "box", "tin") else None
+            wpu = _infer_weight_kg_from_name(name) if unit in ("bag", "box", "tin") else None
         try:
             wpu_f = float(wpu) if wpu is not None else None
         except Exception:
@@ -100,7 +99,7 @@ def _post_validate(payload: dict[str, Any]) -> tuple[dict[str, Any], list[str], 
             missing.append(f"{pref}.qty")
         if pr_f <= 0:
             missing.append(f"{pref}.purchase_rate")
-        if unit not in ("kg", "bag", "sack", "box", "tin", "ltr", "piece"):
+        if unit not in ("kg", "bag", "box", "tin", "piece"):
             missing.append(f"{pref}.unit")
 
         # Safety rule: unit=kg means qty is already kg. Never multiply by name weight.
@@ -156,10 +155,10 @@ def _scanner_system_prompt() -> str:
         "- Fix common spelling: suger->sugar.\n"
         "- If you see two rates (P and S): first is purchase_rate, second is selling_rate.\n"
         "- If unit is KG, qty is already kg; do NOT treat '50 KG' in the name as multiplier.\n"
-        "- If unit is bag/sack and name contains '50 KG' etc, set weight_per_unit_kg to that.\n"
+        "- If unit is bag and name contains '50 KG' etc, set weight_per_unit_kg to that.\n"
         "- Extract header charges when present: delivered/delhead/delivery, billty/bilty/bilti, freight.\n"
         "- If freight looks included in the note, set freight_type='included' else 'separate' when freight_amount is set.\n"
-        "- Units: prefer one of kg|bag|sack|box|tin|piece|ltr.\n"
+        "- Units: prefer one of kg|bag|box|tin|piece.\n"
         "- If unknown, set fields to null; never invent missing values.\n"
     )
 

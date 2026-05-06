@@ -41,7 +41,7 @@ String suggestedBrokerFigureModeFromLines(List<PurchaseLineDraft> lines) {
     final u = l.unit.trim().toLowerCase();
     if (u == 'tin') {
       tinQty += l.qty;
-    } else if (u == 'bag' || u == 'sack' || u == 'box') {
+    } else if (u == 'bag' || u == 'box') {
       bagFamilyQty += l.qty;
     }
     if (u.contains('kg') ||
@@ -81,12 +81,12 @@ String? brokerFigureBasisLineHint(List<PurchaseLineDraft> lines, String mode) {
     var b = 0.0;
     for (final l in lines) {
       final u = l.unit.trim().toLowerCase();
-      if (u == 'bag' || u == 'sack' || u == 'box') b += l.qty;
+      if (u == 'bag' || u == 'box') b += l.qty;
     }
     if (b <= 0) {
-      return 'No bag / box / sack lines — add those units or use per kg / once per bill.';
+      return 'No bag / box lines — add those units or use per kg / once per bill.';
     }
-    return 'This bill: ${b.toStringAsFixed(3)} bag · box · sack qty';
+    return 'This bill: ${b.toStringAsFixed(3)} bag · box qty';
   }
   if (m == kPurchaseCommissionModeFlatKg) {
     return 'Uses total kg from line weights (items + qty).';
@@ -101,7 +101,7 @@ List<(String mode, String label)> brokerFigureUiOptions(
   return const [
     (kPurchaseCommissionModeFlatInvoice, 'Once / bill'),
     (kPurchaseCommissionModeFlatKg, 'Per kg (total kg)'),
-    (kPurchaseCommissionModeFlatBag, 'Per bag · box · sack'),
+    (kPurchaseCommissionModeFlatBag, 'Per bag · box'),
     (kPurchaseCommissionModeFlatTin, 'Per tin'),
   ];
 }
@@ -314,7 +314,7 @@ class PurchaseLineDraft {
   final String unit;
   /// Per *line* unit when not using explicit kg fields, or derived `kg_per_unit * landing_cost_per_kg` for weight lines.
   final double landingCost;
-  /// Snapshot: kg per bag/sack when [unit] is bag/sack.
+  /// Snapshot: kg per bag when [unit] is bag (legacy: `sack` is normalized to `bag`).
   final double? kgPerUnit;
   /// Rupees per kg when [kgPerUnit] is set.
   final double? landingCostPerKg;
@@ -414,8 +414,9 @@ class PurchaseLineDraft {
   }
 }
 
-bool _isBagOrSackUnit(String unit) {
+bool _isBagUnit(String unit) {
   final x = unit.trim().toLowerCase();
+  // Back-compat: treat legacy `sack` as canonical `bag`.
   return x == 'bag' || x == 'sack';
 }
 
@@ -440,10 +441,10 @@ String? purchaseLineSaveBlockReason(PurchaseLineDraft l) {
   final kpu = l.kgPerUnit;
   final pk = l.landingCostPerKg;
   final weightLine = kpu != null || pk != null;
-  final unitIsBagSack = _isBagOrSackUnit(l.unit);
+  final unitIsBag = _isBagUnit(l.unit);
   final unitIsBox = _isBoxUnit(l.unit);
   final unitIsTin = _isTinUnit(l.unit);
-  if (unitIsBagSack || unitIsBox || unitIsTin) {
+  if (unitIsBag || unitIsBox || unitIsTin) {
     if ((l.qty - l.qty.roundToDouble()).abs() > 1e-6) {
       return 'Use a whole number quantity for ${l.unit.trim()} lines (no decimals).';
     }
@@ -458,10 +459,10 @@ String? purchaseLineSaveBlockReason(PurchaseLineDraft l) {
   if (unitIsTin && !((l.weightPerTin ?? 0) > 0 || (l.kgPerUnit ?? 0) > 0)) {
     return 'Add weight per tin.';
   }
-  if (weightLine || unitIsBagSack) {
+  if (weightLine || unitIsBag) {
     if (kpu == null || kpu <= 0) {
-      return unitIsBagSack
-          ? 'Kg per bag/sack is required for this unit.'
+      return unitIsBag
+          ? 'Kg per bag is required for this unit.'
           : 'Kg per unit must be greater than 0.';
     }
     if (pk == null || pk <= 0) {
@@ -471,9 +472,9 @@ String? purchaseLineSaveBlockReason(PurchaseLineDraft l) {
     return 'Landing cost must be greater than 0.';
   }
   final tax = l.taxPercent ?? 0;
-  if (tax > 0 || unitIsBagSack) {
+  if (tax > 0 || unitIsBag) {
     if ((l.hsnCode ?? '').trim().isEmpty) {
-      return 'HSN is required when the line has tax or the unit is bag/sack.';
+      return 'HSN is required when the line has tax or the unit is bag.';
     }
   }
   return null;

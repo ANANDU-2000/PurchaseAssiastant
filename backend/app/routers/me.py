@@ -1,9 +1,10 @@
 import uuid
+from datetime import date
 from difflib import get_close_matches
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +16,7 @@ from app.models import Business, Membership, User
 from app.models.contacts import Broker, Supplier
 from app.services.feature_flags import is_ocr_enabled
 from app.services.default_workspace import bootstrap_user_workspace
+from app.services.scanner_v2.types import ScanResult
 
 _MAX_LOGO_BYTES = 2 * 1024 * 1024
 _LOGO_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
@@ -283,6 +285,26 @@ class ScanPurchaseResponse(BaseModel):
     meta: ScanPurchaseMetaOut = Field(default_factory=ScanPurchaseMetaOut)
 
 
+class ScanPurchaseV2CorrectRequest(BaseModel):
+    scan_token: str = Field(..., min_length=8)
+    alias_type: str = Field(..., pattern="^(item|supplier|broker)$")
+    ref_id: uuid.UUID
+    raw_text: str = Field(..., min_length=1, max_length=255)
+
+
+class ScanPurchaseV2ConfirmRequest(BaseModel):
+    scan_token: str = Field(..., min_length=8)
+    purchase_date: date = Field(default_factory=date.today)
+    invoice_number: str | None = Field(None, max_length=64)
+    force_duplicate: bool = False
+    status: str = Field(default="confirmed", pattern="^(draft|saved|confirmed)$")
+
+
+class ScanPurchaseV2UpdateRequest(BaseModel):
+    scan_token: str = Field(..., min_length=8)
+    scan: ScanResult
+
+
 def _norm_dir_name(s: str) -> str:
     t = (s or "").strip().lower()
     out: list[str] = []
@@ -508,3 +530,119 @@ async def scan_purchase_bill(
         note="Review and edit extracted fields — no purchase is saved from this endpoint.",
         meta=meta_out,
     )
+
+
+@router.post("/scan-purchase-v2", response_model=ScanResult)
+async def scan_purchase_bill_v2(
+    business_id: Annotated[uuid.UUID, Query(..., description="Primary workspace for membership check")],
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    _m: Annotated[Membership, Depends(require_membership)],
+    image: UploadFile = File(..., description="Bill photo (JPEG/PNG/WebP)"),
+):
+    """Scanner v2: OCR + LLM + matching → editable preview with scan_token.
+
+    NEVER saves. Caller must use /confirm after user review.
+    """
+    del user
+    raw = await image.read()
+    if len(raw) == 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Empty upload")
+    if len(raw) > 8_000_000:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Image too large (max ~8MB)")
+    from app.services.scanner_v2.pipeline import scan_purchase_v2
+
+    return await scan_purchase_v2(db=db, business_id=business_id, settings=settings, image_bytes=raw)
+
+
+@router.post("/scan-purchase-v2/correct")
+async def scan_purchase_bill_v2_correct(
+    business_id: Annotated[uuid.UUID, Query(..., description="Primary workspace for membership check")],
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+    body: ScanPurchaseV2CorrectRequest = Body(...),
+):
+    """Persist a user correction as an alias (workspace-scoped learning)."""
+    del user
+    from sqlalchemy import select
+
+    from app.models.ai_engine import CatalogAlias
+    from app.services.scanner_v2.matcher import normalize as norm
+
+    alias_type = body.alias_type.strip().lower()
+    name = body.raw_text.strip()
+    normalized = norm(name)
+    if not normalized:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Empty alias")
+
+    q = await db.execute(
+        select(CatalogAlias).where(
+            CatalogAlias.business_id == business_id,
+            CatalogAlias.alias_type == alias_type,
+            CatalogAlias.normalized_name == normalized,
+        )
+    )
+    row = q.scalar_one_or_none()
+    if row is None:
+        row = CatalogAlias(
+            business_id=business_id,
+            alias_type=alias_type,
+            ref_id=body.ref_id,
+            name=name,
+            normalized_name=normalized,
+        )
+        db.add(row)
+    else:
+        row.ref_id = body.ref_id
+        row.name = name
+        row.normalized_name = normalized
+    await db.commit()
+    return {"ok": True}
+
+
+@router.post("/scan-purchase-v2/confirm")
+async def scan_purchase_bill_v2_confirm(
+    business_id: Annotated[uuid.UUID, Query(..., description="Primary workspace for membership check")],
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+    body: ScanPurchaseV2ConfirmRequest = Body(...),
+):
+    """Confirm the scanned preview and create a TradePurchase (server validated)."""
+    from app.schemas.trade_purchases import TradePurchaseCreateRequest
+    from app.services.scanner_v2.pipeline import consume_cached_scan_result, scan_result_to_trade_purchase_create
+    from app.services.trade_purchase_service import create_trade_purchase
+
+    scan = consume_cached_scan_result(business_id=business_id, scan_token=body.scan_token)
+    if scan is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid or expired scan_token")
+
+    payload = scan_result_to_trade_purchase_create(
+        business_id=business_id,
+        scan=scan,
+        purchase_date=body.purchase_date,
+        invoice_number=body.invoice_number,
+        status=body.status,
+        force_duplicate=body.force_duplicate,
+    )
+    req = TradePurchaseCreateRequest.model_validate(payload)
+    return await create_trade_purchase(db, business_id=business_id, user_id=user.id, body=req)
+
+
+@router.post("/scan-purchase-v2/update")
+async def scan_purchase_bill_v2_update(
+    business_id: Annotated[uuid.UUID, Query(..., description="Primary workspace for membership check")],
+    user: Annotated[User, Depends(get_current_user)],
+    _m: Annotated[Membership, Depends(require_membership)],
+    body: ScanPurchaseV2UpdateRequest = Body(...),
+):
+    """Update cached scan result after user edits (preview UI)."""
+    del user
+    from app.services.scanner_v2.pipeline import update_cached_scan_result
+
+    ok = update_cached_scan_result(business_id=business_id, scan_token=body.scan_token, scan=body.scan)
+    if not ok:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid or expired scan_token")
+    return {"ok": True}

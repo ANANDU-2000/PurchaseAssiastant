@@ -26,13 +26,14 @@ def _norm_unit(u: str) -> str:
     if u.startswith("bag"):
         return "bag"
     if u.startswith("sack"):
-        return "sack"
+        # Master rebuild: sacks are not supported; normalize to BAG.
+        return "bag"
     if u.startswith("box"):
         return "box"
     if u.startswith("tin"):
         return "tin"
     if u.startswith("pc") or u.startswith("piece"):
-        return "unit"
+        return "piece"
     if u.startswith("kg"):
         return "kg"
     return "kg"

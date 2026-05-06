@@ -81,6 +81,24 @@ class OfflineStore {
   }
 
   static Future<void> queueEntry(Map<String, dynamic> entryData) async {
+    final kind = entryData['kind']?.toString() ?? 'unknown';
+    final businessId = entryData['businessId']?.toString() ?? '';
+    final fingerprint = entryData['fingerprint']?.toString() ?? '';
+    // Prevent accidental duplicate queueing (double-tap / retry spam).
+    if (fingerprint.isNotEmpty) {
+      for (final k in _entries.keys) {
+        final v = _entries.get(k);
+        if (v is Map && v['status'] == 'pending') {
+          final data = v['data'];
+          if (data is Map &&
+              data['fingerprint']?.toString() == fingerprint &&
+              data['businessId']?.toString() == businessId &&
+              data['kind']?.toString() == kind) {
+            return;
+          }
+        }
+      }
+    }
     final id = 'offline_${DateTime.now().millisecondsSinceEpoch}';
     await _entries.put(id, {
       'id': id,

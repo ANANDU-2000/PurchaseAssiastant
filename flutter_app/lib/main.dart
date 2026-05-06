@@ -19,6 +19,7 @@ import 'core/providers/prefs_provider.dart'
 import 'core/providers/api_degraded_provider.dart';
 import 'core/maintenance/maintenance_payment_repository.dart';
 import 'core/services/offline_store.dart';
+import 'core/services/offline_sync_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -109,6 +110,9 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
           }
         } catch (_) {}
       }());
+
+      // Offline queue sync (best-effort): pushes queued writes when connectivity returns.
+      OfflineSyncService.start(container);
 
       if (!mounted) return;
       setState(() => _container = container);

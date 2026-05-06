@@ -154,8 +154,9 @@ _Agg _buildAgg(TradePurchase p) {
     final pr = _effectiveLineProfit(l);
     if (pr != null) profitSum += pr;
     kg += _lineKg(l);
-    final u = l.unit.trim().toLowerCase();
-    if (u == 'bag' || u == 'sack') {
+    final rawU = l.unit.trim().toLowerCase();
+    final u = rawU == 'sack' ? 'bag' : rawU;
+    if (u == 'bag') {
       bags += l.qty;
     } else if (u == 'box') {
       boxes += l.qty;

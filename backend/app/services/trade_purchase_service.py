@@ -227,6 +227,37 @@ async def find_matching_duplicate_trade_purchase(
     target_total: Decimal,
     exclude_purchase_id: uuid.UUID | None = None,
 ) -> TradePurchase | None:
+    # v2 heuristic signals (in addition to exact fingerprint match):
+    # - total amount proximity (existing)
+    # - total kg proximity (bags + kg only; BOX/TIN count-only)
+    # - Jaccard overlap of catalog items
+    def _in_total_kg(lines_in: list[TradePurchaseLineIn]) -> Decimal:
+        return dp.total_weight(sum((_line_total_weight(li) for li in lines_in), Decimal("0")))
+
+    def _db_total_kg(lines_db: list[TradePurchaseLine]) -> Decimal:
+        # Prefer stored total_weight when present; treat BOX/TIN as zero kg.
+        tot = Decimal("0")
+        for li in lines_db:
+            u = (li.unit or "").strip().lower()
+            if u == "kg":
+                tot += _dec(li.qty)
+            elif u == "bag":
+                kpu = getattr(li, "weight_per_unit", None) or getattr(li, "kg_per_unit", None)
+                if kpu is not None:
+                    tot += _dec(li.qty) * _dec(kpu)
+            # box/tin count-only: ignore
+        return dp.total_weight(tot)
+
+    def _jaccard_catalog(lines_in: list[TradePurchaseLineIn], lines_db: list[TradePurchaseLine]) -> float:
+        a = {str(li.catalog_item_id) for li in lines_in if li.catalog_item_id is not None}
+        b = {str(li.catalog_item_id) for li in lines_db if getattr(li, "catalog_item_id", None) is not None}
+        if not a or not b:
+            return 0.0
+        inter = len(a & b)
+        union = len(a | b)
+        return (inter / union) if union else 0.0
+
+    in_kg = _in_total_kg(lines)
     q = (
         select(TradePurchase)
         .where(
@@ -251,6 +282,15 @@ async def find_matching_duplicate_trade_purchase(
             return p
         if _fingerprint_approx_match(lines, dbl):
             return p
+        # v2 fuzzy: kg + catalog overlap.
+        try:
+            db_kg = _db_total_kg(dbl)
+            kg_close = abs(_dec(db_kg) - _dec(in_kg)) <= Decimal("5")
+            jac = _jaccard_catalog(lines, dbl)
+            if kg_close and jac >= 0.66:
+                return p
+        except Exception:  # noqa: BLE001
+            pass
     return None
 
 
@@ -287,18 +327,47 @@ def _line_total_weight(li: TradePurchaseLineIn) -> Decimal:
         return dp.total_weight(qty)
     if unit == "BAG":
         return dp.total_weight(qty * _dec(li.weight_per_unit or li.kg_per_unit))
-    if unit == "BOX":
-        if li.box_mode == "fixed_weight_box" or li.kg_per_box is not None:
-            return dp.total_weight(qty * _dec(li.kg_per_box or li.weight_per_unit))
-        if li.items_per_box is not None and li.weight_per_item is not None:
-            return dp.total_weight(qty * _dec(li.items_per_box) * _dec(li.weight_per_item))
-        if li.weight_per_unit is not None:
-            return dp.total_weight(qty * _dec(li.weight_per_unit))
-    if unit == "TIN":
-        return dp.total_weight(qty * _dec(li.weight_per_tin or li.weight_per_unit))
+    if unit in ("BOX", "TIN"):
+        # Master rebuild default wholesale mode: BOX/TIN are count-only.
+        # Do not track kg totals for these units unless advanced inventory is enabled.
+        return Decimal("0")
     if li.weight_per_unit is not None:
         return dp.total_weight(qty * _dec(li.weight_per_unit))
     return Decimal("0")
+
+
+def _strip_disallowed_fields_for_default_wholesale_mode(
+    li: TradePurchaseLineIn,
+) -> TradePurchaseLineIn:
+    """Enforce master rebuild default rules for BOX/TIN count-only units.
+
+    In default wholesale mode, BOX/TIN do not track kg or per-pack weights.
+    We therefore drop any weight-related fields to prevent accidental kg math
+    or persistence of advanced-inventory fields.
+    """
+    unit = (li.unit or "").strip().upper()
+    if unit == "BOX":
+        return li.model_copy(
+            update={
+                "kg_per_unit": None,
+                "weight_per_unit": None,
+                "landing_cost_per_kg": None,
+                "box_mode": None,
+                "items_per_box": None,
+                "weight_per_item": None,
+                "kg_per_box": None,
+            }
+        )
+    if unit == "TIN":
+        return li.model_copy(
+            update={
+                "kg_per_unit": None,
+                "weight_per_unit": None,
+                "landing_cost_per_kg": None,
+                "weight_per_tin": None,
+            }
+        )
+    return li
 
 
 def _line_item_charges(li: TradePurchaseLineIn, req: TradePurchaseCreateRequest) -> Decimal:
@@ -802,8 +871,10 @@ async def create_trade_purchase(
     db.add(tp)
     await db.flush()
     for li in body.lines:
+        li = _strip_disallowed_fields_for_default_wholesale_mode(li)
         line_total = _line_money(li)
         line_weight = _line_total_weight(li)
+        # Profit uses `li` only for selling_rate; safe to reuse normalized line.
         line_profit = _line_profit(li, body)
         db.add(
             TradePurchaseLine(
@@ -926,6 +997,7 @@ async def update_trade_purchase(
     await db.execute(delete(TradePurchaseLine).where(TradePurchaseLine.trade_purchase_id == tp.id))
     await db.flush()
     for li in body.lines:
+        li = _strip_disallowed_fields_for_default_wholesale_mode(li)
         line_total = _line_money(li)
         line_weight = _line_total_weight(li)
         line_profit = _line_profit(li, body)

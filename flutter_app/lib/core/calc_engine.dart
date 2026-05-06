@@ -138,7 +138,7 @@ double lineMoney(TradeCalcLine li) => lineMoneyDecimal(li).toDouble();
 
 /// Physical mass in kg for one line (display + rolled totals; not money).
 ///
-/// Rules: [bag]/[sack] → qty × kgPerUnit when kg known; else 0.
+/// Rules: [bag] → qty × kgPerUnit when kg known; else 0.
 /// [box] fixed-weight → qty × max(kgPerBox, kgPerUnit); items_per_box uses items × weight/item.
 /// With no kg snapshot on fixed box → 0. [tin] → qty × (weightPerTin ?? kgPerUnit) when set.
 /// [kg] → qty.
@@ -153,37 +153,21 @@ double linePhysicalWeightKg({
   double? weightPerTin,
 }) {
   if (qty <= 0) return 0;
-  final u = unit.trim().toLowerCase();
+  // Back-compat: historical rows may contain `sack`; treat as canonical `bag`.
+  final rawU = unit.trim().toLowerCase();
+  final u = rawU == 'sack' ? 'bag' : rawU;
   if (u == 'kg') {
     return _dec(qty).toDouble();
   }
-  if (u == 'bag' || u == 'sack') {
+  if (u == 'bag') {
     final kpu = kgPerUnit;
     if (kpu == null || kpu <= 0) return 0;
     return (_dec(qty) * _dec(kpu)).toDouble();
   }
-  if (u == 'box') {
-    final mode = boxMode?.trim().toLowerCase();
-    if (mode == 'items_per_box') {
-      final ipb = itemsPerBox;
-      final wpi = weightPerItem;
-      if (ipb == null || wpi == null || ipb <= 0 || wpi <= 0) return 0;
-      return (_dec(qty) * _dec(ipb) * _dec(wpi)).toDouble();
-    }
-    // fixed_weight_box (or unspecified): needs kg per box or line kg snapshot.
-    final kBox = (kgPerBox != null && kgPerBox > 0)
-        ? kgPerBox
-        : ((kgPerUnit != null && kgPerUnit > 0) ? kgPerUnit : null);
-    if (kBox == null || kBox <= 0) return 0;
-    return (_dec(qty) * _dec(kBox)).toDouble();
-  }
-  if (u == 'tin') {
-    final wKg = (kgPerUnit != null && kgPerUnit > 0) ? kgPerUnit : null;
-    final wTin =
-        (weightPerTin != null && weightPerTin > 0) ? weightPerTin : null;
-    final w = wKg ?? wTin;
-    if (w == null) return 0;
-    return (_dec(qty) * _dec(w)).toDouble();
+  if (u == 'box' || u == 'tin') {
+    // Master rebuild default wholesale mode: BOX/TIN are count-only.
+    // Do not track kg totals unless advanced inventory is enabled.
+    return 0;
   }
   return 0;
 }
@@ -293,7 +277,7 @@ StrictDecimal headerCommissionAddOnDecimal({
       var bags = StrictDecimal.zero();
       for (final l in basisLines) {
         final u = l.unit.trim().toLowerCase();
-        if (u == 'bag' || u == 'sack' || u == 'box') {
+        if (u == 'bag' || u == 'box') {
           bags += _dec(l.qty);
         }
       }
@@ -400,7 +384,7 @@ double ledgerTradeLineWeightKg({
   // explicit physical snapshot logic (kgPerUnit, box/tin fields) instead.
   if (kgPerUnit != null &&
       kgPerUnit > 1e-9 &&
-      (ul == 'bag' || ul == 'sack' || ul == 'box' || ul == 'tin') &&
+      (ul == 'bag' || ul == 'box' || ul == 'tin') &&
       (kg - qty).abs() < 1e-6) {
     kg = 0;
   }

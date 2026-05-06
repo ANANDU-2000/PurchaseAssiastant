@@ -456,6 +456,71 @@ class HexaApi {
     return Map<String, dynamic>.from(res.data ?? {});
   }
 
+  /// Scanner v2: Bill image → OCR → LLM parse → matching → validated preview table.
+  Future<Map<String, dynamic>> scanPurchaseBillV2Multipart({
+    required String businessId,
+    required List<int> imageBytes,
+    String filename = 'bill_scan.jpg',
+  }) async {
+    final lower = filename.toLowerCase();
+    final MediaType ct;
+    if (lower.endsWith('.png')) {
+      ct = MediaType('image', 'png');
+    } else if (lower.endsWith('.webp')) {
+      ct = MediaType('image', 'webp');
+    } else {
+      ct = MediaType('image', 'jpeg');
+    }
+    final formData = FormData.fromMap({
+      'image': MultipartFile.fromBytes(imageBytes,
+          filename: filename, contentType: ct),
+    });
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/me/scan-purchase-v2',
+      queryParameters: {'business_id': businessId},
+      data: formData,
+    );
+    return Map<String, dynamic>.from(res.data ?? {});
+  }
+
+  Future<Map<String, dynamic>> scanPurchaseBillV2Correct({
+    required String businessId,
+    required Map<String, dynamic> body,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/me/scan-purchase-v2/correct',
+      queryParameters: {'business_id': businessId},
+      data: body,
+    );
+    return Map<String, dynamic>.from(res.data ?? {});
+  }
+
+  Future<Map<String, dynamic>> scanPurchaseBillV2Confirm({
+    required String businessId,
+    required Map<String, dynamic> body,
+  }) async {
+    final res = await _dio.post<dynamic>(
+      '/v1/me/scan-purchase-v2/confirm',
+      queryParameters: {'business_id': businessId},
+      data: body,
+    );
+    final d = res.data;
+    if (d is Map) return Map<String, dynamic>.from(d);
+    return {};
+  }
+
+  Future<Map<String, dynamic>> scanPurchaseBillV2Update({
+    required String businessId,
+    required Map<String, dynamic> body,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/me/scan-purchase-v2/update',
+      queryParameters: {'business_id': businessId},
+      data: body,
+    );
+    return Map<String, dynamic>.from(res.data ?? {});
+  }
+
   Future<Map<String, dynamic>> analyticsSummary(
       {required String businessId,
       required String from,

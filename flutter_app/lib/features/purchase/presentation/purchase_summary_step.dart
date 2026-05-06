@@ -88,7 +88,7 @@ class PurchaseSummaryStep extends ConsumerWidget {
     final freight =
         draft.freightType == 'included' ? 0.0 : (draft.freightAmount ?? 0);
     final itemsSub = _itemsSumLines(draft.lines);
-    final bags = (qtot.qtyByUnit['bag'] ?? 0) + (qtot.qtyByUnit['sack'] ?? 0);
+    final bags = (qtot.qtyByUnit['bag'] ?? 0);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
