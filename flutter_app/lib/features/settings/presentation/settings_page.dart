@@ -196,6 +196,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         '${_waSchedTime.hour.toString().padLeft(2, '0')}:${_waSchedTime.minute.toString().padLeft(2, '0')}',
       );
       await ReportsPrefs.setSchedulePhone(_waPhoneCtrl.text);
+      String? serverSideSaveHint;
       // Best-effort: also save server-side schedule when backend supports it.
       // If the endpoint isn't deployed yet, we keep local reminders.
       try {
@@ -210,9 +211,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 minute: _waSchedTime.minute,
                 timezone: 'Asia/Kolkata',
                 toE164: _waPhoneCtrl.text,
-              );
+              ).timeout(const Duration(seconds: 6));
         }
-      } catch (_) {}
+      } catch (e) {
+        serverSideSaveHint = 'Saved locally; server schedule not updated';
+        debugPrint('wa schedule server-side save failed: $e');
+      }
       if (_waSchedEnabled) {
         final ok = await LocalNotificationsService.instance
             .notificationPermissionGrantedForScheduling();
@@ -239,9 +243,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            _waSchedEnabled
-                ? 'WhatsApp report schedule saved'
-                : 'WhatsApp auto-report disabled',
+            serverSideSaveHint ??
+                (_waSchedEnabled
+                    ? 'WhatsApp report schedule saved'
+                    : 'WhatsApp auto-report disabled'),
           ),
           backgroundColor: const Color(0xFF1B6B5A),
         ),
