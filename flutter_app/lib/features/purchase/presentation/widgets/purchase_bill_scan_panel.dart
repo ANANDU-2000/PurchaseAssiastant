@@ -221,6 +221,8 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
         for (final e in items) {
           if (e is! Map) continue;
           final m = Map<String, dynamic>.from(e);
+          var u = m['unit']?.toString().trim().toLowerCase() ?? '';
+          if (u == 'unit' || u == 'pcs' || u == 'pc') u = 'piece';
           nextRows.add(
             _BillRowEdit(
               name: TextEditingController(text: m['name']?.toString() ?? ''),
@@ -228,7 +230,7 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
                 text: _fmtQty((m['qty'] as num?)?.toDouble() ?? 1),
               ),
               unit:
-                  TextEditingController(text: m['unit']?.toString() ?? 'kg'),
+                  TextEditingController(text: u.isEmpty ? 'kg' : u),
               pRate: TextEditingController(
                 text: ((m['purchase_rate'] as num?)?.toDouble() ?? 0)
                     .toStringAsFixed(2),

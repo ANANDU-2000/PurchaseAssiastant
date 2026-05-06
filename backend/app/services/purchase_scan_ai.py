@@ -67,7 +67,7 @@ def _post_validate(payload: dict[str, Any]) -> tuple[dict[str, Any], list[str], 
         elif unit in ("tins", "tin"):
             unit = "tin"
         elif unit in ("pcs", "pc", "pieces", "piece"):
-            unit = "unit"
+            unit = "piece"
         elif unit in ("kgs",):
             unit = "kg"
         pr = it.get("purchase_rate") or it.get("p_rate") or it.get("rate")
@@ -100,7 +100,7 @@ def _post_validate(payload: dict[str, Any]) -> tuple[dict[str, Any], list[str], 
             missing.append(f"{pref}.qty")
         if pr_f <= 0:
             missing.append(f"{pref}.purchase_rate")
-        if unit not in ("kg", "bag", "sack", "box", "tin", "ltr", "unit"):
+        if unit not in ("kg", "bag", "sack", "box", "tin", "ltr", "piece"):
             missing.append(f"{pref}.unit")
 
         # Safety rule: unit=kg means qty is already kg. Never multiply by name weight.
@@ -159,7 +159,7 @@ def _scanner_system_prompt() -> str:
         "- If unit is bag/sack and name contains '50 KG' etc, set weight_per_unit_kg to that.\n"
         "- Extract header charges when present: delivered/delhead/delivery, billty/bilty/bilti, freight.\n"
         "- If freight looks included in the note, set freight_type='included' else 'separate' when freight_amount is set.\n"
-        "- Units: prefer one of kg|bag|sack|box|tin|unit|ltr.\n"
+        "- Units: prefer one of kg|bag|sack|box|tin|piece|ltr.\n"
         "- If unknown, set fields to null; never invent missing values.\n"
     )
 
