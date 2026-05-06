@@ -471,21 +471,72 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     return x == 'bag' || x == 'sack';
   }
 
-  static const _unitDropdownChoices = <String>[
+  static const _unitDropdownBaseChoices = <String>[
     'kg',
     'bag',
     'sack',
     'box',
     'tin',
     'piece',
-    'quintal',
   ];
+
+  List<String> _suggestedUnitChoices() {
+    final row = _selectedCatalogItemId != null ? _catalogRowById(_selectedCatalogItemId!) : null;
+    final du = (row?['default_unit']?.toString() ?? '').trim().toLowerCase();
+    final c = _activeClassification();
+
+    // Default: keep the list short to reduce mis-taps.
+    // Always include the currently selected unit (even if it isn't in the base list).
+    final out = <String>{};
+
+    // If catalog has an explicit default unit, bias to that family.
+    if (du == 'bag' || du == 'sack') {
+      out.addAll(const {'bag', 'sack', 'kg'});
+    } else if (du == 'box') {
+      out.addAll(const {'box', 'piece', 'kg'});
+    } else if (du == 'tin') {
+      out.addAll(const {'tin', 'kg'});
+    } else if (du == 'piece') {
+      out.addAll(const {'piece', 'kg'});
+    } else if (du == 'kg') {
+      out.addAll(const {'kg', 'bag', 'sack', 'piece'});
+    }
+
+    // If classifier is confident, reinforce the family.
+    if (c.type == UnitType.weightBag) {
+      out.addAll(const {'bag', 'sack', 'kg'});
+    } else if (c.type == UnitType.multiPackBox) {
+      out.addAll(const {'box', 'piece', 'kg'});
+    } else if (c.type == UnitType.singlePack) {
+      // Single pack could be tin/box/piece; keep conservative.
+      out.addAll(const {'piece', 'kg'});
+      if (_lineUnitIsBox(_unitCtrl.text)) out.add('box');
+      if (_lineUnitIsTin(_unitCtrl.text)) out.add('tin');
+    }
+
+    // Fallback when we couldn't infer anything.
+    if (out.isEmpty) {
+      out.addAll(_unitDropdownBaseChoices);
+    }
+
+    final current = _unitCtrl.text.trim().toLowerCase();
+    if (current.isNotEmpty) out.add(current == 'qtl' ? 'quintal' : current);
+
+    // Return ordered by our base list first, then anything else.
+    final ordered = <String>[
+      for (final u in _unitDropdownBaseChoices)
+        if (out.contains(u)) u,
+      for (final u in out)
+        if (!_unitDropdownBaseChoices.contains(u)) u,
+    ];
+    return ordered;
+  }
 
   String _unitDropdownValue() {
     var t = _unitCtrl.text.trim().toLowerCase();
     if (t == 'qtl') t = 'quintal';
-    if (t.isNotEmpty && !_unitDropdownChoices.contains(t)) return t;
-    if (_unitDropdownChoices.contains(t)) return t;
+    if (t.isNotEmpty && !_unitDropdownBaseChoices.contains(t)) return t;
+    if (_unitDropdownBaseChoices.contains(t)) return t;
     return 'kg';
   }
 
@@ -506,12 +557,13 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
 
   Widget _unitDropdownField({required String? errorText}) {
     final v = _unitDropdownValue();
-    final itemSet = <String>{..._unitDropdownChoices, v};
-    final ordered = <String>[
-      for (final c in _unitDropdownChoices)
-        if (itemSet.contains(c)) c,
+    final ordered = _suggestedUnitChoices();
+    final itemSet = <String>{...ordered, v};
+    final finalOrdered = <String>[
+      for (final u in ordered)
+        if (itemSet.contains(u)) u,
       for (final x in itemSet)
-        if (!_unitDropdownChoices.contains(x)) x,
+        if (!ordered.contains(x)) x,
     ];
     return KeyedSubtree(
       key: ValueKey<String>('unit|$v'),
@@ -520,7 +572,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         initialValue: v,
         decoration: _deco('Unit *', errorText: errorText),
         items: [
-          for (final u in ordered)
+          for (final u in finalOrdered)
             DropdownMenuItem<String>(
               value: u,
               child: Text(
@@ -926,14 +978,15 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
 
   Widget? _rateEntryBasisSegmented(double? kPer, bool showPerKg) {
     if (!showPerKg || kPer == null || kPer <= 0) return null;
+    final unitLabel = _isBagFamilyUnit() ? '₹/bag' : '₹/unit';
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Align(
         alignment: Alignment.centerLeft,
         child: SegmentedButton<bool>(
-          segments: const [
-            ButtonSegment(value: true, label: Text('₹/kg')),
-            ButtonSegment(value: false, label: Text('₹/bag')),
+          segments: [
+            const ButtonSegment(value: true, label: Text('₹/kg')),
+            ButtonSegment(value: false, label: Text(unitLabel)),
           ],
           selected: {_rateFieldsPerKg},
           onSelectionChanged: (s) {
