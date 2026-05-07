@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/session_notifier.dart';
 import '../models/trade_purchase_models.dart';
+import 'analytics_kpi_provider.dart' show analyticsDateRangeProvider;
 import '../utils/line_display.dart';
 
 /// Fetches enough rows for wholesale history + KPI strip (paged in [HexaApi.listTradePurchases]).
@@ -162,12 +163,18 @@ final purchaseAlertsProvider = Provider.autoDispose<Map<String, int>>((ref) {
   );
 });
 
-/// Calendar-month strip for Purchase History (full fetched alert list, not tab-filtered).
+/// Period strip for Purchase History: aligns with [analyticsDateRangeProvider]
+/// (same period as Reports/Home Month preset).
 final purchaseHistoryMonthStatsProvider =
     Provider.autoDispose<PurchaseHistoryMonthStats>((ref) {
   final async = ref.watch(tradePurchasesForAlertsParsedProvider);
+  final range = ref.watch(analyticsDateRangeProvider);
   return async.maybeWhen(
-    data: (list) => computePurchaseHistoryMonthStats(list, DateTime.now()),
+    data: (list) => computePurchaseHistoryRangeStats(
+      list,
+      from: range.from,
+      to: range.to,
+    ),
     orElse: () => PurchaseHistoryMonthStats.empty,
   );
 });

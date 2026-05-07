@@ -14,6 +14,8 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/models/trade_purchase_models.dart';
+import '../../../core/providers/analytics_kpi_provider.dart'
+    show analyticsDateRangeProvider;
 import '../../../core/utils/line_display.dart';
 import '../../../core/providers/business_profile_provider.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart'
@@ -461,6 +463,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
     final secondary = ref.watch(purchaseHistorySecondaryFilterProvider);
     final alerts = ref.watch(purchaseAlertsProvider);
     final monthStats = ref.watch(purchaseHistoryMonthStatsProvider);
+    final range = ref.watch(analyticsDateRangeProvider);
     final hasAdv =
         (ref.watch(purchaseHistorySupplierContainsProvider)?.trim().isNotEmpty ??
             false) ||
@@ -508,7 +511,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                           fontWeight: FontWeight.w800,
                           color: HexaColors.brandPrimary)),
                   Text(
-                    DateFormat('MMMM yyyy').format(DateTime.now()),
+                    '${DateFormat('d MMM').format(range.from)} → ${DateFormat('d MMM').format(range.to)}',
                     style: const TextStyle(
                         fontSize: 11,
                         color: HexaColors.neutral,
@@ -673,7 +676,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                               Text(
                                 monthStats.purchaseCount == 0 &&
                                         monthStats.totalInr < 1e-6
-                                    ? 'No purchases this month'
+                                    ? 'No purchases in this period'
                                     : _compactInrLakh(monthStats.totalInr),
                                 style: const TextStyle(
                                   fontSize: 17,
@@ -688,7 +691,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                 style: const TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w700,
-                                  color: HexaColors.neutral,
+                                  color: Color(0xFF7C2D12),
                                   height: 1.2,
                                 ),
                               ),

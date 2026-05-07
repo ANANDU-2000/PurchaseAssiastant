@@ -344,6 +344,40 @@ PurchaseHistoryMonthStats computePurchaseHistoryMonthStats(
   );
 }
 
+/// Date-range aggregates for the history header strip (kg = bags + loose kg only).
+/// [from] and [to] are inclusive calendar days.
+PurchaseHistoryMonthStats computePurchaseHistoryRangeStats(
+  List<TradePurchase> list, {
+  required DateTime from,
+  required DateTime to,
+}) {
+  final start = DateTime(from.year, from.month, from.day);
+  final end = DateTime(to.year, to.month, to.day);
+  var count = 0;
+  var totalInr = 0.0;
+  final t = _HistoryPackAccumulator();
+  for (final p in list) {
+    final d0 = p.purchaseDate;
+    final d = DateTime(d0.year, d0.month, d0.day);
+    if (d.isBefore(start)) continue;
+    if (d.isAfter(end)) continue;
+    count++;
+    totalInr += p.totalAmount;
+    for (final ln in p.lines) {
+      _accumulateHistoryLine(ln, t);
+    }
+  }
+  final kg = t.bagKg + t.looseKg;
+  return PurchaseHistoryMonthStats(
+    purchaseCount: count,
+    totalInr: totalInr,
+    bags: t.bags,
+    boxes: t.boxes,
+    tins: t.tins,
+    kg: kg,
+  );
+}
+
 String formatPurchaseHistoryMonthPackLine(PurchaseHistoryMonthStats s) {
   final parts = <String>[];
   if (s.bags > 1e-6) {
