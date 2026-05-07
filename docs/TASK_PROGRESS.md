@@ -2,7 +2,7 @@
 
 ## Current task
 
-- Repo validation + migration docs; push to `origin/main` (see git log).
+- Production readiness: fix request storms, loading loops, and layout overlap; track in `docs/86_APP_ISSUES_TRACKER.md`.
 
 ## Blockers
 

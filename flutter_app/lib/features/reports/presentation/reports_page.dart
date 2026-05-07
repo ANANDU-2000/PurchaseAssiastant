@@ -9,7 +9,6 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/providers/analytics_kpi_provider.dart';
-import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/business_profile_provider.dart';
 import '../../../core/providers/home_dashboard_provider.dart';
 import '../../../core/providers/reports_provider.dart';
@@ -174,7 +173,8 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
   }
 
   void _bumpInvalidate() {
-    invalidatePurchaseWorkspace(ref);
+    // Reports must not stampede the whole app on tab switches / retries.
+    // Only refresh the Reports purchase payload for the current range.
     ref.invalidate(reportsPurchasesPayloadProvider);
   }
 
