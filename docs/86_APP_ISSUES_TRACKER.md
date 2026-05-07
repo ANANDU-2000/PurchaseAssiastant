@@ -48,17 +48,20 @@ This file tracks the reported UX + reliability issues across **all tabs** and cr
   - **fix**: `_bumpInvalidate()` no longer calls `invalidatePurchaseWorkspace(ref)`.
   - **verify**: menu Refresh / pull-to-refresh / empty-state Retry only refetches reports payload.
 2. **“View more” discoverability / list density**
-  - **status**: open
-  - **verify**: adjust list tile density, add clearer “View full list” affordance.
+  - **status**: fixed
+  - **fix**: tighter row padding + replaced small “View more” text button with a clearer CTA: “View full list (N)”.
+  - **verify**: Reports → Suppliers/Brokers tab shows compact rows and a clear full-list button.
 
 ## Forms / keyboard overlap
 
 1. **Terms page keyboard overlaps fields / Continue**
-  - **status**: open
-  - **verify**: iPhone + small Android, open keyboard on commission/discount/narration → Continue always visible or scrollable.
+  - **status**: needs_verification
+  - **fix**: removed fixed-height wrappers in Terms fields to prevent clipping/overlap under keyboard + large text scale.
+  - **verify**: iPhone + small Android, open keyboard on commission/discount/narration → fields remain usable; Continue reachable via scroll.
 2. **Add item page advanced fields cramped / overlap**
-  - **status**: open
-  - **verify**: open Advanced, enter values, ensure no clipped labels and summary card doesn’t overflow.
+  - **status**: needs_verification
+  - **fix**: added extra scroll padding to Advanced TextFields so they scroll above keyboard instead of being covered.
+  - **verify**: Add/Edit line → Advanced → focus Discount/Tax/Freight/Notes with keyboard open → no overlap.
 
 ## Data correctness
 
@@ -76,4 +79,9 @@ This file tracks the reported UX + reliability issues across **all tabs** and cr
 - Add device QA checklist links:
   - `docs/70_HISTORY_QA_CHECKLIST.md`
   - `docs/60_PRODUCTION_QA_CHECKLIST.md`
+
+- Re-test after fixes in this session:
+  - Reports list density + “View full list (N)”
+  - Terms fields with keyboard open (small phones + large text scale)
+  - Add/Edit item → Advanced fields with keyboard open (tax/notes)
 

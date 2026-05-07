@@ -113,7 +113,9 @@ class _HomePageState extends ConsumerState<HomePage>
     ref.invalidate(homeDashboardDataProvider);
     ref.invalidate(homeShellReportsProvider);
     invalidateTradePurchaseCaches(ref);
-    invalidateBusinessAggregates(ref);
+    // Avoid a full aggregate stampede on pull-to-refresh; targeted invalidation
+    // keeps the UI responsive and prevents request storms on weaker networks.
+    ref.invalidate(reportsPurchasesPayloadProvider);
   }
 
   Future<void> _pickCustomRange() async {

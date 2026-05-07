@@ -87,12 +87,12 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
       );
       return Padding(
         padding: const EdgeInsets.only(bottom: 8),
-        child: maxLines > 1
-            ? tf
-            : SizedBox(
-                height: kPurchaseFieldHeight + 14,
-                child: tf,
-              ),
+        // Avoid fixed-height wrappers; they cause clipping/overlap on small phones
+        // with larger text scale and when the keyboard is open.
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: kPurchaseFieldHeight),
+          child: tf,
+        ),
       );
     }
 
@@ -220,8 +220,8 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
               style: TextStyle(fontSize: 11, height: 1.25, color: sub),
             ),
             const SizedBox(height: 8),
-            SizedBox(
-              height: kPurchaseFieldHeight + 14,
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: kPurchaseFieldHeight),
               child: TextField(
                 controller: commissionCtrl,
                 scrollPadding: const EdgeInsets.only(bottom: 200),
@@ -270,8 +270,9 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    SizedBox(
-                      height: kPurchaseFieldHeight + 14,
+                    ConstrainedBox(
+                      constraints:
+                          const BoxConstraints(minHeight: kPurchaseFieldHeight),
                       child: TextField(
                         controller: commissionCtrl,
                         scrollPadding: const EdgeInsets.only(bottom: 200),

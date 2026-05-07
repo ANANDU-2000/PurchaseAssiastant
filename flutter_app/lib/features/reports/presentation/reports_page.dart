@@ -572,7 +572,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
 
   Widget _supplierTile(String name, String line2) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
       child: Row(
         children: [
           Expanded(
@@ -583,6 +583,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                   name,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w800,
+                        height: 1.05,
                       ),
                 ),
                 const SizedBox(height: 2),
@@ -591,6 +592,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         fontWeight: FontWeight.w600,
                         color: HexaColors.textBody,
+                        height: 1.15,
                       ),
                 ),
               ],
@@ -715,19 +717,25 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
           if (i < cap - 1) ch.add(Divider(height: 1, color: HexaColors.brandBorder));
         }
         if (cap < all.length) {
-          ch.add(TextButton(
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                fullscreenDialog: true,
-                builder: (ctx) => ReportsFullListPage(
-                  kind: ReportsFullListKind.suppliers,
-                  searchQuery: _debouncedQuery,
-                  agg: aggList,
+          ch.add(
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: FilledButton.tonalIcon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    fullscreenDialog: true,
+                    builder: (ctx) => ReportsFullListPage(
+                      kind: ReportsFullListKind.suppliers,
+                      searchQuery: _debouncedQuery,
+                      agg: aggList,
+                    ),
+                  ),
                 ),
+                icon: const Icon(Icons.open_in_full_rounded, size: 18),
+                label: Text('View full list (${all.length})'),
               ),
             ),
-            child: const Text('View more'),
-          ));
+          );
         }
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: ch);
 
@@ -754,19 +762,25 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
           if (i < cap - 1) ch.add(Divider(height: 1, color: HexaColors.brandBorder));
         }
         if (cap < all.length) {
-          ch.add(TextButton(
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                fullscreenDialog: true,
-                builder: (ctx) => ReportsFullListPage(
-                  kind: ReportsFullListKind.brokers,
-                  searchQuery: _debouncedQuery,
-                  agg: aggList,
+          ch.add(
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: FilledButton.tonalIcon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    fullscreenDialog: true,
+                    builder: (ctx) => ReportsFullListPage(
+                      kind: ReportsFullListKind.brokers,
+                      searchQuery: _debouncedQuery,
+                      agg: aggList,
+                    ),
+                  ),
                 ),
+                icon: const Icon(Icons.open_in_full_rounded, size: 18),
+                label: Text('View full list (${all.length})'),
               ),
             ),
-            child: const Text('View more'),
-          ));
+          );
         }
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: ch);
     }

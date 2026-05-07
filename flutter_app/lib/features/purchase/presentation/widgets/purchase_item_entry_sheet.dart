@@ -2792,6 +2792,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                           controller: _taxCtrl,
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           inputFormatters: [_decimalFormatter(2)],
+                          scrollPadding: const EdgeInsets.only(bottom: 220),
                           decoration: _deco('Tax %'),
                           onChanged: (_) {
                             _clearFieldErrors();
@@ -2803,6 +2804,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                           controller: _lineNotesCtrl,
                           maxLines: 4,
                           minLines: 1,
+                          scrollPadding: const EdgeInsets.only(bottom: 220),
                           decoration: _deco('Notes'),
                         ),
                       ] else ...[
@@ -2813,6 +2815,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                                 controller: _discCtrl,
                                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                 inputFormatters: [_decimalFormatter(2)],
+                                scrollPadding: const EdgeInsets.only(bottom: 220),
                                 decoration: _deco('Discount %'),
                                 onChanged: (_) => setState(() {}),
                               ),
@@ -2823,6 +2826,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                                 controller: _taxCtrl,
                                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                 inputFormatters: [_decimalFormatter(2)],
+                                scrollPadding: const EdgeInsets.only(bottom: 220),
                                 decoration: _deco('Tax %'),
                                 onChanged: (_) {
                                   _clearFieldErrors();
@@ -2840,6 +2844,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                                 controller: _freightCtrl,
                                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                 inputFormatters: [_decimalFormatter(2)],
+                                scrollPadding: const EdgeInsets.only(bottom: 220),
                                 decoration: _deco('Freight value'),
                                 onChanged: (_) => setState(() {}),
                               ),
@@ -2874,6 +2879,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                                 controller: _deliveredCtrl,
                                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                 inputFormatters: [_decimalFormatter(2)],
+                                scrollPadding: const EdgeInsets.only(bottom: 220),
                                 decoration: _deco('Delivered rate'),
                                 onChanged: (_) => setState(() {}),
                               ),
@@ -2884,6 +2890,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                                 controller: _billtyCtrl,
                                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                 inputFormatters: [_decimalFormatter(2)],
+                                scrollPadding: const EdgeInsets.only(bottom: 220),
                                 decoration: _deco('Billty rate'),
                                 onChanged: (_) => setState(() {}),
                               ),
@@ -2895,6 +2902,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                           controller: _lineNotesCtrl,
                           maxLines: 4,
                           minLines: 1,
+                          scrollPadding: const EdgeInsets.only(bottom: 220),
                           decoration: _deco('Notes'),
                         ),
                       ],
