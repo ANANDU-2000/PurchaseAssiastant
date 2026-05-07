@@ -1029,7 +1029,10 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                           ),
                         ),
                       ),
-                    if (!fromLive && merged.isNotEmpty)
+                    // Only show the "saved copy" banner once we *know* live fetch
+                    // failed (i.e. provider completed with fromLiveFetch=false).
+                    // While loading, we may temporarily be showing Hive-cached data.
+                    if (purchasesAsync.hasValue && !fromLive && merged.isNotEmpty)
                       Material(
                         color: HexaColors.brandCard,
                         child: Padding(
@@ -1058,6 +1061,30 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                                             reportsPurchasesPayloadProvider);
                                       },
                                 child: const Text('Retry'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    // If we have cached data and are currently refreshing, show an
+                    // "Updating" hint (not an offline error).
+                    if (purchasesAsync.isLoading && merged.isNotEmpty)
+                      Material(
+                        color: const Color(0xFFEFF6FF),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 6),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.sync_rounded,
+                                  size: 18, color: Color(0xFF1D4ED8)),
+                              const SizedBox(width: 8),
+                              const Expanded(
+                                child: Text(
+                                  'Refreshing live data… showing saved copy for now.',
+                                  style: TextStyle(
+                                      fontSize: 12, color: Color(0xFF1D4ED8)),
+                                ),
                               ),
                             ],
                           ),

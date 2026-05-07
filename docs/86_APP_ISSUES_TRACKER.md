@@ -51,6 +51,11 @@ This file tracks the reported UX + reliability issues across **all tabs** and cr
   - **status**: fixed
   - **fix**: tighter row padding + replaced small “View more” text button with a clearer CTA: “View full list (N)”.
   - **verify**: Reports → Suppliers/Brokers tab shows compact rows and a clear full-list button.
+3. **False “Offline or server unreachable” banner while live refresh is still loading**
+  - **status**: fixed
+  - **root cause**: banner rendered whenever `fromLiveFetch=false` (default during loading) while UI was showing Hive cache.
+  - **fix**: show “saved copy” banner only after provider completes with `hasValue && fromLiveFetch=false`; show “Refreshing…” hint during loading.
+  - **verify**: open Reports with cached data; while it refreshes, banner shows “Refreshing…” (not offline). Only after an actual failure does the saved-copy banner appear.
 
 ## Forms / keyboard overlap
 
