@@ -56,22 +56,53 @@ String _categoryQtyLabel(CategoryStat c) {
 }
 
 String _dashboardUnitsLine(HomeDashboardData d) {
+  return _dashboardUnitsLineFromTotals(
+    bags: d.totalBags,
+    boxes: d.totalBoxes,
+    tins: d.totalTins,
+    kg: d.totalKg,
+  );
+}
+
+String _dashboardUnitsLineFromTotals({
+  required double bags,
+  required double boxes,
+  required double tins,
+  required double kg,
+}) {
   final parts = <String>[];
-  if (d.totalBags > 0) {
-    parts.add(
-        '${_fmtQty(d.totalBags)} ${homePackUnitWord('BAG', d.totalBags)}');
+  if (bags > 0) {
+    parts.add('${_fmtQty(bags)} ${homePackUnitWord('BAG', bags)}');
   }
-  if (d.totalBoxes > 0) {
-    parts.add(
-        '${_fmtQty(d.totalBoxes)} ${homePackUnitWord('BOX', d.totalBoxes)}');
+  if (boxes > 0) {
+    parts.add('${_fmtQty(boxes)} ${homePackUnitWord('BOX', boxes)}');
   }
-  if (d.totalTins > 0) {
-    parts.add(
-        '${_fmtQty(d.totalTins)} ${homePackUnitWord('TIN', d.totalTins)}');
+  if (tins > 0) {
+    parts.add('${_fmtQty(tins)} ${homePackUnitWord('TIN', tins)}');
   }
-  if (d.totalKg > 0) parts.add('${_fmtQty(d.totalKg)} KG');
+  if (kg > 0) parts.add('${_fmtQty(kg)} KG');
   if (parts.isNotEmpty) return parts.join(' • ');
   return '0 KG';
+}
+
+({double bags, double boxes, double tins, double kg})? _unitsFromShellItems(
+  HomeShellReportsBundle? b,
+) {
+  if (b == null || b.items.isEmpty) return null;
+  double bags = 0, boxes = 0, tins = 0, kg = 0;
+  for (final m in b.items) {
+    bags += coerceToDouble(m['total_bags']);
+    boxes += coerceToDouble(m['total_boxes']);
+    tins += coerceToDouble(m['total_tins']);
+    kg += coerceToDouble(m['total_kg']);
+  }
+  if (bags.abs() < 1e-9 &&
+      boxes.abs() < 1e-9 &&
+      tins.abs() < 1e-9 &&
+      kg.abs() < 1e-9) {
+    return null;
+  }
+  return (bags: bags, boxes: boxes, tins: tins, kg: kg);
 }
 
 class HomeBreakdownListPage extends ConsumerWidget {
@@ -139,13 +170,14 @@ class HomeBreakdownListPage extends ConsumerWidget {
               final bundle = asyncShell.valueOrNull ??
                   peekShell ??
                   HomeShellReportsBundle.empty;
+              final unitsOverride = _unitsFromShellItems(bundle);
               return switch (tab) {
                 HomeBreakdownTab.subcategory =>
-                  _subList(context, bundle, dashboard),
+                  _subList(context, bundle, dashboard, unitsOverride),
                 HomeBreakdownTab.supplier =>
-                  _supList(context, bundle, dashboard),
+                  _supList(context, bundle, dashboard, unitsOverride),
                 HomeBreakdownTab.items =>
-                  _itemList(context, bundle, dashboard),
+                  _itemList(context, bundle, dashboard, unitsOverride),
                 HomeBreakdownTab.category => const SizedBox.shrink(),
               };
             }(),
@@ -166,7 +198,18 @@ class HomeBreakdownListPage extends ConsumerWidget {
     );
   }
 
-  Widget _totalHeader(HomeDashboardData d) {
+  Widget _totalHeader(
+    HomeDashboardData d, [
+    ({double bags, double boxes, double tins, double kg})? unitsOverride,
+  ]) {
+    final unitsLine = unitsOverride == null
+        ? _dashboardUnitsLine(d)
+        : _dashboardUnitsLineFromTotals(
+            bags: unitsOverride.bags,
+            boxes: unitsOverride.boxes,
+            tins: unitsOverride.tins,
+            kg: unitsOverride.kg,
+          );
     return Material(
       color: Colors.white,
       elevation: 0,
@@ -198,7 +241,7 @@ class HomeBreakdownListPage extends ConsumerWidget {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                _dashboardUnitsLine(d),
+                unitsLine,
                 textAlign: TextAlign.end,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -248,6 +291,7 @@ class HomeBreakdownListPage extends ConsumerWidget {
     BuildContext context,
     HomeShellReportsBundle b,
     HomeDashboardData? dashboard,
+    ({double bags, double boxes, double tins, double kg})? unitsOverride,
   ) {
     final rows = List<Map<String, dynamic>>.from(b.subcategories)
       ..sort((a, c) {
@@ -256,7 +300,7 @@ class HomeBreakdownListPage extends ConsumerWidget {
         return pc.compareTo(pa);
       });
     return _buildScroll(
-      header: dashboard == null ? null : _totalHeader(dashboard),
+      header: dashboard == null ? null : _totalHeader(dashboard, unitsOverride),
       children: [
         for (var i = 0; i < rows.length; i++)
           _rowSub(context, rows[i], i),
@@ -284,6 +328,7 @@ class HomeBreakdownListPage extends ConsumerWidget {
     BuildContext context,
     HomeShellReportsBundle b,
     HomeDashboardData? dashboard,
+    ({double bags, double boxes, double tins, double kg})? unitsOverride,
   ) {
     final rows = List<Map<String, dynamic>>.from(b.suppliers)
       ..sort((a, c) {
@@ -292,7 +337,7 @@ class HomeBreakdownListPage extends ConsumerWidget {
         return pc.compareTo(pa);
       });
     return _buildScroll(
-      header: dashboard == null ? null : _totalHeader(dashboard),
+      header: dashboard == null ? null : _totalHeader(dashboard, unitsOverride),
       children: [
         for (var i = 0; i < rows.length; i++)
           _rowSup(context, rows[i], i),
@@ -322,6 +367,7 @@ class HomeBreakdownListPage extends ConsumerWidget {
     BuildContext context,
     HomeShellReportsBundle b,
     HomeDashboardData? dashboard,
+    ({double bags, double boxes, double tins, double kg})? unitsOverride,
   ) {
     final rows = List<Map<String, dynamic>>.from(b.items)
       ..sort((a, c) {
@@ -330,7 +376,7 @@ class HomeBreakdownListPage extends ConsumerWidget {
         return pc.compareTo(pa);
       });
     return _buildScroll(
-      header: dashboard == null ? null : _totalHeader(dashboard),
+      header: dashboard == null ? null : _totalHeader(dashboard, unitsOverride),
       children: [
         for (var i = 0; i < rows.length; i++)
           _rowItem(context, rows[i], i),

@@ -5,7 +5,6 @@ from __future__ import annotations
 import base64
 import json
 import logging
-import os
 from typing import TYPE_CHECKING
 
 import httpx
@@ -27,13 +26,18 @@ def _score_text(text: str) -> int:
     return len(t) + digits * 3 + min(40, letters) + min(30, lines * 3)
 
 
-async def image_bytes_to_text_gemini_free(image_bytes: bytes) -> tuple[str, float]:
+async def image_bytes_to_text_gemini_free(
+    image_bytes: bytes,
+    *,
+    api_key: str | None = None,
+    model: str = "gemini-2.0-flash",
+) -> tuple[str, float]:
     """Uses Gemini Flash (free tier) to extract raw text from a bill image.
 
     Returns empty string when not configured.
     """
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
-    if not api_key:
+    key = (api_key or "").strip()
+    if not key:
         return "", 0.0
     if not image_bytes:
         return "", 0.0
@@ -41,7 +45,7 @@ async def image_bytes_to_text_gemini_free(image_bytes: bytes) -> tuple[str, floa
     b64 = base64.b64encode(image_bytes).decode("ascii")
     url = (
         "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"gemini-2.0-flash:generateContent?key={api_key}"
+        f"{model}:generateContent?key={key}"
     )
     payload = {
         "contents": [
@@ -78,11 +82,70 @@ async def image_bytes_to_text_gemini_free(image_bytes: bytes) -> tuple[str, floa
         return "", 0.0
 
 
+async def image_bytes_to_text_openai(
+    image_bytes: bytes,
+    *,
+    api_key: str | None = None,
+    model: str = "gpt-4.1-mini",
+) -> tuple[str, float]:
+    """Use OpenAI vision as a bounded OCR fallback.
+
+    This is deliberately capped: the scanner only needs raw bill text, and the
+    downstream parser handles the structured JSON conversion.
+    """
+    key = (api_key or "").strip()
+    if not key or not image_bytes:
+        return "", 0.0
+    b64 = base64.b64encode(image_bytes).decode("ascii")
+    payload = {
+        "model": model,
+        "max_tokens": 1200,
+        "temperature": 0,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "Extract raw text from this purchase bill or handwritten purchase note. "
+                            "Preserve supplier names, item names, quantities, units, rates, charges, "
+                            "and payment terms. Return only the extracted text."
+                        ),
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{b64}",
+                            "detail": "low",
+                        },
+                    },
+                ],
+            }
+        ],
+    }
+    try:
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            res = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json=payload,
+            )
+            res.raise_for_status()
+            data = res.json()
+        text = data["choices"][0]["message"]["content"]
+        text = (text or "").strip() if isinstance(text, str) else ""
+        return text, 0.75 if text else 0.0
+    except Exception as e:  # noqa: BLE001
+        logger.warning("OpenAI OCR failed: %s", e)
+        return "", 0.0
+
+
 async def image_bytes_to_text(settings: Settings, image_bytes: bytes) -> tuple[str, float]:
     """Return (extracted_text, confidence_guess).
 
-    Uses Google Vision `DOCUMENT_TEXT_DETECTION` when `enable_ocr` and `ocr_api_key` are set;
-    then tries Gemini free OCR (GEMINI_API_KEY) when Vision isn't configured.
+    Uses Google Vision when configured, then Gemini (`GOOGLE_AI_API_KEY`),
+    then OpenAI vision as a capped fallback (`OPENAI_API_KEY`).
     """
     # Preprocess into multiple variants to improve handwriting OCR.
     try:
@@ -151,7 +214,11 @@ async def image_bytes_to_text(settings: Settings, image_bytes: bytes) -> tuple[s
             logger.warning("Vision OCR failed (%s): %s", getattr(v, "name", "?"), e)
         # 2) Gemini free fallback (even when enable_ocr is off)
         try:
-            t, c = await image_bytes_to_text_gemini_free(jpeg)
+            t, c = await image_bytes_to_text_gemini_free(
+                jpeg,
+                api_key=getattr(settings, "google_ai_api_key", None),
+                model=getattr(settings, "gemini_model", "gemini-2.0-flash"),
+            )
             sc = _score_text(t)
             if t.strip():
                 candidates.append((t.strip(), float(c or 0.0), sc, f"gemini:{vname}"))
@@ -161,6 +228,22 @@ async def image_bytes_to_text(settings: Settings, image_bytes: bytes) -> tuple[s
                 break
         except Exception as e:  # noqa: BLE001
             logger.warning("Gemini OCR failed (%s): %s", getattr(v, "name", "?"), e)
+        # 3) OpenAI vision fallback. Keep this after Gemini to limit spend.
+        try:
+            t, c = await image_bytes_to_text_openai(
+                jpeg,
+                api_key=getattr(settings, "openai_api_key", None),
+                model=getattr(settings, "openai_model_parse", "gpt-4.1-mini"),
+            )
+            sc = _score_text(t)
+            if t.strip():
+                candidates.append((t.strip(), float(c or 0.0), sc, f"openai:{vname}"))
+            if sc > best_score:
+                best_text, best_conf, best_score = t, c, sc
+            if best_score >= 1400:
+                break
+        except Exception as e:  # noqa: BLE001
+            logger.warning("OpenAI OCR failed (%s): %s", getattr(v, "name", "?"), e)
 
     # Merge the strongest candidates (dedupe exact lines). This often upgrades a
     # "partial" OCR into a usable trader note parse.

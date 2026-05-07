@@ -20,8 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.services import decimal_precision as dp
-from app.services.llm_failover import resolve_provider_keys
-from app.services.platform_credentials import effective_openai_key
+from app.services.llm_failover import resolve_provider_keys, run_ordered_failover
 from app.services.purchase_scan_service import image_bytes_to_text
 from app.services.scanner_v2 import bag_logic, matcher
 from app.services.scanner_v2.prompt import SYSTEM_PROMPT
@@ -76,48 +75,100 @@ async def _openai_parse_scanner_payload(
     settings: Settings,
     db: AsyncSession,
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
-    """Return raw parsed dict matching the scanner prompt schema."""
-    key = await effective_openai_key(settings, db)
-    if not key:
-        return None, {"provider_used": None, "failover": [{"provider": "openai", "skipped": True, "reason": "no_key"}]}
+    """Return raw parsed dict matching the scanner prompt schema.
 
-    payload = {
-        "model": settings.openai_model_parse,
-        "response_format": {"type": "json_object"},
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": (text or "")[:12000]},
-        ],
-    }
-    try:
+    The scanner is OpenAI-first because this flow is image/bill critical, then
+    falls back to Gemini/Groq if configured. All calls are capped for predictable
+    token spend.
+    """
+    keys = await resolve_provider_keys(settings, db)
+    ok = (keys.get("openai") or "").strip()
+    gk = (keys.get("gemini") or "").strip()
+    qk = (keys.get("groq") or "").strip()
+    text_in = (text or "")[:12000]
+
+    async def try_openai() -> dict[str, Any] | None:
+        payload = {
+            "model": settings.openai_model_parse,
+            "max_tokens": 1400,
+            "temperature": 0,
+            "response_format": {"type": "json_object"},
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": text_in},
+            ],
+        }
         async with httpx.AsyncClient(timeout=60.0) as client:
             res = await client.post(
                 "https://api.openai.com/v1/chat/completions",
-                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                headers={"Authorization": f"Bearer {ok}", "Content-Type": "application/json"},
                 json=payload,
             )
             if res.status_code >= 400:
-                return None, {
-                    "provider_used": None,
-                    "failover": [{"provider": "openai", "ok": False, "error": res.text[:200]}],
-                }
+                return None
             data = res.json()
-    except httpx.TimeoutException:
-        return None, {
-            "provider_used": None,
-            "failover": [{"provider": "openai", "ok": False, "error": "timeout"}],
+        try:
+            content = data["choices"][0]["message"]["content"]
+        except Exception:  # noqa: BLE001
+            return None
+        return _parse_json_object_maybe(content)
+
+    async def try_gemini() -> dict[str, Any] | None:
+        model = settings.gemini_model.strip()
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        body = {
+            "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+            "contents": [{"parts": [{"text": text_in[:8000]}]}],
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "maxOutputTokens": 1400,
+                "temperature": 0,
+            },
         }
-    except Exception as e:  # noqa: BLE001
-        return None, {
-            "provider_used": None,
-            "failover": [{"provider": "openai", "ok": False, "error": f"{type(e).__name__}"}],
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            res = await client.post(url, params={"key": gk}, json=body)
+            if res.status_code >= 400:
+                return None
+            outer = res.json()
+        try:
+            raw_text = outer["candidates"][0]["content"]["parts"][0]["text"]
+        except Exception:  # noqa: BLE001
+            return None
+        return _parse_json_object_maybe(raw_text)
+
+    async def try_groq() -> dict[str, Any] | None:
+        payload = {
+            "model": settings.groq_model,
+            "max_tokens": 1400,
+            "temperature": 0,
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": text_in[:8000]},
+            ],
+            "response_format": {"type": "json_object"},
         }
-    try:
-        content = data["choices"][0]["message"]["content"]
-    except Exception:  # noqa: BLE001
-        return None, {"provider_used": None, "failover": [{"provider": "openai", "ok": False, "reason": "bad_response"}]}
-    raw = _parse_json_object_maybe(content)
-    return raw, {"provider_used": "openai", "failover": [{"provider": "openai", "ok": bool(raw)}]}
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            res = await client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {qk}", "Content-Type": "application/json"},
+                json=payload,
+            )
+            if res.status_code >= 400:
+                return None
+            data = res.json()
+        try:
+            content = data["choices"][0]["message"]["content"]
+        except Exception:  # noqa: BLE001
+            return None
+        return _parse_json_object_maybe(content)
+
+    return await run_ordered_failover(
+        runners=[
+            ("openai", ok, try_openai),
+            ("gemini", gk, try_gemini),
+            ("groq", qk, try_groq),
+        ]
+    )
 
 
 async def _match_supplier_broker(
@@ -568,4 +619,3 @@ def scan_result_to_trade_purchase_create(
         "freight_type": scan.charges.freight_type,
         "lines": lines,
     }
-

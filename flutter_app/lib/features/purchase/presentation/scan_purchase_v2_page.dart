@@ -73,6 +73,8 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
     final x = await ImagePicker().pickImage(source: src);
     if (x == null) return;
     final raw = await x.readAsBytes();
+    _stageTimer?.cancel();
+    _pollTimer?.cancel();
     setState(() {
       _scan = null;
       _error = null;
@@ -231,11 +233,16 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
           if ((st ?? '').toString().trim().toLowerCase() == 'ready' ||
               (st ?? '').toString().trim().toLowerCase() == 'error') {
             _pollTimer?.cancel();
+            final endedInError =
+                (st ?? '').toString().trim().toLowerCase() == 'error';
             setState(() {
               _busy = false;
-              _stage = _ScanStage.done;
+              _stage = endedInError ? _ScanStage.error : _ScanStage.done;
+              if (endedInError && _error == null) {
+                _error = _scanIssue ?? 'Scan failed. Please retry or retake the photo.';
+              }
             });
-            HapticFeedback.selectionClick();
+            if (!endedInError) HapticFeedback.selectionClick();
           }
         } catch (e) {
           // Keep polling for transient errors; UI shows last good partial state.
@@ -278,6 +285,8 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
   }
 
   void _resetAll() {
+    _stageTimer?.cancel();
+    _pollTimer?.cancel();
     setState(() {
       _jpegBytes = null;
       _scan = null;
@@ -291,12 +300,46 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
     });
   }
 
+  bool _hasDetectedItems() {
+    final items = _scan?['items'];
+    return items is List && items.whereType<Map>().isNotEmpty;
+  }
+
+  bool _canCreateReviewedScan() {
+    if (_busy || _creating || _scan == null || _scanIssueBlocker) return false;
+    if (!_hasDetectedItems()) return false;
+    final supplier = _scan?['supplier'];
+    final hasSupplier = supplier is Map &&
+        (supplier['matched_id']?.toString().trim().isNotEmpty ?? false);
+    if (!hasSupplier) return false;
+    final items = _scan?['items'];
+    if (items is! List) return false;
+    for (final item in items) {
+      if (item is! Map) return false;
+      final matched = (item['matched_catalog_item_id'] ?? item['matched_id'])
+          ?.toString()
+          .trim();
+      final rate = double.tryParse(item['purchase_rate']?.toString() ?? '');
+      if (matched == null || matched.isEmpty || rate == null || rate <= 0) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   Future<void> _createPurchaseFromReviewedScan() async {
     final session = ref.read(sessionProvider);
     final s = _scan;
     final token = _scanToken();
     if (session == null || s == null || token == null) return;
     if (_busy || _creating) return;
+    if (!_canCreateReviewedScan()) {
+      setState(() {
+        _error =
+            'Review is not complete: match supplier and item rows, then confirm again.';
+      });
+      return;
+    }
 
     HapticFeedback.mediumImpact();
     setState(() {
@@ -1104,7 +1147,7 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
               const SizedBox(width: 8),
               Expanded(
                 child: FilledButton.icon(
-                  onPressed: (!isWorking && _scan != null) ? _createPurchaseFromReviewedScan : null,
+                  onPressed: _canCreateReviewedScan() ? _createPurchaseFromReviewedScan : null,
                   icon: const Icon(Icons.check_circle_rounded),
                   label: Text(_creating ? 'Creating…' : 'Create'),
                   style: FilledButton.styleFrom(
@@ -1210,4 +1253,3 @@ class _ScanTableRow extends StatelessWidget {
     );
   }
 }
-

@@ -624,15 +624,31 @@ class _PeriodChip extends StatelessWidget {
 }
 
 String _kpiUnitsLineUpper(HomeDashboardData data) {
-  final tb = data.totalBags;
-  final txb = data.totalBoxes;
-  final ttn = data.totalTins;
-  final tkg = data.totalKg;
+  return _kpiUnitsLineUpperFromTotals(
+    bags: data.totalBags,
+    boxes: data.totalBoxes,
+    tins: data.totalTins,
+    kg: data.totalKg,
+  );
+}
+
+String _kpiUnitsLineUpperFromTotals({
+  required double bags,
+  required double boxes,
+  required double tins,
+  required double kg,
+}) {
   final parts = <String>[];
-  if (tb > 1e-9) parts.add('${_fmtQty(tb)} ${homePackUnitWord('BAG', tb)}');
-  if (txb > 1e-9) parts.add('${_fmtQty(txb)} ${homePackUnitWord('BOX', txb)}');
-  if (ttn > 1e-9) parts.add('${_fmtQty(ttn)} ${homePackUnitWord('TIN', ttn)}');
-  if (tkg > 1e-9) parts.add('${_fmtQty(tkg)} KG');
+  if (bags > 1e-9) {
+    parts.add('${_fmtQty(bags)} ${homePackUnitWord('BAG', bags)}');
+  }
+  if (boxes > 1e-9) {
+    parts.add('${_fmtQty(boxes)} ${homePackUnitWord('BOX', boxes)}');
+  }
+  if (tins > 1e-9) {
+    parts.add('${_fmtQty(tins)} ${homePackUnitWord('TIN', tins)}');
+  }
+  if (kg > 1e-9) parts.add('${_fmtQty(kg)} KG');
   if (parts.isNotEmpty) return parts.join(' • ');
   return '';
 }
@@ -645,8 +661,31 @@ String _secondaryUnitsLineUpper(HomeDashboardData data) {
   return '';
 }
 
+({double bags, double boxes, double tins, double kg})? _unitTotalsFromHomeShell(
+  HomeShellReportsBundle? shell,
+) {
+  if (shell == null || shell.items.isEmpty) return null;
+  double bags = 0, boxes = 0, tins = 0, kg = 0;
+  for (final m in shell.items) {
+    bags += coerceToDouble(m['total_bags']);
+    boxes += coerceToDouble(m['total_boxes']);
+    tins += coerceToDouble(m['total_tins']);
+    kg += coerceToDouble(m['total_kg']);
+  }
+  if (bags.abs() < 1e-9 &&
+      boxes.abs() < 1e-9 &&
+      tins.abs() < 1e-9 &&
+      kg.abs() < 1e-9) {
+    return null;
+  }
+  return (bags: bags, boxes: boxes, tins: tins, kg: kg);
+}
+
 /// Profit, percent, units, and matching breakdown (for ring + KPI).
-List<String> _ringCenterLines(HomeDashboardData d) {
+List<String> _ringCenterLines(
+  HomeDashboardData d, {
+  ({double bags, double boxes, double tins, double kg})? unitsOverride,
+}) {
   final p = d.totalProfit;
   final s = p >= 0 ? '' : '−';
   final l1 = 'Profit $s${_inr(p.abs())}';
@@ -654,7 +693,14 @@ List<String> _ringCenterLines(HomeDashboardData d) {
   final l2 = pp == null
       ? '(—)'
       : '(${p >= 0 ? '+' : ''}${pp.toStringAsFixed(1)}%)';
-  final l3 = _primaryUnitsLineUpper(d);
+  final l3 = unitsOverride == null
+      ? _primaryUnitsLineUpper(d)
+      : _kpiUnitsLineUpperFromTotals(
+          bags: unitsOverride.bags,
+          boxes: unitsOverride.boxes,
+          tins: unitsOverride.tins,
+          kg: unitsOverride.kg,
+        );
   final l4 = _secondaryUnitsLineUpper(d);
   return [l1, l2, l3, l4];
 }
@@ -889,14 +935,19 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
     final tab = ref.watch(homeBreakdownTabProvider);
     final shell = ref.watch(homeShellReportsProvider);
     final peekShell = ref.watch(homeShellReportsSyncCacheProvider);
-    final rc = _ringCenterLines(widget.data);
+    final unitsFromShell =
+        _unitTotalsFromHomeShell(shell.valueOrNull ?? peekShell);
+    final rc = _ringCenterLines(widget.data, unitsOverride: unitsFromShell);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: _KpiTightBlock(data: widget.data),
+          child: _KpiTightBlock(
+            data: widget.data,
+            unitsOverride: unitsFromShell,
+          ),
         ),
         const SizedBox(height: 4),
         Padding(
@@ -1096,12 +1147,20 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
 }
 
 class _KpiTightBlock extends StatelessWidget {
-  const _KpiTightBlock({required this.data});
+  const _KpiTightBlock({required this.data, this.unitsOverride});
   final HomeDashboardData data;
+  final ({double bags, double boxes, double tins, double kg})? unitsOverride;
 
   @override
   Widget build(BuildContext context) {
-    final primaryUnits = _primaryUnitsLineUpper(data);
+    final primaryUnits = unitsOverride == null
+        ? _primaryUnitsLineUpper(data)
+        : _kpiUnitsLineUpperFromTotals(
+            bags: unitsOverride!.bags,
+            boxes: unitsOverride!.boxes,
+            tins: unitsOverride!.tins,
+            kg: unitsOverride!.kg,
+          );
     final secondaryUnits = _secondaryUnitsLineUpper(data);
     return Material(
       color: Colors.white,

@@ -409,7 +409,14 @@ def start_scan(*, business_id: uuid.UUID, image_bytes: bytes, settings: Settings
     _push_stage(job, "preparing_image", 0.0)
     _JOBS[token] = job
     # Kick off background pipeline.
-    asyncio.create_task(_run_job(token=token, settings=settings))
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        # Unit tests may create/cache v3 scan objects outside a running loop.
+        # The API endpoint always has a loop, so production async scans are unaffected.
+        pass
+    else:
+        loop.create_task(_run_job(token=token, settings=settings))
     return token
 
 
@@ -446,3 +453,26 @@ def consume_result(*, business_id: uuid.UUID, scan_token: str) -> ScanResult | N
     _JOBS.pop(scan_token, None)
     return job.result
 
+
+def update_result(*, business_id: uuid.UUID, scan_token: str, scan: ScanResult) -> bool:
+    """Replace a v3 job result after the review UI edits it.
+
+    The v3 mobile flow reuses the v2 confirm endpoint shape. Keeping the
+    reviewed result in the v3 cache lets the existing confirm path create the
+    purchase from exactly what the user approved.
+    """
+    job = _JOBS.get(scan_token)
+    if job is None or job.business_id != business_id:
+        return False
+    if _now_s() - job.created_at_s > _SCAN_CACHE_TTL_S:
+        _JOBS.pop(scan_token, None)
+        return False
+    scan.scan_token = scan_token
+    scan.scan_meta.stage = "ready"
+    scan.scan_meta.stage_progress = 1.0
+    job.result = scan
+    job.stage = "ready"
+    job.stage_progress = 1.0
+    job.done = True
+    job.err = None
+    return True

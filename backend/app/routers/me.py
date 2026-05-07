@@ -657,9 +657,12 @@ async def scan_purchase_bill_v2_confirm(
     """Confirm the scanned preview and create a TradePurchase (server validated)."""
     from app.schemas.trade_purchases import TradePurchaseCreateRequest
     from app.services.scanner_v2.pipeline import consume_cached_scan_result, scan_result_to_trade_purchase_create
+    from app.services.scanner_v3.pipeline import consume_result as consume_v3_scan_result
     from app.services.trade_purchase_service import create_trade_purchase
 
     scan = consume_cached_scan_result(business_id=business_id, scan_token=body.scan_token)
+    if scan is None:
+        scan = consume_v3_scan_result(business_id=business_id, scan_token=body.scan_token)
     if scan is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid or expired scan_token")
 
@@ -685,8 +688,11 @@ async def scan_purchase_bill_v2_update(
     """Update cached scan result after user edits (preview UI)."""
     del user
     from app.services.scanner_v2.pipeline import update_cached_scan_result
+    from app.services.scanner_v3.pipeline import update_result as update_v3_scan_result
 
     ok = update_cached_scan_result(business_id=business_id, scan_token=body.scan_token, scan=body.scan)
+    if not ok:
+        ok = update_v3_scan_result(business_id=business_id, scan_token=body.scan_token, scan=body.scan)
     if not ok:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid or expired scan_token")
     return {"ok": True}

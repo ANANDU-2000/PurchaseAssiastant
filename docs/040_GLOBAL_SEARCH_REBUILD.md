@@ -88,7 +88,7 @@ Each `catalog_items[]` row must support:
 
 ## 9. VALIDATION RULES
 
-- Never show “Last buy” unless value \(> 0\).
+- Never show “Last buy” unless value > 0.
 - If unit is bag-like and kg-per-bag exists, compute kg consistently.
 - If last snapshot is missing, show `—` and keep row tappable.
 
@@ -146,10 +146,10 @@ Each `catalog_items[]` row must support:
 
 ## 19. ACCEPTANCE CHECKLIST
 
-- [ ] “SUGAR 50 KG” appears for `sugar`
-- [ ] Catalog result row shows last buy **and** last bags/kg
-- [ ] Bills section shows matching line summary
-- [ ] Retry works without full-app blink
+- “SUGAR 50 KG” appears for `sugar`
+- Catalog result row shows last buy **and** last bags/kg
+- Bills section shows matching line summary
+- Retry works without full-app blink
 
 ## 20. FINAL EXPECTED OUTPUT
 
@@ -158,4 +158,3 @@ Global search that feels instant, never empty/fake, and always shows trader-acti
 ## 19. ACCEPTANCE CHECKLIST
 
 ## 20. FINAL EXPECTED OUTPUT
-
