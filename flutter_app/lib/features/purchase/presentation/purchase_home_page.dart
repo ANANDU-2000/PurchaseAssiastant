@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -875,6 +876,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                 final p = visible[idx];
                                 return _PurchaseRow(
                                   p: p,
+                                  serial: idx + 1,
                                   selectMode: _selectMode,
                                   selected: _selected.contains(p.id),
                                   onLongPress: () {
@@ -992,6 +994,62 @@ class _PurchaseHistoryFiltersSheetState
         ? ref.read(purchaseHistoryDateFromProvider)
         : ref.read(purchaseHistoryDateToProvider);
     final now = DateTime.now();
+
+    if (Theme.of(context).platform == TargetPlatform.iOS) {
+      var picked = cur ?? now;
+      final ok = await showCupertinoModalPopup<bool>(
+        context: context,
+        builder: (ctx) => Material(
+          color: Colors.transparent,
+          child: SafeArea(
+            top: false,
+            child: Container(
+              height: 320,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      CupertinoButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('Cancel'),
+                      ),
+                      CupertinoButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text('Done'),
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: CupertinoDatePicker(
+                      mode: CupertinoDatePickerMode.date,
+                      initialDateTime: picked,
+                      minimumDate: DateTime(now.year - 5, 1, 1),
+                      maximumDate: DateTime(now.year + 1, 12, 31),
+                      onDateTimeChanged: (d) => picked = d,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      if (ok != true || !mounted) return;
+      final d = DateTime(picked.year, picked.month, picked.day);
+      if (isFrom) {
+        ref.read(purchaseHistoryDateFromProvider.notifier).state = d;
+      } else {
+        ref.read(purchaseHistoryDateToProvider.notifier).state = d;
+      }
+      return;
+    }
+
     final d = await showDatePicker(
       context: context,
       initialDate: cur ?? now,
@@ -1273,6 +1331,7 @@ class _LocalWipDraftHistoryRow extends StatelessWidget {
 class _PurchaseRow extends StatelessWidget {
   const _PurchaseRow({
     required this.p,
+    required this.serial,
     required this.selectMode,
     required this.selected,
     required this.onLongPress,
@@ -1284,6 +1343,7 @@ class _PurchaseRow extends StatelessWidget {
   });
 
   final TradePurchase p;
+  final int serial;
   final bool selectMode;
   final bool selected;
   final VoidCallback onLongPress;
@@ -1320,6 +1380,17 @@ class _PurchaseRow extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Padding(
+                padding: const EdgeInsets.only(right: 8, top: 1),
+                child: Text(
+                  '$serial.',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: HexaColors.neutral,
+                  ),
+                ),
+              ),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1350,7 +1421,7 @@ class _PurchaseRow extends StatelessWidget {
                     const SizedBox(height: 1),
                     Text(
                       pack,
-                      maxLines: 2,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 10.5,

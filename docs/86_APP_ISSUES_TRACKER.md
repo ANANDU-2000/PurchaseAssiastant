@@ -36,8 +36,9 @@ This file tracks the reported UX + reliability issues across **all tabs** and cr
    - **verify**: on small phones, totals remain readable without truncation.
 
 5. **Serial number missing / unclear**
-   - **status**: open
-   - **verify**: confirm if required in row UI; if yes add leading small index.
+   - **status**: fixed
+   - **fix**: history rows now show a compact left serial (`1.` / `2.` …) for quick verbal referencing.
+   - **verify**: scroll list; serial stays stable for the visible sorted list.
 
 ## Reports
 
