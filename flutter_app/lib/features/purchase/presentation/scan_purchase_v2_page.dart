@@ -115,6 +115,7 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
     final v = (s ?? '').trim().toLowerCase();
     return switch (v) {
       'preparing_image' => _ScanStage.preparingImage,
+      'paper_detected' => _ScanStage.preparingImage,
       'uploading' => _ScanStage.uploading,
       'extracting_text' => _ScanStage.extractingText,
       'parsing_items' => _ScanStage.parsingItems,
@@ -542,12 +543,12 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
   }
 
   Widget _confidencePill(double c) {
-    final pct = (c * 100).clamp(0, 100).round();
-    final (bg, fg, label) = pct >= 92
-        ? (const Color(0xFFECFDF5), const Color(0xFF065F46), 'High')
-        : (pct >= 70
-            ? (const Color(0xFFFFFBEB), const Color(0xFF92400E), 'Review')
-            : (const Color(0xFFFEF2F2), const Color(0xFF991B1B), 'Low'));
+    // Trader-friendly confidence bands (no numeric % UI).
+    final (bg, fg, label) = c >= 0.85
+        ? (const Color(0xFFECFDF5), const Color(0xFF065F46), 'HIGH')
+        : (c >= 0.55
+            ? (const Color(0xFFFFFBEB), const Color(0xFF92400E), 'MEDIUM')
+            : (const Color(0xFFFEF2F2), const Color(0xFF991B1B), 'LOW'));
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
@@ -556,8 +557,74 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
         border: Border.all(color: fg.withAlpha(35)),
       ),
       child: Text(
-        '$label · $pct%',
+        label,
         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: fg),
+      ),
+    );
+  }
+
+  Widget _progressChecklist() {
+    final hasResult = _scan is Map;
+    final sup = (_scan is Map) ? (_scan!['supplier']) : null;
+    final bro = (_scan is Map) ? (_scan!['broker']) : null;
+    final items = (_scan is Map) ? (_scan!['items']) : null;
+    final charges = (_scan is Map) ? (_scan!['charges']) : null;
+
+    bool hasName(Object? m) =>
+        m is Map && ((m['matched_name']?.toString().trim().isNotEmpty ?? false) || (m['raw_text']?.toString().trim().isNotEmpty ?? false));
+    bool hasItems() => items is List && items.isNotEmpty;
+    bool hasUnits() => items is List && items.any((e) => e is Map && (e['unit_type']?.toString().trim().isNotEmpty ?? false));
+    bool hasRates() => items is List && items.any((e) => e is Map && ((e['purchase_rate'] is num) || (e['selling_rate'] is num))) ||
+        (charges is Map && (charges['delivered_rate'] is num));
+    bool hasQty() => items is List && items.any((e) => e is Map && ((e['bags'] is num) || (e['qty'] is num) || (e['kg'] is num)));
+
+    final steps = <(String label, bool done)>[
+      ('Image uploaded', _jpegBytes != null && (_jpegBytes?.isNotEmpty ?? false)),
+      ('Paper detected', _stage.index >= _ScanStage.preparingImage.index),
+      ('OCR extracting', _stage.index >= _ScanStage.extractingText.index || hasResult),
+      ('Supplier matched', hasName(sup)),
+      ('Broker matched', hasName(bro)),
+      ('Items identified', hasItems()),
+      ('Units identified', hasUnits()),
+      ('Rates validated', hasRates()),
+      ('Quantity calculated', hasQty()),
+      ('Final review ready', _stage == _ScanStage.readyForReview || hasResult),
+    ];
+
+    return Card(
+      margin: const EdgeInsets.only(top: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('AI validation progress', style: HexaDsType.formSectionLabel),
+            const SizedBox(height: 8),
+            for (final s in steps)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  children: [
+                    Icon(
+                      s.$2 ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                      size: 18,
+                      color: s.$2 ? const Color(0xFF065F46) : Colors.black38,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        s.$1,
+                        style: TextStyle(
+                          fontWeight: s.$2 ? FontWeight.w700 : FontWeight.w600,
+                          color: s.$2 ? Colors.black87 : Colors.black54,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -934,6 +1001,7 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
                     ],
                   ),
                 ),
+                _progressChecklist(),
               ],
               if (_error != null) ...[
                 const SizedBox(height: 12),

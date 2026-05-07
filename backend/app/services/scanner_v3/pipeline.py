@@ -267,8 +267,9 @@ async def _run_job_with_db(*, token: str, settings: Settings, db: AsyncSession) 
     if job is None:
         return
 
-    # Stage 1: preprocessing+OCR
-    _push_stage(job, "extracting_text", 0.15)
+    # Stage 1: preprocessing + OCR (multi-pass via preprocess variants)
+    _push_stage(job, "paper_detected", 0.08)
+    _push_stage(job, "extracting_text", 0.15, note="ocr_multipass")
     text, _conf = await image_bytes_to_text(settings, job.image_bytes)
     job.ocr_text = text or ""
 

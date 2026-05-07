@@ -97,6 +97,9 @@ async def image_bytes_to_text(settings: Settings, image_bytes: bytes) -> tuple[s
     best_text = ""
     best_conf = 0.0
     best_score = 0
+    # Keep a small pool of strong candidates for later merging. This is critical
+    # for handwritten notes where different preprocess variants recover different lines.
+    candidates: list[tuple[str, float, int, str]] = []  # (text, conf, score, tag)
 
     async def _try_vision(jpeg: bytes) -> tuple[str, float]:
         if not getattr(settings, "enable_ocr", False):
@@ -133,26 +136,56 @@ async def image_bytes_to_text(settings: Settings, image_bytes: bytes) -> tuple[s
         jpeg = getattr(v, "jpeg_bytes", b"") or b""
         if not jpeg:
             continue
+        vname = getattr(v, "name", "orig")
         # 1) Google Vision (when enabled)
         try:
             t, c = await _try_vision(jpeg)
             sc = _score_text(t)
+            if t.strip():
+                candidates.append((t.strip(), float(c or 0.0), sc, f"vision:{vname}"))
             if sc > best_score:
                 best_text, best_conf, best_score = t, c, sc
             if best_score >= 1400:  # early stop when we already got a strong OCR
-                return best_text, best_conf
+                break
         except Exception as e:  # noqa: BLE001
             logger.warning("Vision OCR failed (%s): %s", getattr(v, "name", "?"), e)
         # 2) Gemini free fallback (even when enable_ocr is off)
         try:
             t, c = await image_bytes_to_text_gemini_free(jpeg)
             sc = _score_text(t)
+            if t.strip():
+                candidates.append((t.strip(), float(c or 0.0), sc, f"gemini:{vname}"))
             if sc > best_score:
                 best_text, best_conf, best_score = t, c, sc
             if best_score >= 1400:
-                return best_text, best_conf
+                break
         except Exception as e:  # noqa: BLE001
             logger.warning("Gemini OCR failed (%s): %s", getattr(v, "name", "?"), e)
+
+    # Merge the strongest candidates (dedupe exact lines). This often upgrades a
+    # "partial" OCR into a usable trader note parse.
+    if candidates:
+        candidates.sort(key=lambda x: x[2], reverse=True)
+        top = candidates[:4]
+        merged_lines: list[str] = []
+        seen: set[str] = set()
+        for (txt, _c, _sc, _tag) in top:
+            for ln in [x.strip() for x in txt.splitlines() if x.strip()]:
+                key = ln.lower().replace(" ", "")
+                if key in seen:
+                    continue
+                seen.add(key)
+                merged_lines.append(ln)
+        merged = "\n".join(merged_lines).strip()
+        merged_score = _score_text(merged)
+        if merged and merged_score >= best_score * 0.90:
+            # Confidence guess: prefer Vision if any Vision candidate exists.
+            has_vision = any(tag.startswith("vision:") for *_rest, tag in top)
+            conf = 0.6 if has_vision else 0.5
+            # If we have many numeric tokens, bump slightly.
+            if sum(1 for ch in merged if ch.isdigit()) >= 10:
+                conf = min(0.8, conf + 0.1)
+            return merged, conf
 
     if best_text.strip():
         return best_text.strip(), float(best_conf or 0.0)

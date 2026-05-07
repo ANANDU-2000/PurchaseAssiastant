@@ -2,7 +2,9 @@
 
 ## Current task
 
-- Production readiness: fix request storms, loading loops, and layout overlap; track in `docs/86_APP_ISSUES_TRACKER.md`.
+- **AI purchase bill scanner rebuild (production)**: multipass OCR + handwriting resilience + progressive validation UI + partial success mode.
+  - Master doc: `docs/90_AI_SCAN_REBUILD_MASTER.md`
+  - Tracker: this file (metrics + QA gates)
 
 ## Blockers
 
@@ -56,6 +58,20 @@
 - **History @ scale**: cursor pagination + list virtualization beyond 4k fetch (`docs/68_HISTORY_PERFORMANCE.md`).
 - **Share metadata row icons**: `docs/69_WHATSAPP_SHARE_TRACKING.md`.
 - Device QA: AI scanner (handwriting, blur, weak network) per prior tracker items.
+
+## AI scan metrics (track weekly)
+
+- **OCR accuracy**: high-contrast handwriting / printed / WhatsApp screenshots
+- **Supplier detection**: fuzzy match success rate
+- **Broker detection**: fuzzy match success rate
+- **Qty detection**: bags/boxes/tins/kg/litre
+- **Package detection**: “Sugar 50kg” → bag + 50kg
+- **Rate inference**: purchase/selling/delivered detection
+- **Low-light handling**: preprocessing success rate
+- **Shadow handling**: preprocessing success rate
+- **API latency**: p50/p95 for start→ready
+- **Retry success**: timeouts + transient failures
+- **Offline recovery**: queued scan eventually reaches review
 
 ## Latest changes (AI scanner — prior)
 
