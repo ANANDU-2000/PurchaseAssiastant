@@ -7,6 +7,7 @@ into `catalog_aliases`.
 
 from __future__ import annotations
 
+import base64
 import json
 import time
 import uuid
@@ -67,6 +68,91 @@ def _parse_json_object_maybe(text: str) -> dict[str, Any] | None:
     except Exception:  # noqa: BLE001
         return None
     return obj if isinstance(obj, dict) else None
+
+
+async def _openai_parse_scanner_image_payload(
+    *,
+    image_bytes: bytes,
+    settings: Settings,
+    db: AsyncSession,
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    """Ask OpenAI vision to return the scanner JSON directly from the bill image."""
+    keys = await resolve_provider_keys(settings, db)
+    ok = (keys.get("openai") or "").strip()
+    if not ok or not image_bytes:
+        return None, {
+            "provider_used": None,
+            "failover": [{"provider": "openai_image", "skipped": True, "reason": "no_key_or_image"}],
+            "failover_used": False,
+        }
+
+    b64 = base64.b64encode(image_bytes).decode("ascii")
+    payload = {
+        "model": settings.openai_model_parse,
+        "max_tokens": 1800,
+        "temperature": 0,
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT,
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "Analyze this purchase bill/photo directly and return exactly one JSON object "
+                            "matching the scanner schema. Read handwriting carefully. Do not invent values; "
+                            "use null for unclear fields."
+                        ),
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{b64}",
+                            "detail": "high",
+                        },
+                    },
+                ],
+            },
+        ],
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=75.0) as client:
+            res = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {ok}", "Content-Type": "application/json"},
+                json=payload,
+            )
+            if res.status_code >= 400:
+                return None, {
+                    "provider_used": None,
+                    "failover": [{"provider": "openai_image", "ok": False, "status_code": res.status_code}],
+                    "failover_used": False,
+                }
+            data = res.json()
+        content = data["choices"][0]["message"]["content"]
+        parsed = _parse_json_object_maybe(content)
+        if parsed is None:
+            return None, {
+                "provider_used": None,
+                "failover": [{"provider": "openai_image", "ok": False, "reason": "invalid_json"}],
+                "failover_used": False,
+            }
+        return parsed, {
+            "provider_used": "openai_image",
+            "failover": [{"provider": "openai_image", "ok": True}],
+            "failover_used": False,
+        }
+    except Exception as e:  # noqa: BLE001
+        return None, {
+            "provider_used": None,
+            "failover": [{"provider": "openai_image", "ok": False, "error": str(e)[:300]}],
+            "failover_used": False,
+        }
 
 
 async def _openai_parse_scanner_payload(
@@ -368,50 +454,73 @@ async def scan_purchase_v2(
     image_bytes: bytes,
 ) -> ScanResult:
     """Full scan pipeline returning an editable preview + scan_token."""
-    try:
-        text, _conf = await image_bytes_to_text(settings, image_bytes)
-    except Exception as e:  # noqa: BLE001
-        # Never hard-fail a scan: return a reviewable empty preview with typed error.
-        token = str(uuid.uuid4())
-        scan_meta = ScanMeta(
-            image_bytes_in=len(image_bytes or b""),
-            ocr_chars=0,
-            error_stage="ocr",
-            error_code="OCR_FAILED",
-            error_message=f"{type(e).__name__}",
-        )
-        supplier = Match(raw_text="", matched_id=None, matched_name=None, confidence=0.0, match_state="unresolved", candidates=[])
-        result = ScanResult(
-            supplier=supplier,
-            broker=None,
-            items=[],
-            charges=Charges(),
-            broker_commission=None,
-            payment_days=None,
-            totals=Totals(),
-            confidence_score=0.0,
-            needs_review=True,
-            warnings=[
-                Warning(
-                    code="OCR_FAILED",
-                    severity="blocker",
-                    target="scan",
-                    message="Could not extract text from this image. You can still enter details manually.",
-                    suggestion="Retake photo with better lighting, avoid blur, and ensure the note fills the frame.",
-                )
-            ],
-            scan_token=token,
-            scan_meta=scan_meta,
-        )
-        _put_scan_cache(token, _ScanCacheEntry(business_id=business_id, created_at_s=_now_s(), result=result))
-        return result
+    direct_raw, direct_meta = await _openai_parse_scanner_image_payload(
+        image_bytes=image_bytes,
+        settings=settings,
+        db=db,
+    )
+    text = ""
+    if direct_raw is None:
+        try:
+            text, _conf = await image_bytes_to_text(settings, image_bytes)
+        except Exception as e:  # noqa: BLE001
+            # Never hard-fail a scan: return a reviewable empty preview with typed error.
+            token = str(uuid.uuid4())
+            scan_meta = ScanMeta(
+                image_bytes_in=len(image_bytes or b""),
+                ocr_chars=0,
+                error_stage="ocr",
+                error_code="OCR_FAILED",
+                error_message=f"{type(e).__name__}",
+            )
+            scan_meta.failover.extend(direct_meta.get("failover") or [])
+            supplier = Match(
+                raw_text="",
+                matched_id=None,
+                matched_name=None,
+                confidence=0.0,
+                match_state="unresolved",
+                candidates=[],
+            )
+            result = ScanResult(
+                supplier=supplier,
+                broker=None,
+                items=[],
+                charges=Charges(),
+                broker_commission=None,
+                payment_days=None,
+                totals=Totals(),
+                confidence_score=0.0,
+                needs_review=True,
+                warnings=[
+                    Warning(
+                        code="OCR_FAILED",
+                        severity="blocker",
+                        target="scan",
+                        message="Could not extract text from this image. You can still enter details manually.",
+                        suggestion="Retake photo with better lighting, avoid blur, and ensure the note fills the frame.",
+                    )
+                ],
+                scan_token=token,
+                scan_meta=scan_meta,
+            )
+            _put_scan_cache(
+                token,
+                _ScanCacheEntry(business_id=business_id, created_at_s=_now_s(), result=result),
+            )
+            return result
 
     scan_meta = ScanMeta(image_bytes_in=len(image_bytes or b""), ocr_chars=len(text or ""))
 
-    raw, meta = await _openai_parse_scanner_payload(text=text, settings=settings, db=db)
+    if direct_raw is not None:
+        raw, meta = direct_raw, direct_meta
+        scan_meta.parse_warnings.append("openai_image_direct")
+    else:
+        raw, meta = await _openai_parse_scanner_payload(text=text, settings=settings, db=db)
+        scan_meta.failover.extend(direct_meta.get("failover") or [])
     scan_meta.provider_used = meta.get("provider_used")
-    scan_meta.failover = meta.get("failover") or []
-    if not text.strip():
+    scan_meta.failover.extend(meta.get("failover") or [])
+    if direct_raw is None and not text.strip():
         scan_meta.error_stage = "ocr"
         scan_meta.error_code = "OCR_EMPTY"
         scan_meta.error_message = "no_text"

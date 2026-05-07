@@ -30,6 +30,7 @@ from app.services.scanner_v2.pipeline import (
     _d,
     _match_items,
     _match_supplier_broker,
+    _openai_parse_scanner_image_payload,
 )
 from app.services.scanner_v2.prompt import SYSTEM_PROMPT
 from app.services.scanner_v2.types import Charges, Match, ScanMeta, ScanResult, Totals, Warning
@@ -267,11 +268,21 @@ async def _run_job_with_db(*, token: str, settings: Settings, db: AsyncSession) 
     if job is None:
         return
 
-    # Stage 1: preprocessing + OCR (multi-pass via preprocess variants)
+    # Stage 1: direct image analysis first, then OCR fallback.
     _push_stage(job, "paper_detected", 0.08)
-    _push_stage(job, "extracting_text", 0.15, note="ocr_multipass")
-    text, _conf = await image_bytes_to_text(settings, job.image_bytes)
-    job.ocr_text = text or ""
+    _push_stage(job, "parsing_items", 0.22, note="openai_image_direct")
+    direct_raw, direct_meta = await _openai_parse_scanner_image_payload(
+        image_bytes=job.image_bytes,
+        settings=settings,
+        db=db,
+    )
+
+    if direct_raw is None:
+        _push_stage(job, "extracting_text", 0.30, note="ocr_multipass")
+        text, _conf = await image_bytes_to_text(settings, job.image_bytes)
+        job.ocr_text = text or ""
+    else:
+        job.ocr_text = ""
 
     # Prepare base result (always return something)
     base = _empty_result(stage="extracting_text", image_bytes_in=len(job.image_bytes or b""))
@@ -280,7 +291,7 @@ async def _run_job_with_db(*, token: str, settings: Settings, db: AsyncSession) 
     base.scan_meta.stage_log = list(job.stage_log)
     job.result = base
 
-    if not (job.ocr_text or "").strip():
+    if direct_raw is None and not (job.ocr_text or "").strip():
         base.scan_meta.error_stage = "ocr"
         base.scan_meta.error_code = "OCR_EMPTY"
         base.scan_meta.error_message = "no_text"
@@ -290,9 +301,14 @@ async def _run_job_with_db(*, token: str, settings: Settings, db: AsyncSession) 
 
     # Stage 2: parse (LLM) with deterministic fallback
     _push_stage(job, "parsing_items", 0.45)
-    raw, meta = await _openai_parse_scanner_payload(text=job.ocr_text, settings=settings, db=db)
+    if direct_raw is not None:
+        raw, meta = direct_raw, direct_meta
+        base.scan_meta.parse_warnings.append("openai_image_direct")
+    else:
+        raw, meta = await _openai_parse_scanner_payload(text=job.ocr_text, settings=settings, db=db)
+        base.scan_meta.failover.extend(direct_meta.get("failover") or [])
     base.scan_meta.provider_used = meta.get("provider_used")
-    base.scan_meta.failover = meta.get("failover") or []
+    base.scan_meta.failover.extend(meta.get("failover") or [])
 
     fb = _fallback_parse_text(job.ocr_text)
     if raw is None:
