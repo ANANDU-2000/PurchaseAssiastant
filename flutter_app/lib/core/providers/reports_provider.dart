@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
@@ -233,15 +234,34 @@ final reportsPurchasesPayloadProvider =
     final list = await _loadReportsPurchases(ref);
     return ReportsPurchasePayload(items: list, fromLiveFetch: true);
   } catch (e) {
+    if (e is DioException) {
+      final sc = e.response?.statusCode;
+      if (sc == 401 || sc == 403) {
+        // Session is no longer valid; prevent endless refetch loops.
+        try {
+          await ref.read(sessionProvider.notifier).logout();
+        } catch (_) {}
+      }
+    }
     final cached = ref.read(reportsPurchasesHiveCacheProvider);
     if (cached != null && cached.isNotEmpty) {
       return ReportsPurchasePayload(
         items: cached,
         fromLiveFetch: false,
-        liveFetchError: e.toString(),
+        liveFetchError: (e is DioException &&
+                (e.response?.statusCode == 401 || e.response?.statusCode == 403))
+            ? 'Session expired — sign in again'
+            : e.toString(),
       );
     }
-    return ReportsPurchasePayload(items: const [], fromLiveFetch: false, liveFetchError: e.toString());
+    return ReportsPurchasePayload(
+      items: const [],
+      fromLiveFetch: false,
+      liveFetchError: (e is DioException &&
+              (e.response?.statusCode == 401 || e.response?.statusCode == 403))
+          ? 'Session expired — sign in again'
+          : e.toString(),
+    );
   }
 });
 

@@ -71,7 +71,16 @@ final hexaApiProvider = Provider<HexaApi>((ref) {
             if (disposed) return false;
             final store = ref.read(tokenStoreProvider);
             final t = await store.read();
-            if (t.refresh == null) return false;
+            if (t.refresh == null) {
+              // No refresh token means we cannot recover from 401s; clear the
+              // session to prevent infinite request storms on web.
+              try {
+                if (!disposed) {
+                  await ref.read(sessionProvider.notifier).logout();
+                }
+              } catch (_) {/* container disposed */}
+              return false;
+            }
             try {
               final pair = await api.refreshTokens(refreshToken: t.refresh!);
               if (disposed) return false;
