@@ -233,7 +233,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                     ref.invalidate(unifiedSearchProvider(_debounced)),
               ),
               data: (data) {
-                final items = _asMapListSkipBad('catalog_items', data);
+                final rawItems = _asMapListSkipBad('catalog_items', data);
                 final suppliers = _asMapListSkipBad('suppliers', data);
                 final brokers = _asMapListSkipBad('brokers', data);
                 final types = _asMapListSkipBad('catalog_subcategories', data);
@@ -241,6 +241,62 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                 final fuzzyItems = data['fuzzy_catalog_used'] == true;
                 final fuzzySup = data['fuzzy_suppliers_used'] == true;
                 final fuzzyBro = data['fuzzy_brokers_used'] == true;
+
+                // Enrich catalog item hits with last-line qty/kg from matched recent purchases
+                // so the UI can show "last bags/kg" even when the server only returns prices.
+                int ymdKey(Object? dtRaw) {
+                  if (dtRaw is String && dtRaw.length >= 10) {
+                    final s = dtRaw.substring(0, 10).replaceAll('-', '');
+                    return int.tryParse(s) ?? 0;
+                  }
+                  return 0;
+                }
+
+                final lastLineByItemId = <String, Map<String, dynamic>>{};
+                final lastDateKeyByItemId = <String, int>{};
+                final lastBillHidByItemId = <String, String>{};
+                for (final p in bills) {
+                  final dtK = ymdKey(p['purchase_date']);
+                  final hid = p['human_id']?.toString() ?? '';
+                  final lines = (p['lines'] is List) ? (p['lines'] as List) : const [];
+                  for (final raw in lines) {
+                    if (raw is! Map) continue;
+                    final ln = Map<String, dynamic>.from(raw);
+                    final cid = ln['catalog_item_id']?.toString() ?? '';
+                    if (cid.isEmpty) continue;
+                    final prevK = lastDateKeyByItemId[cid] ?? 0;
+                    if (dtK >= prevK) {
+                      lastDateKeyByItemId[cid] = dtK;
+                      lastLineByItemId[cid] = ln;
+                      if (hid.isNotEmpty) lastBillHidByItemId[cid] = hid;
+                    }
+                  }
+                }
+
+                final items = rawItems.map((m) {
+                  final id = m['id']?.toString() ?? '';
+                  if (id.isEmpty) return m;
+                  if (m['last_line_qty'] != null || m['last_line_weight_kg'] != null) {
+                    return m;
+                  }
+                  final ln = lastLineByItemId[id];
+                  if (ln == null) return m;
+                  final next = Map<String, dynamic>.from(m);
+                  next['last_line_qty'] = ln['qty'];
+                  next['last_line_unit'] = ln['unit'];
+                  next['last_line_weight_kg'] = ln['total_weight_kg'] ?? ln['total_weight'];
+                  next['kg_per_unit'] = ln['kg_per_unit'] ?? ln['default_kg_per_bag'];
+                  // Prefer explicit per-kg rate if present.
+                  next['purchase_rate_dim'] = (ln['landing_cost_per_kg'] != null || ln['kg_per_unit'] != null) ? 'kg' : (ln['unit'] ?? '');
+                  next['last_purchase_price'] = ln['landing_cost_per_kg'] ?? ln['purchase_rate'] ?? ln['landing_cost'];
+                  next['last_selling_rate'] = ln['selling_rate'] ?? ln['selling_cost'];
+                  next['selling_rate_dim'] = next['purchase_rate_dim'];
+                  final bh = lastBillHidByItemId[id];
+                  if (bh != null && bh.isNotEmpty) {
+                    next['last_purchase_human_id'] = bh;
+                  }
+                  return next;
+                }).toList();
                 final contactHits = suppliers.length + brokers.length;
                 final sectionCounts = <String, int>{
                   'types': types.length,

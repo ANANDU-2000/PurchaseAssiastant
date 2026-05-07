@@ -460,7 +460,51 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                         ),
                   ),
                 ),
-                _ItemTradeHeroCard(item: item),
+                // Enrich hero card with last-line qty/unit/kg from loaded purchases
+                // so "Last" shows bags/kg, not just rate.
+                Builder(builder: (ctx) {
+                  final pv = purchasesAsync.value;
+                  Map<String, dynamic> hero = Map<String, dynamic>.from(item);
+                  if (pv != null && pv.isNotEmpty) {
+                    TradePurchaseLine? last;
+                    DateTime? lastAt;
+                    for (final p in pv) {
+                      for (final ln in p.lines) {
+                        if ((ln.catalogItemId ?? '') != widget.itemId) continue;
+                        if (lastAt == null || p.purchaseDate.isAfter(lastAt)) {
+                          lastAt = p.purchaseDate;
+                          last = ln;
+                        }
+                      }
+                    }
+                    if (last != null) {
+                      final ln = last;
+                      hero['last_line_qty'] = ln.qty;
+                      hero['last_line_unit'] = ln.unit;
+                      final tw = ln.totalWeight;
+                      final wk = (tw != null && tw > 0)
+                          ? tw
+                          : (ln.kgPerUnit != null && ln.kgPerUnit! > 0)
+                              ? (ln.qty * ln.kgPerUnit!)
+                              : null;
+                      hero['last_line_weight_kg'] = wk;
+                      hero['kg_per_unit'] = ln.kgPerUnit ?? ln.defaultKgPerBag;
+                      if (ln.landingCostPerKg != null && ln.landingCostPerKg! > 0) {
+                        hero['last_purchase_price'] = ln.landingCostPerKg;
+                        hero['purchase_rate_dim'] = 'kg';
+                      } else {
+                        hero['last_purchase_price'] = ln.purchaseRate ?? ln.landingCost;
+                        hero['purchase_rate_dim'] =
+                            ln.unit.trim().isEmpty ? null : ln.unit.trim().toLowerCase();
+                      }
+                      if (ln.sellingRate != null && ln.sellingRate! > 0) {
+                        hero['last_selling_rate'] = ln.sellingRate;
+                        hero['selling_rate_dim'] = hero['purchase_rate_dim'];
+                      }
+                    }
+                  }
+                  return _ItemTradeHeroCard(item: hero);
+                }),
                 const SizedBox(height: 12),
                 FilledButton.icon(
                   onPressed: () => context.push(
