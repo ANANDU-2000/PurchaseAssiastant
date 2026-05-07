@@ -84,10 +84,13 @@ def trade_line_weight_expr() -> ColumnElement:
         utype == literal("bag"),
         and_(utype.is_(None), func.upper(TradePurchaseLine.unit).like("%BAG%")),
         and_(utype.is_(None), func.upper(TradePurchaseLine.unit).like("%SACK%")),  # legacy
+        and_(utype.is_(None), func.upper(TradePurchaseLine.unit).in_(("BG", "BGS"))),
     )
     kg_fallback = or_(
         utype == literal("kg"),
         and_(utype.is_(None), func.upper(TradePurchaseLine.unit).like("%KG%")),
+        and_(utype.is_(None), func.upper(TradePurchaseLine.unit).like("%KILO%")),
+        and_(utype.is_(None), func.upper(TradePurchaseLine.unit).like("%كيلو%")),
     )
     legacy = case(
         (and_(weight_ok, is_bag), TradePurchaseLine.qty * kpu),

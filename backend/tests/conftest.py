@@ -1,7 +1,6 @@
 import asyncio
 import os
 import sys
-import tempfile
 from pathlib import Path
 
 # Ensure `app` package resolves when running pytest from repo root or backend/
@@ -9,13 +8,11 @@ _root = Path(__file__).resolve().parents[1]
 if str(_root) not in sys.path:
     sys.path.insert(0, str(_root))
 
-# Use a fresh SQLite file per pytest process so metadata.create_all matches models
-# (avoids "no such table/column" when dev hexa_dev.db predates catalog / catalog_item_id).
-_tmp_db_dir = Path(tempfile.mkdtemp(prefix="hexa_pytest_"))
-_test_db_path = _tmp_db_dir / "test.db"
+# Use shared-cache in-memory SQLite so async API sessions and sync seed helpers
+# see the same schema without touching user temp/OneDrive folders.
 # Force test mode so Settings prefers env over .env (see app/config.py settings_customise_sources).
 os.environ["APP_ENV"] = "test"
-os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_test_db_path.as_posix()}"
+os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///file:hexa_pytest?mode=memory&cache=shared&uri=true"
 # `database.py` prefers DATABASE_POOLER_URL over DATABASE_URL when set — force single test DB.
 os.environ["DATABASE_POOLER_URL"] = ""
 # Disable dev shortcut so async engine uses DATABASE_URL (same file as bootstrap sync seed).

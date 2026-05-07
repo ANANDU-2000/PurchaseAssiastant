@@ -96,3 +96,48 @@ def test_unified_search_single_char_and_hsn():
     assert r4.status_code == 200, r4.text
     d4 = r4.json()
     assert len(d4.get("suppliers", [])) >= 1
+
+
+def test_unified_search_fuzzy_typo_item_name():
+    u = uuid.uuid4().hex[:10]
+    email = f"ust{u}@test.hexa.local"
+    r = client.post(
+        "/v1/auth/register",
+        json={"username": f"u{u}", "email": email, "password": "testpass12"},
+    )
+    assert r.status_code == 200, r.text
+    h = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    br = client.get("/v1/me/businesses", headers=h)
+    bid = br.json()[0]["id"]
+    cat = client.post(
+        f"/v1/businesses/{bid}/item-categories",
+        headers=h,
+        json={"name": "Staples"},
+    )
+    assert cat.status_code == 201, cat.text
+    cid = cat.json()["id"]
+    sup = client.post(
+        f"/v1/businesses/{bid}/suppliers",
+        headers=h,
+        json={"name": "Sugar Supplier"},
+    )
+    assert sup.status_code == 201, sup.text
+    sid = sup.json()["id"]
+    item = client.post(
+        f"/v1/businesses/{bid}/catalog-items",
+        headers=h,
+        json={
+            "category_id": cid,
+            "name": "SUGAR",
+            "default_unit": "bag",
+            "default_kg_per_bag": 50,
+            "default_supplier_ids": [sid],
+        },
+    )
+    assert item.status_code == 201, item.text
+    iid = item.json()["id"]
+
+    sr = client.get(f"/v1/businesses/{bid}/search", headers=h, params={"q": "suger"})
+    assert sr.status_code == 200, sr.text
+    data = sr.json()
+    assert any(x["id"] == iid for x in data.get("catalog_items", []))

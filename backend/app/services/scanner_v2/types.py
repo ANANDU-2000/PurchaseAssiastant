@@ -114,6 +114,10 @@ class Warning(_BaseV2):
 
 class ScanMeta(_BaseV2):
     provider_used: str | None = None
+    model_used: str | None = None
+    extraction_duration_ms: int | None = None
+    token_usage: dict[str, Any] | None = None
+    retry_count: int = 0
     failover: list[dict[str, Any]] = Field(default_factory=list)
     parse_warnings: list[str] = Field(default_factory=list)
     ocr_chars: int = 0

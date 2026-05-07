@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import time
 import uuid
 from dataclasses import dataclass
@@ -37,9 +38,15 @@ from app.services.scanner_v2.types import (
     Warning,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def _now_s() -> float:
     return time.time()
+
+
+def _openai_timeout_s(settings: Settings) -> float:
+    return max(1.0, min(float(getattr(settings, "openai_timeout_ms", 60000)) / 1000.0, 180.0))
 
 
 def _d(x: Any) -> Decimal | None:
@@ -77,18 +84,30 @@ async def _openai_parse_scanner_image_payload(
     db: AsyncSession,
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     """Ask OpenAI vision to return the scanner JSON directly from the bill image."""
+    t0 = time.perf_counter()
     keys = await resolve_provider_keys(settings, db)
     ok = (keys.get("openai") or "").strip()
+    model = settings.openai_model_parse
+    if not getattr(settings, "enable_vision", True):
+        return None, {
+            "provider_used": None,
+            "model_used": model,
+            "extraction_duration_ms": int((time.perf_counter() - t0) * 1000),
+            "failover": [{"provider": "openai_image", "skipped": True, "reason": "vision_disabled"}],
+            "failover_used": False,
+        }
     if not ok or not image_bytes:
         return None, {
             "provider_used": None,
+            "model_used": model,
+            "extraction_duration_ms": int((time.perf_counter() - t0) * 1000),
             "failover": [{"provider": "openai_image", "skipped": True, "reason": "no_key_or_image"}],
             "failover_used": False,
         }
 
     b64 = base64.b64encode(image_bytes).decode("ascii")
     payload = {
-        "model": settings.openai_model_parse,
+        "model": model,
         "max_tokens": 1800,
         "temperature": 0,
         "response_format": {"type": "json_object"},
@@ -121,15 +140,24 @@ async def _openai_parse_scanner_image_payload(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=75.0) as client:
+        async with httpx.AsyncClient(timeout=_openai_timeout_s(settings)) as client:
             res = await client.post(
                 "https://api.openai.com/v1/chat/completions",
                 headers={"Authorization": f"Bearer {ok}", "Content-Type": "application/json"},
                 json=payload,
             )
             if res.status_code >= 400:
+                elapsed = int((time.perf_counter() - t0) * 1000)
+                logger.warning(
+                    "scanner_openai_image failed status=%s model=%s duration_ms=%s",
+                    res.status_code,
+                    model,
+                    elapsed,
+                )
                 return None, {
                     "provider_used": None,
+                    "model_used": model,
+                    "extraction_duration_ms": elapsed,
                     "failover": [{"provider": "openai_image", "ok": False, "status_code": res.status_code}],
                     "failover_used": False,
                 }
@@ -137,19 +165,42 @@ async def _openai_parse_scanner_image_payload(
         content = data["choices"][0]["message"]["content"]
         parsed = _parse_json_object_maybe(content)
         if parsed is None:
+            elapsed = int((time.perf_counter() - t0) * 1000)
             return None, {
                 "provider_used": None,
+                "model_used": model,
+                "extraction_duration_ms": elapsed,
+                "token_usage": data.get("usage") if isinstance(data, dict) else None,
                 "failover": [{"provider": "openai_image", "ok": False, "reason": "invalid_json"}],
                 "failover_used": False,
             }
+        elapsed = int((time.perf_counter() - t0) * 1000)
+        logger.info(
+            "scanner_openai_image ok model=%s duration_ms=%s tokens=%s",
+            model,
+            elapsed,
+            (data.get("usage") if isinstance(data, dict) else None),
+        )
         return parsed, {
             "provider_used": "openai_image",
+            "model_used": model,
+            "extraction_duration_ms": elapsed,
+            "token_usage": data.get("usage") if isinstance(data, dict) else None,
             "failover": [{"provider": "openai_image", "ok": True}],
             "failover_used": False,
         }
     except Exception as e:  # noqa: BLE001
+        elapsed = int((time.perf_counter() - t0) * 1000)
+        logger.warning(
+            "scanner_openai_image exception model=%s duration_ms=%s error=%s",
+            model,
+            elapsed,
+            type(e).__name__,
+        )
         return None, {
             "provider_used": None,
+            "model_used": model,
+            "extraction_duration_ms": elapsed,
             "failover": [{"provider": "openai_image", "ok": False, "error": str(e)[:300]}],
             "failover_used": False,
         }
@@ -184,7 +235,7 @@ async def _openai_parse_scanner_payload(
                 {"role": "user", "content": text_in},
             ],
         }
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=_openai_timeout_s(settings)) as client:
             res = await client.post(
                 "https://api.openai.com/v1/chat/completions",
                 headers={"Authorization": f"Bearer {ok}", "Content-Type": "application/json"},
@@ -332,6 +383,18 @@ def _needs_review(supplier: Match, items: list[ItemRow]) -> bool:
         if it.match_state != "auto":
             return True
     return False
+
+
+def _dedupe_warnings(warnings: list[Warning]) -> list[Warning]:
+    seen: set[tuple[str, str | None, str]] = set()
+    out: list[Warning] = []
+    for w in warnings:
+        key = (w.code, w.target, w.message)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(w)
+    return out
 
 
 def _compute_preview_line_total(it: ItemRow, warnings: list[Warning]) -> Decimal | None:
@@ -519,6 +582,10 @@ async def scan_purchase_v2(
         raw, meta = await _openai_parse_scanner_payload(text=text, settings=settings, db=db)
         scan_meta.failover.extend(direct_meta.get("failover") or [])
     scan_meta.provider_used = meta.get("provider_used")
+    scan_meta.model_used = meta.get("model_used")
+    scan_meta.extraction_duration_ms = meta.get("extraction_duration_ms")
+    scan_meta.token_usage = meta.get("token_usage")
+    scan_meta.retry_count = int(meta.get("retry_count") or 0)
     scan_meta.failover.extend(meta.get("failover") or [])
     if direct_raw is None and not text.strip():
         scan_meta.error_stage = "ocr"
@@ -613,7 +680,7 @@ async def scan_purchase_v2(
         totals=totals,
         confidence_score=_confidence_from_matches(supplier, broker, items),
         needs_review=_needs_review(supplier, items),
-        warnings=warnings,
+        warnings=_dedupe_warnings(warnings),
         scan_token=token,
         scan_meta=scan_meta,
     )

@@ -6,7 +6,7 @@ import re
 from decimal import Decimal
 
 
-VALID_TRADE_UNIT_TYPES: frozenset[str] = frozenset({"bag", "box", "tin", "kg", "pcs", "other"})
+VALID_TRADE_UNIT_TYPES: frozenset[str] = frozenset({"bag", "box", "tin", "kg", "litre", "pcs", "other"})
 
 
 def derive_trade_unit_type(unit: str | None) -> str:
@@ -23,15 +23,17 @@ def derive_trade_unit_type(unit: str | None) -> str:
     u = (unit or "").strip().upper()
     if not u:
         return "other"
-    if "SACK" in u or "BAG" in u:
+    if u in {"BG", "BGS"} or "SACK" in u or "BAG" in u:
         return "bag"
     if "BOX" in u:
         return "box"
     if "TIN" in u:
         return "tin"
+    if u in ("LTR", "LITRE", "LITER", "LITRES", "LITERS") or "LITRE" in u or "LITER" in u:
+        return "litre"
     if u in ("PCS", "PC", "PIECE", "PIECES"):
         return "pcs"
-    if "KG" in u:
+    if "KG" in u or "KGS" in u or "KILO" in u or "كيلو" in u:
         return "kg"
     return "other"
 

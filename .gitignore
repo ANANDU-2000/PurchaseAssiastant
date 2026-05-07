@@ -3,6 +3,7 @@ backend/.venv/
 backend/**/__pycache__/
 *.pyc
 .pytest_cache/
+backend/.pytest_tmp/
 .mypy_cache/
 
 # Env

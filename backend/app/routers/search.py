@@ -36,6 +36,20 @@ router = APIRouter(prefix="/v1/businesses/{business_id}", tags=["search"])
 logger = logging.getLogger(__name__)
 
 _PAIR_CAP = 5000
+_QUERY_ALIASES = {
+    "suger": "sugar",
+    "shugar": "sugar",
+    "sugr": "sugar",
+}
+
+
+def _search_terms(q: str) -> list[str]:
+    base = q.strip().lower()
+    terms = [base] if base else []
+    alias = _QUERY_ALIASES.get(base)
+    if alias and alias not in terms:
+        terms.append(alias)
+    return terms
 
 
 def _line_to_out(line: EntryLineItem) -> EntryLineOut:
@@ -305,6 +319,7 @@ async def unified_search(
         needle = q.strip().lower()
         if len(needle) < 1:
             return UnifiedSearchOut()
+        terms = _search_terms(needle)
 
         ic = ItemCategory
         ct = CategoryType
@@ -327,24 +342,32 @@ async def unified_search(
             CatalogItem.last_trade_purchase_id,
         )
         item_name_cat_hsn = or_(
-            func.lower(CatalogItem.name).contains(needle),
-            func.lower(ic.name).contains(needle),
-            and_(
-                CatalogItem.hsn_code.isnot(None),
-                func.lower(CatalogItem.hsn_code).contains(needle),
-            ),
-            and_(
-                CatalogItem.item_code.isnot(None),
-                func.lower(CatalogItem.item_code).contains(needle),
-            ),
+            *[
+                or_(
+                    func.lower(CatalogItem.name).contains(term),
+                    func.lower(ic.name).contains(term),
+                    and_(
+                        CatalogItem.hsn_code.isnot(None),
+                        func.lower(CatalogItem.hsn_code).contains(term),
+                    ),
+                    and_(
+                        CatalogItem.item_code.isnot(None),
+                        func.lower(CatalogItem.item_code).contains(term),
+                    ),
+                )
+                for term in terms
+            ]
         )
         if has_type:
             item_name_cat_hsn = or_(
                 item_name_cat_hsn,
-                and_(
-                    CatalogItem.type_id.isnot(None),
-                    func.lower(ct.name).contains(needle),
-                ),
+                *[
+                    and_(
+                        CatalogItem.type_id.isnot(None),
+                        func.lower(ct.name).contains(term),
+                    )
+                    for term in terms
+                ],
             )
             sq_items = (
                 select(

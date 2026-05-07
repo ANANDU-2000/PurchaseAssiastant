@@ -147,8 +147,14 @@ class Settings(BaseSettings):
     whatsapp_assistant_e164: str | None = None
 
     openai_api_key: str | None = None
-    openai_model_parse: str = "gpt-4.1-mini"
+    openai_model_parse: str = Field(
+        default="gpt-4.1-mini",
+        validation_alias=AliasChoices("OPENAI_MODEL_PARSE", "OPENAI_MODEL"),
+    )
     openai_model_summary: str = "gpt-4.1-mini"
+    openai_timeout_ms: int = Field(default=60000, ge=1000, le=180000)
+    enable_vision: bool = True
+    enable_ai_extraction: bool = True
     # stub | openai | groq | gemini — intent extraction uses matching key (env or platform_integration DB).
     ai_provider: str = "stub"
     # Second LLM call for WhatsApp *query* replies: rephrase server-computed FACTS (adds API cost).

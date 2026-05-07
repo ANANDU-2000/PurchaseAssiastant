@@ -170,3 +170,38 @@ def test_trade_items_suppliers_categories_endpoints():
     mpd = mpr.json()
     assert "rows" in mpd and "recommendations" in mpd
     assert any(r.get("catalog_item_id") == str(iid) for r in (mpd.get("rows") or []))
+
+
+def test_month_dashboard_uses_line_total_source_of_truth():
+    h, bid, iid, sid, _cid = _register_and_item_with_supplier()
+    today = date.today()
+    body = {
+        "purchase_date": today.isoformat(),
+        "supplier_id": sid,
+        "lines": [
+            {
+                "catalog_item_id": iid,
+                "item_name": "RTItem 50 KG",
+                "qty": 2,
+                "unit": "bag",
+                "landing_cost": "3000",
+                "kg_per_unit": "50",
+                "landing_cost_per_kg": "60",
+                "selling_rate": "3100",
+            },
+        ],
+    }
+    pr = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
+    assert pr.status_code == 201, pr.text
+
+    q = f"from={today.isoformat()}&to={today.isoformat()}"
+    summary = client.get(f"/v1/businesses/{bid}/reports/trade-summary?{q}", headers=h)
+    assert summary.status_code == 200, summary.text
+    month = client.get(
+        f"/v1/businesses/{bid}/dashboard",
+        headers=h,
+        params={"month": today.strftime("%Y-%m")},
+    )
+    assert month.status_code == 200, month.text
+
+    assert float(month.json()["total_purchase"]) == float(summary.json()["total_purchase"])

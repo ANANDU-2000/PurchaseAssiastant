@@ -105,16 +105,25 @@ async def _compute_month_dashboard_payload(
         TradePurchase.status != "cancelled",
     )
 
+    line_amount = tq.trade_line_amount_expr()
     r = await execute_with_retry(
         lambda: db.execute(
             select(
-                func.coalesce(func.sum(TradePurchase.total_amount), 0.0),
-                func.coalesce(func.sum(TradePurchase.paid_amount), 0.0),
-                func.count(TradePurchase.id),
-            ).where(*tp_f)
+                func.coalesce(func.sum(line_amount), 0.0).label("line_total"),
+                func.count(func.distinct(TradePurchase.id)).label("purchase_count"),
+            )
+            .select_from(TradePurchaseLine)
+            .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+            .where(*tp_f)
         )
     )
-    tot, paid, n = r.one()
+    tot, n = r.one()
+    paid_r = await execute_with_retry(
+        lambda: db.execute(
+            select(func.coalesce(func.sum(TradePurchase.paid_amount), 0.0)).where(*tp_f)
+        )
+    )
+    paid = paid_r.scalar()
     tot_f = float(tot or 0)
     paid_f = float(paid or 0)
     pending = max(0.0, tot_f - paid_f)
