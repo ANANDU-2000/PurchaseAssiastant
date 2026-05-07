@@ -35,6 +35,11 @@ This file tracks the reported UX + reliability issues across **all tabs** and cr
    - **fix**: History month/period pack line now uses darker emphasis color.
    - **verify**: on small phones, totals remain readable without truncation.
 
+5. **Period selection is hard (date-from/to)**
+   - **status**: fixed
+   - **fix**: Added a compact History period picker (Today / Week / Month / Year / Custom) aligned with Reports.
+   - **verify**: History pill “Month/Week/…” opens a bottom sheet; selecting changes both History and Reports totals instantly.
+
 5. **Serial number missing / unclear**
    - **status**: fixed
    - **fix**: history rows now show a compact left serial (`1.` / `2.` …) for quick verbal referencing.

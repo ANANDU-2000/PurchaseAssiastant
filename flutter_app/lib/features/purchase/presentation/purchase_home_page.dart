@@ -29,6 +29,8 @@ import '../../../core/widgets/friendly_load_error.dart'
     show FriendlyLoadError, kFriendlyLoadNetworkSubtitle;
 import '../../../core/widgets/list_skeleton.dart';
 
+enum _HistPeriodPreset { today, week, month, year, custom }
+
 String _inr(num n) =>
     NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
         .format(n);
@@ -129,6 +131,95 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
   /// Purchase IDs hidden immediately while delete API runs (rolled back on failure).
   final _pendingDeleteIds = <String>{};
   String _lastRouteFilter = '';
+  _HistPeriodPreset _preset = _HistPeriodPreset.month;
+
+  static bool _sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  static _HistPeriodPreset _inferPreset(({DateTime from, DateTime to}) r) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final from = DateTime(r.from.year, r.from.month, r.from.day);
+    final to = DateTime(r.to.year, r.to.month, r.to.day);
+    if (_sameDay(from, today) && _sameDay(to, today)) return _HistPeriodPreset.today;
+    if (_sameDay(from, today.subtract(const Duration(days: 6))) && _sameDay(to, today)) {
+      return _HistPeriodPreset.week;
+    }
+    if (_sameDay(from, today.subtract(const Duration(days: 29))) && _sameDay(to, today)) {
+      return _HistPeriodPreset.month;
+    }
+    if (_sameDay(from, DateTime(today.year, 1, 1)) && _sameDay(to, today)) {
+      return _HistPeriodPreset.year;
+    }
+    return _HistPeriodPreset.custom;
+  }
+
+  void _applyPreset(_HistPeriodPreset p) {
+    final n = DateTime.now();
+    final today = DateTime(n.year, n.month, n.day);
+    ref.read(analyticsDateRangeProvider.notifier).state = switch (p) {
+      _HistPeriodPreset.today => (from: today, to: today),
+      _HistPeriodPreset.week => (from: today.subtract(const Duration(days: 6)), to: today),
+      _HistPeriodPreset.month => (from: today.subtract(const Duration(days: 29)), to: today),
+      _HistPeriodPreset.year => (from: DateTime(n.year, 1, 1), to: today),
+      _HistPeriodPreset.custom => ref.read(analyticsDateRangeProvider),
+    };
+    setState(() => _preset = p);
+  }
+
+  Future<void> _pickCustomRange() async {
+    final now = DateTime.now();
+    final range = ref.read(analyticsDateRangeProvider);
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 5),
+      lastDate: DateTime(now.year + 1, 12, 31),
+      initialDateRange: DateTimeRange(start: range.from, end: range.to),
+    );
+    if (picked == null || !mounted) return;
+    ref.read(analyticsDateRangeProvider.notifier).state =
+        (from: picked.start, to: picked.end);
+    setState(() => _preset = _HistPeriodPreset.custom);
+  }
+
+  Future<void> _openPeriodPicker() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(
+              title: Text('Period', style: TextStyle(fontWeight: FontWeight.w800)),
+              subtitle: Text('Affects History + Reports totals'),
+            ),
+            for (final e in const [
+              (_HistPeriodPreset.today, 'Today'),
+              (_HistPeriodPreset.week, 'This week'),
+              (_HistPeriodPreset.month, 'This month'),
+              (_HistPeriodPreset.year, 'This year'),
+              (_HistPeriodPreset.custom, 'Custom range'),
+            ])
+              ListTile(
+                leading: Icon(
+                  _preset == e.$1 ? Icons.check_circle : Icons.circle_outlined,
+                ),
+                title: Text(e.$2),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  if (e.$1 == _HistPeriodPreset.custom) {
+                    await _pickCustomRange();
+                  } else {
+                    _applyPreset(e.$1);
+                  }
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -465,6 +556,10 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
     final alerts = ref.watch(purchaseAlertsProvider);
     final monthStats = ref.watch(purchaseHistoryMonthStatsProvider);
     final range = ref.watch(analyticsDateRangeProvider);
+    final inferred = _inferPreset(range);
+    if (inferred != _preset && inferred != _HistPeriodPreset.custom) {
+      _preset = inferred;
+    }
     final hasAdv =
         (ref.watch(purchaseHistorySupplierContainsProvider)?.trim().isNotEmpty ??
             false) ||
@@ -640,6 +735,17 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                         scrollDirection: Axis.horizontal,
                         child: Row(
                           children: [
+                            _HistMetricPill(
+                              label: switch (_preset) {
+                                _HistPeriodPreset.today => 'Today',
+                                _HistPeriodPreset.week => 'Week',
+                                _HistPeriodPreset.month => 'Month',
+                                _HistPeriodPreset.year => 'Year',
+                                _HistPeriodPreset.custom => 'Custom',
+                              },
+                              onTap: _openPeriodPicker,
+                            ),
+                            const SizedBox(width: 6),
                             _HistMetricPill(
                               label: '${alerts['dueSoon'] ?? 0} Due',
                               onTap: () => _selectPrimary('due'),

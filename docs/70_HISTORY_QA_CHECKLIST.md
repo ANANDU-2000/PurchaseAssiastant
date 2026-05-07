@@ -11,6 +11,7 @@
 ## UX
 
 - [ ] No tall red payment banner; metric pills fit on one row (scroll if needed).
+- [ ] Period picker: Today / Week / Month / Year / Custom works and matches Reports.
 - [ ] Search + filter icon on **one** row; quick chips **All / Due / Paid / Draft** only.
 - [ ] Filter sheet: sort, dates, package, supplier/broker, clear advanced.
 - [ ] **Latest first** default; toggle oldest first in sheet.
