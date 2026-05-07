@@ -14,25 +14,31 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/models/trade_purchase_models.dart';
-import '../../../core/calc_engine.dart';
 import '../../../core/utils/line_display.dart';
 import '../../../core/providers/business_profile_provider.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart'
     show invalidatePurchaseWorkspace;
 import '../../../core/providers/trade_purchases_provider.dart';
 import '../state/purchase_local_wip_draft_provider.dart';
-import 'widgets/due_soon_banner.dart';
 import '../../../core/services/purchase_pdf.dart';
 import '../../../core/theme/hexa_colors.dart';
-import '../../../core/widgets/friendly_load_error.dart';
+import '../../../core/widgets/friendly_load_error.dart'
+    show FriendlyLoadError, kFriendlyLoadNetworkSubtitle;
 import '../../../core/widgets/list_skeleton.dart';
 
 String _inr(num n) =>
     NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
         .format(n);
 
+String _compactInrLakh(num n) {
+  if (n >= 1e7) return '₹${(n / 1e7).toStringAsFixed(1)}Cr';
+  if (n >= 1e5) return '₹${(n / 1e5).toStringAsFixed(1)}L';
+  if (n >= 1e3) return '₹${(n / 1e3).toStringAsFixed(1)}k';
+  return _inr(n);
+}
+
 /// [GoRouterState] `filter=` values that map to primary chips (`all` canonical).
-const _routePrimaryPurchaseFilters = {'all', 'draft', 'due_soon'};
+const _routePrimaryPurchaseFilters = {'all', 'draft', 'due', 'paid', 'due_soon'};
 
 String _purchaseSearchHaystack(TradePurchase p) {
   final df = DateFormat('dd MMM yyyy');
@@ -51,10 +57,33 @@ String _purchaseSearchHaystack(TradePurchase p) {
   for (final l in p.lines) {
     b.write(' ');
     b.write(l.itemName);
+    b.write(' ');
+    b.write(l.itemName.replaceAll(RegExp(r'[\s_\-]'), '').toLowerCase());
+    if (l.itemCode != null && l.itemCode!.trim().isNotEmpty) {
+      b.write(' ');
+      b.write(l.itemCode);
+    }
   }
   b.write(' ');
   b.write(p.itemsSummary);
   return b.toString();
+}
+
+String _historyPaymentChipLabel(PurchaseStatus st) {
+  switch (st) {
+    case PurchaseStatus.paid:
+      return 'Paid';
+    case PurchaseStatus.overdue:
+      return 'Overdue';
+    case PurchaseStatus.draft:
+      return 'Draft';
+    case PurchaseStatus.dueSoon:
+      return 'Due soon';
+    case PurchaseStatus.partiallyPaid:
+      return 'Partial';
+    default:
+      return 'Pending';
+  }
 }
 
 String _histCsvCell(String raw) {
@@ -117,16 +146,18 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
   void _syncFilterFromRoute() {
     final q = GoRouterState.of(context).uri.queryParameters['filter'];
     final f = (q == null || q.isEmpty) ? 'all' : q.toLowerCase();
-    if (f == 'pending' || f == 'paid' || f == 'overdue') {
+    if (f == 'pending' || f == 'overdue') {
       ref.read(purchaseHistoryPrimaryFilterProvider.notifier).state = 'all';
       ref.read(purchaseHistorySecondaryFilterProvider.notifier).state = f;
-    } else if (f == 'due_today') {
+    } else if (f == 'paid') {
       ref.read(purchaseHistorySecondaryFilterProvider.notifier).state = null;
-      ref.read(purchaseHistoryPrimaryFilterProvider.notifier).state = 'due_soon';
+      ref.read(purchaseHistoryPrimaryFilterProvider.notifier).state = 'paid';
+    } else if (f == 'due_today' || f == 'due_soon') {
+      ref.read(purchaseHistorySecondaryFilterProvider.notifier).state = null;
+      ref.read(purchaseHistoryPrimaryFilterProvider.notifier).state = 'due';
     } else {
       ref.read(purchaseHistorySecondaryFilterProvider.notifier).state = null;
-      final primary =
-          _routePrimaryPurchaseFilters.contains(f) ? f : 'all';
+      final primary = _routePrimaryPurchaseFilters.contains(f) ? f : 'all';
       ref.read(purchaseHistoryPrimaryFilterProvider.notifier).state = primary;
     }
   }
@@ -151,14 +182,12 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
   void _selectPrimary(String key) {
     ref.read(purchaseHistoryPrimaryFilterProvider.notifier).state = key;
     ref.read(purchaseHistorySecondaryFilterProvider.notifier).state = null;
-    ref.invalidate(purchaseHistorySearchProvider);
     context.go(key == 'all' ? '/purchase' : '/purchase?filter=$key');
   }
 
   void _selectSecondary(String key) {
     ref.read(purchaseHistoryPrimaryFilterProvider.notifier).state = 'all';
     ref.read(purchaseHistorySecondaryFilterProvider.notifier).state = key;
-    ref.invalidate(purchaseHistorySearchProvider);
     context.go('/purchase?filter=$key');
   }
 
@@ -167,41 +196,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const ListTile(title: Text('More filters', style: TextStyle(fontWeight: FontWeight.w800))),
-              ListTile(
-                leading: const Icon(Icons.hourglass_top_rounded),
-                title: const Text('Pending'),
-                onTap: () {
-                  ctx.pop();
-                  _selectSecondary('pending');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.payments_rounded),
-                title: const Text('Paid'),
-                onTap: () {
-                  ctx.pop();
-                  _selectSecondary('paid');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.warning_amber_rounded),
-                title: const Text('Overdue'),
-                onTap: () {
-                  ctx.pop();
-                  _selectSecondary('overdue');
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
+      builder: (ctx) => const _PurchaseHistoryFiltersSheet(),
     );
   }
 
@@ -218,14 +213,94 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
       switch (s) {
         case 'pending':
           return st == PurchaseStatus.confirmed;
-        case 'paid':
-          return st == PurchaseStatus.paid;
         case 'overdue':
           return st == PurchaseStatus.overdue;
         default:
           return true;
       }
     }).toList();
+  }
+
+  bool _matchesDuePrimary(TradePurchase p) {
+    final st = p.statusEnum;
+    if (st == PurchaseStatus.paid ||
+        st == PurchaseStatus.draft ||
+        st == PurchaseStatus.cancelled ||
+        st == PurchaseStatus.deleted) {
+      return false;
+    }
+    if (st == PurchaseStatus.overdue || st == PurchaseStatus.dueSoon) {
+      return true;
+    }
+    if (p.remaining > 1e-6 &&
+        (st == PurchaseStatus.confirmed ||
+            st == PurchaseStatus.partiallyPaid ||
+            st == PurchaseStatus.saved)) {
+      return true;
+    }
+    return false;
+  }
+
+  List<TradePurchase> _applyPrimaryClient(List<TradePurchase> all) {
+    final primary = ref.read(purchaseHistoryPrimaryFilterProvider);
+    if (primary == 'due') {
+      return all.where(_matchesDuePrimary).toList();
+    }
+    return all;
+  }
+
+  List<TradePurchase> _applyAdvanced(List<TradePurchase> all) {
+    final subSup =
+        ref.read(purchaseHistorySupplierContainsProvider)?.trim().toLowerCase();
+    final subBr =
+        ref.read(purchaseHistoryBrokerContainsProvider)?.trim().toLowerCase();
+    final pack = ref.read(purchaseHistoryPackKindFilterProvider);
+    if ((subSup == null || subSup.isEmpty) &&
+        (subBr == null || subBr.isEmpty) &&
+        (pack == null || pack.isEmpty)) {
+      return all;
+    }
+    return all.where((p) {
+      if (subSup != null && subSup.isNotEmpty) {
+        final n = (p.supplierName ?? '').toLowerCase();
+        if (!n.contains(subSup)) return false;
+      }
+      if (subBr != null && subBr.isNotEmpty) {
+        final n = (p.brokerName ?? '').toLowerCase();
+        if (!n.contains(subBr)) return false;
+      }
+      if (pack != null && pack.isNotEmpty) {
+        if (!purchaseHistoryMatchesPackKindFilter(p, pack)) return false;
+      }
+      return true;
+    }).toList();
+  }
+
+  void _sortPurchases(List<TradePurchase> list, bool newestFirst) {
+    list.sort((a, b) {
+      if (newestFirst) {
+        final c = b.purchaseDate.compareTo(a.purchaseDate);
+        if (c != 0) return c;
+        return b.humanId.compareTo(a.humanId);
+      }
+      final c = a.purchaseDate.compareTo(b.purchaseDate);
+      if (c != 0) return c;
+      return a.humanId.compareTo(b.humanId);
+    });
+  }
+
+  List<TradePurchase> _buildVisibleSorted(
+    List<TradePurchase> items,
+    String searchQ,
+  ) {
+    var v = _applyPrimaryClient(items);
+    v = _applySecondary(v);
+    v = _applyAdvanced(v);
+    v = _withoutPendingDeletes(v);
+    v = _filterPurchasesBySearch(v, searchQ);
+    final out = List<TradePurchase>.of(v);
+    _sortPurchases(out, ref.read(purchaseHistorySortNewestFirstProvider));
+    return out;
   }
 
   Future<void> _confirmDelete(BuildContext context, TradePurchase p) async {
@@ -385,7 +460,17 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
     final primary = ref.watch(purchaseHistoryPrimaryFilterProvider);
     final secondary = ref.watch(purchaseHistorySecondaryFilterProvider);
     final alerts = ref.watch(purchaseAlertsProvider);
-    final dueAlert = (alerts['dueSoon'] ?? 0) + (alerts['overdue'] ?? 0);
+    final monthStats = ref.watch(purchaseHistoryMonthStatsProvider);
+    final hasAdv =
+        (ref.watch(purchaseHistorySupplierContainsProvider)?.trim().isNotEmpty ??
+            false) ||
+            (ref.watch(purchaseHistoryBrokerContainsProvider)?.trim().isNotEmpty ??
+                false) ||
+            (ref.watch(purchaseHistoryPackKindFilterProvider)?.isNotEmpty ??
+                false) ||
+            ref.watch(purchaseHistoryDateFromProvider) != null ||
+            ref.watch(purchaseHistoryDateToProvider) != null;
+    ref.watch(purchaseHistorySortNewestFirstProvider);
     final searchQ = ref.watch(purchaseHistorySearchProvider);
     final localWip = ref.watch(purchaseLocalWipDraftForHistoryProvider);
 
@@ -413,20 +498,22 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
         title: _selectMode
             ? Text('${_selected.length} selected',
                 style: const TextStyle(fontWeight: FontWeight.w800))
-            : const Column(
+            : Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('Purchase History',
+                  const Text('Purchase History',
                       style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w800,
                           color: HexaColors.brandPrimary)),
-                  Text('All trade purchases',
-                      style: TextStyle(
-                          fontSize: 11,
-                          color: HexaColors.neutral,
-                          fontWeight: FontWeight.w500)),
+                  Text(
+                    DateFormat('MMMM yyyy').format(DateTime.now()),
+                    style: const TextStyle(
+                        fontSize: 11,
+                        color: HexaColors.neutral,
+                        fontWeight: FontWeight.w500),
+                  ),
                 ],
               ),
         actions: [
@@ -436,8 +523,8 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
               onPressed: () {
                 final items = rows.asData?.value;
                 if (items == null) return;
-                final v = _filterPurchasesBySearch(
-                  _applySecondary(_withoutPendingDeletes(items)),
+                final v = _buildVisibleSorted(
+                  items,
                   ref.read(purchaseHistorySearchProvider),
                 );
                 _selectAllVisible(v);
@@ -449,8 +536,8 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
               onPressed: () async {
                 final items = rows.asData?.value;
                 if (items == null) return;
-                final v = _filterPurchasesBySearch(
-                  _applySecondary(_withoutPendingDeletes(items)),
+                final v = _buildVisibleSorted(
+                  items,
                   ref.read(purchaseHistorySearchProvider),
                 );
                 await _exportSelectedCsv(v);
@@ -514,7 +601,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
               child: FilledButton.icon(
                 onPressed: () => context.push('/purchase/new'),
                 icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text('New'),
+                label: const Text('New purchase'),
                 style: FilledButton.styleFrom(
                   backgroundColor: HexaColors.brandPrimary,
                   foregroundColor: Colors.white,
@@ -535,79 +622,227 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                 onRetry: () {
                   invalidatePurchaseWorkspace(ref);
                 },
+                message: 'Showing saved purchases — reconnecting…',
+                subtitle: kFriendlyLoadNetworkSubtitle,
               ),
               data: (List<TradePurchase> items) {
-                final visible = _filterPurchasesBySearch(
-                  _applySecondary(_withoutPendingDeletes(items)),
-                  searchQ,
-                );
+                final visible = _buildVisibleSorted(items, searchQ);
                 final showLocalWipRow = localWip != null && !_selectMode;
                 return Column(
                   children: [
-                    DueSoonBanner(
-                      count: dueAlert,
-                      onTap: () => _selectPrimary('due_soon'),
-                    ),
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
-                      child: TextField(
-                        controller: _searchCtrl,
-                        decoration: const InputDecoration(
-                          hintText: 'Search supplier, purchase ID, item name…',
-                          filled: true,
-                          fillColor: Colors.white,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.all(Radius.circular(12)),
-                          ),
-                          prefixIcon: Icon(Icons.search_rounded),
+                      padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            _HistMetricPill(
+                              label: '${alerts['dueSoon'] ?? 0} Due',
+                              onTap: () => _selectPrimary('due'),
+                            ),
+                            const SizedBox(width: 6),
+                            _HistMetricPill(
+                              label: '${monthStats.purchaseCount} Purch',
+                            ),
+                            const SizedBox(width: 6),
+                            _HistMetricPill(
+                              label: monthStats.purchaseCount == 0 &&
+                                      monthStats.totalInr < 1e-6
+                                  ? '₹0 Mo'
+                                  : '${_compactInrLakh(monthStats.totalInr)} Mo',
+                            ),
+                            const SizedBox(width: 6),
+                            _HistMetricPill(
+                              label: '${alerts['overdue'] ?? 0} Overdue',
+                              onTap: () => _selectSecondary('overdue'),
+                            ),
+                          ],
                         ),
                       ),
                     ),
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      child: Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        crossAxisAlignment: WrapCrossAlignment.center,
+                      padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
+                      child: Material(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                monthStats.purchaseCount == 0 &&
+                                        monthStats.totalInr < 1e-6
+                                    ? 'No purchases this month'
+                                    : _compactInrLakh(monthStats.totalInr),
+                                style: const TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w900,
+                                  color: Color(0xFF0F172A),
+                                  letterSpacing: -0.3,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                formatPurchaseHistoryMonthPackLine(monthStats),
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: HexaColors.neutral,
+                                  height: 1.2,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          for (final e in const [
-                            ('all', 'All'),
-                            ('draft', 'Draft'),
-                            ('due_soon', 'Due soon'),
-                          ])
-                            FilterChip(
-                              label: Text(e.$2),
-                              selected: secondary == null && primary == e.$1,
-                              onSelected: (_) => _selectPrimary(e.$1),
+                          Expanded(
+                            flex: 82,
+                            child: TextField(
+                              controller: _searchCtrl,
+                              decoration: const InputDecoration(
+                                hintText:
+                                    'Search supplier, PUR ID, items, broker…',
+                                isDense: true,
+                                filled: true,
+                                fillColor: Colors.white,
+                                border: OutlineInputBorder(
+                                  borderRadius:
+                                      BorderRadius.all(Radius.circular(12)),
+                                ),
+                                prefixIcon:
+                                    Icon(Icons.search_rounded, size: 22),
+                                contentPadding:
+                                    EdgeInsets.symmetric(vertical: 10),
+                              ),
                             ),
-                          IconButton.filledTonal(
-                            tooltip: 'More filters',
-                            onPressed: _openMoreFilters,
-                            icon: const Icon(Icons.filter_list_rounded),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            flex: 18,
+                            child: Align(
+                              alignment: Alignment.topCenter,
+                              child: IconButton.filledTonal(
+                                tooltip: 'Filters & sort',
+                                onPressed: _openMoreFilters,
+                                icon: const Icon(Icons.tune_rounded),
+                              ),
+                            ),
                           ),
                         ],
                       ),
                     ),
-                    if (secondary != null)
+                    SizedBox(
+                      height: 40,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        children: [
+                          for (final e in const [
+                            ('all', 'All'),
+                            ('due', 'Due'),
+                            ('paid', 'Paid'),
+                            ('draft', 'Draft'),
+                          ])
+                            Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: FilterChip(
+                                label: Text(
+                                  e.$2,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                selected:
+                                    secondary == null && primary == e.$1,
+                                onSelected: (_) => _selectPrimary(e.$1),
+                                visualDensity: VisualDensity.compact,
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    if (secondary != null || hasAdv)
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: ActionChip(
-                            label: Text('Filtered: $secondary · Clear'),
-                            onPressed: () => _selectPrimary('all'),
-                          ),
+                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 2),
+                        child: Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: [
+                            if (secondary != null)
+                              ActionChip(
+                                label: Text(
+                                  'Status: $secondary · Clear',
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                                onPressed: () => _selectPrimary('all'),
+                              ),
+                            if (hasAdv)
+                              ActionChip(
+                                label: const Text(
+                                  'Clear advanced filters',
+                                  style: TextStyle(fontSize: 11),
+                                ),
+                                onPressed: () {
+                                  ref
+                                      .read(
+                                        purchaseHistorySupplierContainsProvider
+                                            .notifier,
+                                      )
+                                      .state = null;
+                                  ref
+                                      .read(
+                                        purchaseHistoryBrokerContainsProvider
+                                            .notifier,
+                                      )
+                                      .state = null;
+                                  ref
+                                      .read(
+                                        purchaseHistoryPackKindFilterProvider
+                                            .notifier,
+                                      )
+                                      .state = null;
+                                  ref
+                                      .read(
+                                        purchaseHistoryDateFromProvider
+                                            .notifier,
+                                      )
+                                      .state = null;
+                                  ref
+                                      .read(
+                                        purchaseHistoryDateToProvider.notifier,
+                                      )
+                                      .state = null;
+                                },
+                              ),
+                          ],
                         ),
                       ),
-                    if (visible.isNotEmpty && (items.length != visible.length || items.length >= 200))
+                    if (visible.isNotEmpty &&
+                        (items.length != visible.length ||
+                            items.length >= kTradePurchasesHistoryFetchLimit))
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 2,
+                        ),
                         child: Text(
-                          items.length >= 200
-                              ? 'Showing latest 200 · ${visible.length} match'
+                          items.length >= kTradePurchasesHistoryFetchLimit
+                              ? 'Showing latest $kTradePurchasesHistoryFetchLimit · ${visible.length} match'
                               : '${visible.length} of ${items.length}',
                           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
                               ),
                         ),
                       ),
@@ -637,7 +872,6 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                 final p = visible[idx];
                                 return _PurchaseRow(
                                   p: p,
-                                  serial: visible.length - idx,
                                   selectMode: _selectMode,
                                   selected: _selected.contains(p.id),
                                   onLongPress: () {
@@ -668,6 +902,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                     try {
                                       final biz = ref.read(invoiceBusinessProfileProvider);
                                       await sharePurchasePdf(p, biz);
+                                      invalidatePurchaseWorkspace(ref);
                                     } catch (_) {}
                                   },
                                 );
@@ -678,6 +913,267 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                 );
               },
             ),
+    );
+  }
+}
+
+class _HistMetricPill extends StatelessWidget {
+  const _HistMetricPill({required this.label, this.onTap});
+
+  final String label;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final child = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: HexaColors.brandBorder),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          color: Color(0xFF0F172A),
+        ),
+      ),
+    );
+    if (onTap == null) return child;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: child,
+      ),
+    );
+  }
+}
+
+class _PurchaseHistoryFiltersSheet extends ConsumerStatefulWidget {
+  const _PurchaseHistoryFiltersSheet();
+
+  @override
+  ConsumerState<_PurchaseHistoryFiltersSheet> createState() =>
+      _PurchaseHistoryFiltersSheetState();
+}
+
+class _PurchaseHistoryFiltersSheetState
+    extends ConsumerState<_PurchaseHistoryFiltersSheet> {
+  late final TextEditingController _supplier;
+  late final TextEditingController _broker;
+
+  @override
+  void initState() {
+    super.initState();
+    _supplier = TextEditingController(
+      text: ref.read(purchaseHistorySupplierContainsProvider) ?? '',
+    );
+    _broker = TextEditingController(
+      text: ref.read(purchaseHistoryBrokerContainsProvider) ?? '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _supplier.dispose();
+    _broker.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate(bool isFrom) async {
+    final cur = isFrom
+        ? ref.read(purchaseHistoryDateFromProvider)
+        : ref.read(purchaseHistoryDateToProvider);
+    final now = DateTime.now();
+    final d = await showDatePicker(
+      context: context,
+      initialDate: cur ?? now,
+      firstDate: DateTime(now.year - 5),
+      lastDate: DateTime(now.year + 1, 12, 31),
+    );
+    if (d == null || !mounted) return;
+    if (isFrom) {
+      ref.read(purchaseHistoryDateFromProvider.notifier).state = d;
+    } else {
+      ref.read(purchaseHistoryDateToProvider.notifier).state = d;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final df = DateFormat('dd MMM yyyy');
+    final pack = ref.watch(purchaseHistoryPackKindFilterProvider);
+    final newest = ref.watch(purchaseHistorySortNewestFirstProvider);
+    final dateFrom = ref.watch(purchaseHistoryDateFromProvider);
+    final dateTo = ref.watch(purchaseHistoryDateToProvider);
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+          left: 16,
+          right: 16,
+          top: 4,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Filters & sort',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 8),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Latest first'),
+                value: newest,
+                onChanged: (v) {
+                  ref.read(purchaseHistorySortNewestFirstProvider.notifier).state =
+                      v;
+                },
+              ),
+              const Divider(),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.hourglass_top_rounded),
+                title: const Text('Pending (confirmed)'),
+                onTap: () {
+                  ref.read(purchaseHistoryPrimaryFilterProvider.notifier).state =
+                      'all';
+                  ref.read(purchaseHistorySecondaryFilterProvider.notifier).state =
+                      'pending';
+                  context.go('/purchase?filter=pending');
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.payments_rounded),
+                title: const Text('Paid (server filter)'),
+                onTap: () {
+                  ref.read(purchaseHistorySecondaryFilterProvider.notifier).state =
+                      null;
+                  ref.read(purchaseHistoryPrimaryFilterProvider.notifier).state =
+                      'paid';
+                  context.go('/purchase?filter=paid');
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.warning_amber_rounded),
+                title: const Text('Overdue'),
+                onTap: () {
+                  ref.read(purchaseHistoryPrimaryFilterProvider.notifier).state =
+                      'all';
+                  ref.read(purchaseHistorySecondaryFilterProvider.notifier).state =
+                      'overdue';
+                  context.go('/purchase?filter=overdue');
+                  Navigator.pop(context);
+                },
+              ),
+              const Divider(),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Purchase date from'),
+                subtitle: Text(dateFrom != null ? df.format(dateFrom) : 'Any'),
+                trailing: IconButton(
+                  icon: const Icon(Icons.clear),
+                  onPressed: () {
+                    ref.read(purchaseHistoryDateFromProvider.notifier).state =
+                        null;
+                  },
+                ),
+                onTap: () => _pickDate(true),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Purchase date to'),
+                subtitle: Text(dateTo != null ? df.format(dateTo) : 'Any'),
+                trailing: IconButton(
+                  icon: const Icon(Icons.clear),
+                  onPressed: () {
+                    ref.read(purchaseHistoryDateToProvider.notifier).state = null;
+                  },
+                ),
+                onTap: () => _pickDate(false),
+              ),
+              DropdownButtonFormField<String?>(
+                key: ValueKey<String?>(pack),
+                initialValue: pack,
+                decoration: const InputDecoration(
+                  labelText: 'Package type',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(value: null, child: Text('Any')),
+                  DropdownMenuItem(value: 'bag', child: Text('Bag only')),
+                  DropdownMenuItem(value: 'box', child: Text('Box only')),
+                  DropdownMenuItem(value: 'tin', child: Text('Tin only')),
+                  DropdownMenuItem(value: 'mixed', child: Text('Mixed')),
+                ],
+                onChanged: (v) {
+                  ref.read(purchaseHistoryPackKindFilterProvider.notifier).state =
+                      v;
+                },
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _supplier,
+                decoration: const InputDecoration(
+                  labelText: 'Supplier name contains',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _broker,
+                decoration: const InputDecoration(
+                  labelText: 'Broker name contains',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () {
+                  ref
+                          .read(purchaseHistorySupplierContainsProvider.notifier)
+                          .state =
+                      _supplier.text.trim().isEmpty ? null : _supplier.text.trim();
+                  ref.read(purchaseHistoryBrokerContainsProvider.notifier).state =
+                      _broker.text.trim().isEmpty ? null : _broker.text.trim();
+                  Navigator.pop(context);
+                },
+                child: const Text('Apply name filters'),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () {
+                  _supplier.clear();
+                  _broker.clear();
+                  ref.read(purchaseHistorySupplierContainsProvider.notifier).state =
+                      null;
+                  ref.read(purchaseHistoryBrokerContainsProvider.notifier).state =
+                      null;
+                  ref.read(purchaseHistoryPackKindFilterProvider.notifier).state =
+                      null;
+                  ref.read(purchaseHistoryDateFromProvider.notifier).state = null;
+                  ref.read(purchaseHistoryDateToProvider.notifier).state = null;
+                },
+                child: const Text('Clear advanced filters'),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -774,7 +1270,6 @@ class _LocalWipDraftHistoryRow extends StatelessWidget {
 class _PurchaseRow extends StatelessWidget {
   const _PurchaseRow({
     required this.p,
-    required this.serial,
     required this.selectMode,
     required this.selected,
     required this.onLongPress,
@@ -786,7 +1281,6 @@ class _PurchaseRow extends StatelessWidget {
   });
 
   final TradePurchase p;
-  final int serial;
   final bool selectMode;
   final bool selected;
   final VoidCallback onLongPress;
@@ -796,57 +1290,13 @@ class _PurchaseRow extends StatelessWidget {
   final VoidCallback onDelete;
   final VoidCallback onShare;
 
-  static ({
-    double kg,
-    double bags,
-    double boxes,
-    double tins,
-  }) _totals(TradePurchase p) {
-    var kg = 0.0;
-    var bags = 0.0;
-    var boxes = 0.0;
-    var tins = 0.0;
-    for (final ln in p.lines) {
-      final ul = ln.unit.trim().toLowerCase();
-      if (unitCountsAsBagFamily(ln.unit)) bags += ln.qty;
-      if (ul == 'box') boxes += ln.qty;
-      if (ul == 'tin') tins += ln.qty;
-      kg += ledgerTradeLineWeightKg(
-        itemName: ln.itemName,
-        unit: ln.unit,
-        qty: ln.qty,
-        catalogDefaultUnit: ln.defaultPurchaseUnit ?? ln.defaultUnit,
-        catalogDefaultKgPerBag: ln.defaultKgPerBag,
-        kgPerUnit: ln.kgPerUnit,
-        boxMode: ln.boxMode,
-        itemsPerBox: ln.itemsPerBox,
-        weightPerItem: ln.weightPerItem,
-        kgPerBox: ln.kgPerBox,
-        weightPerTin: ln.weightPerTin,
-      );
-    }
-    return (kg: kg, bags: bags, boxes: boxes, tins: tins);
-  }
-
   @override
   Widget build(BuildContext context) {
     final st = p.statusEnum;
     final supp = p.supplierName ?? p.supplierId?.toString() ?? '—';
     final df = DateFormat('d MMM yyyy');
-    final t = _totals(p);
-
-    final firstLine = p.lines.isNotEmpty ? p.lines.first : null;
-    final itemName = firstLine?.itemName ?? '—';
-    final moreCount = p.lines.length > 1 ? ' +${p.lines.length - 1}' : '';
-
-    // Prefer "100 bags • 5,000 kg" when we have a container count; otherwise show kg.
-    final weightStr = t.bags > 1e-6
-        ? formatLineQtyWeight(qty: t.bags, unit: 'bag', totalWeightKg: t.kg)
-        : (t.boxes > 1e-6
-            ? formatLineQtyWeight(qty: t.boxes, unit: 'box', totalWeightKg: t.kg)
-            : (t.tins > 1e-6
-                ? formatLineQtyWeight(qty: t.tins, unit: 'tin', totalWeightKg: t.kg)
-                : formatLineQtyWeight(qty: t.kg, unit: 'kg')));
+    final headline = purchaseHistoryItemHeadline(p);
+    final pack = purchaseHistoryPackSummary(p);
 
     final card = Material(
       color: Colors.white,
@@ -856,7 +1306,7 @@ class _PurchaseRow extends StatelessWidget {
         onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(8),
         child: Container(
-          constraints: const BoxConstraints(minHeight: 64),
+          constraints: const BoxConstraints(minHeight: 56),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
@@ -884,7 +1334,7 @@ class _PurchaseRow extends StatelessWidget {
                     ),
                     const SizedBox(height: 1),
                     Text(
-                      '$itemName$moreCount  •  $weightStr',
+                      headline,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -896,7 +1346,19 @@ class _PurchaseRow extends StatelessWidget {
                     ),
                     const SizedBox(height: 1),
                     Text(
-                      '${p.humanId}  ·  ${df.format(p.purchaseDate)}',
+                      pack,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        color: HexaColors.neutral,
+                        height: 1.15,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      '${p.humanId} • ${df.format(p.purchaseDate)}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -985,7 +1447,7 @@ class _MiniBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
-        st.label,
+        _historyPaymentChipLabel(st),
         style: TextStyle(
             fontSize: 9, fontWeight: FontWeight.w700, height: 1.05, color: st.color),
       ),
@@ -1005,13 +1467,31 @@ class _HistoryEmpty extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('No purchases match',
+            Icon(
+              Icons.receipt_long_outlined,
+              size: 56,
+              color: HexaColors.brandPrimary.withValues(alpha: 0.45),
+            ),
+            const SizedBox(height: 12),
+            const Text('No purchases yet',
+                textAlign: TextAlign.center,
                 style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
                     color: HexaColors.brandPrimary)),
-            const SizedBox(height: 16),
-            FilledButton(onPressed: onAdd, child: const Text('Add Purchase')),
+            const SizedBox(height: 8),
+            Text(
+              'Create a purchase to see it here. Search and filters apply once you have bills on file.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.35,
+                color: Colors.grey.shade700,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 20),
+            FilledButton(onPressed: onAdd, child: const Text('New purchase')),
           ],
         ),
       ),

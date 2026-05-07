@@ -40,7 +40,9 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
       case kPurchaseCommissionModeFlatKg:
         return 'Kg';
       case kPurchaseCommissionModeFlatBag:
-        return 'Bag · box';
+        return 'Bag';
+      case kPurchaseCommissionModeFlatBox:
+        return 'Box';
       case kPurchaseCommissionModeFlatTin:
         return 'Tin';
       default:

@@ -1529,37 +1529,43 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
   }
 
   void _wizNext() {
+    // [Bug 3] Validate the current step on press; show the precise missing
+    // field instead of silently disabling the button.
     if (_wizStep != 0) {
       FocusScope.of(context).unfocus();
     }
-    final g = ref.read(purchaseStepGatesProvider);
+    final reasons = ref.read(purchaseStepBlockReasonsProvider);
     setState(() => _inlineSaveError = null);
     if (_wizStep == 0) {
+      if (reasons.from0 != null) {
+        setState(() {
+          _supplierFieldError = reasons.from0;
+          _inlineSaveError = reasons.from0;
+        });
+        // Focus the supplier field so the user immediately sees the red border.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _partySupplierFocus.requestFocus();
+        });
+        return;
+      }
       _partyAdvanceIfValid();
       return;
     }
     if (_wizStep == 1) {
-      if (!g.from1) {
-        setState(() {
-          _inlineSaveError = 'Select a supplier first.';
-        });
-        return;
-      }
-      final termsErr = ref.read(purchaseTermsStepValidationProvider);
-      if (termsErr != null) {
-        setState(() => _inlineSaveError = termsErr);
+      final reason = reasons.from1;
+      if (reason != null) {
+        setState(() => _inlineSaveError = reason);
         return;
       }
       setState(() => _wizStep = 2);
       return;
     }
     if (_wizStep == 2) {
-      if (!g.from2) {
-        final v = ref.read(purchaseSaveValidationProvider);
+      final reason = reasons.from2;
+      if (reason != null) {
         setState(() {
-          _inlineSaveError = v.errorMessage ??
-              (v.lineErrors.isNotEmpty ? v.lineErrors.values.first : null) ??
-              'Add at least one valid item.';
+          _inlineSaveError = reason;
           _supplierFieldError = null;
           _brokerFieldError = null;
         });
@@ -1677,16 +1683,15 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
   }
 
   Widget _wizardFooterChrome(List<Map<String, dynamic>> catalog, bool isEdit) {
-    final gates = ref.watch(purchaseStepGatesProvider);
+    // [Bug 3 fix] Continue is ALWAYS enabled. Clicking validates the step and
+    // shows the exact missing field via [_wizNext]. No silent disables.
     final saveVal = ref.watch(purchaseSaveValidationProvider);
-    final linesEmpty =
-        ref.watch(purchaseDraftProvider.select((d) => d.lines.isEmpty));
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (_inlineSaveError != null && (_wizStep == 2 || _wizStep == 3))
+        if (_inlineSaveError != null)
           Material(
             color: Colors.red[50],
             child: Padding(
@@ -1697,46 +1702,15 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
               ),
             ),
           ),
-        if (_wizStep == 0) ...[
+        if (_wizStep == 0 || _wizStep == 1 || _wizStep == 2) ...[
           SizedBox(
             height: 56,
             width: double.infinity,
             child: FilledButton(
-              onPressed: (_isSaving || !gates.from0) ? null : _wizNext,
+              onPressed: _isSaving ? null : _wizNext,
               child: const Text(
                 'Continue →',
                 style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-              ),
-            ),
-          ),
-        ],
-        if (_wizStep == 1) ...[
-          SizedBox(
-            height: 56,
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: (_isSaving || !gates.from1) ? null : _wizNext,
-              child: const Text(
-                'Continue →',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-              ),
-            ),
-          ),
-        ],
-        if (_wizStep == 2) ...[
-          Opacity(
-            opacity:
-                !_isSaving && linesEmpty && !gates.from2 ? 0.4 : 1.0,
-            child: SizedBox(
-              height: 56,
-              width: double.infinity,
-              child: FilledButton(
-                onPressed:
-                    (_isSaving || !gates.from2) ? null : _wizNext,
-                child: const Text(
-                  'Continue →',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                ),
               ),
             ),
           ),
@@ -1757,8 +1731,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
             height: 60,
             width: double.infinity,
             child: FilledButton(
-              onPressed:
-                  (!saveVal.isOk || _isSaving) ? null : _validateAndSave,
+              onPressed: _isSaving ? null : _validateAndSave,
               child: _isSaving
                   ? const SizedBox(
                       height: 22,

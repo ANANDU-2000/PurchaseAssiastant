@@ -16,6 +16,7 @@ import '../../../core/reporting/trade_report_aggregate.dart'
         sortTradeReportItemsAll;
 import '../../../core/services/reports_pdf.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/utils/line_display.dart';
 import '../reports_prefs.dart';
 
 String _digitsOnly(String s) {
@@ -62,25 +63,25 @@ String _inrPlain(num n) =>
 
 String _qtyLinePlain(TradeReportTotals t) {
   final p = <String>[];
-  if (t.kg > 1e-9) p.add('${_kgPlain(t.kg)} KG');
-  if (t.bags > 1e-9) p.add('${_qtyPlain(t.bags)} BAGS');
-  if (t.boxes > 1e-9) p.add('${_qtyPlain(t.boxes)} BOX');
-  if (t.tins > 1e-9) p.add('${_qtyPlain(t.tins)} TIN');
+  if (t.bags > 1e-9) {
+    p.add(formatPackagedQty(unit: 'bag', pieces: t.bags, kg: t.kg));
+  } else if (t.kg > 1e-9) {
+    p.add(formatPackagedQty(unit: 'kg', pieces: t.kg));
+  }
+  if (t.boxes > 1e-9) p.add(formatPackagedQty(unit: 'box', pieces: t.boxes));
+  if (t.tins > 1e-9) p.add(formatPackagedQty(unit: 'tin', pieces: t.tins));
   return p.join(' • ');
 }
 
-String _kgPlain(double kg) =>
-    (kg - kg.roundToDouble()).abs() < 1e-6 ? '${kg.round()}' : kg.toStringAsFixed(1);
-
-String _qtyPlain(double q) =>
-    (q - q.roundToDouble()).abs() < 1e-6 ? '${q.round()}' : q.toStringAsFixed(1);
-
 String reportQtySummaryPlain(TradeReportItemRow r) {
   final p = <String>[];
-  if (r.kg > 1e-9) p.add('${_kgPlain(r.kg)} KG');
-  if (r.bags > 1e-9) p.add('${_qtyPlain(r.bags)} BAGS');
-  if (r.boxes > 1e-9) p.add('${_qtyPlain(r.boxes)} BOX');
-  if (r.tins > 1e-9) p.add('${_qtyPlain(r.tins)} TIN');
+  if (r.bags > 1e-9) {
+    p.add(formatPackagedQty(unit: 'bag', pieces: r.bags, kg: r.kg));
+  } else if (r.kg > 1e-9) {
+    p.add(formatPackagedQty(unit: 'kg', pieces: r.kg));
+  }
+  if (r.boxes > 1e-9) p.add(formatPackagedQty(unit: 'box', pieces: r.boxes));
+  if (r.tins > 1e-9) p.add(formatPackagedQty(unit: 'tin', pieces: r.tins));
   return p.join(' • ');
 }
 

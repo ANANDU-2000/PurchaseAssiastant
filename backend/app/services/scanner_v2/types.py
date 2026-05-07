@@ -118,6 +118,15 @@ class ScanMeta(_BaseV2):
     parse_warnings: list[str] = Field(default_factory=list)
     ocr_chars: int = 0
     image_bytes_in: int = 0
+    # Added in production rebuild: typed error hints for trader-friendly UI.
+    error_stage: str | None = None  # e.g. ocr | parse | match | validate
+    error_code: str | None = None  # stable string code for UX copy
+    error_message: str | None = None  # short safe message (no stack traces)
+
+    # Realtime scan status (scanner v3 start/status polling).
+    stage: str | None = None  # preparing_image|uploading|extracting_text|parsing_items|matching|validating|ready|error
+    stage_progress: float | None = Field(default=None, ge=0.0, le=1.0)
+    stage_log: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ScanResult(_BaseV2):

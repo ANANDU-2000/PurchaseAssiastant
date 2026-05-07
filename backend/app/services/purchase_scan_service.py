@@ -16,6 +16,17 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _score_text(text: str) -> int:
+    """Simple heuristic score: prefer longer, more numeric-heavy OCR."""
+    t = (text or "").strip()
+    if not t:
+        return 0
+    digits = sum(1 for ch in t if ch.isdigit())
+    letters = sum(1 for ch in t if ch.isalpha())
+    lines = t.count("\n") + 1
+    return len(t) + digits * 3 + min(40, letters) + min(30, lines * 3)
+
+
 async def image_bytes_to_text_gemini_free(image_bytes: bytes) -> tuple[str, float]:
     """Uses Gemini Flash (free tier) to extract raw text from a bill image.
 
@@ -73,49 +84,76 @@ async def image_bytes_to_text(settings: Settings, image_bytes: bytes) -> tuple[s
     Uses Google Vision `DOCUMENT_TEXT_DETECTION` when `enable_ocr` and `ocr_api_key` are set;
     then tries Gemini free OCR (GEMINI_API_KEY) when Vision isn't configured.
     """
-    if getattr(settings, "enable_ocr", False):
+    # Preprocess into multiple variants to improve handwriting OCR.
+    try:
+        from app.services.scanner_v2.preprocess import preprocess_variants
+
+        variants = preprocess_variants(image_bytes)
+    except Exception:  # noqa: BLE001
+        variants = []
+    if not variants:
+        variants = [type("V", (), {"name": "orig", "jpeg_bytes": image_bytes})()]  # simple fallback
+
+    best_text = ""
+    best_conf = 0.0
+    best_score = 0
+
+    async def _try_vision(jpeg: bytes) -> tuple[str, float]:
+        if not getattr(settings, "enable_ocr", False):
+            return "", 0.0
         key = getattr(settings, "ocr_api_key", None)
-        if key:
-            b64 = base64.b64encode(image_bytes).decode("ascii")
-            url = f"https://vision.googleapis.com/v1/images:annotate?key={key}"
-            payload = {
-                "requests": [
-                    {
-                        "image": {"content": b64},
-                        "features": [{"type": "DOCUMENT_TEXT_DETECTION", "maxResults": 1}],
-                    }
-                ]
-            }
-            try:
-                async with httpx.AsyncClient(timeout=60.0) as client:
-                    r = await client.post(url, json=payload)
-                    r.raise_for_status()
-                    data = r.json()
-            except Exception as e:  # noqa: BLE001
-                logger.warning("Vision OCR failed: %s", e)
-                data = None
+        if not key:
+            return "", 0.0
+        b64 = base64.b64encode(jpeg).decode("ascii")
+        url = f"https://vision.googleapis.com/v1/images:annotate?key={key}"
+        payload = {
+            "requests": [
+                {
+                    "image": {"content": b64},
+                    "features": [{"type": "DOCUMENT_TEXT_DETECTION", "maxResults": 1}],
+                }
+            ]
+        }
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            r = await client.post(url, json=payload)
+            r.raise_for_status()
+            data = r.json()
+        resp0 = (data.get("responses") or [{}])[0]
+        if resp0.get("error"):
+            return "", 0.0
+        ann = resp0.get("fullTextAnnotation") or {}
+        text = (ann.get("text") or "").strip()
+        try:
+            conf = float(resp0.get("textAnnotations", [{}])[0].get("confidence", 0.5) or 0.45)
+        except Exception:  # noqa: BLE001
+            conf = 0.45
+        return text, conf if text else 0.0
 
-            if data is not None:
-                try:
-                    resp0 = data["responses"][0]
-                    if resp0.get("error"):
-                        logger.warning("Vision OCR error payload: %s", resp0["error"])
-                    else:
-                        ann = resp0.get("fullTextAnnotation") or {}
-                        text = (ann.get("text") or "").strip()
-                        conf = float(
-                            resp0.get("textAnnotations", [{}])[0].get("confidence", 0.5)
-                            or 0.45
-                        )
-                        if text:
-                            return text, conf
-                except (KeyError, IndexError, TypeError, ValueError):
-                    raw = json.dumps(data)[:2000] if data is not None else "null"
-                    logger.warning("Vision OCR unexpected JSON: %s", raw)
+    for v in variants:
+        jpeg = getattr(v, "jpeg_bytes", b"") or b""
+        if not jpeg:
+            continue
+        # 1) Google Vision (when enabled)
+        try:
+            t, c = await _try_vision(jpeg)
+            sc = _score_text(t)
+            if sc > best_score:
+                best_text, best_conf, best_score = t, c, sc
+            if best_score >= 1400:  # early stop when we already got a strong OCR
+                return best_text, best_conf
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Vision OCR failed (%s): %s", getattr(v, "name", "?"), e)
+        # 2) Gemini free fallback (even when enable_ocr is off)
+        try:
+            t, c = await image_bytes_to_text_gemini_free(jpeg)
+            sc = _score_text(t)
+            if sc > best_score:
+                best_text, best_conf, best_score = t, c, sc
+            if best_score >= 1400:
+                return best_text, best_conf
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Gemini OCR failed (%s): %s", getattr(v, "name", "?"), e)
 
-    # Gemini free fallback (even when enable_ocr is off or Vision key missing)
-    text, conf = await image_bytes_to_text_gemini_free(image_bytes)
-    if text:
-        return text, conf
-
+    if best_text.strip():
+        return best_text.strip(), float(best_conf or 0.0)
     return "", 0.0

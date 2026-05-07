@@ -279,6 +279,96 @@ final purchaseTermsStepValidationProvider = Provider<String?>((ref) {
   return null;
 });
 
+/// First missing-field message that blocks each wizard step transition.
+///
+/// [Bug 3 fix] The wizard footer now ALWAYS enables Continue and uses these
+/// reasons to show inline errors + scroll to the failing field, instead of
+/// silently disabling the button.
+@immutable
+class PurchaseStepBlockReasons {
+  const PurchaseStepBlockReasons({
+    this.from0,
+    this.from1,
+    this.from2,
+    this.from3,
+    this.firstLineIndexError,
+    this.firstLineErrorField,
+  });
+
+  /// Party → Terms: missing supplier.
+  final String? from0;
+  /// Terms → Items: bad broker commission etc.
+  final String? from1;
+  /// Items → Review: at least one valid line, all lines save-ready.
+  final String? from2;
+  /// Save: same as `from2` plus header validations.
+  final String? from3;
+  /// Index of the first invalid line (used for auto-scroll).
+  final int? firstLineIndexError;
+  /// Field key on the first invalid line for inline highlighting.
+  final String? firstLineErrorField;
+}
+
+/// Field key derived from a line save-block reason (used for inline borders).
+String? _lineFieldKeyForReason(String reason) {
+  final r = reason.toLowerCase();
+  if (r.contains('item')) return 'item';
+  if (r.contains('quantity') || r.contains('qty') || r.contains('whole')) {
+    return 'qty';
+  }
+  if (r.contains('unit')) return 'unit';
+  if (r.contains('kg per bag') || r.contains('kg per unit')) return 'kg_per_bag';
+  if (r.contains('per-kg cost') || r.contains('purchase rate') ||
+      r.contains('landing cost')) {
+    return 'landing';
+  }
+  if (r.contains('hsn')) return 'hsn';
+  return null;
+}
+
+final purchaseStepBlockReasonsProvider =
+    Provider<PurchaseStepBlockReasons>((ref) {
+  final d = ref.watch(purchaseDraftProvider);
+
+  // Step 0 → 1: supplier required.
+  String? from0;
+  if (d.supplierId == null || d.supplierId!.trim().isEmpty) {
+    from0 = 'Select a supplier to continue.';
+  }
+
+  // Step 1 → 2: terms validation (broker commission ranges).
+  final from1 = from0 ?? ref.watch(purchaseTermsStepValidationProvider);
+
+  // Step 2 → 3 (and Save): supplier + at least one save-ready line.
+  String? from2 = from1;
+  int? firstLineIdx;
+  String? firstLineField;
+  if (from2 == null) {
+    if (d.lines.isEmpty) {
+      from2 = 'Add at least one item to continue.';
+    } else {
+      for (var i = 0; i < d.lines.length; i++) {
+        final reason = purchaseLineSaveBlockReason(d.lines[i]);
+        if (reason != null) {
+          from2 = 'Item ${i + 1}: $reason';
+          firstLineIdx = i;
+          firstLineField = _lineFieldKeyForReason(reason);
+          break;
+        }
+      }
+    }
+  }
+
+  return PurchaseStepBlockReasons(
+    from0: from0,
+    from1: from1,
+    from2: from2,
+    from3: from2,
+    firstLineIndexError: firstLineIdx,
+    firstLineErrorField: firstLineField,
+  );
+});
+
 class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
   /// Tracked manually because Riverpod 2.6 lacks `ref.mounted` on
   /// `NotifierProviderRef`. Guards post-await `state = ...` assignments.

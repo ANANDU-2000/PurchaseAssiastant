@@ -62,9 +62,13 @@ class UnitClassifier {
     final nameUp = itemName.toUpperCase();
     final hasBagWord = nameUp.contains('BAG');
     final defaultIsBag = cat.toUpperCase() == 'BAG';
+    final lineIsBag = effU == 'BAG' || effU == 'SACK';
     if (kgFromName != null &&
         kgFromName > 0 &&
-        (hasBagWord || defaultIsBag)) {
+        (hasBagWord || defaultIsBag || lineIsBag)) {
+      // [Bug 2 fix] When the user has chosen `bag` for this line, treat names
+      // like `SUGAR 50 KG` as weight-bags so the wizard auto-derives
+      // `per_bag_kg` (50) and `total_kg = qty × 50`.
       return UnitClassification(
         type: UnitType.weightBag,
         kgFromName: kgFromName,

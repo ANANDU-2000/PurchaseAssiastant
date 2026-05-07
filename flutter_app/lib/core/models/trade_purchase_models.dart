@@ -241,6 +241,7 @@ String _normTradePurchaseCommissionMode(String? raw) {
     case 'flat_invoice':
     case 'flat_kg':
     case 'flat_bag':
+    case 'flat_box':
     case 'flat_tin':
       return m;
     default:

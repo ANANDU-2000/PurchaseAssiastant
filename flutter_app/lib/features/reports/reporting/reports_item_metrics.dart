@@ -2,32 +2,26 @@ import 'package:intl/intl.dart';
 
 import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/reporting/trade_report_aggregate.dart';
+import '../../../core/utils/line_display.dart';
 
 String reportQtySummaryBoldLine(TradeReportItemRow r) {
+  // [Bug 7/8 fix] Unified row format:
+  // - Bag: `5000 KG • 100 BAGS`
+  // - Box: `100 BOXES` (no kg)
+  // - Tin: `50 TINS` (no kg)
+  // - ItemsAll: join the above parts with ` • `.
   final parts = <String>[];
-  if (r.kg > 1e-9) {
-    final k = r.kg;
-    final kTxt =
-        (k - k.roundToDouble()).abs() < 1e-6 ? '${k.round()}' : k.toStringAsFixed(1);
-    parts.add('$kTxt KG');
-  }
   if (r.bags > 1e-9) {
-    final q = r.bags;
-    final qTxt =
-        (q - q.roundToDouble()).abs() < 1e-6 ? '${q.round()}' : q.toStringAsFixed(1);
-    parts.add('$qTxt BAGS');
+    parts.add(formatPackagedQty(unit: 'bag', pieces: r.bags, kg: r.kg));
+  } else if (r.kg > 1e-9) {
+    // Loose-kg rows (rare in Items tab): show kg only.
+    parts.add(formatPackagedQty(unit: 'kg', pieces: r.kg));
   }
   if (r.boxes > 1e-9) {
-    final q = r.boxes;
-    final qTxt =
-        (q - q.roundToDouble()).abs() < 1e-6 ? '${q.round()}' : q.toStringAsFixed(1);
-    parts.add('$qTxt BOX');
+    parts.add(formatPackagedQty(unit: 'box', pieces: r.boxes));
   }
   if (r.tins > 1e-9) {
-    final q = r.tins;
-    final qTxt =
-        (q - q.roundToDouble()).abs() < 1e-6 ? '${q.round()}' : q.toStringAsFixed(1);
-    parts.add('$qTxt TIN');
+    parts.add(formatPackagedQty(unit: 'tin', pieces: r.tins));
   }
   return parts.join(' • ');
 }

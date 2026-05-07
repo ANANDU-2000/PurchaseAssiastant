@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/reporting/trade_report_aggregate.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/utils/line_display.dart';
 
 String _inr0(num n) =>
     NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
@@ -102,6 +103,9 @@ class ReportsFullListPage extends StatelessWidget {
           ),
           Expanded(
             child: switch (kind) {
+              // [Bug 7/8 fix] BAG rows: "5000 KG • 100 BAGS"; BOX/TIN: count
+              // only — no kg suffix. Using shared formatPackagedQty so the
+              // same rules apply across home / detail / reports / history.
               ReportsFullListKind.itemsBag => ListView.builder(
                   padding:
                       const EdgeInsets.fromLTRB(16, 8, 16, 32),
@@ -109,11 +113,15 @@ class ReportsFullListPage extends StatelessWidget {
                       _filterItems(agg.itemsBag).length,
                   itemBuilder: (c, i) {
                     final r = _filterItems(agg.itemsBag)[i];
+                    final qty = formatPackagedQty(
+                      unit: 'bag',
+                      pieces: r.bags,
+                      kg: r.kg,
+                    );
                     return ListTile(
                       title: Text(r.name),
                       subtitle: Text(
-                        '${_qtyReadable(r.bags)} bags · ${_kgReadable(r.kg)} kg · '
-                        '${_inr0(r.amountInr)} · ${r.dealIds.length} deals',
+                        '$qty · ${_inr0(r.amountInr)} · ${r.dealIds.length} deals',
                       ),
                     );
                   },
@@ -125,11 +133,12 @@ class ReportsFullListPage extends StatelessWidget {
                       _filterItems(agg.itemsBox).length,
                   itemBuilder: (c, i) {
                     final r = _filterItems(agg.itemsBox)[i];
+                    final qty =
+                        formatPackagedQty(unit: 'box', pieces: r.boxes);
                     return ListTile(
                       title: Text(r.name),
                       subtitle: Text(
-                        '${_qtyReadable(r.boxes)} box · ${_kgReadable(r.kg)} kg · '
-                        '${_inr0(r.amountInr)} · ${r.dealIds.length} deals',
+                        '$qty · ${_inr0(r.amountInr)} · ${r.dealIds.length} deals',
                       ),
                     );
                   },
@@ -141,11 +150,12 @@ class ReportsFullListPage extends StatelessWidget {
                       _filterItems(agg.itemsTin).length,
                   itemBuilder: (c, i) {
                     final r = _filterItems(agg.itemsTin)[i];
+                    final qty =
+                        formatPackagedQty(unit: 'tin', pieces: r.tins);
                     return ListTile(
                       title: Text(r.name),
                       subtitle: Text(
-                        '${_qtyReadable(r.tins)} tin · ${_kgReadable(r.kg)} kg · '
-                        '${_inr0(r.amountInr)} · ${r.dealIds.length} deals',
+                        '$qty · ${_inr0(r.amountInr)} · ${r.dealIds.length} deals',
                       ),
                     );
                   },

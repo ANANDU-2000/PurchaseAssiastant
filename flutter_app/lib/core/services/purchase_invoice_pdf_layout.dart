@@ -194,6 +194,7 @@ String? _brokerCommissionBrokerBlockLine(TradePurchase p) {
     'flat_invoice' => 'Commission: ${_rsPdf(cm)} (once on bill)',
     'flat_kg' => 'Commission: ${_rsPdf(cm)} / kg',
     'flat_bag' => 'Commission: ${_rsPdf(cm)} / bag',
+    'flat_box' => 'Commission: ${_rsPdf(cm)} / box',
     'flat_tin' => 'Commission: ${_rsPdf(cm)} / tin',
     _ => 'Commission: (see totals)',
   };
@@ -334,7 +335,8 @@ String _brokerCommissionPdfLabel(TradePurchase p) {
   return switch (mode) {
     'flat_invoice' => 'Broker commission (fixed, bill)',
     'flat_kg' => 'Broker commission (per kg × total kg)',
-    'flat_bag' => 'Broker commission (per bag · box · sack × qty)',
+    'flat_bag' => 'Broker commission (per bag × qty)',
+    'flat_box' => 'Broker commission (per box × qty)',
     'flat_tin' => 'Broker commission (per tin × qty)',
     _ => 'Broker commission',
   };

@@ -178,7 +178,7 @@ class TradePurchaseCreateRequest(DecimalModel):
     commission_percent: Decimal | None = Field(None, ge=0)
     commission_mode: str = Field(
         default="percent",
-        pattern="^(percent|flat_invoice|flat_kg|flat_bag|flat_tin)$",
+        pattern="^(percent|flat_invoice|flat_kg|flat_bag|flat_box|flat_tin)$",
     )
     commission_money: Decimal | None = Field(None, ge=0)
     delivered_rate: Decimal | None = Field(None, ge=0)
@@ -204,7 +204,7 @@ class TradePurchaseCreateRequest(DecimalModel):
     def _normalize_decimal_precision(self) -> "TradePurchaseCreateRequest":
         self.discount = dp.percent(self.discount) if self.discount is not None else None
         mode = self.commission_mode.strip().lower()
-        if mode not in ("percent", "flat_invoice", "flat_kg", "flat_bag", "flat_tin"):
+        if mode not in ("percent", "flat_invoice", "flat_kg", "flat_bag", "flat_box", "flat_tin"):
             mode = "percent"
         self.commission_mode = mode
         if mode == "percent":

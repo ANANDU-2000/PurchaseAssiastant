@@ -163,7 +163,27 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         return;
       }
     }
+    _maybeAutoSeedKgFromName();
     if (_errItem != null) setState(() => _errItem = null);
+  }
+
+  /// [Bug 2 fix] When unit is `bag` and the item label contains "NN KG"
+  /// (e.g. "SUGAR 50 KG"), auto-populate `_kgPerUnit` and the kg-per-bag input
+  /// so 100 bags × 50kg = 5000 kg renders correctly without a manual entry.
+  /// Catalog kg/bag (when present) wins over name parsing.
+  void _maybeAutoSeedKgFromName() {
+    if (_kgPerUnit != null && _kgPerUnit! > 0) return;
+    final u = _unitCtrl.text.trim().toLowerCase();
+    if (u != 'bag' && u != 'sack') return;
+    if (_hasCatalogKg()) return;
+    final c = _activeClassification();
+    final kn = c.kgFromName;
+    if (kn == null || kn <= 0) return;
+    setState(() {
+      _kgPerUnit = kn;
+      _weightPricing = true;
+      _kgPerBagCtrl.text = _fmtQty(kn);
+    });
   }
 
   void _onKgPerBagChanged() {
@@ -475,12 +495,14 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     return x == 'bag' || x == 'sack';
   }
 
+  // Master rebuild: only kg / bag / box / tin are allowed for new lines.
+  // `sack` and `piece` removed from the dropdown; legacy rows still display
+  // (sack normalized to bag for back-compat, see _onUnitDropdownChanged).
   static const _unitDropdownBaseChoices = <String>[
     'kg',
     'bag',
     'box',
     'tin',
-    'piece',
   ];
 
   List<String> _suggestedUnitChoices() {
@@ -492,27 +514,22 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     // Always include the currently selected unit (even if it isn't in the base list).
     final out = <String>{};
 
-    // If catalog has an explicit default unit, bias to that family.
     if (du == 'bag' || du == 'sack') {
       out.addAll(const {'bag', 'kg'});
     } else if (du == 'box') {
-      out.addAll(const {'box', 'piece', 'kg'});
+      out.addAll(const {'box', 'kg'});
     } else if (du == 'tin') {
       out.addAll(const {'tin', 'kg'});
-    } else if (du == 'piece') {
-      out.addAll(const {'piece', 'kg'});
     } else if (du == 'kg') {
-      out.addAll(const {'kg', 'bag', 'piece'});
+      out.addAll(const {'kg', 'bag'});
     }
 
-    // If classifier is confident, reinforce the family.
     if (c.type == UnitType.weightBag) {
       out.addAll(const {'bag', 'kg'});
     } else if (c.type == UnitType.multiPackBox) {
-      out.addAll(const {'box', 'piece', 'kg'});
+      out.addAll(const {'box', 'kg'});
     } else if (c.type == UnitType.singlePack) {
-      // Single pack could be tin/box/piece; keep conservative.
-      out.addAll(const {'piece', 'kg'});
+      out.addAll(const {'kg'});
       if (_lineUnitIsBox(_unitCtrl.text)) out.add('box');
       if (_lineUnitIsTin(_unitCtrl.text)) out.add('tin');
     }
@@ -574,6 +591,9 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       _unitCtrl.text = v;
       _adjustBoxFixedForClassification(_activeClassification());
     });
+    // [Bug 2] After switching to bag, seed kg-per-bag from item name if catalog
+    // didn't provide one (`SUGAR 50 KG` → 50, `RICE 26 KG` → 26).
+    _maybeAutoSeedKgFromName();
   }
 
   Widget _unitDropdownField({required String? errorText}) {
@@ -1449,45 +1469,57 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     }
     if (_ratesPerKgEconomics) m['purchase_rate'] = m['landing_cost'];
     final unitLow = unit.toLowerCase();
-    if (unitLow == 'box') {
-      if (clf.type == UnitType.multiPackBox || !_boxFixedWeight) {
-        m['box_mode'] = 'items_per_box';
-        final items = _parseD(_itemsPerBoxCtrl.text);
-        final weight = _parseD(_weightPerItemCtrl.text);
-        if (items != null) m['items_per_box'] = items;
-        if (weight != null) m['weight_per_item'] = weight;
-      } else if (clf.type == UnitType.singlePack) {
-        final kg =
-            _parseD(_kgPerBoxCtrl.text) ?? clf.kgFromName ?? _kgPer();
-        if (kg != null && kg > 0) {
-          m['box_mode'] = 'fixed_weight_box';
-          m['kg_per_box'] = kg;
-          m['weight_per_unit'] = kg;
-        }
-      } else {
-        if (_boxFixedWeight) {
-          m['box_mode'] = 'fixed_weight_box';
-          final kg = _parseD(_kgPerBoxCtrl.text) ?? _kgPer();
-          if (kg != null) {
-            m['kg_per_box'] = kg;
-            m['weight_per_unit'] = kg;
-          }
-        } else {
+    // [Bug 1 fix] Default wholesale mode: BOX/TIN are count-only — never write
+    // weight fields, items_per_box, kg_per_box, weight_per_tin, or
+    // weight_per_unit. The advanced inventory escape hatch is intentionally
+    // off (_advancedInventoryEnabled = false in master rebuild).
+    final isBoxOrTin = unitLow == 'box' || unitLow == 'tin';
+    if (isBoxOrTin && _advancedInventoryEnabled) {
+      if (unitLow == 'box') {
+        if (clf.type == UnitType.multiPackBox || !_boxFixedWeight) {
           m['box_mode'] = 'items_per_box';
           final items = _parseD(_itemsPerBoxCtrl.text);
           final weight = _parseD(_weightPerItemCtrl.text);
           if (items != null) m['items_per_box'] = items;
           if (weight != null) m['weight_per_item'] = weight;
+        } else if (clf.type == UnitType.singlePack) {
+          final kg =
+              _parseD(_kgPerBoxCtrl.text) ?? clf.kgFromName ?? _kgPer();
+          if (kg != null && kg > 0) {
+            m['box_mode'] = 'fixed_weight_box';
+            m['kg_per_box'] = kg;
+            m['weight_per_unit'] = kg;
+          }
+        } else {
+          if (_boxFixedWeight) {
+            m['box_mode'] = 'fixed_weight_box';
+            final kg = _parseD(_kgPerBoxCtrl.text) ?? _kgPer();
+            if (kg != null) {
+              m['kg_per_box'] = kg;
+              m['weight_per_unit'] = kg;
+            }
+          } else {
+            m['box_mode'] = 'items_per_box';
+            final items = _parseD(_itemsPerBoxCtrl.text);
+            final weight = _parseD(_weightPerItemCtrl.text);
+            if (items != null) m['items_per_box'] = items;
+            if (weight != null) m['weight_per_item'] = weight;
+          }
+        }
+      } else if (unitLow == 'tin') {
+        final wt =
+            _parseD(_weightPerTinCtrl.text) ?? clf.kgFromName ?? _kgPer();
+        if (wt != null) {
+          m['weight_per_tin'] = wt;
+          m['weight_per_unit'] = wt;
         }
       }
     }
-    if (unitLow == 'tin') {
-      final wt =
-          _parseD(_weightPerTinCtrl.text) ?? clf.kgFromName ?? _kgPer();
-      if (wt != null) {
-        m['weight_per_tin'] = wt;
-        m['weight_per_unit'] = wt;
-      }
+    // For default wholesale mode: do not emit kg_per_unit / weight_per_unit /
+    // box_mode for box/tin. The line carries qty + purchase_rate only.
+    if (isBoxOrTin && !_advancedInventoryEnabled) {
+      m.remove('kg_per_unit');
+      m.remove('weight_per_unit');
     }
     if (!widget.omitLineFreightDeliveredBilltyDiscount) {
       if (disc != null && disc > 0) m['discount'] = disc;

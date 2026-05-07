@@ -556,6 +556,50 @@ async def scan_purchase_bill_v2(
     return await scan_purchase_v2(db=db, business_id=business_id, settings=settings, image_bytes=raw)
 
 
+class ScanPurchaseV3StartResponse(BaseModel):
+    scan_token: str = Field(..., min_length=8)
+
+
+@router.post("/scan-purchase-v3/start", response_model=ScanPurchaseV3StartResponse)
+async def scan_purchase_bill_v3_start(
+    business_id: Annotated[uuid.UUID, Query(..., description="Primary workspace for membership check")],
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    _m: Annotated[Membership, Depends(require_membership)],
+    image: UploadFile = File(..., description="Bill photo (JPEG/PNG/WebP)"),
+):
+    """Scanner v3: start an async scan and return a scan_token immediately."""
+    del user
+    del db  # v3 scan runs in background using async_session_factory
+    raw = await image.read()
+    if len(raw) == 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Empty upload")
+    if len(raw) > 8_000_000:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Image too large (max ~8MB)")
+    from app.services.scanner_v3.pipeline import start_scan
+
+    token = start_scan(business_id=business_id, image_bytes=raw, settings=settings)
+    return ScanPurchaseV3StartResponse(scan_token=token)
+
+
+@router.get("/scan-purchase-v3/status", response_model=ScanResult)
+async def scan_purchase_bill_v3_status(
+    business_id: Annotated[uuid.UUID, Query(..., description="Primary workspace for membership check")],
+    user: Annotated[User, Depends(get_current_user)],
+    _m: Annotated[Membership, Depends(require_membership)],
+    scan_token: Annotated[str, Query(..., min_length=8)],
+):
+    """Scanner v3: poll current scan status + partial result (if available)."""
+    del user
+    from app.services.scanner_v3.pipeline import get_status
+
+    s = get_status(business_id=business_id, scan_token=scan_token)
+    if s is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid or expired scan_token")
+    return s
+
+
 @router.post("/scan-purchase-v2/correct")
 async def scan_purchase_bill_v2_correct(
     business_id: Annotated[uuid.UUID, Query(..., description="Primary workspace for membership check")],

@@ -101,12 +101,20 @@ class BrokerHistoryPage extends ConsumerWidget {
   ) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-    final qtySummary = formatLineQtyWeight(
-      qty: row.qty,
-      unit: row.unit,
-      totalWeightKg: row.kg > 1e-9 ? row.kg : null,
-      kgPerUnit: null,
-    );
+    final uRaw = row.unit.trim().toLowerCase();
+    final u = uRaw == 'sack' ? 'bag' : uRaw;
+    final qtySummary = (u == 'bag')
+        ? formatPackagedQty(unit: 'bag', pieces: row.qty, kg: row.kg)
+        : (u == 'box')
+            ? formatPackagedQty(unit: 'box', pieces: row.qty)
+            : (u == 'tin')
+                ? formatPackagedQty(unit: 'tin', pieces: row.qty)
+                : formatLineQtyWeight(
+                    qty: row.qty,
+                    unit: row.unit,
+                    totalWeightKg: row.kg > 1e-9 ? row.kg : null,
+                    kgPerUnit: null,
+                  );
     return InkWell(
       onTap: () => context.push('/purchase/detail/${row.purchaseId}'),
       onLongPress: () => _openRowActions(context, ref, row),

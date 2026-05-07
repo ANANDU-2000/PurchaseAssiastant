@@ -150,14 +150,19 @@ Future<List<TradePurchase>> _loadReportsPurchases(Ref ref) async {
       try {
         final aggregated = <Map<String, dynamic>>[];
         for (var offset = 0;; offset += 50) {
-          final page = await api.listTradePurchases(
-            businessId: bid,
-            limit: 50,
-            offset: offset,
-            status: 'all',
-            purchaseFrom: fromStr,
-            purchaseTo: toStr,
-          );
+          // [Bug 5 fix] Hard timeout on each page so a cold/unreachable Render
+          // host can never hang the Reports page forever — we just fall back to
+          // cached data + a Retry banner.
+          final page = await api
+              .listTradePurchases(
+                businessId: bid,
+                limit: 50,
+                offset: offset,
+                status: 'all',
+                purchaseFrom: fromStr,
+                purchaseTo: toStr,
+              )
+              .timeout(const Duration(seconds: 10));
           if (page.isEmpty) break;
           aggregated.addAll(page);
           if (page.length < 50) break;

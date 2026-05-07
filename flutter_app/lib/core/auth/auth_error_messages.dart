@@ -24,11 +24,20 @@ String? _connectionUnreachableHint(DioException e) {
     }
     return 'Cannot reach the server. It may be temporarily unavailable—try again shortly.';
   }
-  if (lower.contains('network is unreachable') ||
-      lower.contains('connection reset') ||
-      lower.contains('connection timed out') ||
-      lower.contains('timed out')) {
-    return 'No internet connection. Check your network and try again.';
+  // Distinguish timeout vs offline: a slow server is not "no internet".
+  if (lower.contains('connection timed out') ||
+      lower.contains('timed out') ||
+      lower.contains('took longer') ||
+      lower.contains('deadline exceeded') ||
+      lower.contains('receive timeout') ||
+      lower.contains('send timeout')) {
+    return 'Request timed out. The server may be slow or your connection is unstable—try again.';
+  }
+  if (lower.contains('network is unreachable')) {
+    return 'You appear to be offline. Check your network and try again.';
+  }
+  if (lower.contains('connection reset')) {
+    return 'Connection was interrupted. Try again.';
   }
   return null;
 }
@@ -43,7 +52,7 @@ String? _webBrowserNetworkHint(DioException e) {
       blob.contains('load failed') ||
       blob.contains('err_network') ||
       blob.contains('cors')) {
-    return 'No internet connection. Check your network and try again.';
+    return 'Cannot reach the server (network/CORS). Check your connection and try again.';
   }
   return null;
 }
@@ -58,6 +67,20 @@ bool isDioNoConnectionError(DioException e) {
       t == DioExceptionType.receiveTimeout ||
       t == DioExceptionType.connectionError ||
       (t == DioExceptionType.unknown && e.response == null);
+}
+
+/// For bill scan uploads: do **not** treat read/write timeouts as "offline".
+/// Queue offline only when the transport layer cannot connect.
+bool shouldQueueScanOffline(DioException e) {
+  if (e.type == DioExceptionType.badResponse) return false;
+  if (e.response != null) return false;
+  if (e.type == DioExceptionType.receiveTimeout ||
+      e.type == DioExceptionType.sendTimeout) {
+    return false;
+  }
+  return e.type == DioExceptionType.connectionError ||
+      e.type == DioExceptionType.connectionTimeout ||
+      (e.type == DioExceptionType.unknown && e.response == null);
 }
 
 /// User-safe copy for auth and network failures (no URLs, env names, or raw exceptions).
@@ -240,6 +263,12 @@ String friendlyApiError(Object error, {bool forAssistant = false}) {
         return forAssistant
             ? "Assistant couldn't reach the server. $hint"
             : hint;
+      }
+      if (error.type == DioExceptionType.receiveTimeout ||
+          error.type == DioExceptionType.sendTimeout) {
+        return forAssistant
+            ? 'The assistant request timed out. Try again in a moment.'
+            : 'Request timed out. Try again—large bill photos can take longer.';
       }
       if (kIsWeb) {
         final web = _webBrowserNetworkHint(error);

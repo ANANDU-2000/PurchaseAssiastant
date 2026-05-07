@@ -89,18 +89,29 @@ async def _openai_parse_scanner_payload(
             {"role": "user", "content": (text or "")[:12000]},
         ],
     }
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        res = await client.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-            json=payload,
-        )
-        if res.status_code >= 400:
-            return None, {
-                "provider_used": None,
-                "failover": [{"provider": "openai", "ok": False, "error": res.text[:200]}],
-            }
-        data = res.json()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            res = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json=payload,
+            )
+            if res.status_code >= 400:
+                return None, {
+                    "provider_used": None,
+                    "failover": [{"provider": "openai", "ok": False, "error": res.text[:200]}],
+                }
+            data = res.json()
+    except httpx.TimeoutException:
+        return None, {
+            "provider_used": None,
+            "failover": [{"provider": "openai", "ok": False, "error": "timeout"}],
+        }
+    except Exception as e:  # noqa: BLE001
+        return None, {
+            "provider_used": None,
+            "failover": [{"provider": "openai", "ok": False, "error": f"{type(e).__name__}"}],
+        }
     try:
         content = data["choices"][0]["message"]["content"]
     except Exception:  # noqa: BLE001
@@ -306,12 +317,53 @@ async def scan_purchase_v2(
     image_bytes: bytes,
 ) -> ScanResult:
     """Full scan pipeline returning an editable preview + scan_token."""
-    text, _conf = await image_bytes_to_text(settings, image_bytes)
+    try:
+        text, _conf = await image_bytes_to_text(settings, image_bytes)
+    except Exception as e:  # noqa: BLE001
+        # Never hard-fail a scan: return a reviewable empty preview with typed error.
+        token = str(uuid.uuid4())
+        scan_meta = ScanMeta(
+            image_bytes_in=len(image_bytes or b""),
+            ocr_chars=0,
+            error_stage="ocr",
+            error_code="OCR_FAILED",
+            error_message=f"{type(e).__name__}",
+        )
+        supplier = Match(raw_text="", matched_id=None, matched_name=None, confidence=0.0, match_state="unresolved", candidates=[])
+        result = ScanResult(
+            supplier=supplier,
+            broker=None,
+            items=[],
+            charges=Charges(),
+            broker_commission=None,
+            payment_days=None,
+            totals=Totals(),
+            confidence_score=0.0,
+            needs_review=True,
+            warnings=[
+                Warning(
+                    code="OCR_FAILED",
+                    severity="blocker",
+                    target="scan",
+                    message="Could not extract text from this image. You can still enter details manually.",
+                    suggestion="Retake photo with better lighting, avoid blur, and ensure the note fills the frame.",
+                )
+            ],
+            scan_token=token,
+            scan_meta=scan_meta,
+        )
+        _put_scan_cache(token, _ScanCacheEntry(business_id=business_id, created_at_s=_now_s(), result=result))
+        return result
+
     scan_meta = ScanMeta(image_bytes_in=len(image_bytes or b""), ocr_chars=len(text or ""))
 
     raw, meta = await _openai_parse_scanner_payload(text=text, settings=settings, db=db)
     scan_meta.provider_used = meta.get("provider_used")
     scan_meta.failover = meta.get("failover") or []
+    if not text.strip():
+        scan_meta.error_stage = "ocr"
+        scan_meta.error_code = "OCR_EMPTY"
+        scan_meta.error_message = "no_text"
 
     supplier_name = None
     broker_name = None
@@ -330,6 +382,10 @@ async def scan_purchase_v2(
             payment_days = int(raw.get("payment_days")) if raw.get("payment_days") is not None else None
         except Exception:  # noqa: BLE001
             payment_days = None
+    else:
+        scan_meta.error_stage = scan_meta.error_stage or "parse"
+        scan_meta.error_code = scan_meta.error_code or "PARSE_EMPTY"
+        scan_meta.error_message = scan_meta.error_message or "no_structured_parse"
 
     supplier, broker = await _match_supplier_broker(
         db=db, business_id=business_id, supplier_name=str(supplier_name or ""), broker_name=(str(broker_name) if broker_name is not None else None)

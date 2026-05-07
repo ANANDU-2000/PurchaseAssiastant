@@ -1,4 +1,6 @@
 import 'dart:async';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,15 +11,18 @@ import 'package:image_picker/image_picker.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../core/services/offline_store.dart';
 import '../../../core/theme/hexa_colors.dart';
 
 enum _ScanStage {
   idle,
-  readingImage,
-  detectingRows,
+  preparingImage,
+  uploading,
+  extractingText,
+  parsingItems,
   matchingSuppliers,
   validating,
-  buildingDraft,
+  readyForReview,
   done,
   error,
 }
@@ -34,15 +39,24 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
   bool _busy = false;
   _ScanStage _stage = _ScanStage.idle;
   String? _error;
+  String? _scanIssue;
+  bool _scanIssueBlocker = false;
+  String? _queuedScanId;
 
   Map<String, dynamic>? _scan; // raw ScanResult JSON (table-first UI)
   bool _creating = false;
+  double _stageProgress = 0;
+
+  final ScrollController _scroll = ScrollController();
 
   Timer? _stageTimer;
+  Timer? _pollTimer;
 
   @override
   void dispose() {
     _stageTimer?.cancel();
+    _pollTimer?.cancel();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -74,24 +88,42 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
     }
   }
 
-  void _startStages() {
-    _stageTimer?.cancel();
-    final stages = <_ScanStage>[
-      _ScanStage.readingImage,
-      _ScanStage.detectingRows,
-      _ScanStage.matchingSuppliers,
-      _ScanStage.validating,
-      _ScanStage.buildingDraft,
-    ];
-    var i = 0;
-    setState(() => _stage = stages.first);
-    _stageTimer = Timer.periodic(const Duration(milliseconds: 650), (_) {
-      if (!mounted) return;
-      if (!_busy) return;
-      i += 1;
-      if (i >= stages.length) i = stages.length - 1;
-      setState(() => _stage = stages[i]);
+  Future<void> _loadFirstQueuedScanAndStart() async {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    final jobs = OfflineStore.getPendingScanJobs(session.primaryBusiness.id);
+    if (jobs.isEmpty) {
+      setState(() => _error = 'No offline scans found.');
+      return;
+    }
+    final bytes = OfflineStore.scanJobBytes(jobs.first);
+    if (bytes == null || bytes.isEmpty) {
+      setState(() => _error = 'Offline scan data is corrupted. Please retake the photo.');
+      return;
+    }
+    setState(() {
+      _jpegBytes = bytes;
+      _queuedScanId = jobs.first['id']?.toString();
+      _error = null;
+      _scan = null;
+      _stage = _ScanStage.idle;
     });
+    await _scanNow();
+  }
+
+  _ScanStage _mapServerStage(String? s) {
+    final v = (s ?? '').trim().toLowerCase();
+    return switch (v) {
+      'preparing_image' => _ScanStage.preparingImage,
+      'uploading' => _ScanStage.uploading,
+      'extracting_text' => _ScanStage.extractingText,
+      'parsing_items' => _ScanStage.parsingItems,
+      'matching' => _ScanStage.matchingSuppliers,
+      'validating' => _ScanStage.validating,
+      'ready' => _ScanStage.readyForReview,
+      'error' => _ScanStage.error,
+      _ => _ScanStage.preparingImage,
+    };
   }
 
   Future<void> _scanNow() async {
@@ -103,24 +135,129 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
     setState(() {
       _busy = true;
       _error = null;
+      _scanIssue = null;
+      _scanIssueBlocker = false;
       _scan = null;
+      _stageProgress = 0;
+      _stage = _ScanStage.preparingImage;
     });
-    _startStages();
+    _stageTimer?.cancel();
+    _pollTimer?.cancel();
     try {
-      final res = await ref.read(hexaApiProvider).scanPurchaseBillV2Multipart(
+      // Start async scan (v3) and poll true backend stages.
+      final started =
+          await ref.read(hexaApiProvider).scanPurchaseBillV3StartMultipart(
             businessId: session.primaryBusiness.id,
             imageBytes: bytes,
             filename: 'bill_scan.jpg',
           );
-      if (!mounted) return;
-      setState(() {
-        _scan = res;
-        _busy = false;
-        _stage = _ScanStage.done;
+      final queued = _queuedScanId;
+      if (queued != null && queued.isNotEmpty) {
+        // Mark as uploaded once we successfully got a scan token.
+        unawaited(OfflineStore.markScanJobStatus(queued, 'uploaded'));
+        setState(() => _queuedScanId = null);
+      }
+      final token = started['scan_token']?.toString().trim();
+      if (token == null || token.isEmpty) {
+        throw StateError('missing scan_token');
+      }
+
+      Future<void> pollOnce() async {
+        final res = await ref.read(hexaApiProvider).scanPurchaseBillV3Status(
+              businessId: session.primaryBusiness.id,
+              scanToken: token,
+            );
+        if (!mounted) return;
+        final meta = res['scan_meta'];
+        _ScanStage? nextStage;
+        double? nextProg;
+        String? nextIssue;
+        bool nextIssueBlocker = false;
+        if (meta is Map) {
+          nextStage = _mapServerStage(meta['stage']?.toString());
+          final prog = meta['stage_progress'];
+          if (prog is num) {
+            nextProg = prog.clamp(0.0, 1.0).toDouble();
+          }
+          final code = meta['error_code']?.toString().trim();
+          final stage = meta['error_stage']?.toString().trim();
+          if (code != null && code.isNotEmpty) {
+            final msg = switch (code) {
+              'OCR_EMPTY' =>
+                'Could not fully read handwriting from this photo. Review highlighted fields and correct anything missing.',
+              'PARSE_EMPTY' =>
+                'Could not fully parse the note structure. You can still edit supplier/items manually before creating the purchase.',
+              'OCR_FAILED' =>
+                'Text extraction failed for this image. Retake the photo (better light, less blur) or enter details manually.',
+              _ => 'Scan needs review. Please confirm the extracted fields.',
+            };
+            nextIssueBlocker = code == 'OCR_FAILED';
+            nextIssue = (stage != null && stage.isNotEmpty)
+                ? '${stage.toUpperCase()}: $msg'
+                : msg;
+          }
+        }
+        setState(() {
+          if (nextStage != null) _stage = nextStage;
+          if (nextProg != null) _stageProgress = nextProg;
+          if (nextIssue != null) {
+            _scanIssue = nextIssue;
+            _scanIssueBlocker = nextIssueBlocker;
+          }
+          _scan = res;
+        });
+      }
+
+      final sw = Stopwatch()..start();
+      await pollOnce();
+      _pollTimer = Timer.periodic(const Duration(milliseconds: 450), (_) async {
+        if (!mounted) return;
+        if (!_busy) return;
+        if (sw.elapsed > const Duration(seconds: 95)) {
+          _pollTimer?.cancel();
+          setState(() {
+            _busy = false;
+            _stage = _ScanStage.error;
+            _error =
+                'Scan timed out. Your connection may be unstable or the server is slow. Try again.';
+          });
+          return;
+        }
+        try {
+          await pollOnce();
+          final meta = _scan?['scan_meta'];
+          final st = (meta is Map) ? meta['stage']?.toString() : null;
+          if ((st ?? '').toString().trim().toLowerCase() == 'ready' ||
+              (st ?? '').toString().trim().toLowerCase() == 'error') {
+            _pollTimer?.cancel();
+            setState(() {
+              _busy = false;
+              _stage = _ScanStage.done;
+            });
+            HapticFeedback.selectionClick();
+          }
+        } catch (e) {
+          // Keep polling for transient errors; UI shows last good partial state.
+          if (!mounted) return;
+          setState(() => _scanIssue = friendlyApiError(e));
+        }
       });
-      HapticFeedback.selectionClick();
     } catch (e) {
       if (!mounted) return;
+      if (e is DioException && shouldQueueScanOffline(e)) {
+        final id = await OfflineStore.queueScanJob(
+          businessId: session.primaryBusiness.id,
+          jpegBytes: bytes,
+        );
+        setState(() {
+          _busy = false;
+          _stage = _ScanStage.error;
+          _queuedScanId = id;
+          _error =
+              'Saved offline. We will retry when your connection is back. You can retry now.';
+        });
+        return;
+      }
       setState(() {
         _busy = false;
         _stage = _ScanStage.error;
@@ -128,6 +265,7 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
       });
     } finally {
       _stageTimer?.cancel();
+      // polling timer stays active on success until ready/error
     }
   }
 
@@ -146,6 +284,9 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
       _creating = false;
       _stage = _ScanStage.idle;
       _error = null;
+      _scanIssue = null;
+      _scanIssueBlocker = false;
+      _queuedScanId = null;
     });
   }
 
@@ -388,13 +529,15 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
   String _stageLabel(_ScanStage s) {
     return switch (s) {
       _ScanStage.idle => 'Upload a bill photo to begin.',
-      _ScanStage.readingImage => 'Reading image…',
-      _ScanStage.detectingRows => 'Detecting rows…',
+      _ScanStage.preparingImage => 'Preparing image…',
+      _ScanStage.uploading => 'Uploading…',
+      _ScanStage.extractingText => 'Extracting text…',
+      _ScanStage.parsingItems => 'Parsing items…',
       _ScanStage.matchingSuppliers => 'Matching suppliers…',
       _ScanStage.validating => 'Validating quantities…',
-      _ScanStage.buildingDraft => 'Building purchase draft…',
+      _ScanStage.readyForReview => 'Ready for review…',
       _ScanStage.done => 'Review detected items',
-      _ScanStage.error => 'Scan failed',
+      _ScanStage.error => 'Needs attention',
     };
   }
 
@@ -561,7 +704,10 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
     final delivered = ch['delivered_rate'];
     final billty = ch['billty_rate'];
     final freight = ch['freight_amount'];
-    final paymentDays = s['payment_days'];
+    final paymentDaysRaw = s['payment_days'];
+    final int? paymentDays = paymentDaysRaw is int
+        ? paymentDaysRaw
+        : (paymentDaysRaw is num ? paymentDaysRaw.round() : int.tryParse(paymentDaysRaw?.toString() ?? ''));
     final hasAny = delivered != null || billty != null || freight != null || paymentDays != null;
     if (!hasAny) return const SizedBox.shrink();
 
@@ -586,7 +732,7 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
                 if (freight is num) _chip('Freight', fmtMoney(freight)),
                 if (delivered is num) _chip('Delivered', fmtMoney(delivered)),
                 if (billty is num) _chip('Billty', fmtMoney(billty)),
-                if (paymentDays is int) _chip('Payment', '$paymentDays days'),
+                if (paymentDays != null) _chip('Payment', '$paymentDays days'),
               ],
             ),
           ],
@@ -677,15 +823,19 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
 
   @override
   Widget build(BuildContext context) {
+    final session = ref.watch(sessionProvider);
     final bytes = _jpegBytes;
     final hasImage = bytes != null && bytes.isNotEmpty;
     final hasResult = _scan != null;
     final isWorking = _busy || _creating;
+    final pendingOffline = session != null &&
+        OfflineStore.getPendingScanJobs(session.primaryBusiness.id).isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Scan purchase bill')),
       body: SafeArea(
         child: SingleChildScrollView(
+          controller: _scroll,
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 110),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -727,6 +877,17 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
                           ),
                         ],
                       ),
+                      if (pendingOffline) ...[
+                        const SizedBox(height: 10),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: isWorking ? null : _loadFirstQueuedScanAndStart,
+                            icon: const Icon(Icons.cloud_upload_rounded, size: 18),
+                            label: const Text('Resume saved offline scan'),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -740,11 +901,17 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
                     children: [
                       AspectRatio(
                         aspectRatio: 16 / 9,
-                        child: Image.memory(
-                          Uint8List.fromList(bytes),
-                          fit: BoxFit.cover,
+                        child: InteractiveViewer(
+                          minScale: 0.8,
+                          maxScale: 4,
+                          child: Image.memory(
+                            Uint8List.fromList(bytes),
+                            fit: BoxFit.contain,
+                          ),
                         ),
                       ),
+                      if (_busy && _stageProgress > 0)
+                        LinearProgressIndicator(value: _stageProgress.clamp(0.05, 1.0)),
                       Padding(
                         padding: const EdgeInsets.all(10),
                         child: Row(
@@ -778,6 +945,26 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
                       _error!,
                       style: const TextStyle(
                         color: Color(0xFF991B1B),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              if (_scanIssue != null) ...[
+                const SizedBox(height: 12),
+                Card(
+                  color: _scanIssueBlocker
+                      ? const Color(0xFFFEF2F2)
+                      : const Color(0xFFFFFBEB),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(
+                      _scanIssue!,
+                      style: TextStyle(
+                        color: _scanIssueBlocker
+                            ? const Color(0xFF991B1B)
+                            : const Color(0xFF92400E),
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -828,12 +1015,30 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: (!isWorking && hasResult)
+                      ? () {
+                          if (_scroll.hasClients) {
+                            _scroll.animateTo(
+                              _scroll.position.maxScrollExtent * 0.35,
+                              duration: const Duration(milliseconds: 350),
+                              curve: Curves.easeOutCubic,
+                            );
+                          }
+                        }
+                      : null,
+                  icon: const Icon(Icons.edit_note_rounded),
+                  label: const Text('Review'),
+                ),
+              ),
+              const SizedBox(width: 8),
               Expanded(
                 child: FilledButton.icon(
                   onPressed: (!isWorking && _scan != null) ? _createPurchaseFromReviewedScan : null,
                   icon: const Icon(Icons.check_circle_rounded),
-                  label: Text(_creating ? 'Creating…' : 'Create Purchase'),
+                  label: Text(_creating ? 'Creating…' : 'Create'),
                   style: FilledButton.styleFrom(
                     backgroundColor: HexaColors.brandPrimary,
                   ),
@@ -892,10 +1097,28 @@ class _ScanTableRow extends StatelessWidget {
     final unit = _s(item['unit_type'], '—').toLowerCase();
     final p = _n(item['purchase_rate']);
     final s = _n(item['selling_rate']);
+    final conf = item['confidence'];
+    final c = (conf is num) ? conf.toDouble() : double.tryParse(conf?.toString() ?? '');
+    final matched = (item['matched_catalog_item_id'] ?? item['matched_id'])?.toString().trim();
+    final hasMatch = matched != null && matched.isNotEmpty;
+    final hasRate = (item['purchase_rate'] is num) ||
+        (double.tryParse(item['purchase_rate']?.toString() ?? '') != null);
+    final needsReview = (c == null || c < 0.70) || !hasMatch || !hasRate;
+    final bg = !needsReview
+        ? Colors.transparent
+        : (c != null && c >= 0.70 ? const Color(0xFFFFFBEB) : const Color(0xFFFEF2F2));
+    final border = !needsReview
+        ? Colors.transparent
+        : (c != null && c >= 0.70 ? const Color(0xFFF59E0B) : const Color(0xFFEF4444));
     return InkWell(
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Container(
+        decoration: BoxDecoration(
+          color: bg,
+          border: Border(left: BorderSide(color: border, width: needsReview ? 3 : 0)),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
         child: Row(
           children: [
             Expanded(

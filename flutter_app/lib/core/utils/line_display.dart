@@ -2,6 +2,8 @@ import 'package:intl/intl.dart';
 
 import '../calc_engine.dart';
 import '../models/trade_purchase_models.dart';
+import '../reporting/trade_report_aggregate.dart'
+    show ReportPackKind, reportEffectivePack, reportLineKg;
 
 String _qtyStr(double qty) {
   if (qty == qty.roundToDouble()) return qty.round().toString();
@@ -76,8 +78,28 @@ String formatLineQtyWeight({
   return '${_qtyStr(qty)} $uDisp';
 }
 
-/// Uses [ledgerTradeLineWeightKg] for box/tin/kg-from-structure when [totalWeight] absent.
+/// Spec row text for a persisted [TradePurchaseLine] (same rules as Reports).
 String formatLineQtyWeightFromTradeLine(TradePurchaseLine l) {
+  final raw = l.unit.trim().toLowerCase();
+  final u = raw == 'sack' ? 'bag' : raw;
+  if (u == 'bag') {
+    final kg = reportLineKg(l);
+    return formatPackagedQty(unit: 'bag', pieces: l.qty, kg: kg);
+  }
+  if (u == 'box') {
+    return formatPackagedQty(unit: 'box', pieces: l.qty);
+  }
+  if (u == 'tin') {
+    return formatPackagedQty(unit: 'tin', pieces: l.qty);
+  }
+  if (u == 'kg' ||
+      u == 'kgs' ||
+      u == 'kilogram' ||
+      u == 'kilograms' ||
+      u == 'quintal' ||
+      u == 'qtl') {
+    return formatPackagedQty(unit: 'kg', pieces: l.qty);
+  }
   final w = ledgerTradeLineWeightKg(
     itemName: l.itemName,
     unit: l.unit,
@@ -105,4 +127,247 @@ String formatLineQtyWeightFromTradeLine(TradePurchaseLine l) {
 bool unitCountsAsBagFamily(String? unit) {
   final u = (unit ?? '').trim().toLowerCase();
   return u.contains('bag') || u.contains('sack');
+}
+
+/// [Bug 7/8 fix] Spec-mandated row format for view-more / reports rows:
+///   - BAG  → `5000 KG • 100 BAGS`
+///   - BOX  → `100 BOXES`        (no kg)
+///   - TIN  → `50 TINS`          (no kg)
+///   - KG   → `5000 KG`
+/// `bagsOrBoxesOrTins` is the count for the chosen pack family. `kg` is the
+/// total weight (only used for bag/kg). Returns `'-'` when both are zero.
+String formatPackagedQty({
+  required String unit,
+  required double pieces,
+  double kg = 0,
+}) {
+  final u = unit.trim().toLowerCase();
+  String intLike(double v) {
+    if (v < 1e-9) return '0';
+    if ((v - v.roundToDouble()).abs() < 1e-6) {
+      return NumberFormat('#,##,##0', 'en_IN').format(v.round());
+    }
+    return NumberFormat('#,##,##0.##', 'en_IN').format(v);
+  }
+
+  String kgFmt(double k) {
+    if ((k - k.roundToDouble()).abs() < 1e-6) {
+      return '${NumberFormat('#,##,##0', 'en_IN').format(k.round())} KG';
+    }
+    return '${NumberFormat('#,##,##0.##', 'en_IN').format(k)} KG';
+  }
+
+  if (u == 'bag' || u == 'sack') {
+    final bags = intLike(pieces);
+    if (kg > 1e-9) return '${kgFmt(kg)} • $bags ${pieces == 1 ? 'BAG' : 'BAGS'}';
+    return '$bags ${pieces == 1 ? 'BAG' : 'BAGS'}';
+  }
+  if (u == 'box') {
+    final n = intLike(pieces);
+    return '$n ${pieces == 1 ? 'BOX' : 'BOXES'}';
+  }
+  if (u == 'tin') {
+    final n = intLike(pieces);
+    return '$n ${pieces == 1 ? 'TIN' : 'TINS'}';
+  }
+  if (u == 'kg' || u == 'kgs' || u == 'kilogram' || u == 'kilograms') {
+    return kgFmt(pieces);
+  }
+  if (pieces > 1e-9) return intLike(pieces);
+  return '-';
+}
+
+class PurchaseHistoryMonthStats {
+  const PurchaseHistoryMonthStats({
+    required this.purchaseCount,
+    required this.totalInr,
+    required this.bags,
+    required this.boxes,
+    required this.tins,
+    required this.kg,
+  });
+
+  static const empty = PurchaseHistoryMonthStats(
+    purchaseCount: 0,
+    totalInr: 0,
+    bags: 0,
+    boxes: 0,
+    tins: 0,
+    kg: 0,
+  );
+
+  final int purchaseCount;
+  final double totalInr;
+  final double bags;
+  final double boxes;
+  final double tins;
+  /// Bag-derived kg + loose kg lines (never box/tin geometry).
+  final double kg;
+}
+
+class _HistoryPackAccumulator {
+  double bags = 0;
+  double boxes = 0;
+  double tins = 0;
+  double looseKg = 0;
+  double bagKg = 0;
+}
+
+void _accumulateHistoryLine(TradePurchaseLine ln, _HistoryPackAccumulator t) {
+  final eff = reportEffectivePack(ln);
+  if (eff != null) {
+    switch (eff.kind) {
+      case ReportPackKind.bag:
+        t.bags += eff.packQty;
+        t.bagKg += eff.kg;
+        break;
+      case ReportPackKind.box:
+        t.boxes += eff.packQty;
+        break;
+      case ReportPackKind.tin:
+        t.tins += eff.packQty;
+        break;
+    }
+    return;
+  }
+  final u = ln.unit.trim().toLowerCase();
+  if (u == 'kg' ||
+      u == 'kgs' ||
+      u == 'kilogram' ||
+      u == 'kilograms' ||
+      u == 'quintal' ||
+      u == 'qtl') {
+    t.looseKg += ln.qty;
+  }
+}
+
+/// Distinct wholesale pack families on a purchase (`bag` / `box` / `tin`), from line units + report rules.
+Set<String> purchaseHistoryPackKinds(TradePurchase p) {
+  final s = <String>{};
+  for (final ln in p.lines) {
+    final eff = reportEffectivePack(ln);
+    if (eff != null) {
+      s.add(switch (eff.kind) {
+        ReportPackKind.bag => 'bag',
+        ReportPackKind.box => 'box',
+        ReportPackKind.tin => 'tin',
+      });
+    }
+  }
+  return s;
+}
+
+/// [filterKey]: `bag` | `box` | `tin` | `mixed` — count-only semantics match history cards.
+bool purchaseHistoryMatchesPackKindFilter(TradePurchase p, String filterKey) {
+  final kinds = purchaseHistoryPackKinds(p);
+  switch (filterKey) {
+    case 'bag':
+      return kinds.length == 1 && kinds.contains('bag');
+    case 'box':
+      return kinds.length == 1 && kinds.contains('box');
+    case 'tin':
+      return kinds.length == 1 && kinds.contains('tin');
+    case 'mixed':
+      return kinds.length > 1;
+    default:
+      return true;
+  }
+}
+
+/// One-line pack summary for history cards (mixed invoices join with ` • `).
+String purchaseHistoryPackSummary(TradePurchase p) {
+  final t = _HistoryPackAccumulator();
+  for (final ln in p.lines) {
+    _accumulateHistoryLine(ln, t);
+  }
+  final parts = <String>[];
+  if (t.bags > 1e-6) {
+    if (t.bagKg > 1e-6) {
+      parts.add(
+        formatLineQtyWeight(
+          qty: t.bags,
+          unit: 'bag',
+          totalWeightKg: t.bagKg,
+        ),
+      );
+    } else {
+      parts.add(formatPackagedQty(unit: 'bag', pieces: t.bags));
+    }
+  }
+  if (t.boxes > 1e-6) {
+    parts.add(formatPackagedQty(unit: 'box', pieces: t.boxes));
+  }
+  if (t.tins > 1e-6) {
+    parts.add(formatPackagedQty(unit: 'tin', pieces: t.tins));
+  }
+  if (t.looseKg > 1e-6) {
+    parts.add(formatPackagedQty(unit: 'kg', pieces: t.looseKg));
+  }
+  if (parts.isEmpty) return '—';
+  return parts.join(' • ');
+}
+
+String purchaseHistoryItemHeadline(TradePurchase p) {
+  if (p.lines.isEmpty) return '—';
+  if (p.lines.length == 1) return p.lines.first.itemName;
+  return '${p.lines.length} items';
+}
+
+/// Calendar-month aggregates for the history header strip (kg = bags + loose kg only).
+PurchaseHistoryMonthStats computePurchaseHistoryMonthStats(
+  List<TradePurchase> list,
+  DateTime monthAnchor,
+) {
+  final start = DateTime(monthAnchor.year, monthAnchor.month, 1);
+  final end = DateTime(monthAnchor.year, monthAnchor.month + 1, 1);
+  var count = 0;
+  var totalInr = 0.0;
+  final t = _HistoryPackAccumulator();
+  for (final p in list) {
+    final d = p.purchaseDate;
+    if (d.isBefore(start)) continue;
+    if (!d.isBefore(end)) continue;
+    count++;
+    totalInr += p.totalAmount;
+    for (final ln in p.lines) {
+      _accumulateHistoryLine(ln, t);
+    }
+  }
+  final kg = t.bagKg + t.looseKg;
+  return PurchaseHistoryMonthStats(
+    purchaseCount: count,
+    totalInr: totalInr,
+    bags: t.bags,
+    boxes: t.boxes,
+    tins: t.tins,
+    kg: kg,
+  );
+}
+
+String formatPurchaseHistoryMonthPackLine(PurchaseHistoryMonthStats s) {
+  final parts = <String>[];
+  if (s.bags > 1e-6) {
+    parts.add(
+      '${NumberFormat('#,##,##0', 'en_IN').format(s.bags.round())} bags',
+    );
+  }
+  if (s.boxes > 1e-6) {
+    parts.add(
+      '${NumberFormat('#,##,##0', 'en_IN').format(s.boxes.round())} boxes',
+    );
+  }
+  if (s.tins > 1e-6) {
+    parts.add(
+      '${NumberFormat('#,##,##0', 'en_IN').format(s.tins.round())} tins',
+    );
+  }
+  if (s.kg > 1e-6) {
+    final k = s.kg;
+    final kgStr = (k - k.roundToDouble()).abs() < 1e-6
+        ? NumberFormat('#,##,##0', 'en_IN').format(k.round())
+        : NumberFormat('#,##,##0.##', 'en_IN').format(k);
+    parts.add('${kgStr}kg');
+  }
+  if (parts.isEmpty) return '—';
+  return parts.join(' • ');
 }

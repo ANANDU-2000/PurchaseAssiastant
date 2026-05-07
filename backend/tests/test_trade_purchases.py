@@ -504,6 +504,41 @@ def test_compute_totals_one_bag_2250_commission_2_percent_dart_parity():
     assert amt == after_header + after_header * Decimal("2") / Decimal("100")
 
 
+def test_compute_totals_flat_box_commission_only_counts_box_lines():
+    req = TradePurchaseCreateRequest(
+        purchase_date=date.today(),
+        supplier_id=uuid.uuid4(),
+        commission_mode="flat_box",
+        commission_money=Decimal("3"),
+        lines=[
+            TradePurchaseLineIn(
+                catalog_item_id=uuid.uuid4(),
+                item_name="Sunrich BOX",
+                qty=200,
+                unit="box",
+                landing_cost=Decimal("10"),
+                tax_percent=Decimal("0"),
+            ),
+            TradePurchaseLineIn(
+                catalog_item_id=uuid.uuid4(),
+                item_name="Sugar 50 KG",
+                qty=100,
+                unit="bag",
+                landing_cost=Decimal("2000"),
+                kg_per_unit=Decimal("50"),
+                landing_cost_per_kg=Decimal("40"),
+                tax_percent=Decimal("0"),
+            ),
+        ],
+    )
+    qty, amt = compute_totals(req)
+    assert qty == Decimal("300")
+    # line totals are tax-inclusive; commission only applies to box qty=200
+    expected_lines = Decimal("10") * Decimal("200") + Decimal("2000") * Decimal("100")
+    expected_comm = Decimal("3") * Decimal("200")
+    assert amt == expected_lines + expected_comm
+
+
 def test_compute_totals_freight_separate_vs_included():
     line = TradePurchaseLineIn(
         catalog_item_id=uuid.uuid4(),

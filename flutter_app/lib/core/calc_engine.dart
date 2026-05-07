@@ -73,7 +73,7 @@ class TradeCalcRequest {
   final List<TradeCalcLine> lines;
   final double? headerDiscountPercent;
   final double? commissionPercent;
-  /// `percent` | `flat_invoice` | `flat_kg` | `flat_bag` | `flat_tin` (API `commission_mode`).
+  /// `percent` | `flat_invoice` | `flat_kg` | `flat_bag` | `flat_box` | `flat_tin` (API `commission_mode`).
   final String commissionMode;
   /// Rupee rate or one-shot amount depending on [commissionMode].
   final double? commissionMoney;
@@ -277,12 +277,22 @@ StrictDecimal headerCommissionAddOnDecimal({
       var bags = StrictDecimal.zero();
       for (final l in basisLines) {
         final u = l.unit.trim().toLowerCase();
-        if (u == 'bag' || u == 'box') {
+        if (u == 'bag' || u == 'sack') {
           bags += _dec(l.qty);
         }
       }
       if (!bags.isPositive) return StrictDecimal.zero();
       return (rate * bags).toScale(2);
+    case 'flat_box':
+      var boxes = StrictDecimal.zero();
+      for (final l in basisLines) {
+        final u = l.unit.trim().toLowerCase();
+        if (u == 'box') {
+          boxes += _dec(l.qty);
+        }
+      }
+      if (!boxes.isPositive) return StrictDecimal.zero();
+      return (rate * boxes).toScale(2);
     case 'flat_tin':
       var tins = StrictDecimal.zero();
       for (final l in basisLines) {
@@ -361,6 +371,10 @@ double ledgerTradeLineWeightKg({
 }) {
   if (qty <= 0) return 0;
   final ul = unit.trim().toLowerCase();
+  // [Bug 1 fix] Master rebuild default wholesale mode: BOX & TIN are count-only.
+  // Always return 0 for these units, regardless of catalog metadata, item name
+  // hints, or legacy weight fields.
+  if (ul == 'box' || ul == 'tin') return 0;
   final c = UnitClassifier.classify(
     itemName: itemName,
     lineUnit: unit,

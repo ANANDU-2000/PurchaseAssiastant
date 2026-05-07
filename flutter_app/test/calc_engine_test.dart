@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hexa_purchase_assistant/core/calc_engine.dart';
+import 'package:hexa_purchase_assistant/core/strict_decimal.dart';
 
 void main() {
   test('lineMoney plain', () {
@@ -116,6 +117,20 @@ void main() {
     expect(t.amountSum, 105.0);
   });
 
+  test('headerCommissionAddOn: flat_box only counts box qty', () {
+    final comm = headerCommissionAddOnDecimal(
+      commissionMode: 'flat_box',
+      afterHeader: StrictDecimal.parse('0'),
+      commissionPercent: null,
+      commissionMoney: StrictDecimal.parse('3'),
+      basisLines: const [
+        TradeCommissionLine(itemName: 'Sunrich', unit: 'BOX', qty: 200),
+        TradeCommissionLine(itemName: 'Sugar 50 KG', unit: 'BAG', qty: 100, kgPerUnit: 50),
+      ],
+    );
+    expect(comm.toDouble(), 600.0);
+  });
+
   group('ledgerTradeLineWeightKg / UnitClassifier safety', () {
     test('KG unit: qty is physical kg (ignore "50 KG" in name)', () {
       final kg = ledgerTradeLineWeightKg(
@@ -137,13 +152,25 @@ void main() {
       expect(kg, 5000.0);
     });
 
-    test('BOX unit: single-pack uses kgFromName when present', () {
+    test('BOX unit: count-only (master rebuild) — kg is always 0', () {
+      // Master rebuild rule: BOX has NO kg calculations, NO kg display, NO kg
+      // totals — even when the item label contains a kg token like "OIL 10 KG".
       final kg = ledgerTradeLineWeightKg(
         itemName: 'OIL 10 KG',
         unit: 'BOX',
         qty: 10,
       );
-      expect(kg, 100.0);
+      expect(kg, 0.0);
+    });
+
+    test('TIN unit: count-only (master rebuild) — kg is always 0', () {
+      final kg = ledgerTradeLineWeightKg(
+        itemName: 'OIL 15 LTR TIN',
+        unit: 'TIN',
+        qty: 50,
+        weightPerTin: 15,
+      );
+      expect(kg, 0.0);
     });
   });
 }

@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 
 from app.db_resilience import execute_with_retry
 from app.models import CatalogItem, SupplierItemDefault, TradePurchase, TradePurchaseDraft, TradePurchaseLine
-from app.services.trade_unit_type import derive_trade_unit_type
+from app.services.trade_unit_type import derive_trade_unit_type, parse_kg_per_bag_from_name
 from app.schemas.trade_purchases import (
     TradeDuplicateCheckRequest,
     TradeDuplicateCheckResponse,
@@ -326,7 +326,15 @@ def _line_total_weight(li: TradePurchaseLineIn) -> Decimal:
     if unit == "KG":
         return dp.total_weight(qty)
     if unit == "BAG":
-        return dp.total_weight(qty * _dec(li.weight_per_unit or li.kg_per_unit))
+        # [Bug 2 fix] Mirror the Flutter wizard: when `weight_per_unit` is
+        # missing we still want `100 bags × 50 kg = 5000 kg` if the item name
+        # is `SUGAR 50 KG`. Parse `NN KG` from the item label as a fallback.
+        per_bag = li.weight_per_unit or li.kg_per_unit
+        if per_bag is None:
+            per_bag = parse_kg_per_bag_from_name(li.item_name)
+        if per_bag is None:
+            return Decimal("0")
+        return dp.total_weight(qty * _dec(per_bag))
     if unit in ("BOX", "TIN"):
         # Master rebuild default wholesale mode: BOX/TIN are count-only.
         # Do not track kg totals for these units unless advanced inventory is enabled.
@@ -411,7 +419,7 @@ def _line_selling_gross_in(li: TradePurchaseLineIn) -> Decimal:
 def _header_commission_rupees(req: TradePurchaseCreateRequest, after_header: Decimal) -> Decimal:
     """Broker commission added to purchase total (matches Flutter `headerCommissionAddOn`)."""
     mode = (req.commission_mode or "percent").strip().lower()
-    if mode not in ("percent", "flat_invoice", "flat_kg", "flat_bag", "flat_tin"):
+    if mode not in ("percent", "flat_invoice", "flat_kg", "flat_bag", "flat_box", "flat_tin"):
         mode = "percent"
     if mode == "percent":
         comm = _dec(req.commission_percent) if req.commission_percent is not None else Decimal("0")
@@ -434,11 +442,20 @@ def _header_commission_rupees(req: TradePurchaseCreateRequest, after_header: Dec
         bags = Decimal("0")
         for li in req.lines:
             u = (li.unit or "").strip().lower()
-            if u in ("bag", "sack", "box"):
+            if u in ("bag", "sack"):
                 bags += _dec(li.qty)
         if bags <= 0:
             return Decimal("0")
         return dp.total(money * bags)
+    if mode == "flat_box":
+        boxes = Decimal("0")
+        for li in req.lines:
+            u = (li.unit or "").strip().lower()
+            if u == "box":
+                boxes += _dec(li.qty)
+        if boxes <= 0:
+            return Decimal("0")
+        return dp.total(money * boxes)
     if mode == "flat_tin":
         tins = Decimal("0")
         for li in req.lines:

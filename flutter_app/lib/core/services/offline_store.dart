@@ -10,12 +10,14 @@ class OfflineStore {
   static const _boxCache = 'offline_cache';
   static const _boxEntries = 'offline_entries';
   static const _boxPurchaseWizardDraft = 'purchase_wizard_draft';
+  static const _boxScanQueue = 'scan_queue';
 
   static Future<void> init() async {
     await Hive.initFlutter();
     await Hive.openBox(_boxCache);
     await Hive.openBox(_boxEntries);
     await Hive.openBox(_boxPurchaseWizardDraft);
+    await Hive.openBox(_boxScanQueue);
   }
 
   static Box get _purchaseWizardDraft => Hive.box(_boxPurchaseWizardDraft);
@@ -57,6 +59,57 @@ class OfflineStore {
 
   static Box get _cache => Hive.box(_boxCache);
   static Box get _entries => Hive.box(_boxEntries);
+  static Box get _scanQueue => Hive.box(_boxScanQueue);
+
+  /// Queue a scan image locally for offline tolerance.
+  /// Stores bytes as base64 string to keep Hive portable.
+  static Future<String> queueScanJob({
+    required String businessId,
+    required List<int> jpegBytes,
+  }) async {
+    final id = 'scan_${DateTime.now().millisecondsSinceEpoch}';
+    final b64 = base64Encode(jpegBytes);
+    await _scanQueue.put(id, {
+      'id': id,
+      'businessId': businessId,
+      'jpegB64': b64,
+      'status': 'pending', // pending|uploaded|done|failed
+      'createdAt': DateTime.now().toIso8601String(),
+    });
+    return id;
+  }
+
+  static List<Map<String, dynamic>> getPendingScanJobs(String businessId) {
+    final out = <Map<String, dynamic>>[];
+    for (final k in _scanQueue.keys) {
+      final v = _scanQueue.get(k);
+      if (v is Map &&
+          v['businessId']?.toString() == businessId &&
+          v['status']?.toString() == 'pending') {
+        out.add(Map<String, dynamic>.from(v));
+      }
+    }
+    return out;
+  }
+
+  static Future<void> markScanJobStatus(String id, String status) async {
+    final v = _scanQueue.get(id);
+    if (v is! Map) return;
+    final m = Map<String, dynamic>.from(v);
+    m['status'] = status;
+    m['updatedAt'] = DateTime.now().toIso8601String();
+    await _scanQueue.put(id, m);
+  }
+
+  static List<int>? scanJobBytes(Map<String, dynamic> job) {
+    final b64 = job['jpegB64']?.toString();
+    if (b64 == null || b64.isEmpty) return null;
+    try {
+      return base64Decode(b64);
+    } catch (_) {
+      return null;
+    }
+  }
 
   static Future<void> cacheDashboardMap(Map<String, dynamic> summary) async {
     await _cache.put('dashboard', {

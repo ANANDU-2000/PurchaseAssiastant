@@ -28,6 +28,7 @@ const String kPurchaseCommissionModePercent = 'percent';
 const String kPurchaseCommissionModeFlatInvoice = 'flat_invoice';
 const String kPurchaseCommissionModeFlatKg = 'flat_kg';
 const String kPurchaseCommissionModeFlatBag = 'flat_bag';
+const String kPurchaseCommissionModeFlatBox = 'flat_box';
 const String kPurchaseCommissionModeFlatTin = 'flat_tin';
 
 /// Picks a fixed-rupee commission basis from line units so users switch to
@@ -35,14 +36,17 @@ const String kPurchaseCommissionModeFlatTin = 'flat_tin';
 String suggestedBrokerFigureModeFromLines(List<PurchaseLineDraft> lines) {
   if (lines.isEmpty) return kPurchaseCommissionModeFlatInvoice;
   var tinQty = 0.0;
-  var bagFamilyQty = 0.0;
+  var bagSackQty = 0.0;
+  var boxQty = 0.0;
   var hasKgLikeUnit = false;
   for (final l in lines) {
     final u = l.unit.trim().toLowerCase();
     if (u == 'tin') {
       tinQty += l.qty;
-    } else if (u == 'bag' || u == 'box') {
-      bagFamilyQty += l.qty;
+    } else if (u == 'bag' || u == 'sack') {
+      bagSackQty += l.qty;
+    } else if (u == 'box') {
+      boxQty += l.qty;
     }
     if (u.contains('kg') ||
         u == 'kgs' ||
@@ -54,11 +58,18 @@ String suggestedBrokerFigureModeFromLines(List<PurchaseLineDraft> lines) {
       hasKgLikeUnit = true;
     }
   }
-  if (tinQty >= bagFamilyQty && tinQty > 0) {
+  final packQty = bagSackQty + boxQty;
+  if (tinQty >= packQty && tinQty > 0) {
     return kPurchaseCommissionModeFlatTin;
   }
-  if (bagFamilyQty >= tinQty && bagFamilyQty > 0) {
+  if (boxQty > 0 && bagSackQty <= 0) {
+    return kPurchaseCommissionModeFlatBox;
+  }
+  if (bagSackQty > 0 && boxQty <= 0) {
     return kPurchaseCommissionModeFlatBag;
+  }
+  if (bagSackQty > 0 && boxQty > 0) {
+    return kPurchaseCommissionModeFlatInvoice;
   }
   if (hasKgLikeUnit) return kPurchaseCommissionModeFlatKg;
   return kPurchaseCommissionModeFlatInvoice;
@@ -81,12 +92,23 @@ String? brokerFigureBasisLineHint(List<PurchaseLineDraft> lines, String mode) {
     var b = 0.0;
     for (final l in lines) {
       final u = l.unit.trim().toLowerCase();
-      if (u == 'bag' || u == 'box') b += l.qty;
+      if (u == 'bag' || u == 'sack') b += l.qty;
     }
     if (b <= 0) {
-      return 'No bag / box lines — add those units or use per kg / once per bill.';
+      return 'No bag lines — add “bag” lines or use per kg / once per bill.';
     }
-    return 'This bill: ${b.toStringAsFixed(3)} bag · box qty';
+    return 'This bill: ${b.toStringAsFixed(3)} bag qty';
+  }
+  if (m == kPurchaseCommissionModeFlatBox) {
+    var bx = 0.0;
+    for (final l in lines) {
+      final u = l.unit.trim().toLowerCase();
+      if (u == 'box') bx += l.qty;
+    }
+    if (bx <= 0) {
+      return 'No box lines — add “box” lines or use per kg / once per bill.';
+    }
+    return 'This bill: ${bx.toStringAsFixed(3)} box qty';
   }
   if (m == kPurchaseCommissionModeFlatKg) {
     return 'Uses total kg from line weights (items + qty).';
@@ -101,7 +123,8 @@ List<(String mode, String label)> brokerFigureUiOptions(
   return const [
     (kPurchaseCommissionModeFlatInvoice, 'Once / bill'),
     (kPurchaseCommissionModeFlatKg, 'Per kg (total kg)'),
-    (kPurchaseCommissionModeFlatBag, 'Per bag · box'),
+    (kPurchaseCommissionModeFlatBag, 'Per bag'),
+    (kPurchaseCommissionModeFlatBox, 'Per box'),
     (kPurchaseCommissionModeFlatTin, 'Per tin'),
   ];
 }
@@ -165,6 +188,7 @@ class PurchaseDraft {
       case kPurchaseCommissionModeFlatInvoice:
       case kPurchaseCommissionModeFlatKg:
       case kPurchaseCommissionModeFlatBag:
+      case kPurchaseCommissionModeFlatBox:
       case kPurchaseCommissionModeFlatTin:
         return m;
       default:
@@ -425,6 +449,13 @@ bool _isTinUnit(String unit) => unit.trim().toLowerCase() == 'tin';
 
 /// First validation failure for [l] that would also fail API line rules, or null
 /// when the line is save-ready (aligned with [TradePurchase] create/update).
+///
+/// Master rebuild rules:
+/// - kg / bag / box / tin only (legacy `sack` accepted as `bag` for read).
+/// - BAG must have `kg_per_unit` (+ rate). The entry sheet auto-detects from name
+///   (e.g. "SUGAR 50 KG" → 50). [Bug 2 fix]
+/// - BOX / TIN are count-only — no kg fields required, no items-per-box, no
+///   weight-per-item, no kg-per-box, no weight-per-tin. [Bug 1 fix]
 String? purchaseLineSaveBlockReason(PurchaseLineDraft l) {
   if ((l.catalogItemId ?? '').trim().isEmpty) {
     return 'Pick the item from the list (free-typed items cannot be saved).';
@@ -449,15 +480,13 @@ String? purchaseLineSaveBlockReason(PurchaseLineDraft l) {
       return 'Use a whole number quantity for ${l.unit.trim()} lines (no decimals).';
     }
   }
-  if (unitIsBox) {
-    final hasItemsBox = (l.itemsPerBox ?? 0) > 0 && (l.weightPerItem ?? 0) > 0;
-    final hasFixedBox = (l.kgPerBox ?? 0) > 0 || (l.kgPerUnit ?? 0) > 0;
-    if (!hasItemsBox && !hasFixedBox) {
-      return 'Add items per box + item weight, or fixed kg per box.';
+  // BOX & TIN are count-only in master rebuild default wholesale mode.
+  // Only require qty > 0 + a positive landing cost.
+  if (unitIsBox || unitIsTin) {
+    if (l.landingCost <= 0) {
+      return 'Purchase rate must be greater than 0.';
     }
-  }
-  if (unitIsTin && !((l.weightPerTin ?? 0) > 0 || (l.kgPerUnit ?? 0) > 0)) {
-    return 'Add weight per tin.';
+    return null;
   }
   if (weightLine || unitIsBag) {
     if (kpu == null || kpu <= 0) {

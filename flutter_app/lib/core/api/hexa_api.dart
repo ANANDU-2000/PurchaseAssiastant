@@ -32,6 +32,16 @@ String _newRequestCorrelationId() {
   return '${seg(8)}-${seg(4)}-${seg(4)}-${seg(4)}-${seg(12)}';
 }
 
+/// Bill scans upload multi‑MB images and may wait on OCR/LLM — avoid false timeouts.
+Options get _scanMultipartOptions => Options(
+      sendTimeout: const Duration(seconds: 120),
+      receiveTimeout: const Duration(seconds: 120),
+    );
+
+Options get _scanPollOptions => Options(
+      receiveTimeout: const Duration(seconds: 45),
+    );
+
 bool _isAuthEndpoint(String path) {
   return path.contains('/auth/login') ||
       path.contains('/auth/register') ||
@@ -452,6 +462,7 @@ class HexaApi {
       '/v1/me/scan-purchase',
       queryParameters: {'business_id': businessId},
       data: formData,
+      options: _scanMultipartOptions,
     );
     return Map<String, dynamic>.from(res.data ?? {});
   }
@@ -479,6 +490,48 @@ class HexaApi {
       '/v1/me/scan-purchase-v2',
       queryParameters: {'business_id': businessId},
       data: formData,
+      options: _scanMultipartOptions,
+    );
+    return Map<String, dynamic>.from(res.data ?? {});
+  }
+
+  /// Scanner v3: start async scan and return a scan_token immediately.
+  Future<Map<String, dynamic>> scanPurchaseBillV3StartMultipart({
+    required String businessId,
+    required List<int> imageBytes,
+    String filename = 'bill_scan.jpg',
+  }) async {
+    final lower = filename.toLowerCase();
+    final MediaType ct;
+    if (lower.endsWith('.png')) {
+      ct = MediaType('image', 'png');
+    } else if (lower.endsWith('.webp')) {
+      ct = MediaType('image', 'webp');
+    } else {
+      ct = MediaType('image', 'jpeg');
+    }
+    final formData = FormData.fromMap({
+      'image': MultipartFile.fromBytes(imageBytes,
+          filename: filename, contentType: ct),
+    });
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/me/scan-purchase-v3/start',
+      queryParameters: {'business_id': businessId},
+      data: formData,
+      options: _scanMultipartOptions,
+    );
+    return Map<String, dynamic>.from(res.data ?? {});
+  }
+
+  /// Scanner v3: poll current scan status/result.
+  Future<Map<String, dynamic>> scanPurchaseBillV3Status({
+    required String businessId,
+    required String scanToken,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/me/scan-purchase-v3/status',
+      queryParameters: {'business_id': businessId, 'scan_token': scanToken},
+      options: _scanPollOptions,
     );
     return Map<String, dynamic>.from(res.data ?? {});
   }

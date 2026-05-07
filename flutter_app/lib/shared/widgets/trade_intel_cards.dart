@@ -31,6 +31,17 @@ String tradeIntelQtySummaryLine(Map<String, dynamic> m) {
   final unit = (m['last_line_unit'] ?? '').toString();
   final kpu = tradeIntelToDouble(m['kg_per_unit']);
   if (qty != null && qty > 1e-6 && unit.trim().isNotEmpty) {
+    final uRaw = unit.trim().toLowerCase();
+    final u = uRaw == 'sack' ? 'bag' : uRaw;
+    if (u == 'bag') {
+      // Intel gives last_line_weight_kg; fall back to qty*kpu if needed.
+      final wk =
+          (kg != null && kg > 1e-6) ? kg : ((kpu != null && kpu > 0) ? qty * kpu : 0.0);
+      return formatPackagedQty(unit: 'bag', pieces: qty, kg: wk);
+    }
+    if (u == 'box') return formatPackagedQty(unit: 'box', pieces: qty);
+    if (u == 'tin') return formatPackagedQty(unit: 'tin', pieces: qty);
+    if (u == 'kg') return formatPackagedQty(unit: 'kg', pieces: qty);
     return formatLineQtyWeight(
       qty: qty,
       unit: unit,
@@ -39,7 +50,7 @@ String tradeIntelQtySummaryLine(Map<String, dynamic> m) {
     );
   }
   if (kg != null && kg > 1e-6) {
-    return formatLineQtyWeight(qty: kg, unit: 'kg');
+    return formatPackagedQty(unit: 'kg', pieces: kg);
   }
   return '';
 }

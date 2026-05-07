@@ -6,16 +6,29 @@ import '../auth/session_notifier.dart';
 import '../models/trade_purchase_models.dart';
 import '../utils/line_display.dart';
 
-/// Allowed `status=` values for [HexaApi.listTradePurchases] (omit = all).
-const _tradeListApiStatuses = {'draft', 'due_soon', 'overdue', 'paid'};
+/// Fetches enough rows for wholesale history + KPI strip (paged in [HexaApi.listTradePurchases]).
+const kTradePurchasesAlertFetchLimit = 4000;
+const kTradePurchasesHistoryFetchLimit = 4000;
+
+String? _purchaseFromApi(DateTime? d) {
+  if (d == null) return null;
+  final y = d.year.toString().padLeft(4, '0');
+  final m = d.month.toString().padLeft(2, '0');
+  final day = d.day.toString().padLeft(2, '0');
+  return '$y-$m-$day';
+}
 
 /// Derives API `status` from history chips / route. [null] means unfiltered (`all`).
 String? _tradeListApiStatus(String primaryRaw, String? secondaryRaw) {
   final sec = secondaryRaw?.trim().toLowerCase();
-  if (sec == 'overdue' || sec == 'paid') return sec;
+  if (sec == 'overdue') return sec;
 
   final p = primaryRaw.trim().toLowerCase();
-  return _tradeListApiStatuses.contains(p) ? p : null;
+  if (p == 'paid') return 'paid';
+  if (p == 'draft') return 'draft';
+  if (p == 'due_soon') return 'due_soon';
+  // `all`, `due`, and anything else → full list (client filters for `due`).
+  return null;
 }
 
 /// Bust list + catalog-intel snapshots together.
@@ -32,9 +45,29 @@ final purchaseHistoryPrimaryFilterProvider =
 /// Client-side filter only (not sent to list API — avoids refetch per keystroke).
 final purchaseHistorySearchProvider = StateProvider<String>((ref) => '');
 
-/// Optional secondary chip: `pending` | `paid` | `overdue` (client-side only).
+/// Optional secondary filter: `pending` | `overdue` (client-side; paid uses primary).
 final purchaseHistorySecondaryFilterProvider =
     StateProvider<String?>((ref) => null);
+
+/// Advanced filters (sheet). Substrings match supplier/broker names client-side.
+final purchaseHistorySortNewestFirstProvider =
+    StateProvider<bool>((ref) => true);
+
+final purchaseHistorySupplierContainsProvider =
+    StateProvider<String?>((ref) => null);
+
+final purchaseHistoryBrokerContainsProvider =
+    StateProvider<String?>((ref) => null);
+
+/// `bag` | `box` | `tin` | `mixed` — client-side only.
+final purchaseHistoryPackKindFilterProvider =
+    StateProvider<String?>((ref) => null);
+
+final purchaseHistoryDateFromProvider =
+    StateProvider<DateTime?>((ref) => null);
+
+final purchaseHistoryDateToProvider =
+    StateProvider<DateTime?>((ref) => null);
 
 /// Unfiltered list for due/overdue alert derivation (ignores history tab filters).
 final tradePurchasesForAlertsProvider =
@@ -46,7 +79,16 @@ final tradePurchasesForAlertsProvider =
   if (session == null) return [];
   return ref.read(hexaApiProvider).listTradePurchases(
         businessId: session.primaryBusiness.id,
-        limit: 200,
+        limit: kTradePurchasesAlertFetchLimit,
+      );
+});
+
+final tradePurchasesForAlertsParsedProvider =
+    Provider.autoDispose<AsyncValue<List<TradePurchase>>>((ref) {
+  return ref.watch(tradePurchasesForAlertsProvider).whenData(
+        (maps) => maps
+            .map((e) => TradePurchase.fromJson(Map<String, dynamic>.from(e)))
+            .toList(),
       );
 });
 
@@ -60,10 +102,14 @@ final tradePurchasesListProvider =
   final primary = ref.watch(purchaseHistoryPrimaryFilterProvider);
   final secondary = ref.watch(purchaseHistorySecondaryFilterProvider);
   final apiStatus = _tradeListApiStatus(primary, secondary);
+  final purchaseFrom = _purchaseFromApi(ref.watch(purchaseHistoryDateFromProvider));
+  final purchaseTo = _purchaseFromApi(ref.watch(purchaseHistoryDateToProvider));
   return ref.read(hexaApiProvider).listTradePurchases(
         businessId: session.primaryBusiness.id,
-        limit: 200,
+        limit: kTradePurchasesHistoryFetchLimit,
         status: apiStatus,
+        purchaseFrom: purchaseFrom,
+        purchaseTo: purchaseTo,
       );
 });
 
@@ -116,6 +162,16 @@ final purchaseAlertsProvider = Provider.autoDispose<Map<String, int>>((ref) {
   );
 });
 
+/// Calendar-month strip for Purchase History (full fetched alert list, not tab-filtered).
+final purchaseHistoryMonthStatsProvider =
+    Provider.autoDispose<PurchaseHistoryMonthStats>((ref) {
+  final async = ref.watch(tradePurchasesForAlertsParsedProvider);
+  return async.maybeWhen(
+    data: (list) => computePurchaseHistoryMonthStats(list, DateTime.now()),
+    orElse: () => PurchaseHistoryMonthStats.empty,
+  );
+});
+
 /// Bags / boxes / tins from loaded trade purchase lines.
 final purchaseUnitTotalsProvider =
     Provider.autoDispose<({int bags, int boxes, int tins})>((ref) {
@@ -150,7 +206,7 @@ final tradePurchasesCatalogIntelProvider =
   if (session == null) return [];
   return ref.read(hexaApiProvider).listTradePurchases(
         businessId: session.primaryBusiness.id,
-        limit: 200,
+        limit: kTradePurchasesAlertFetchLimit,
       );
 });
 
