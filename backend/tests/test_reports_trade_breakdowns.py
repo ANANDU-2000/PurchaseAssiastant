@@ -205,3 +205,56 @@ def test_month_dashboard_uses_line_total_source_of_truth():
     assert month.status_code == 200, month.text
 
     assert float(month.json()["total_purchase"]) == float(summary.json()["total_purchase"])
+
+
+def test_month_dashboard_excludes_deleted_matches_trade_summary():
+    """Soft-deleted purchases must not appear in GET /dashboard month aggregates."""
+    h, bid, iid, sid, _cid = _register_and_item_with_supplier()
+    today = date.today()
+    body = {
+        "purchase_date": today.isoformat(),
+        "supplier_id": sid,
+        "lines": [
+            {
+                "catalog_item_id": iid,
+                "item_name": "DelTest 50 KG",
+                "qty": 1,
+                "unit": "bag",
+                "landing_cost": "5000",
+                "kg_per_unit": "50",
+                "landing_cost_per_kg": "100",
+                "selling_rate": "5100",
+            },
+        ],
+    }
+    pr = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
+    assert pr.status_code == 201, pr.text
+    pid = pr.json()["id"]
+
+    q = f"from={today.isoformat()}&to={today.isoformat()}"
+    month_param = {"month": today.strftime("%Y-%m")}
+
+    def totals():
+        summary = client.get(f"/v1/businesses/{bid}/reports/trade-summary?{q}", headers=h)
+        assert summary.status_code == 200, summary.text
+        month = client.get(
+            f"/v1/businesses/{bid}/dashboard",
+            headers=h,
+            params=month_param,
+        )
+        assert month.status_code == 200, month.text
+        return float(summary.json()["total_purchase"]), float(month.json()["total_purchase"])
+
+    s0, d0 = totals()
+    assert s0 == d0
+    assert s0 > 0
+
+    dr = client.delete(
+        f"/v1/businesses/{bid}/trade-purchases/{pid}",
+        headers=h,
+    )
+    assert dr.status_code == 204, dr.text
+
+    s1, d1 = totals()
+    assert s1 == d1
+    assert s1 == 0.0

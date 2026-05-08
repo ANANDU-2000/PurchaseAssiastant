@@ -98,11 +98,13 @@ async def _compute_month_dashboard_payload(
     last = calendar.monthrange(y, m)[1]
     end = date(y, m, last)
 
+    # Same status set as trade reports (`trade_query.TRADE_STATUS_IN_REPORTS`): excludes
+    # deleted, draft, cancelled — otherwise soft-deleted rows still inflated month KPIs.
     tp_f = (
         TradePurchase.business_id == business_id,
         TradePurchase.purchase_date >= start,
         TradePurchase.purchase_date <= end,
-        TradePurchase.status != "cancelled",
+        tq.trade_purchase_status_in_reports(),
     )
 
     line_amount = tq.trade_line_amount_expr()

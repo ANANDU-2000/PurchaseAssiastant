@@ -9,8 +9,8 @@ _Update this file after each meaningful agent session._
 
 ## Active task
 
-- **Matcher chain:** backend **pack gate** (`scanner_v2/pack_gate.py`) + Flutter scan draft **item autocomplete** (`scan_draft_edit_item_sheet.dart` → `unifiedSearch` / `catalog_items`, debounced ≥2 chars).
-- **Next:** supplier-scoped query params, reports/dashboard parity, delete/cache invalidation (`TASKS.md` Critical / Pending).
+- **Reports parity:** `GET /dashboard?month=` aggregates now use `trade_purchase_status_in_reports()` — soft-deleted purchases no longer inflate month totals; matches `/reports/trade-summary` for the same filter set.
+- **Next:** supplier-scoped search params, remaining dashboard/chart consumers audit, Flutter delete paths (`TASKS.md`).
 
 ## Why assistants pause between messages
 
@@ -39,6 +39,6 @@ _Update this file after each meaningful agent session._
 
 ## Pending validation
 
-- `dart analyze` clean on `scan_draft_edit_item_sheet.dart`; full `flutter test` / `pytest` before release.
-- Manual: type `su`/`sug` in draft item editor → suggestions → save → wizard confirm still validates.
+- `pytest tests/test_reports_trade_breakdowns.py::test_month_dashboard_*` (dashboard parity + delete exclusion).
+- Full `pytest` / `flutter test` before release.
 

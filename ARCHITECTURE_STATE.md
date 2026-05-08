@@ -9,6 +9,7 @@
 ## Data ownership
 
 - **Authoritative financial totals:** computed on **server** at save time and for aggregates; clients render.
+- **Month dashboard (`GET /dashboard?month=`):** aggregates only purchases whose `status` is in `trade_query.TRADE_STATUS_IN_REPORTS` (same contract as trade summary reports); excludes `deleted`, `draft`, `cancelled`.
 - **Scan JSON:** keyed by `scan_token` until confirm; edits persisted via scan update endpoint before confirm.
 
 ## Primary user journeys

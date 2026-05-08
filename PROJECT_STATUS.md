@@ -12,13 +12,13 @@ High-level snapshot. Detailed priorities: `TRACK.md`. Task checklist: `TASKS.md`
 
 - Match engine: **pack gate** + **draft item edit autocomplete** (unified search); next supplier-scoped queries, report parity, delete/cache consistency.
 - Item edit autocomplete wired to catalog/history APIs.
-- Report/dashboard single-source aggregation parity (see `REPORT_ENGINE.md`).
+- Report/dashboard aggregation: **month `GET /dashboard`** now shares the same trade-purchase status filter as trade reports (excludes deleted/draft/cancelled); regression test added.
 
 ## Pending / backlog
 
 - Multi-image bill merge; Malayalam/Manglish normalization dictionary service.
 - Field-level confidence + forced review on unit mismatch.
-- Delete flow audit (server soft-delete vs cache vs list refetch) — see `BUGS.md`.
+- Delete flow audit (remaining: every Flutter delete path + cache invalidation UX) — see `BUGS.md`.
 
 ## Blockers
 

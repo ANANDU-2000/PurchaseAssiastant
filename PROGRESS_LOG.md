@@ -12,6 +12,14 @@ Add a new entry **after significant merges or agent sessions**.
 
 ---
 
+## 2026-05-08 — Dashboard month aggregates exclude deleted (parity with trade reports)
+
+- Modules: `backend/app/routers/dashboard.py`, `backend/tests/test_reports_trade_breakdowns.py`, `REPORT_ENGINE.md`, `BUGS.md`, `PROJECT_STATUS.md`, `CURRENT_CONTEXT.md`
+- Change summary: Replaced `status != "cancelled"` with `trade_purchase_status_in_reports()` so soft-deleted (`deleted`) and non-report statuses do not affect `GET /dashboard?month=` totals; aligns with trade-summary aggregation contract.
+- Validation: `pytest tests/test_reports_trade_breakdowns.py::test_month_dashboard_excludes_deleted_matches_trade_summary tests/test_reports_trade_breakdowns.py::test_month_dashboard_uses_line_total_source_of_truth` — passed.
+
+---
+
 ## 2026-05-08 — Flutter scan draft item autocomplete (unified search)
 
 - Modules: `scan_draft_edit_item_sheet.dart`, `scan_purchase_v2_page.dart`, `purchase_scan_draft_wizard_page.dart`, `MATCH_ENGINE.md`, `BUGS.md`, `TASKS.md`
