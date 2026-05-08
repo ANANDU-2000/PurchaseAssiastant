@@ -4,14 +4,14 @@ High-level snapshot. Detailed priorities: `TRACK.md`. Task checklist: `TASKS.md`
 
 ## Completed (recent)
 
-- Purchase scan → **draft wizard** route (`/purchase/scan-draft`); no instant confirm from scan-only screen.
+- Purchase scan → **`PurchaseEntryWizardV2`** at `/purchase/new` (mapper from scan JSON + `scan_token` in route extra); `/purchase/scan-draft` is a legacy redirect only.
+- Wizard-embedded **`PurchaseBillScanPanel`** (legacy multipart scan): item lines use the **same** debounced **`GET /search`** suggestions + optional `supplier_id` when supplier is directory-linked; picks persist **`catalog_item_id`** on `PurchaseDraft` lines (aligned with AI scan v2 preview sheet).
 - Docs: `docs/AI_PURCHASE_DRAFT_ENGINE.md`, validation/safety, Scan Guide UX spec (see `docs/`).
-- **Cursor policies:** full verbatim `context/rules/MASTER_CURSOR_RULES.md` + `AUTONOMOUS_CURSOR_EXECUTION_RULES.md` (not summaries). `TASKS.md` uses Critical / In progress / Pending / Completed / Blocked.
+- **Cursor policies:** full verbatim `context/rules/MASTER_CURSOR_RULES.md` + `AUTONOMOUS_CURSOR_EXECUTION_RULES.md` (not summaries). `TASKS.md` uses Critical / In progress / Pending / Completed / Blocked. Tracker maintenance: `CURRENT_CONTEXT.md`, `BUGS.md`, `SCAN_ENGINE.md`, `MATCH_ENGINE.md`, `REPORT_ENGINE.md` updated with scan→wizard reality.
 
 ## In progress / current focus
 
-- Match engine: **pack gate** + **draft item edit autocomplete** (unified search); next supplier-scoped queries.
-- Item edit autocomplete wired to catalog/history APIs.
+- Match engine: **pack gate** + ranking follow-ups (aliases, pg_trgm — see `TASKS.md`).
 - Report/dashboard aggregation: **month `GET /dashboard`** aligned with trade reports; Flutter **`invalidateBusinessAggregates`** clears Hive + inflight dedupe maps and discards stale home-overview fetches (bust generation).
 
 ## Pending / backlog

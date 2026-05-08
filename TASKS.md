@@ -45,7 +45,6 @@ Section order matches **AUTONOMOUS_CURSOR_EXECUTION_RULES.md** (TASKS structure)
 # In progress
 
 - [ ] **P0** — Matcher follow-ups (supplier-scoped search param, ranking, aliases) after pack gate + edit autocomplete — _Modules: `scanner_v2/matcher.py`, `search.py` — Validation: golden scans_
-- [ ] **P2** — Align scan **preview** with policy (minimal edit on scan screen; heavy edit only in draft wizard) — _Modules: `scan_purchase_v2_page.dart`, wizard — Validation: UX review_
 
 ---
 
@@ -53,8 +52,9 @@ Section order matches **AUTONOMOUS_CURSOR_EXECUTION_RULES.md** (TASKS structure)
 
 - [x] Purchase bill path: OpenAI Vision–based extraction (legacy OCR stacks removed from bill flow) — _see CHANGELOG_
 - [x] Strict scan JSON / normalization helpers (baseline) — `scanner_v2`/`scanner_v3`
-- [x] Purchase **draft wizard** route (`/purchase/scan-draft`) — scan does not single-button create purchase — _Flutter_
+- [x] AI scan → **`PurchaseEntryWizardV2`** (`/purchase/new`, `ai_scan_purchase_draft_map.dart`, update+confirm with `scan_token`); `/purchase/scan-draft` legacy redirect — _Flutter_
 - [x] Scanner **pack gate** (kg hint + bag/piece channel) demotes unsafe auto item matches — `scanner_v2/pack_gate.py`, tests `test_scan_pack_gate.py`
+- [x] **`PurchaseBillScanPanel`** item lines — live **`unifiedSearch`** + `supplier_id` when supplier matched; subtitle shows unit / last supplier / last P rate; **`catalog_item_id`** on apply — _Flutter_
 - [x] Scan draft **item edit** live catalog suggestions — debounced `GET /v1/businesses/{id}/search` (`catalog_items`) in `scan_draft_edit_item_sheet.dart`; tap sets `matched_catalog_item_id` + optional last rates
 - [x] Flutter **aggregate cache bust** — `invalidateBusinessAggregates` clears Hive trade/home/report keys + overview inflight/RAM + stale-fetch generation guard on home overview pull
 - [x] Flutter **purchase detail cache** — shared `tradePurchaseDetailProvider`; invalidated after successful delete from detail, purchase home (single+bulk), supplier/broker/item ledgers, contacts trade ledger

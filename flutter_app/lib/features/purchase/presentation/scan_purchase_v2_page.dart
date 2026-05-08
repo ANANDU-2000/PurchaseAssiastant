@@ -14,6 +14,7 @@ import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/services/offline_store.dart';
 import '../../../core/theme/hexa_colors.dart';
 
+import '../mapping/ai_scan_purchase_draft_map.dart';
 import 'purchase_scan_draft_map_provider.dart';
 import 'scan_draft_edit_item_sheet.dart';
 
@@ -296,11 +297,30 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
     });
   }
 
-  Future<void> _openPurchaseDraftWizard() async {
+  Future<void> _openPurchaseEntryFromScan() async {
     final s = _scan;
     if (s == null || _busy) return;
-    ref.read(purchaseScanDraftMapProvider.notifier).setDraft(Map<String, dynamic>.from(s));
-    await context.push('/purchase/scan-draft');
+    final snap = Map<String, dynamic>.from(s);
+    final token = snap['scan_token']?.toString().trim();
+    if (token == null || token.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Scan token missing — try scanning again.')),
+      );
+      return;
+    }
+    ref.read(purchaseScanDraftMapProvider.notifier).setDraft(snap);
+    final draft = purchaseDraftFromScanResultJson(snap);
+    await context.push(
+      '/purchase/new',
+      extra: {
+        'initialDraft': draft,
+        'aiScan': {
+          'token': token,
+          'baseScan': snap,
+        },
+      },
+    );
     if (!mounted) return;
     final latest = ref.read(purchaseScanDraftMapProvider);
     if (latest != null) {
@@ -364,11 +384,18 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
   }
 
   Future<void> _editItemRow(int index, Map<String, dynamic> item) async {
+    String? supplierId;
+    final sup = _scan?['supplier'];
+    if (sup is Map) {
+      final raw = sup['matched_id']?.toString().trim();
+      supplierId = (raw != null && raw.isNotEmpty) ? raw : null;
+    }
     await editScanDraftItemRow(
       context,
       ref: ref,
       index: index,
       item: item,
+      supplierMatchedId: supplierId,
       onSaved: (idx, next) {
         final s = _scan;
         if (s == null) return;
@@ -699,8 +726,8 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
               Text('Scan purchase bill', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 4),
               const Text(
-                'Camera or gallery only here. AI reads the bill; then tap Draft wizard to match supplier/items '
-                'and create the purchase — nothing is saved until you confirm in the wizard.',
+                'Camera or gallery only here. AI reads the bill; then tap Continue to open purchase entry to match '
+                'supplier and lines — nothing is saved until you confirm there.',
                 style: TextStyle(color: Colors.black54),
               ),
               const SizedBox(height: 12),
@@ -893,9 +920,9 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
               const SizedBox(width: 8),
               Expanded(
                 child: FilledButton.icon(
-                  onPressed: (!isWorking && hasResult) ? _openPurchaseDraftWizard : null,
+                  onPressed: (!isWorking && hasResult) ? _openPurchaseEntryFromScan : null,
                   icon: const Icon(Icons.fact_check_rounded),
-                  label: const Text('Draft wizard'),
+                  label: const Text('Continue'),
                   style: FilledButton.styleFrom(
                     backgroundColor: HexaColors.brandPrimary,
                   ),

@@ -13,12 +13,15 @@ class InlineSearchItem {
     this.subtitle,
     /// Lowercase-ish blob for matching (e.g. name + code + HSN). Display stays [label].
     this.searchText,
+    /// Higher sorts earlier when match rank ties (e.g. supplier-linked catalog row).
+    this.sortBoost = 0,
   });
 
   final String id;
   final String label;
   final String? subtitle;
   final String? searchText;
+  final int sortBoost;
 
   @override
   bool operator ==(Object other) =>

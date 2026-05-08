@@ -406,6 +406,8 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       final rb = _partySuggestItemMatchRank(b, qRaw);
       final c = ra.compareTo(rb);
       if (c != 0) return c;
+      final sb = b.sortBoost.compareTo(a.sortBoost);
+      if (sb != 0) return sb;
       return a.label.toLowerCase().compareTo(b.label.toLowerCase());
     });
     return hits.take(widget.maxMatches).toList();

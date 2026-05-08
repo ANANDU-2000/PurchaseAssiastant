@@ -36,6 +36,8 @@ class PurchaseItemEntrySheet extends StatefulWidget {
     this.omitLineFreightDeliveredBilltyDiscount = false,
     /// Optional: push catalog add-item route; caller invalidates catalog + returns `{id,name}`.
     this.navigateCatalogQuickAddItem,
+    /// Boosts catalog suggestions when they match this supplier (defaults / last buy).
+    this.preferredSupplierId,
   });
 
   final List<Map<String, dynamic>> catalog;
@@ -50,6 +52,7 @@ class PurchaseItemEntrySheet extends StatefulWidget {
   final bool fullPage;
   final bool omitLineFreightDeliveredBilltyDiscount;
   final Future<Map<String, dynamic>?> Function()? navigateCatalogQuickAddItem;
+  final String? preferredSupplierId;
 
   @override
   State<PurchaseItemEntrySheet> createState() => _PurchaseItemEntrySheetState();
@@ -1072,8 +1075,23 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   }
 
   void _rebuildCatalogSearchItems() {
+    final pref = widget.preferredSupplierId?.trim();
     final out = <InlineSearchItem>[];
     for (final row in widget.catalog) {
+      var boost = 0;
+      if (pref != null && pref.isNotEmpty) {
+        final ls = row['last_supplier_id']?.toString().trim();
+        if (ls == pref) boost += 120;
+        final ids = row['default_supplier_ids'];
+        if (ids is List) {
+          for (final e in ids) {
+            if (e != null && e.toString().trim() == pref) {
+              boost += 80;
+              break;
+            }
+          }
+        }
+      }
       final blob = _catalogSearchBlob(row);
       out.add(
         InlineSearchItem(
@@ -1081,6 +1099,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
           label: row['name']?.toString() ?? '',
           subtitle: row['default_unit']?.toString(),
           searchText: blob.isEmpty ? null : blob,
+          sortBoost: boost,
         ),
       );
     }
@@ -1101,7 +1120,8 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   @override
   void didUpdateWidget(covariant PurchaseItemEntrySheet oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.catalog != widget.catalog) {
+    if (oldWidget.catalog != widget.catalog ||
+        oldWidget.preferredSupplierId != widget.preferredSupplierId) {
       _rebuildCatalogSearchItems();
     }
   }

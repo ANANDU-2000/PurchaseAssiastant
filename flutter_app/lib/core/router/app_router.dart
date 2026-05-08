@@ -363,6 +363,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           bool resumeDraft = state.uri.queryParameters['resumeDraft'] ==
                   'true' ||
               state.uri.queryParameters['resume'] == '1';
+          String? aiScanToken;
+          Map<String, dynamic>? aiScanBaseJson;
           final ex = state.extra;
           if (ex is PurchaseDraft) {
             seed = ex;
@@ -374,17 +376,28 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   rd == true || '$rd'.toLowerCase() == 'true';
               final d = m['initialDraft'];
               if (d is PurchaseDraft) seed = d;
+              final ai = m['aiScan'];
+              if (ai is Map) {
+                final tok = ai['token']?.toString().trim();
+                if (tok != null && tok.isNotEmpty) aiScanToken = tok;
+                final bs = ai['baseScan'];
+                if (bs is Map) {
+                  aiScanBaseJson = Map<String, dynamic>.from(bs);
+                }
+              }
             } catch (_) {}
           }
           return iosPushPage(
             key: ValueKey(
-              'purchase_new_${seed != null ? 'seed' : resumeDraft ? 'resume' : ((cid != null && cid.isNotEmpty) ? cid : 'none')}',
+              'purchase_new_${seed != null ? 'seed' : resumeDraft ? 'resume' : ((cid != null && cid.isNotEmpty) ? cid : 'none')}_${aiScanToken ?? 'noai'}',
             ),
             child: PurchaseEntryWizardV2(
               initialCatalogItemId:
                   (cid != null && cid.isNotEmpty) ? cid : null,
               initialDraft: seed,
               resumeDraft: resumeDraft && seed == null,
+              aiScanToken: aiScanToken,
+              aiScanBaseJson: aiScanBaseJson,
             ),
           );
         },

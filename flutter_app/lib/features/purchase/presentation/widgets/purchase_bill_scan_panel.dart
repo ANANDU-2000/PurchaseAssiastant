@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -225,6 +227,9 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
           if (u == 'unit' || u == 'pcs' || u == 'pc') u = 'piece';
           nextRows.add(
             _BillRowEdit(
+              catalogItemId: m['catalog_item_id']?.toString().trim().isNotEmpty == true
+                  ? m['catalog_item_id']?.toString().trim()
+                  : null,
               name: TextEditingController(text: m['name']?.toString() ?? ''),
               qty: TextEditingController(
                 text: _fmtQty((m['qty'] as num?)?.toDouble() ?? 1),
@@ -303,6 +308,43 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
     }
   }
 
+  void _applyCatalogRowToBillRow(_BillRowEdit r, Map<String, dynamic> row) {
+    final nm = (row['name'] ?? '').toString().trim();
+    if (nm.isNotEmpty) r.name.text = nm;
+    final id = row['id']?.toString().trim();
+    r.catalogItemId = (id != null && id.isNotEmpty) ? id : null;
+    final du = (row['default_unit'] ?? '').toString().toLowerCase().trim();
+    if (du == 'bag' || du == 'sack') {
+      r.unit.text = 'bag';
+    } else if (du == 'box') {
+      r.unit.text = 'box';
+    } else if (du == 'tin') {
+      r.unit.text = 'tin';
+    } else if (du == 'piece' || du == 'pcs' || du == 'pkt' || du == 'packet') {
+      r.unit.text = 'piece';
+    } else {
+      r.unit.text = 'kg';
+    }
+    final lpp = row['last_purchase_price'];
+    if (lpp is num && lpp > 0 && r.pRate.text.trim().isEmpty) {
+      r.pRate.text =
+          lpp == lpp.roundToDouble() ? '${lpp.round()}' : '$lpp';
+    }
+    final lsr = row['last_selling_rate'];
+    if (lsr is num && lsr > 0 && r.sRate.text.trim().isEmpty) {
+      r.sRate.text =
+          lsr == lsr.roundToDouble() ? '${lsr.round()}' : '$lsr';
+    }
+    final dkg = row['default_kg_per_bag'];
+    if ((du == 'bag' || du == 'sack') &&
+        dkg is num &&
+        dkg > 0 &&
+        r.kgPerUnit.text.trim().isEmpty) {
+      r.kgPerUnit.text =
+          dkg == dkg.roundToDouble() ? '${dkg.round()}' : '$dkg';
+    }
+  }
+
   PurchaseDraft buildDraftFromUi() {
     final lines = <PurchaseLineDraft>[];
     for (final r in _rows) {
@@ -313,9 +355,10 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
       final sell = double.tryParse(r.sRate.text.trim()) ?? 0;
       final kpu = double.tryParse(r.kgPerUnit.text.trim()) ?? 0;
       if (name.isEmpty && qty <= 0 && rate <= 0) continue;
+      final cid = r.catalogItemId?.trim();
       lines.add(
         PurchaseLineDraft(
-          catalogItemId: null,
+          catalogItemId: (cid != null && cid.isNotEmpty) ? cid : null,
           itemName: name.isEmpty ? 'Item' : name,
           qty: qty > 0 ? qty : 1,
           unit: unit.isEmpty ? 'kg' : unit,
@@ -791,10 +834,14 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
                                 ),
                               ],
                             ),
-                            TextField(
-                              controller: r.name,
+                            _BillLineCatalogNameBlock(
+                              nameCtrl: r.name,
+                              supplierDirectoryId: _supplierDirectoryId,
                               decoration: _lineDeco('Item name',
                                   warn: _warnLineCell(i, 'item_name')),
+                              onPick: (row) => setState(() {
+                                _applyCatalogRowToBillRow(r, row);
+                              }),
                             ),
                             const SizedBox(height: 6),
                             Wrap(
@@ -926,8 +973,148 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
   }
 }
 
+class _BillLineCatalogNameBlock extends ConsumerStatefulWidget {
+  const _BillLineCatalogNameBlock({
+    required this.nameCtrl,
+    required this.supplierDirectoryId,
+    required this.decoration,
+    required this.onPick,
+  });
+
+  final TextEditingController nameCtrl;
+  final String? supplierDirectoryId;
+  final InputDecoration decoration;
+  final void Function(Map<String, dynamic> row) onPick;
+
+  @override
+  ConsumerState<_BillLineCatalogNameBlock> createState() =>
+      _BillLineCatalogNameBlockState();
+}
+
+class _BillLineCatalogNameBlockState
+    extends ConsumerState<_BillLineCatalogNameBlock> {
+  Timer? _debounce;
+  List<Map<String, dynamic>> _items = [];
+  bool _loading = false;
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _search(String q) async {
+    final session = ref.read(sessionProvider);
+    if (session == null || q.isEmpty) {
+      setState(() => _items = []);
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final data = await ref.read(hexaApiProvider).unifiedSearch(
+            businessId: session.primaryBusiness.id,
+            q: q,
+            supplierId: widget.supplierDirectoryId,
+          );
+      final raw = data['catalog_items'];
+      final list = <Map<String, dynamic>>[];
+      if (raw is List) {
+        for (final e in raw.take(12)) {
+          if (e is Map) list.add(Map<String, dynamic>.from(e));
+        }
+      }
+      if (mounted) setState(() => _items = list);
+    } on DioException {
+      if (mounted) setState(() => _items = []);
+    } catch (_) {
+      if (mounted) setState(() => _items = []);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _onChanged(String value) {
+    _debounce?.cancel();
+    final q = value.trim();
+    if (q.isEmpty) {
+      setState(() => _items = []);
+      return;
+    }
+    _debounce = Timer(const Duration(milliseconds: 280), () => _search(q));
+  }
+
+  void _apply(Map<String, dynamic> row) {
+    widget.onPick(row);
+    setState(() => _items = []);
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: widget.nameCtrl,
+          decoration: widget.decoration.copyWith(
+            hintText: 'Type to search catalog (same as AI scan flow)',
+          ),
+          onChanged: _onChanged,
+        ),
+        if (_loading)
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: LinearProgressIndicator(minHeight: 2),
+          ),
+        if (_items.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 200),
+              child: Material(
+                elevation: 1,
+                borderRadius: BorderRadius.circular(8),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  padding: EdgeInsets.zero,
+                  itemCount: _items.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (ctx, i) {
+                    final row = _items[i];
+                    final name = (row['name'] ?? '').toString();
+                    final unit = (row['default_unit'] ?? '—').toString();
+                    final lpp = row['last_purchase_price'];
+                    final lsn =
+                        (row['last_supplier_name'] ?? '').toString().trim();
+                    final rateStr = (lpp is num && lpp > 0)
+                        ? ' · last P ₹${lpp is int || lpp == lpp.roundToDouble() ? lpp.round() : lpp}'
+                        : '';
+                    final supStr =
+                        lsn.isNotEmpty ? ' · $lsn' : '';
+                    return ListTile(
+                      dense: true,
+                      title: Text(name,
+                          maxLines: 2, overflow: TextOverflow.ellipsis),
+                      subtitle: Text(
+                        '$unit$supStr$rateStr',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      onTap: () => _apply(row),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class _BillRowEdit {
   _BillRowEdit({
+    this.catalogItemId,
     required this.name,
     required this.qty,
     required this.unit,
@@ -938,6 +1125,7 @@ class _BillRowEdit {
 
   factory _BillRowEdit.empty() {
     return _BillRowEdit(
+      catalogItemId: null,
       name: TextEditingController(),
       qty: TextEditingController(text: '1'),
       unit: TextEditingController(text: 'kg'),
@@ -947,6 +1135,7 @@ class _BillRowEdit {
     );
   }
 
+  String? catalogItemId;
   final TextEditingController name;
   final TextEditingController qty;
   final TextEditingController unit;

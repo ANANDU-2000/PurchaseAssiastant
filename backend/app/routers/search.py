@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
+from rapidfuzz import fuzz
 from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,15 +29,23 @@ from app.models import (
     Membership,
     Supplier,
     TradePurchase,
+    TradePurchaseLine,
 )
 from app.schemas.entries import EntryLineOut, EntryOut
 from app.services import trade_purchase_service as tps
 from app.services.fuzzy_catalog import rank_ids_by_token_sort
+from app.services.trade_query import trade_purchase_status_in_reports
 
 router = APIRouter(prefix="/v1/businesses/{business_id}", tags=["search"])
 logger = logging.getLogger(__name__)
 
 _PAIR_CAP = 5000
+"""Fetch many SQL substring hits, then rank in-process (alphabetical SQL order is poor for short queries)."""
+_CATALOG_FETCH_LIMIT = 160
+"""API keeps a compact catalog_items array."""
+_CATALOG_RETURN_LIMIT = 40
+_SUPPLIER_HISTORY_CATALOG_CAP = 4000
+
 _QUERY_ALIASES = {
     "suger": "sugar",
     "shugar": "sugar",
@@ -306,12 +316,106 @@ async def _attach_last_purchase_human_ids(
             m["last_purchase_human_id"] = hid
 
 
+async def _supplier_exists_in_business(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    supplier_id: uuid.UUID,
+) -> bool:
+    r = await execute_with_retry(
+        lambda: db.execute(
+            select(Supplier.id).where(
+                Supplier.business_id == business_id,
+                Supplier.id == supplier_id,
+            )
+        )
+    )
+    return r.scalar_one_or_none() is not None
+
+
+async def _supplier_history_catalog_ids(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    supplier_id: uuid.UUID,
+) -> set[uuid.UUID]:
+    rr = await execute_with_retry(
+        lambda: db.execute(
+            select(TradePurchaseLine.catalog_item_id)
+            .join(
+                TradePurchase,
+                TradePurchase.id == TradePurchaseLine.trade_purchase_id,
+            )
+            .where(
+                TradePurchase.business_id == business_id,
+                TradePurchase.supplier_id == supplier_id,
+                trade_purchase_status_in_reports(),
+            )
+            .distinct()
+            .limit(_SUPPLIER_HISTORY_CATALOG_CAP)
+        )
+    )
+    out: set[uuid.UUID] = set()
+    for row in rr.all():
+        cid = row[0]
+        if cid is not None:
+            out.add(cid)
+    return out
+
+
+def _rank_catalog_items_for_query(
+    items: list[dict[str, Any]],
+    needle: str,
+    supplier_id: uuid.UUID | None,
+    supplier_history_ids: set[uuid.UUID],
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Order catalog hits by fuzzy name score + prefix tokens + optional supplier signals."""
+    nl = needle.strip().lower()
+    if not nl:
+        return items[:limit]
+    scored: list[tuple[float, str, dict[str, Any]]] = []
+    for m in items:
+        name = (m.get("name") or "").strip()
+        if not name:
+            continue
+        nm = name.lower()
+        base = float(fuzz.token_sort_ratio(nl, nm))
+        bonus = 0.0
+        if nm.startswith(nl):
+            bonus += 12.0
+        else:
+            for part in re.split(r"[^a-z0-9]+", nm):
+                if part.startswith(nl):
+                    bonus += 8.0
+                    break
+        if supplier_id is not None:
+            ls = m.get("last_supplier_id")
+            if ls is not None and str(supplier_id) == str(ls):
+                bonus += 18.0
+            try:
+                cid = uuid.UUID(str(m["id"]))
+                if cid in supplier_history_ids:
+                    bonus += 14.0
+            except (ValueError, KeyError):
+                pass
+        scored.append((base + bonus, nm, m))
+    scored.sort(key=lambda t: (-t[0], t[1]))
+    return [t[2] for t in scored[:limit]]
+
+
 @router.get("/search", response_model=UnifiedSearchOut)
 async def unified_search(
     business_id: uuid.UUID,
     _m: Annotated[Membership, Depends(require_membership)],
     db: Annotated[AsyncSession, Depends(get_db)],
     q: str = Query(..., min_length=1, max_length=200),
+    supplier_id: uuid.UUID | None = Query(
+        None,
+        description=(
+            "Boost catalog items tied to this supplier: last_supplier_id snapshot "
+            "and catalog_item_id on trade purchases counted in reports."
+        ),
+    ),
 ):
     del _m
 
@@ -320,6 +424,21 @@ async def unified_search(
         if len(needle) < 1:
             return UnifiedSearchOut()
         terms = _search_terms(needle)
+
+        supplier_for_boost: uuid.UUID | None = None
+        supplier_hist_ids: set[uuid.UUID] = set()
+        if supplier_id is not None:
+            if await _supplier_exists_in_business(db, business_id, supplier_id):
+                supplier_for_boost = supplier_id
+                supplier_hist_ids = await _supplier_history_catalog_ids(
+                    db, business_id, supplier_id
+                )
+            else:
+                logger.debug(
+                    "unified_search ignoring unknown supplier_id=%s business_id=%s",
+                    supplier_id,
+                    business_id,
+                )
 
         ic = ItemCategory
         ct = CategoryType
@@ -384,7 +503,7 @@ async def unified_search(
                     item_name_cat_hsn,
                 )
                 .order_by(func.lower(CatalogItem.name))
-                .limit(40)
+                .limit(_CATALOG_FETCH_LIMIT)
             )
         else:
             sq_items = (
@@ -400,7 +519,7 @@ async def unified_search(
                     item_name_cat_hsn,
                 )
                 .order_by(func.lower(CatalogItem.name))
-                .limit(40)
+                .limit(_CATALOG_FETCH_LIMIT)
             )
         ir = await execute_with_retry(lambda: db.execute(sq_items))
         catalog_rows = list(ir.all())
@@ -417,7 +536,9 @@ async def unified_search(
             )
             pairs = [(row[0], row[1]) for row in pairs_r.all() if row[1]]
             fuzzy_cut = 40 if len(needle) < 2 else 52
-            ranked = rank_ids_by_token_sort(needle, pairs, limit=40, score_cutoff=fuzzy_cut)
+            ranked = rank_ids_by_token_sort(
+                needle, pairs, limit=_CATALOG_FETCH_LIMIT, score_cutoff=fuzzy_cut
+            )
             if ranked:
                 fuzzy_catalog_used = True
                 ids = [uid for uid, _sc in ranked]
@@ -460,6 +581,13 @@ async def unified_search(
         catalog_items = _hydrate_catalog_rows(catalog_rows)
         await _attach_last_party_names(db, business_id, catalog_items)
         await _attach_last_purchase_human_ids(db, business_id, catalog_items)
+        catalog_items = _rank_catalog_items_for_query(
+            catalog_items,
+            needle,
+            supplier_for_boost,
+            supplier_hist_ids,
+            limit=_CATALOG_RETURN_LIMIT,
+        )
 
         sup_match = or_(
             func.lower(Supplier.name).contains(needle),

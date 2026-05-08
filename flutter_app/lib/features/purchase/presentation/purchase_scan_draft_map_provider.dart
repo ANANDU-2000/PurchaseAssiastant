@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// In-memory scan JSON between **Scan bill** and **Purchase draft wizard** (until DB drafts exist).
+/// In-memory scan JSON between **Scan bill** and **purchase entry** (`/purchase/new` or legacy `/purchase/scan-draft` redirect).
 class PurchaseScanDraftMapNotifier extends Notifier<Map<String, dynamic>?> {
   @override
   Map<String, dynamic>? build() => null;

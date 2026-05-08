@@ -6,6 +6,8 @@
 
 Flutter/admin must **not** re-implement divergent sum logic for the same KPIs shown on dashboard vs detail vs analytics.
 
+Aligns with **`context/rules/MASTER_CURSOR_RULES.md`** (reports engine section): same endpoints/contracts for dashboard, detail, and charts; cache layers must invalidate consistently after mutations.
+
 ## Known risk areas
 
 - Stale cache after create/update/delete (invalidate Riverpod providers / HTTP caches narrowly).

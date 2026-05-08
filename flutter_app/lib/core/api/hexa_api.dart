@@ -669,10 +669,16 @@ class HexaApi {
   Future<Map<String, dynamic>> unifiedSearch({
     required String businessId,
     required String q,
+    /// Boosts catalog rows bought from this supplier (trade history + last_supplier_id).
+    String? supplierId,
   }) async {
     final res = await _dio.get<Map<String, dynamic>>(
       '/v1/businesses/$businessId/search',
-      queryParameters: {'q': q},
+      queryParameters: {
+        'q': q,
+        if (supplierId != null && supplierId.trim().isNotEmpty)
+          'supplier_id': supplierId.trim(),
+      },
     );
     return res.data ?? {};
   }

@@ -23,6 +23,7 @@ import '../../../core/services/offline_store.dart';
 import '../../../core/services/offline_sync_service.dart';
 import '../../../core/notifications/local_notifications_service.dart';
 import '../../purchase/domain/purchase_draft.dart';
+import '../../purchase/mapping/ai_scan_purchase_draft_map.dart';
 import '../../purchase/state/purchase_draft_provider.dart';
 
 import '../../contacts/presentation/broker_wizard_page.dart';
@@ -34,6 +35,7 @@ import 'wizard/purchase_review_tally_step.dart';
 import 'wizard/purchase_terms_only_step.dart';
 import 'widgets/purchase_item_entry_sheet.dart';
 import 'widgets/purchase_saved_sheet.dart';
+import 'scan_purchase_draft_logic.dart';
 
 enum _WizardExitDraftChoice { keepEditing, saveDraft, discard }
 
@@ -44,6 +46,8 @@ class PurchaseEntryWizardV2 extends ConsumerStatefulWidget {
     this.initialCatalogItemId,
     this.initialDraft,
     this.resumeDraft = false,
+    this.aiScanToken,
+    this.aiScanBaseJson,
   });
 
   final String? editingId;
@@ -54,6 +58,12 @@ class PurchaseEntryWizardV2 extends ConsumerStatefulWidget {
 
   /// When true after [reset], restore Hive/prefs draft (explicit “resume” flow).
   final bool resumeDraft;
+
+  /// When set with [aiScanBaseJson], save uses `/scan-purchase-v2/update` + `/confirm` instead of POST trade purchase.
+  final String? aiScanToken;
+
+  /// Original ScanResult JSON for merge-on-save (warnings, meta, token context).
+  final Map<String, dynamic>? aiScanBaseJson;
 
   @override
   ConsumerState<PurchaseEntryWizardV2> createState() =>
@@ -164,15 +174,14 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     } else {
       if (!mounted) return;
       notifier.reset();
-        if (widget.initialDraft != null) {
-          ref
-              .read(purchaseDraftProvider.notifier)
-              .replaceDraft(widget.initialDraft!);
-        } else if (widget.resumeDraft) {
-          await _maybeRestoreDraft();
-        }
+      if (widget.initialDraft != null) {
+        ref
+            .read(purchaseDraftProvider.notifier)
+            .replaceDraft(widget.initialDraft!);
+      } else if (widget.resumeDraft) {
+        await _maybeRestoreDraft();
+      }
       if (!mounted) return;
-      ref.read(purchaseDraftProvider.notifier).setInvoiceText('');
       _syncControllersFromDraft();
       Future.microtask(() {
         if (!mounted) return;
@@ -1047,6 +1056,9 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
           initial: initial,
           isEdit: editIndex != null,
           fullPage: true,
+          preferredSupplierId: draft.supplierId?.trim().isNotEmpty == true
+              ? draft.supplierId!.trim()
+              : null,
           omitLineFreightDeliveredBilltyDiscount: false,
           navigateCatalogQuickAddItem: session == null || catalog.isEmpty
               ? null
@@ -1264,6 +1276,17 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     await _savePurchaseAttempt(forceDuplicate: false);
   }
 
+  bool _aiScanWarningsBlock(Map<String, dynamic> scan) {
+    final w = scan['warnings'];
+    if (w is! List) return false;
+    for (final e in w) {
+      if (e is! Map) continue;
+      final sev = e['severity']?.toString().toLowerCase();
+      if (sev == 'block' || sev == 'blocker') return true;
+    }
+    return false;
+  }
+
   Future<void> _savePurchaseAttempt({required bool forceDuplicate}) async {
     if (_isSaving) return;
     final session = ref.read(sessionProvider);
@@ -1304,16 +1327,55 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     }
 
     try {
-      final saved = isEdit
-          ? await api.updateTradePurchase(
+      Map<String, dynamic> saved;
+      final aiToken = widget.aiScanToken?.trim();
+      final aiBase = widget.aiScanBaseJson;
+      if (!isEdit &&
+          aiToken != null &&
+          aiToken.isNotEmpty &&
+          aiBase != null) {
+        final d = ref.read(purchaseDraftProvider);
+        final merged = scanResultJsonMergePurchaseDraft(
+          Map<String, dynamic>.from(aiBase),
+          d,
+        );
+        final blocker = _aiScanWarningsBlock(aiBase);
+        if (!scanDraftReadyForCreate(merged, scanIssueBlocker: blocker)) {
+          if (mounted) {
+            setState(() {
+              _isSaving = false;
+              _inlineSaveError =
+                  'Match supplier and catalog items with rates for every line before saving this scan.';
+              _wizStep = 2;
+            });
+          }
+          return;
+        }
+        final tradeBody = ref
+            .read(purchaseDraftProvider.notifier)
+            .buildTradePurchaseBody(forceDuplicate: forceDuplicate);
+        final forceDup = tradeBody['force_duplicate'] == true;
+        final pd = d.purchaseDate ?? DateTime.now();
+        saved = await scanPurchaseUpdateAndConfirm(
+          ref: ref,
+          scanToken: aiToken,
+          scanPayload: merged,
+          purchaseDate: pd,
+          invoiceNumber: d.invoiceNumber,
+          forceDuplicate: forceDup,
+        );
+      } else if (isEdit) {
+        saved = await api.updateTradePurchase(
               businessId: bid,
               purchaseId: widget.editingId!,
               body: body,
-            )
-          : await api.createTradePurchase(
+            );
+      } else {
+        saved = await api.createTradePurchase(
               businessId: bid,
               body: body,
             );
+      }
       invalidatePurchaseWorkspace(ref);
       ref.read(purchaseDraftProvider.notifier).reset();
       await _clearDraftInPrefs();
@@ -1864,8 +1926,21 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         _lastCatalogSnapshot ??
         const <Map<String, dynamic>>[];
 
+    final aiTok = widget.aiScanToken?.trim();
+    final fromAiBill = !isEdit &&
+        aiTok != null &&
+        aiTok.isNotEmpty &&
+        widget.aiScanBaseJson != null;
+
     final appBarTitle =
-        !isEdit
+        fromAiBill
+            ? switch (_wizStep) {
+              0 => 'AI bill draft — Supplier & broker',
+              1 => 'AI bill draft — Terms & charges',
+              2 => 'AI bill draft — Match items',
+              _ => 'AI bill draft — Review & save',
+            }
+            : !isEdit
             ? switch (_wizStep) {
               0 => 'New purchase — Party',
               1 => 'New purchase — Terms',

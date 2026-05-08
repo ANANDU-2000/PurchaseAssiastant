@@ -25,6 +25,6 @@ Notes:
 | BUG-003 | P1 | Dashboard/reports/charts disagree or flip to empty | **partial** — backend month dashboard + analytics insights filters; Flutter Hive + inflight dedupe cleared on `invalidateBusinessAggregates`; home overview stale in-flight responses discarded via bust generation |
 | BUG-004 | P1 | Purchase deleted in UI but data/cache still surfaces | **partial** — backend month dashboard + analytics insights exclude deleted; Flutter **purchase detail** uses keepAlive cache → now invalidated on delete from detail, home (single+bulk), supplier/broker/item ledgers, contacts trade ledger |
 | BUG-005 | P2 | Scan extraction misses freight/bilty/delivered/commission fields | open |
-| BUG-006 | P2 | Item search typing short prefix returns no suggestions | **partial** — draft item edit sheet uses unified search (≥2 chars); wizard + manual purchase fields may still differ |
+| BUG-006 | P2 | Item search typing short prefix returns no suggestions | **partial** — backend `/search` ranks catalog by relevance + optional `supplier_id`; scan preview passes matched supplier; wizard item sheet boosts `last_supplier_id` / `default_supplier_ids` when supplier picked. Full alias/ranking backlog remains |
 
 _Add rows as you confirm reproducers in this codebase._

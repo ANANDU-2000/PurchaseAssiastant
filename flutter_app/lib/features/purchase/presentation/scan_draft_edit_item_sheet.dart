@@ -28,6 +28,8 @@ Future<void> editScanDraftItemRow(
   required int index,
   required Map<String, dynamic> item,
   required void Function(int index, Map<String, dynamic> next) onSaved,
+  /// Matched supplier on the scan JSON — improves `/search` ranking for this business.
+  String? supplierMatchedId,
 }) async {
   final nameCtrl = TextEditingController(
     text: (item['matched_name'] ?? item['raw_name'] ?? '').toString(),
@@ -57,6 +59,7 @@ Future<void> editScanDraftItemRow(
         ),
         child: _ScanDraftItemSheetBody(
           pickHolder: pickHolder,
+          supplierMatchedId: supplierMatchedId,
           nameCtrl: nameCtrl,
           qtyCtrl: qtyCtrl,
           pCtrl: pCtrl,
@@ -105,6 +108,7 @@ Future<void> editScanDraftItemRow(
 class _ScanDraftItemSheetBody extends ConsumerStatefulWidget {
   const _ScanDraftItemSheetBody({
     required this.pickHolder,
+    this.supplierMatchedId,
     required this.nameCtrl,
     required this.qtyCtrl,
     required this.pCtrl,
@@ -113,6 +117,7 @@ class _ScanDraftItemSheetBody extends ConsumerStatefulWidget {
   });
 
   final ScanDraftCatalogPickHolder pickHolder;
+  final String? supplierMatchedId;
   final TextEditingController nameCtrl;
   final TextEditingController qtyCtrl;
   final TextEditingController pCtrl;
@@ -136,7 +141,7 @@ class _ScanDraftItemSheetBodyState extends ConsumerState<_ScanDraftItemSheetBody
 
   Future<void> _search(String q) async {
     final session = ref.read(sessionProvider);
-    if (session == null || q.length < 2) {
+    if (session == null || q.isEmpty) {
       setState(() => _items = []);
       return;
     }
@@ -145,6 +150,7 @@ class _ScanDraftItemSheetBodyState extends ConsumerState<_ScanDraftItemSheetBody
       final data = await ref.read(hexaApiProvider).unifiedSearch(
             businessId: session.primaryBusiness.id,
             q: q,
+            supplierId: widget.supplierMatchedId,
           );
       final raw = data['catalog_items'];
       final list = <Map<String, dynamic>>[];
@@ -166,7 +172,7 @@ class _ScanDraftItemSheetBodyState extends ConsumerState<_ScanDraftItemSheetBody
   void _onNameChanged(String value) {
     _debounce?.cancel();
     final q = value.trim();
-    if (q.length < 2) {
+    if (q.isEmpty) {
       setState(() => _items = []);
       return;
     }
@@ -207,7 +213,7 @@ class _ScanDraftItemSheetBodyState extends ConsumerState<_ScanDraftItemSheetBody
             textInputAction: TextInputAction.next,
             decoration: const InputDecoration(
               labelText: 'Item',
-              hintText: 'Type to search catalog…',
+              hintText: 'Search catalog — unit & last rate under each row',
             ),
             onChanged: _onNameChanged,
           ),
@@ -232,11 +238,14 @@ class _ScanDraftItemSheetBodyState extends ConsumerState<_ScanDraftItemSheetBody
                     final name = (row['name'] ?? '').toString();
                     final unit = (row['default_unit'] ?? '—').toString();
                     final lpp = row['last_purchase_price'];
+                    final lsn =
+                        (row['last_supplier_name'] ?? '').toString().trim();
                     final rateStr = (lpp is num && lpp > 0) ? ' · last P ₹${lpp is int || lpp == lpp.roundToDouble() ? lpp.round() : lpp}' : '';
+                    final supStr = lsn.isNotEmpty ? ' · $lsn' : '';
                     return ListTile(
                       dense: true,
                       title: Text(name, maxLines: 2, overflow: TextOverflow.ellipsis),
-                      subtitle: Text('$unit$rateStr', maxLines: 1, overflow: TextOverflow.ellipsis),
+                      subtitle: Text('$unit$supStr$rateStr', maxLines: 2, overflow: TextOverflow.ellipsis),
                       onTap: () => _applySuggestion(row),
                     );
                   },

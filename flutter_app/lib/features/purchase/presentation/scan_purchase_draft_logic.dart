@@ -7,6 +7,42 @@ import 'package:go_router/go_router.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 
+/// Updates cached scan JSON then confirms — returns created trade purchase JSON (same shape as createTradePurchase).
+Future<Map<String, dynamic>> scanPurchaseUpdateAndConfirm({
+  required dynamic ref,
+  required String scanToken,
+  required Map<String, dynamic> scanPayload,
+  required DateTime purchaseDate,
+  String? invoiceNumber,
+  required bool forceDuplicate,
+}) async {
+  final session = ref.read(sessionProvider);
+  if (session == null) {
+    throw StateError('Not signed in');
+  }
+  final api = ref.read(hexaApiProvider);
+  final bid = session.primaryBusiness.id;
+  await api.scanPurchaseBillV2Update(
+    businessId: bid,
+    body: {'scan_token': scanToken, 'scan': scanPayload},
+  );
+  final confirmBody = <String, dynamic>{
+    'scan_token': scanToken,
+    'purchase_date':
+        '${purchaseDate.year.toString().padLeft(4, '0')}-${purchaseDate.month.toString().padLeft(2, '0')}-${purchaseDate.day.toString().padLeft(2, '0')}',
+    'status': 'confirmed',
+    'force_duplicate': forceDuplicate,
+  };
+  final inv = invoiceNumber?.trim();
+  if (inv != null && inv.isNotEmpty) {
+    confirmBody['invoice_number'] = inv;
+  }
+  return api.scanPurchaseBillV2Confirm(
+    businessId: bid,
+    body: confirmBody,
+  );
+}
+
 /// Shared validation for scan → trade purchase confirm (scanner v2/v3 cache).
 bool scanDraftReadyForCreate(Map<String, dynamic>? scan, {required bool scanIssueBlocker}) {
   if (scan == null || scanIssueBlocker) return false;
@@ -39,24 +75,23 @@ Future<String?> runScanDraftPurchaseCreate({
   required BuildContext context,
   required Map<String, dynamic> scan,
 }) async {
-  final session = ref.read(sessionProvider);
   final token = scanDraftToken(scan);
-  if (session == null || token == null) return null;
+  if (token == null) return null;
 
-  await ref.read(hexaApiProvider).scanPurchaseBillV2Update(
-        businessId: session.primaryBusiness.id,
-        body: {'scan_token': token, 'scan': scan},
-      );
+  DateTime pd = DateTime.now();
+  final bd = scan['bill_date']?.toString();
+  if (bd != null && bd.length >= 10) {
+    pd = DateTime.tryParse(bd.substring(0, 10)) ?? pd;
+  }
 
-  final created = await ref.read(hexaApiProvider).scanPurchaseBillV2Confirm(
-        businessId: session.primaryBusiness.id,
-        body: {
-          'scan_token': token,
-          'purchase_date': DateTime.now().toIso8601String().substring(0, 10),
-          'status': 'confirmed',
-          'force_duplicate': false,
-        },
-      );
+  final created = await scanPurchaseUpdateAndConfirm(
+    ref: ref,
+    scanToken: token,
+    scanPayload: scan,
+    purchaseDate: pd,
+    invoiceNumber: scan['invoice_number']?.toString(),
+    forceDuplicate: false,
+  );
 
   return created['id']?.toString().trim();
 }

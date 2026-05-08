@@ -5,40 +5,45 @@ _Update this file after each meaningful agent session._
 ## Last updated
 
 - Date: 2026-05-08  
-- Branch: `main` (verify with `git branch`)
+- Branch: verify with `git branch`
 
 ## Active task
 
-- **Home KPI refresh:** `invalidateBusinessAggregates` now wipes Hive trade/home/report caches + in-flight dedupe maps for home dashboard / shell / reports purchases; home overview pull aborts mid-flight when bust generation advances (`StaleHomeDashboardFetch`).
-- **Next:** supplier-scoped search params (`TASKS.md`).
+- **Unified AI scan → manual purchase wizard:** Scan preview stays thin; **`PurchaseEntryWizardV2`** is the only heavy editor; save from AI session uses **`scan_token`** + `/scan-purchase-v2/update` + `/confirm` (not direct OCR create).
+- **Next (backlog):** DB-backed aliases + pg_trgm (`TASKS.md`); ERP table / viewport polish.
 
 ## Why assistants pause between messages
 
-- Cursor turns are **bounded**; your AUTONOMOUS doc’s **full checklist** is implemented as **successive commits** (this session added autocomplete). Remaining items are **explicit backlog rows**, not ignored.
+- Cursor turns are **bounded**; large MASTER checklists land as **incremental commits**. Open rows in **`BUGS.md`** / **`TASKS.md`** are backlog, not ignored.
 
 ## Important business rules (short)
 
-- Scan → **draft** only; final purchase after wizard confirm + backend totals.
-- No guessing matches; unit mismatch → force review.
-- Reports must share one backend aggregation contract.
+- Scan → **draft only**; final purchase only after user completes wizard + backend recalculation + confirm.
+- No guessing matches; unit mismatch → force review (see **`MATCH_ENGINE.md`**).
+- Dashboard KPIs: one backend contract; Flutter busts caches on mutation (`invalidateBusinessAggregates`).
 
 ## Current screens / flows
 
-- **Scan:** `ScanPurchaseV2Page` → **Draft wizard:** `PurchaseScanDraftWizardPage` (`/purchase/scan-draft`) → confirm → `scanPurchaseBillV2Update` + `scanPurchaseBillV2Confirm`.
+- **Scan:** `ScanPurchaseV2Page` → **Continue** → `/purchase/new` with `initialDraft` + `extra.aiScan` (`token`, `baseScan`).
+- **Legacy:** `/purchase/scan-draft` (`PurchaseScanDraftWizardPage`) → **redirect** to `/purchase/new` with same extra (deep links / old bookmarks).
+- **Manual:** `/purchase/new` without `aiScan` → POST trade purchase as before.
+
+Wizard steps (AI bill titles in app bar): **Supplier & broker** → **Terms & charges** → **Match items** → **Review & save**. Same step order as manual entry; titles differ only when `aiScan` is present.
 
 ## Latest code touchpoints
 
-- `flutter_app/lib/core/providers/business_aggregates_invalidation.dart` — Hive + inflight bust before KPI invalidation
-- `flutter_app/lib/core/providers/home_dashboard_provider.dart` — `_homeDashBustGeneration` / `StaleHomeDashboardFetch`
-- `flutter_app/lib/core/services/offline_store.dart` — `bustTradeAggregateCachesForBusiness`
-- `backend/app/routers/dashboard.py` — month KPI status filter
-- `backend/app/routers/analytics.py` — `/insights/trade` status filter
-- `flutter_app/lib/features/purchase/providers/trade_purchase_detail_provider.dart` — shared detail cache; invalidated on all delete paths
-- `backend/tests/test_reports_trade_breakdowns.py` — dashboard + analytics delete regressions
-- `flutter_app/lib/features/purchase/presentation/scan_draft_edit_item_sheet.dart` (unified search autocomplete)
-- `backend/app/services/scanner_v2/pack_gate.py`, `backend/app/services/scanner_v2/pipeline.py`
-- `flutter_app/lib/features/purchase/presentation/scan_purchase_v2_page.dart`
-- `flutter_app/lib/features/purchase/presentation/purchase_scan_draft_wizard_page.dart`
+- `flutter_app/lib/features/purchase/mapping/ai_scan_purchase_draft_map.dart` — ScanResult ↔ PurchaseDraft
+- `backend/app/routers/search.py` — `/search` relevance ranking + optional `supplier_id`
+- `flutter_app/lib/core/api/hexa_api.dart` — `unifiedSearch(..., supplierId:)`
+- `flutter_app/lib/shared/widgets/inline_search_field.dart` — `InlineSearchItem.sortBoost`
+- `flutter_app/lib/features/purchase/presentation/purchase_entry_wizard_v2.dart` — AI save branch; AI step titles; passes `preferredSupplierId` into item sheet
+- `flutter_app/lib/features/purchase/presentation/scan_purchase_v2_page.dart` — `_openPurchaseEntryFromScan`; passes scan `supplier.matched_id` into preview item edit → `unifiedSearch`
+- `flutter_app/lib/features/purchase/presentation/scan_draft_edit_item_sheet.dart` — AI scan line editor; debounced `/search`
+- `flutter_app/lib/features/purchase/presentation/scan_purchase_draft_logic.dart` — `scanPurchaseUpdateAndConfirm`
+- `flutter_app/lib/features/purchase/presentation/widgets/purchase_bill_scan_panel.dart` — embedded scan; `/search` item autocomplete parity with AI scan v2
+- `flutter_app/lib/features/purchase/presentation/widgets/purchase_item_entry_sheet.dart` — catalog typeahead + supplier `sortBoost` when ranks tie
+- `flutter_app/lib/core/router/app_router.dart` — parses `extra.aiScan`
+- `flutter_app/test/ai_scan_purchase_draft_map_test.dart`
 
 ## Blockers
 
@@ -46,6 +51,4 @@ _Update this file after each meaningful agent session._
 
 ## Pending validation
 
-- `pytest tests/test_reports_trade_breakdowns.py::test_month_dashboard_*` + `::test_analytics_trade_insights_excludes_deleted`
-- Full `pytest` / `flutter test` before release.
-
+- Full `flutter test` / `pytest` before release.
