@@ -9,7 +9,15 @@ _Update this file after each meaningful agent session._
 
 ## Active task
 
-- Enterprise purchase draft flow & Cursor policy alignment (`MASTER_CURSOR_RULES`, autonomous execution rules).
+- Restored **verbatim** `MASTER_CURSOR_RULES.md` + `AUTONOMOUS_CURSOR_EXECUTION_RULES.md` (full policy text, not summaries).
+- Restructured root `TASKS.md` into **Critical / In progress / Pending / Completed / Blocked** per autonomous rules.
+- **Why earlier work looked “stopped”:** a documentation-only commit intentionally summarized policies; that violated your zero-interruption / full-text expectation — corrected now.
+
+## Important business rules (short)
+
+- Scan → **draft** only; final purchase after wizard confirm + backend totals.
+- No guessing matches; unit mismatch → force review.
+- Reports must share one backend aggregation contract.
 
 ## Current screens / flows
 

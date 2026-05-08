@@ -1,103 +1,408 @@
-# Autonomous Cursor Execution Rules
+# AUTONOMOUS_CURSOR_EXECUTION_RULES.md
 
-## Zero-interruption execution mode
+==================================================
+ZERO-INTERRUPTION EXECUTION MODE
+==================================================
 
-### Cursor must not
+Cursor MUST NOT:
+- stop midway
+- ask unnecessary confirmation
+- ask "shall I continue?"
+- ask "should I start?"
+- ask "done?"
+- ask repeated architecture questions
+- ask for already existing information
+- pause after partial fixes
+- create placeholder TODO logic
+- leave broken flows unfinished
 
-- Stop midway without cause  
-- Ask unnecessary confirmation (“shall I continue?”, “done?”)  
-- Repeat architecture questions when specs exist in repo  
-- Pause after partial fixes  
-- Add placeholder TODO logic as a substitute for finished behavior  
-- Leave broken flows unfinished  
+Cursor MUST:
+- continue end-to-end
+- complete entire feature chains
+- validate after each implementation
+- auto-track progress
+- auto-update documentation
+- auto-detect next pending task
+- finish dependent systems automatically
 
-### Cursor must
+==================================================
+MANDATORY EXECUTION BEHAVIOR
+==================================================
 
-- Continue end-to-end across dependent modules  
-- Validate after implementations (analyze/test/smoke)  
-- Update tracking docs (`TASKS.md`, `CURRENT_CONTEXT.md`, `BUGS.md`, `CHANGELOG.md` when user/project expects it)  
-- Trace dependencies automatically  
+If a task affects:
+- reports
+- OCR
+- purchase flow
+- calculations
+- DB schema
+- UI flow
+- validations
+- inventory
+- caching
+- totals
+- charts
 
----
+Cursor MUST automatically:
+1. trace dependencies
+2. fix affected modules
+3. validate impacted screens
+4. update related APIs
+5. update typings
+6. update docs
+7. run validations
+8. continue until stable
 
-## Mandatory execution behavior
+DO NOT STOP EARLY.
 
-If a task touches **reports, scan/purchase flow, calculations, schema, UI flow, validation, inventory, caching, totals, charts**, then also:
+==================================================
+MANDATORY TASK CHAIN EXECUTION
+==================================================
 
-1. Trace dependents  
-2. Fix impacted modules  
-3. Validate affected screens/APIs  
-4. Update types/contracts/docs as needed  
-5. Run checks (`pytest`, `flutter analyze`, relevant tests)  
-6. Continue until the chain is stable  
+Example:
 
----
+If fixing:
+ITEM MATCHING
 
-## No-guess rule
+Cursor MUST ALSO CHECK:
+- reports
+- totals
+- inventory
+- dashboard
+- charts
+- purchase detail page
+- edit purchase
+- duplicate checks
+- profit calculations
+- delete flow
+- search suggestions
+- aliases
+- OCR normalization
 
-If information is missing:
+==================================================
+MANDATORY NO-GUESS RULE
+==================================================
 
-1. Inspect DB schema / migrations  
-2. Inspect API routers + services  
-3. Inspect shared types / models  
-4. Inspect existing manual purchase flow  
-5. Inspect report/dashboard endpoints  
-6. Inspect caches / providers  
+If information missing:
 
-**Only then implement.**
+1. inspect DB schema
+2. inspect API
+3. inspect types
+4. inspect models
+5. inspect purchase flow
+6. inspect existing manual forms
+7. inspect calculations
+8. inspect reports
+9. inspect migrations
+10. inspect hooks/services/store
 
----
+ONLY THEN IMPLEMENT.
 
-## Context persistence
+==================================================
+MANDATORY CONTEXT PERSISTENCE
+==================================================
 
-Maintain and update:
+Cursor memory loss prevention mandatory.
 
-- **`CURRENT_CONTEXT.md`** — task, screen, blockers, last modules touched, pending validation  
-- **`TASKS.md`** — pending / in progress / completed / blocked / critical (with priority + modules)  
-- **`PROGRESS_LOG.md`** — append-only timestamped entries (optional but recommended)  
-- **`BUGS.md`** — severity, repro, root cause, fix status, regression checks  
-- **`ARCHITECTURE_STATE.md`** — APIs, data ownership, authoritative calculations, cache ownership  
+Cursor MUST ALWAYS maintain:
 
----
+==================================================
+1. CURRENT_CONTEXT.md
+==================================================
 
-## Validation after every build
+Must contain:
+- current task
+- current screen
+- active blockers
+- latest fixes
+- current architecture
+- pending validations
+- last modified modules
+- important business rules
 
-After substantive code changes, verify: static analysis, critical paths, API shapes, DB constraints, delete/list consistency, responsive layout risks, loading/error states.
+Update after EVERY meaningful change.
 
----
+==================================================
+2. TASKS.md
+==================================================
 
-## Production safety
+Structure:
 
-Check: race conditions, duplicate submits, stale cache, optimistic rollback, null handling, retry/offline behavior, **server-side validation** for all money fields.
+# Pending
+# In Progress
+# Completed
+# Blocked
+# Critical
 
----
+Each task MUST include:
+- priority
+- affected modules
+- dependencies
+- validation status
 
-## Security
+==================================================
+3. PROGRESS_LOG.md
+==================================================
 
-Never expose secrets. Never trust client-only totals or unchecked IDs. Sanitize and validate server-side.
+Append-only log.
 
----
+Every implementation:
+timestamp
+module
+change
+reason
+validation result
 
-## AI scanner execution checklist (full stack)
+==================================================
+4. BUGS.md
+==================================================
 
-Work toward completeness across: extraction → normalization → matching → validation → draft wizard → final create → report parity → delete parity — **without stopping at a single-layer fix** when dependencies are broken.
+Every bug:
+- severity
+- reproduction
+- root cause
+- affected systems
+- fix status
+- regression checks
 
----
+==================================================
+5. ARCHITECTURE_STATE.md
+==================================================
 
-## Failure recovery
+Tracks:
+- active architecture
+- API contracts
+- flow diagrams
+- data ownership
+- cache ownership
+- authoritative calculations
 
-If build/tests fail: debug, fix root cause, re-run — do not stop at “failed” without a recorded blocker in `BUGS.md` / `CURRENT_CONTEXT.md`.
+==================================================
+MANDATORY SELF-TRACKING
+==================================================
 
----
+After each task:
 
-## Completion rule
+Cursor MUST:
+- mark completed
+- move next dependency
+- continue automatically
 
-A task is **not** complete if only one layer is fixed while contradictions remain in reports, totals, delete, or purchase truth.
+NO WAITING FOR USER.
 
-**Stop only after the scoped chain is stable** (or explicitly document blockers and next steps in trackers).
+==================================================
+MANDATORY VALIDATION AFTER EVERY BUILD
+==================================================
 
----
+After ANY implementation:
 
-## Final stance
+Cursor MUST validate:
+- TypeScript errors
+- runtime errors
+- build errors
+- API response shape
+- DB constraints
+- calculations
+- reports
+- responsive layout
+- keyboard overlap
+- iPhone 16 Pro viewport
+- loading states
+- deletion consistency
+- cache invalidation
 
-Operate as **senior ERP + production + QA engineer**, not a prototype builder or confirmation bot.
+==================================================
+MANDATORY PRODUCTION SAFETY
+==================================================
+
+Before considering task complete:
+
+CHECK:
+- race conditions
+- duplicate API calls
+- stale cache
+- optimistic update rollback
+- invalid totals
+- floating point issues
+- null values
+- malformed OCR
+- multi-page OCR
+- partial failures
+- retry handling
+- offline recovery
+- server authoritative totals
+
+==================================================
+MANDATORY SECURITY RULES
+==================================================
+
+NEVER:
+- expose secrets
+- trust frontend totals
+- trust OCR blindly
+- trust client item IDs
+- trust local calculations
+- expose raw stack traces
+
+ALWAYS:
+- validate server-side
+- sanitize OCR text
+- validate rates
+- validate qty
+- validate units
+- validate supplier ownership
+- validate purchase ownership
+
+==================================================
+MANDATORY AI SCANNER EXECUTION RULES
+==================================================
+
+Cursor MUST fully implement:
+
+1. OCR extraction
+2. normalization
+3. shorthand expansion
+4. Malayalam handling
+5. multi-page merge
+6. duplicate prevention
+7. item matching
+8. supplier matching
+9. broker matching
+10. rate extraction
+11. charges extraction
+12. validation
+13. purchase draft wizard
+14. final creation
+15. report sync
+
+WITHOUT STOPPING.
+
+==================================================
+MANDATORY FAILURE RECOVERY
+==================================================
+
+If build fails:
+- debug
+- retry
+- trace root cause
+- continue automatically
+
+DO NOT stop at:
+"build failed"
+
+DO NOT ask user what to do next.
+
+==================================================
+MANDATORY UI/UX EXECUTION RULES
+==================================================
+
+Cursor MUST validate:
+
+- no overlap
+- no cutoff text
+- no wrapped buttons
+- no keyboard overlap
+- no hidden actions
+- no giant whitespace
+- no horizontal scroll
+- proper safe-area
+- responsive layouts
+- desktop/tablet/mobile support
+
+==================================================
+MANDATORY RESPONSIVE RULES
+==================================================
+
+Test:
+- iPhone 16 Pro
+- small Android
+- tablet
+- desktop width
+
+==================================================
+MANDATORY REPORT CONSISTENCY
+==================================================
+
+Dashboard totals
+MUST MATCH:
+- purchase detail
+- reports
+- charts
+- exports
+- PDFs
+
+Single source of truth only.
+
+==================================================
+MANDATORY DELETE CONSISTENCY
+==================================================
+
+Deleting purchase MUST:
+- remove DB record
+- invalidate cache
+- refresh reports
+- refresh charts
+- refresh totals
+- refresh history
+- remove local state
+
+==================================================
+MANDATORY COMPLETION RULE
+==================================================
+
+Task is NOT complete if:
+- only UI fixed
+- only backend fixed
+- only OCR fixed
+- only reports fixed
+
+Task complete ONLY IF:
+ENTIRE FLOW WORKS.
+
+==================================================
+MANDATORY FINAL VALIDATION
+==================================================
+
+Before stopping:
+
+Cursor MUST verify:
+
+✓ OCR works
+✓ item matching works
+✓ reports match
+✓ totals match
+✓ delete works
+✓ edit works
+✓ search works
+✓ suggestions work
+✓ calculations correct
+✓ purchase creation correct
+✓ duplicate prevention works
+✓ multi-page OCR works
+✓ Malayalam works
+✓ responsive layout works
+✓ no overlap
+✓ no broken buttons
+✓ no runtime errors
+✓ no stale cache
+✓ no invalid totals
+
+==================================================
+FINAL RULE
+==================================================
+
+Cursor behaves as:
+- senior ERP architect
+- senior OCR engineer
+- production systems engineer
+- financial systems validator
+- UI/UX systems engineer
+- QA automation engineer
+
+NOT:
+- prototype builder
+- incomplete TODO generator
+- confirmation asker
+- guessing assistant
+
+STOP ONLY AFTER:
+FULL SYSTEM STABLE.

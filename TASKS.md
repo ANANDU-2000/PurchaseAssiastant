@@ -1,123 +1,85 @@
 # PURCHASE ASSISTANT — TASKS
 
-Agent policy: `context/rules/MASTER_CURSOR_RULES.md`, `context/rules/AUTONOMOUS_CURSOR_EXECUTION_RULES.md`.
+Agent policy (verbatim): `context/rules/MASTER_CURSOR_RULES.md`, `context/rules/AUTONOMOUS_CURSOR_EXECUTION_RULES.md`.
 
-# PHASE 0 — CLEANUP
-
-- [ ] Remove OCR packages
-- [ ] Remove OCR UI
-- [ ] Remove OCR parsing
-- [x] Remove OCR backend — **purchase bill path:** Google Vision + Gemini image extract removed from `purchase_scan_service`; bills use OpenAI Vision only (see CHANGELOG)
-- [ ] Flutter: client-side image compression and stable upload helpers (where missing)
-- [ ] Flutter: toasts / snackbars for scan and save flows (match existing patterns)
-- [ ] Flutter: state/cache patterns consistent with existing app architecture
+Each item below should eventually note **priority**, **modules**, **dependencies**, **validation** when you pick it up.
 
 ---
 
-# PHASE 1 — CORE BUG FIXES
+# Critical
 
-## Dashboard
-
-- [ ] Create single aggregation endpoint
-- [ ] Fix total calculations
-- [ ] Fix stale refresh
-- [ ] Add skeleton loader
-- [ ] Add pull refresh
-
-## Reports
-
-- [ ] Pagination
-- [ ] Date filtering
-- [ ] Error boundaries
-- [ ] Empty states
-
-## History
-
-- [ ] Search
-- [ ] Multi select
-- [ ] Bulk delete
-- [ ] Edit flow
-- [ ] Swipe actions
-
-## Ledger
-
-- [ ] Horizontal scroll table
-- [ ] Sticky headers
-- [ ] Prevent truncation
-- [ ] Responsive columns
+| Priority | Task | Affected modules | Dependencies | Validation |
+|----------|------|------------------|--------------|------------|
+| P0 | Wrong item match (wholesale line → wrong retail SKU) | scanner pipeline, matchers, catalog | DB aliases, item master fields | Scan sugar line → never maps to unrelated 1kg SKU |
+| P0 | Unit / pack-size safety (bag/kg vs piece) | matcher, validation, item master | `bag_weight`, unit enums | Auto-match blocked on unit conflict |
+| P0 | Reports/dashboard/detail/charts single source of truth | backend aggregates, Flutter providers | one contract per KPI | Same date range → same totals everywhere |
+| P1 | Delete purchase → data & UI parity | delete API, soft-delete filters, Riverpod/cache | DB schema | Deleted id absent from lists + aggregates |
 
 ---
 
-# PHASE 2 — AI SCANNER
+# In progress
 
-## Scanner UI
-
-- [ ] Camera capture
-- [ ] Gallery upload
-- [ ] Compression
-- [ ] Loading state
-- [ ] Error state
-
-## OpenAI Vision
-
-- [x] Add strict system prompt (`scanner_v2/prompt.py`; includes `not_a_bill`, invoice/fingerprint)
-- [x] JSON validation / normalization (alternate keys → matcher schema)
-- [ ] Error handling (broader edge cases)
-
-## Entity Engine
-
-- [ ] Supplier matching
-- [ ] Broker matching
-- [ ] Item matching
-- [ ] Auto-create entities
-
-## Duplicate Prevention
-
-- [ ] Fingerprint generation
-- [ ] Duplicate modal
-- [ ] Existing bill detection
+- [ ] **P2** — Align scan **preview** with policy (minimal edit on scan screen; heavy edit only in draft wizard) — _Modules: `scan_purchase_v2_page.dart`, wizard — Validation: UX review_
+- [ ] **P2** — Item field **live autocomplete** (`sug` → ranked suggestions) — _Modules: search API, edit sheet — Validation: integration test / manual_
 
 ---
 
-# PHASE 3 — PURCHASE FORM
+# Pending
 
-- [ ] Multi-step wizard
-- [ ] Step validation
-- [ ] Unit conversion engine
-- [ ] Margin calculation
-- [ ] Rate validation
-- [ ] Dynamic items
-- [ ] Final review screen
+## Dashboard & reports
+
+- [ ] **P1** — Single aggregation endpoint / contract for home KPIs — _Validation: parity test vs purchase detail_
+- [ ] **P1** — Fix stale refresh after mutations — _Modules: providers — Validation: create purchase → home updates_
+- [ ] **P2** — Skeleton loaders, pull-to-refresh — _Flutter home_
+
+## AI scanner & extraction
+
+- [ ] **P1** — Charges/terms extraction completeness (freight, bilty, delivered, commission, broker figure, PD) — _backend scanner + prompt — Validation: golden bills_
+- [ ] **P2** — Multi-page `images[]` merge — _API + Flutter picker — Validation: 2+ photos one draft_
+- [ ] **P2** — Malayalam / Manglish normalization dictionary — _backend normalize — Validation: fixture texts_
+
+## Match engines
+
+- [ ] **P1** — Supplier match (aliases, phone, history) — no silent create — _backend + Flutter confirm UX_
+- [ ] **P1** — Broker match — same — _backend + Flutter_
+- [ ] **P1** — Item match priority chain + fuzzy + confidence — _MATCH_ENGINE.md_
+- [ ] **P2** — Duplicate bill / purchase detection UX — _fingerprint API_
+
+## UI / UX (ERP table, viewport)
+
+- [ ] **P2** — ERP-style item table (columns: Item, Qty, Unit, P, S, Profit, Confidence) + expandable rows — _wizard + tokens_
+- [ ] **P2** — iPhone 16 Pro (393×852) safe-area + bottom bar equal width — _scan + wizard_
+- [ ] **P2** — Keyboard-safe modals / full-screen edit option — _edit sheets_
+
+## Performance & infra
+
+- [ ] **P2** — Debounced search, pagination/virtualization for long lists — _catalog, history_
+- [ ] **P3** — DB indexes, scan logs table (if not present) — _migrations_
 
 ---
 
-# PHASE 4 — DATABASE
+# Completed
 
-- [ ] Idempotency key
-- [ ] Fingerprint index
-- [ ] Performance indexes
-- [ ] Scan logs
-- [ ] Pagination support
-- [ ] Aggregation queries
+- [x] Purchase bill path: OpenAI Vision–based extraction (legacy OCR stacks removed from bill flow) — _see CHANGELOG_
+- [x] Strict scan JSON / normalization helpers (baseline) — `scanner_v2`/`scanner_v3`
+- [x] Purchase **draft wizard** route (`/purchase/scan-draft`) — scan does not single-button create purchase — _Flutter_
+- [x] Repo trackers + policy files: `PROJECT_STATUS.md`, `BUGS.md`, engine stubs, `MASTER_CURSOR_RULES`, `AUTONOMOUS_CURSOR_EXECUTION_RULES` — _docs_
 
 ---
 
-# PHASE 5 — UI SYSTEM
+# Blocked
 
-- [ ] Safe area
-- [ ] Theme system
-- [ ] Typography system
-- [ ] Table system
-- [ ] Skeleton system
-- [ ] Toast system
+- _(none — add row when dependency on external vendor/schema blocks work)_
 
 ---
 
-# PHASE 6 — PERFORMANCE
+## Legacy phase backlog (reference)
 
-- [ ] Client caching strategy (Flutter)
-- [ ] Optimistic updates
-- [ ] Lazy loading
-- [ ] Memoization
-- [ ] Query optimization
-- [ ] DB pooling
+<details>
+<summary>Older PHASE 0–6 checklist (migrate items into sections above over time)</summary>
+
+- Phase 0: Remove OCR packages/UI/client parsing where still present; compression helpers; toasts.
+- Phase 1: History search, ledger tables, reports pagination.
+- Phase 3–6: Wizard validation depth, idempotency keys, theme/table systems, pooling.
+
+</details>

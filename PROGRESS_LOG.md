@@ -12,6 +12,14 @@ Add a new entry **after significant merges or agent sessions**.
 
 ---
 
+## 2026-05-08 — Verbatim MASTER + AUTONOMOUS policies + TASKS structure
+
+- Modules: `context/rules/MASTER_CURSOR_RULES.md`, `context/rules/AUTONOMOUS_CURSOR_EXECUTION_RULES.md`, `TASKS.md`, `context/rules/TASKS.md` (pointer), `CURRENT_CONTEXT.md`
+- Change summary: Replaced condensed policy text with user-provided full rule documents; TASKS.md now uses Pending/In Progress/Completed/Blocked/Critical structure.
+- Validation: policy docs only (no code change).
+
+---
+
 ## 2026-05-08 — Cursor ERP rules + draft wizard baseline
 
 - Modules: `.cursor/rules/purchase-assistant-master.mdc`, `context/rules/MASTER_CURSOR_RULES.md`, `context/rules/AUTONOMOUS_CURSOR_EXECUTION_RULES.md`, repo trackers (`PROJECT_STATUS.md`, etc.), purchase draft wizard (prior commit on `main`).

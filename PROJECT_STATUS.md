@@ -6,6 +6,7 @@ High-level snapshot. Detailed priorities: `TRACK.md`. Task checklist: `TASKS.md`
 
 - Purchase scan → **draft wizard** route (`/purchase/scan-draft`); no instant confirm from scan-only screen.
 - Docs: `docs/AI_PURCHASE_DRAFT_ENGINE.md`, validation/safety, Scan Guide UX spec (see `docs/`).
+- **Cursor policies:** full verbatim `context/rules/MASTER_CURSOR_RULES.md` + `AUTONOMOUS_CURSOR_EXECUTION_RULES.md` (not summaries). `TASKS.md` uses Critical / In progress / Pending / Completed / Blocked.
 
 ## In progress / current focus
 
