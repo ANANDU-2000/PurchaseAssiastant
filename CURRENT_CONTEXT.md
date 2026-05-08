@@ -9,7 +9,7 @@ _Update this file after each meaningful agent session._
 
 ## Active task
 
-- **Reports parity:** `GET /dashboard?month=` aggregates now use `trade_purchase_status_in_reports()` — soft-deleted purchases no longer inflate month totals; matches `/reports/trade-summary` for the same filter set.
+- **Reports parity:** `GET /dashboard?month=` and **`GET /analytics/insights/trade`** use `trade_purchase_status_in_reports()` — soft-deleted purchases excluded from month KPIs and insight rankings.
 - **Next:** supplier-scoped search params, remaining dashboard/chart consumers audit, Flutter delete paths (`TASKS.md`).
 
 ## Why assistants pause between messages
@@ -28,6 +28,9 @@ _Update this file after each meaningful agent session._
 
 ## Latest code touchpoints
 
+- `backend/app/routers/dashboard.py` — month KPI status filter
+- `backend/app/routers/analytics.py` — `/insights/trade` status filter
+- `backend/tests/test_reports_trade_breakdowns.py` — dashboard + analytics delete regressions
 - `flutter_app/lib/features/purchase/presentation/scan_draft_edit_item_sheet.dart` (unified search autocomplete)
 - `backend/app/services/scanner_v2/pack_gate.py`, `backend/app/services/scanner_v2/pipeline.py`
 - `flutter_app/lib/features/purchase/presentation/scan_purchase_v2_page.dart`
@@ -39,6 +42,6 @@ _Update this file after each meaningful agent session._
 
 ## Pending validation
 
-- `pytest tests/test_reports_trade_breakdowns.py::test_month_dashboard_*` (dashboard parity + delete exclusion).
+- `pytest tests/test_reports_trade_breakdowns.py::test_month_dashboard_*` + `::test_analytics_trade_insights_excludes_deleted`
 - Full `pytest` / `flutter test` before release.
 
