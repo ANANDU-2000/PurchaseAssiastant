@@ -4,23 +4,7 @@ Agent policy (verbatim): `context/rules/MASTER_CURSOR_RULES.md`, `context/rules/
 
 Each item below should eventually note **priority**, **modules**, **dependencies**, **validation** when you pick it up.
 
----
-
-# Critical
-
-| Priority | Task | Affected modules | Dependencies | Validation |
-|----------|------|------------------|--------------|------------|
-| P0 | Wrong item match (wholesale line → wrong retail SKU) | scanner pipeline, matchers, catalog | DB aliases, item master fields | Scan sugar line → never maps to unrelated 1kg SKU |
-| P0 | Unit / pack-size safety (bag/kg vs piece) | matcher, validation, item master | `bag_weight`, unit enums | Auto-match blocked on unit conflict |
-| P0 | Reports/dashboard/detail/charts single source of truth | backend aggregates, Flutter providers | one contract per KPI | Same date range → same totals everywhere |
-| P1 | Delete purchase → data & UI parity | delete API, soft-delete filters, Riverpod/cache | DB schema | Deleted id absent from lists + aggregates |
-
----
-
-# In progress
-
-- [ ] **P2** — Align scan **preview** with policy (minimal edit on scan screen; heavy edit only in draft wizard) — _Modules: `scan_purchase_v2_page.dart`, wizard — Validation: UX review_
-- [ ] **P2** — Item field **live autocomplete** (`sug` → ranked suggestions) — _Modules: search API, edit sheet — Validation: integration test / manual_
+Section order matches **AUTONOMOUS_CURSOR_EXECUTION_RULES.md** (TASKS structure).
 
 ---
 
@@ -58,18 +42,37 @@ Each item below should eventually note **priority**, **modules**, **dependencies
 
 ---
 
+# In progress
+
+- [ ] **P2** — Align scan **preview** with policy (minimal edit on scan screen; heavy edit only in draft wizard) — _Modules: `scan_purchase_v2_page.dart`, wizard — Validation: UX review_
+- [ ] **P2** — Item field **live autocomplete** (`sug` → ranked suggestions) — _Modules: search API, edit sheet — Validation: integration test / manual_
+
+---
+
 # Completed
 
 - [x] Purchase bill path: OpenAI Vision–based extraction (legacy OCR stacks removed from bill flow) — _see CHANGELOG_
 - [x] Strict scan JSON / normalization helpers (baseline) — `scanner_v2`/`scanner_v3`
 - [x] Purchase **draft wizard** route (`/purchase/scan-draft`) — scan does not single-button create purchase — _Flutter_
-- [x] Repo trackers + policy files: `PROJECT_STATUS.md`, `BUGS.md`, engine stubs, `MASTER_CURSOR_RULES`, `AUTONOMOUS_CURSOR_EXECUTION_RULES` — _docs_
+- [x] Repo trackers + policy files: `PROJECT_STATUS.md`, `BUGS.md`, engine stubs, verbatim `MASTER_CURSOR_RULES`, `AUTONOMOUS_CURSOR_EXECUTION_RULES` — _docs_
+- [x] **TASKS.md** section order aligned to autonomous rules (Pending → In Progress → Completed → Blocked → Critical)
 
 ---
 
 # Blocked
 
 - _(none — add row when dependency on external vendor/schema blocks work)_
+
+---
+
+# Critical
+
+| Priority | Task | Affected modules | Dependencies | Validation |
+|----------|------|------------------|--------------|------------|
+| P0 | Wrong item match (wholesale line → wrong retail SKU) | scanner pipeline, matchers, catalog | DB aliases, item master fields | Scan sugar line → never maps to unrelated 1kg SKU |
+| P0 | Unit / pack-size safety (bag/kg vs piece) | matcher, validation, item master | `bag_weight`, unit enums | Auto-match blocked on unit conflict |
+| P0 | Reports/dashboard/detail/charts single source of truth | backend aggregates, Flutter providers | one contract per KPI | Same date range → same totals everywhere |
+| P1 | Delete purchase → data & UI parity | delete API, soft-delete filters, Riverpod/cache | DB schema | Deleted id absent from lists + aggregates |
 
 ---
 

@@ -12,6 +12,14 @@ Add a new entry **after significant merges or agent sessions**.
 
 ---
 
+## 2026-05-08 — TASKS.md section order = Pending / In Progress / Completed / Blocked / Critical
+
+- Modules: `TASKS.md`, `CURRENT_CONTEXT.md`
+- Change summary: Align task file headings with `AUTONOMOUS_CURSOR_EXECUTION_RULES.md`; document why multi-hour ERP chains span sessions.
+- Validation: markdown-only.
+
+---
+
 ## 2026-05-08 — Verbatim MASTER + AUTONOMOUS policies + TASKS structure
 
 - Modules: `context/rules/MASTER_CURSOR_RULES.md`, `context/rules/AUTONOMOUS_CURSOR_EXECUTION_RULES.md`, `TASKS.md`, `context/rules/TASKS.md` (pointer), `CURRENT_CONTEXT.md`

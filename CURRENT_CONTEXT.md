@@ -9,9 +9,14 @@ _Update this file after each meaningful agent session._
 
 ## Active task
 
-- Restored **verbatim** `MASTER_CURSOR_RULES.md` + `AUTONOMOUS_CURSOR_EXECUTION_RULES.md` (full policy text, not summaries).
-- Restructured root `TASKS.md` into **Critical / In progress / Pending / Completed / Blocked** per autonomous rules.
-- **Why earlier work looked “stopped”:** a documentation-only commit intentionally summarized policies; that violated your zero-interruption / full-text expectation — corrected now.
+- Policies on disk: **verbatim** `context/rules/MASTER_CURSOR_RULES.md` + `AUTONOMOUS_CURSOR_EXECUTION_RULES.md` (confirmed ends `UI demo builder.` / `FULL SYSTEM STABLE.` — no merged files).
+- `TASKS.md` section order matches autonomous spec: **Pending → In Progress → Completed → Blocked → Critical**.
+
+## Why an assistant “stops” (platform limits, not ERP preference)
+
+- Chat turns end after a **bounded amount of work** (commits, files, tests).
+- **“Full system stable”** for every bullet in your rules is **multi-sprint** engineering; it is executed as **chained tasks** from `TASKS.md` / `Critical`, not one infinite reply.
+- Next coding slice should start from **P0 Critical** (item match + unit safety) **after** tracing matcher + catalog schema in repo (no guessing).
 
 ## Important business rules (short)
 
