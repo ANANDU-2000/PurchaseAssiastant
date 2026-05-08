@@ -17,6 +17,7 @@ import asyncio
 import time
 import uuid
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,11 +32,14 @@ from app.services.scanner_v2.pipeline import (
     _match_items,
     _match_supplier_broker,
     _openai_parse_scanner_image_payload,
+    _openai_parse_scanner_payload,
+    compute_bill_fingerprint,
+    llm_payload_is_not_a_bill,
+    normalize_llm_scan_dict,
+    parse_bill_date_maybe,
 )
-from app.services.scanner_v2.prompt import SYSTEM_PROMPT
-from app.services.scanner_v2.types import Charges, Match, ScanMeta, ScanResult, Totals, Warning
 from app.services.scanner_v2 import bag_logic
-from app.services.scanner_v2.pipeline import _openai_parse_scanner_payload  # keep SSOT
+from app.services.scanner_v2.types import BrokerCommission, Charges, Match, ScanMeta, ScanResult, Totals, Warning
 
 
 _SCAN_CACHE_TTL_S = 60 * 25
@@ -48,6 +52,7 @@ def _now_s() -> float:
 @dataclass
 class _Job:
     business_id: uuid.UUID
+    user_id: uuid.UUID | None
     created_at_s: float
     stage: str
     stage_progress: float
@@ -278,7 +283,7 @@ async def _run_job_with_db(*, token: str, settings: Settings, db: AsyncSession) 
     )
 
     if direct_raw is None:
-        _push_stage(job, "extracting_text", 0.30, note="ocr_multipass")
+        _push_stage(job, "extracting_text", 0.30, note="openai_vision_text_fallback")
         text, _conf = await image_bytes_to_text(settings, job.image_bytes)
         job.ocr_text = text or ""
     else:
@@ -290,6 +295,39 @@ async def _run_job_with_db(*, token: str, settings: Settings, db: AsyncSession) 
     base.scan_meta.ocr_chars = len(job.ocr_text or "")
     base.scan_meta.stage_log = list(job.stage_log)
     job.result = base
+
+    if isinstance(direct_raw, dict) and llm_payload_is_not_a_bill(direct_raw):
+        base.scan_meta.failover.extend(list(direct_meta.get("failover") or []))
+        base.scan_meta.provider_used = direct_meta.get("provider_used")
+        base.scan_meta.model_used = direct_meta.get("model_used")
+        base.scan_meta.extraction_duration_ms = direct_meta.get("extraction_duration_ms")
+        base.scan_meta.error_stage = "scan"
+        base.scan_meta.error_code = "NOT_A_BILL"
+        base.scan_meta.error_message = "not_a_bill"
+        base.scan_meta.parse_warnings.append("not_a_bill")
+        base.warnings.append(
+            Warning(
+                code="NOT_A_BILL",
+                severity="blocker",
+                target="scan",
+                message="This does not look like a purchase bill. Use a bill or broker purchase note photo.",
+                suggestion="Retake a clear photo of the wholesale purchase bill or handwritten purchase note.",
+            )
+        )
+        _push_stage(job, "ready", 1.0, note="not_a_bill")
+        job.done = True
+        from app.services.purchase_scan_trace import record_purchase_scan_trace
+
+        await record_purchase_scan_trace(
+            db,
+            business_id=job.business_id,
+            user_id=job.user_id,
+            scan_token=token,
+            raw_response=direct_raw,
+            normalized=base,
+            stage="error",
+        )
+        return
 
     if direct_raw is None and not (job.ocr_text or "").strip():
         base.scan_meta.error_stage = "ocr"
@@ -333,6 +371,40 @@ async def _run_job_with_db(*, token: str, settings: Settings, db: AsyncSession) 
             if ch.get(k) in (None, "") and fch.get(k) not in (None, ""):
                 ch[k] = fch[k]
 
+    if isinstance(raw, dict) and llm_payload_is_not_a_bill(raw):
+        base.scan_meta.provider_used = meta.get("provider_used")
+        base.scan_meta.error_stage = "scan"
+        base.scan_meta.error_code = "NOT_A_BILL"
+        base.scan_meta.error_message = "not_a_bill"
+        base.scan_meta.parse_warnings.append("not_a_bill")
+        base.warnings.clear()
+        base.warnings.append(
+            Warning(
+                code="NOT_A_BILL",
+                severity="blocker",
+                target="scan",
+                message="This does not look like a purchase bill. Use a bill or broker purchase note photo.",
+                suggestion="Retake a clear photo of the wholesale purchase bill or handwritten purchase note.",
+            )
+        )
+        _push_stage(job, "ready", 1.0, note="not_a_bill_text")
+        job.done = True
+        from app.services.purchase_scan_trace import record_purchase_scan_trace
+
+        await record_purchase_scan_trace(
+            db,
+            business_id=job.business_id,
+            user_id=job.user_id,
+            scan_token=token,
+            raw_response=raw,
+            normalized=base,
+            stage="error",
+        )
+        return
+
+    if isinstance(raw, dict):
+        raw = normalize_llm_scan_dict(raw)
+
     if not isinstance(raw, dict) or not raw.get("items"):
         base.scan_meta.error_stage = base.scan_meta.error_stage or "parse"
         base.scan_meta.error_code = base.scan_meta.error_code or "PARSE_EMPTY"
@@ -340,11 +412,38 @@ async def _run_job_with_db(*, token: str, settings: Settings, db: AsyncSession) 
 
     # Stage 3: matching (supplier/broker/items)
     _push_stage(job, "matching", 0.70)
+    invoice_number_out: str | None = None
+    bill_date_out = None
+    bill_fingerprint_out: str | None = None
+    bill_notes_out: str | None = None
+    scanned_total_amount = None
+    comm_raw_v3: dict[str, Any] | None = None
+
     supplier_name = raw.get("supplier_name") if isinstance(raw, dict) else None
     broker_name = raw.get("broker_name") if isinstance(raw, dict) else None
     items_raw = raw.get("items") if isinstance(raw, dict) and isinstance(raw.get("items"), list) else []
     charges_raw = raw.get("charges") if isinstance(raw, dict) and isinstance(raw.get("charges"), dict) else {}
     payment_days = raw.get("payment_days") if isinstance(raw, dict) else None
+
+    if isinstance(raw, dict):
+        inv = raw.get("invoice_no") or raw.get("invoice_number")
+        invoice_number_out = str(inv).strip() if inv not in (None, "") else None
+        bill_date_out = parse_bill_date_maybe(raw.get("bill_date"))
+        bn = raw.get("notes")
+        bill_notes_out = str(bn).strip() if bn not in (None, "") else None
+        scanned_total_amount = _d(raw.get("total_amount"))
+        fp_src = raw.get("bill_fingerprint")
+        bf = str(fp_src).strip() if fp_src not in (None, "") else ""
+        if not bf:
+            bd_src = raw.get("bill_date")
+            bd_for_fp = str(bd_src).strip() if bd_src not in (None, "") else None
+            bf = compute_bill_fingerprint(
+                invoice_number_out,
+                bd_for_fp,
+                str(supplier_name or "").strip() or None,
+            )
+        bill_fingerprint_out = bf if bf else None
+        comm_raw_v3 = raw.get("broker_commission") if isinstance(raw.get("broker_commission"), dict) else None
 
     supplier, broker = await _match_supplier_broker(
         db=db,
@@ -373,6 +472,17 @@ async def _run_job_with_db(*, token: str, settings: Settings, db: AsyncSession) 
     except Exception:  # noqa: BLE001
         pd = None
 
+    broker_commission = None
+    if comm_raw_v3:
+        try:
+            broker_commission = BrokerCommission(
+                type=str(comm_raw_v3.get("type") or "percent"),
+                value=_d(comm_raw_v3.get("value")) or Decimal("0"),
+                applies_to=(str(comm_raw_v3.get("applies_to")) if comm_raw_v3.get("applies_to") is not None else None),
+            )
+        except Exception:  # noqa: BLE001
+            broker_commission = None
+
     # Stage 4: validate + totals
     _push_stage(job, "validating", 0.88)
     totals = Totals()
@@ -383,18 +493,41 @@ async def _run_job_with_db(*, token: str, settings: Settings, db: AsyncSession) 
         if it.line_total is not None:
             totals.total_amount += it.line_total
 
+    if scanned_total_amount is not None and totals.total_amount is not None:
+        try:
+            if abs(scanned_total_amount - totals.total_amount) > Decimal("0.05"):
+                warnings.append(
+                    Warning(
+                        code="TOTAL_MISMATCH",
+                        severity="warn",
+                        target="totals",
+                        message=(
+                            f"Bill total {scanned_total_amount} differs from computed line sum {totals.total_amount}."
+                        ),
+                    )
+                )
+        except Exception:  # noqa: BLE001
+            pass
+
     conf = _confidence_from_matches(supplier=supplier, broker=broker, items=items)
     needs_review = True
     if supplier.match_state == "auto" and all(i.match_state == "auto" for i in items) and conf >= 0.92:
         needs_review = False
+    if broker is not None and broker.match_state != "auto":
+        needs_review = True
 
     result = ScanResult(
         supplier=supplier,
         broker=broker,
         items=items,
         charges=ch,
-        broker_commission=None,
+        broker_commission=broker_commission,
         payment_days=pd,
+        invoice_number=invoice_number_out,
+        bill_date=bill_date_out,
+        bill_fingerprint=bill_fingerprint_out,
+        bill_notes=bill_notes_out,
+        scanned_total_amount=scanned_total_amount,
         totals=totals,
         confidence_score=conf,
         needs_review=needs_review,
@@ -404,14 +537,32 @@ async def _run_job_with_db(*, token: str, settings: Settings, db: AsyncSession) 
     )
     result.scan_meta.stage_log = list(job.stage_log)
     job.result = result
+    from app.services.purchase_scan_trace import record_purchase_scan_trace
+
+    await record_purchase_scan_trace(
+        db,
+        business_id=job.business_id,
+        user_id=job.user_id,
+        scan_token=token,
+        raw_response=raw if isinstance(raw, dict) else None,
+        normalized=result,
+        stage="preview",
+    )
     _push_stage(job, "ready", 1.0)
     job.done = True
 
 
-def start_scan(*, business_id: uuid.UUID, image_bytes: bytes, settings: Settings) -> str:
+def start_scan(
+    *,
+    business_id: uuid.UUID,
+    image_bytes: bytes,
+    settings: Settings,
+    user_id: uuid.UUID | None = None,
+) -> str:
     token = str(uuid.uuid4())
     job = _Job(
         business_id=business_id,
+        user_id=user_id,
         created_at_s=_now_s(),
         stage="preparing_image",
         stage_progress=0.0,

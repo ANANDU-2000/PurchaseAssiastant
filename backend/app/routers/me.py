@@ -1,5 +1,6 @@
 import uuid
 from datetime import date
+from decimal import Decimal
 from difflib import get_close_matches
 from pathlib import Path
 from typing import Annotated
@@ -14,7 +15,6 @@ from app.database import get_db
 from app.deps import get_current_user, require_membership, require_owner_membership
 from app.models import Business, Membership, User
 from app.models.contacts import Broker, Supplier
-from app.services.feature_flags import is_ocr_enabled
 from app.services.default_workspace import bootstrap_user_workspace
 from app.services.scanner_v2.types import ScanResult
 
@@ -337,6 +337,80 @@ def _fuzzy_duplicate_hint(name: str, candidates: list[tuple[str, uuid.UUID]], *,
     return None
 
 
+def _scan_result_to_legacy_scan_purchase(sr: ScanResult) -> ScanPurchaseResponse:
+    """Map scanner v2 wire format to legacy /scan-purchase response (no regex OCR path)."""
+    sup = sr.supplier
+    supplier_name = (sup.matched_name or sup.raw_text or "").strip() or None
+    supplier_id = sup.matched_id
+
+    broker_name = None
+    broker_id = None
+    if sr.broker is not None:
+        broker_name = (sr.broker.matched_name or sr.broker.raw_text or "").strip() or None
+        broker_id = sr.broker.matched_id
+
+    ch = sr.charges
+    ft = ch.freight_type
+    freight_type_str = ft if isinstance(ft, str) else (str(ft) if ft is not None else None)
+    charges_out = ScanPurchaseChargesOut(
+        delivered_rate=float(ch.delivered_rate) if ch.delivered_rate is not None else None,
+        billty_rate=float(ch.billty_rate) if ch.billty_rate is not None else None,
+        freight_amount=float(ch.freight_amount) if ch.freight_amount is not None else None,
+        freight_type=freight_type_str,
+    )
+
+    unit_lower = {"BAG": "bag", "KG": "kg", "BOX": "box", "TIN": "tin", "PCS": "pcs"}
+    items_out: list[ScanPurchaseLineOut] = []
+    for it in sr.items:
+        u = unit_lower.get(it.unit_type, "kg")
+        if it.qty is not None:
+            qty_val = it.qty
+        elif it.unit_type == "BAG" and it.bags is not None:
+            qty_val = it.bags
+        else:
+            qty_val = Decimal("0")
+        pr = it.purchase_rate if it.purchase_rate is not None else Decimal("0")
+        items_out.append(
+            ScanPurchaseLineOut(
+                name=(it.matched_name or it.raw_name or "Unknown").strip(),
+                qty=float(qty_val),
+                unit=u,
+                purchase_rate=float(pr),
+                selling_rate=float(it.selling_rate) if it.selling_rate is not None else None,
+                weight_per_unit_kg=float(it.weight_per_unit_kg) if it.weight_per_unit_kg is not None else None,
+            )
+        )
+
+    missing: list[str] = []
+    if not supplier_name:
+        missing.append("supplier_name")
+    if not items_out:
+        missing.append("items")
+
+    parse_warnings = [*list(sr.scan_meta.parse_warnings or []), *[w.message for w in sr.warnings]]
+    meta_out = ScanPurchaseMetaOut(
+        provider_used=sr.scan_meta.provider_used,
+        failover=list(sr.scan_meta.failover or []),
+        parse_warnings=parse_warnings,
+    )
+
+    return ScanPurchaseResponse(
+        text="",
+        confidence=float(sr.confidence_score),
+        supplier_name=supplier_name,
+        supplier_id=supplier_id,
+        broker_name=broker_name,
+        broker_id=broker_id,
+        charges=charges_out,
+        items=items_out,
+        missing_fields=sorted(set(missing)),
+        requires_user_confirmation=True,
+        auto_save_allowed=False,
+        note="Same OpenAI Vision pipeline as /scan-purchase-v2; prefer v2 for scan_token + full preview.",
+        meta=meta_out,
+    )
+
+
 @router.post("/scan-purchase", response_model=ScanPurchaseResponse)
 async def scan_purchase_bill(
     business_id: Annotated[uuid.UUID, Query(..., description="Primary workspace for membership check")],
@@ -346,190 +420,27 @@ async def scan_purchase_bill(
     _m: Annotated[Membership, Depends(require_membership)],
     image: UploadFile = File(..., description="Bill photo (JPEG/PNG/WebP)"),
 ):
-    """Multipart bill scan → structured preview only (never creates a purchase)."""
-    del user
+    """Multipart bill scan → structured preview only (never creates a purchase).
+
+    Legacy wire shape; implementation delegates to scanner v2 (OpenAI Vision + LLM), not OCR/regex parsers.
+    """
+    uid = user.id
     raw = await image.read()
     if len(raw) == 0:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Empty upload")
     if len(raw) > 8_000_000:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Image too large (max ~8MB)")
 
-    from app.services import ocr_parser as op
-    from app.services import purchase_scan_service as pss
-    from app.services import purchase_scan_ai as psai
+    from app.services.scanner_v2.pipeline import scan_purchase_v2
 
-    text, conf = await pss.image_bytes_to_text(settings, raw)
-    if not text.strip():
-        # BUGFIX (C2): never treat raw image bytes as text.
-        text = ""
-
-    line_strs = [ln.strip() for ln in text.splitlines() if ln.strip()]
-    supplier_hint = op.extract_supplier_candidate(line_strs)
-    items_raw, missing = op.extract_item_rows(text)
-    items_out = [
-        ScanPurchaseLineOut(
-            name=e["name"],
-            qty=float(e["qty"]),
-            unit=e["unit"],
-            purchase_rate=float(e["rate"]),
-        )
-        for e in items_raw
-    ]
-    charges = ScanPurchaseChargesOut()
-    broker_hint: str | None = None
-    meta_out = ScanPurchaseMetaOut()
-    supplier_id: uuid.UUID | None = None
-    broker_id: uuid.UUID | None = None
-
-    sup_rows = (
-        await db.execute(select(Supplier.id, Supplier.name).where(Supplier.business_id == business_id))
-    ).all()
-    bro_rows = (
-        await db.execute(select(Broker.id, Broker.name).where(Broker.business_id == business_id))
-    ).all()
-    supplier_candidates: list[tuple[str, uuid.UUID]] = [(str(n), i) for (i, n) in sup_rows]
-    broker_candidates: list[tuple[str, uuid.UUID]] = [(str(n), i) for (i, n) in bro_rows]
-
-    # AI parse: best-effort enrich (supplier/broker/items/charges). Never blocks.
-    try:
-        ai, meta = await psai.parse_scan_text_with_ai(text=text, settings=settings, db=db)
-        if ai and isinstance(ai.get("payload"), dict):
-            payload = ai["payload"]
-            meta_out = ScanPurchaseMetaOut(
-                provider_used=meta.get("provider_used"),
-                failover=meta.get("failover") or [],
-                parse_warnings=ai.get("parse_warnings") or [],
-            )
-            if isinstance(payload.get("supplier_name"), str) and payload.get("supplier_name").strip():
-                supplier_hint = payload.get("supplier_name").strip()
-            if isinstance(payload.get("broker_name"), str) and payload.get("broker_name").strip():
-                broker_hint = payload.get("broker_name").strip()
-            if isinstance(payload.get("charges"), dict):
-                ch = payload.get("charges") or {}
-                charges = ScanPurchaseChargesOut(
-                    delivered_rate=ch.get("delivered_rate"),
-                    billty_rate=ch.get("billty_rate"),
-                    freight_amount=ch.get("freight_amount"),
-                    freight_type=ch.get("freight_type"),
-                )
-            if isinstance(payload.get("items"), list) and payload.get("items"):
-                next_items: list[ScanPurchaseLineOut] = []
-                for it in payload.get("items"):
-                    if not isinstance(it, dict):
-                        continue
-                    nm = (it.get("name") or "").strip() or "Unknown item"
-                    qty = float(it.get("qty") or 0)
-                    unit = (it.get("unit") or "kg").strip().lower() or "kg"
-                    pr = float(it.get("purchase_rate") or 0)
-                    sr = it.get("selling_rate")
-                    wpu = it.get("weight_per_unit_kg")
-                    next_items.append(
-                        ScanPurchaseLineOut(
-                            name=nm,
-                            qty=qty,
-                            unit=unit,
-                            purchase_rate=pr,
-                            selling_rate=(float(sr) if sr is not None else None),
-                            weight_per_unit_kg=(float(wpu) if wpu is not None else None),
-                        )
-                    )
-                if next_items:
-                    items_out = next_items
-                ai_missing = ai.get("missing_fields") or []
-                if isinstance(ai_missing, list):
-                    missing.extend([str(x) for x in ai_missing if x is not None])
-    except Exception:
-        # AI is best-effort; fallback remains heuristic parser.
-        pass
-
-    # Regex header charges (fills gaps when LLM misses shorthand like delhead/billty)
-    rx_ch = op.extract_header_charges(text)
-    if charges.delivered_rate is None and isinstance(rx_ch.get("delivered_rate"), (int, float)):
-        charges.delivered_rate = float(rx_ch["delivered_rate"])
-    if charges.billty_rate is None and isinstance(rx_ch.get("billty_rate"), (int, float)):
-        charges.billty_rate = float(rx_ch["billty_rate"])
-    if charges.freight_amount is None and isinstance(rx_ch.get("freight_amount"), (int, float)):
-        charges.freight_amount = float(rx_ch["freight_amount"])
-    if charges.freight_type is None and isinstance(rx_ch.get("freight_type"), str):
-        charges.freight_type = rx_ch["freight_type"]
-
-    if not supplier_hint:
-        missing.append("supplier_name")
-    else:
-        qn = _norm_dir_name(str(supplier_hint))
-        for nm, sid in supplier_candidates:
-            if _norm_dir_name(nm) == qn:
-                supplier_id = sid
-                break
-        if supplier_id is None:
-            dup = _fuzzy_duplicate_hint(str(supplier_hint), supplier_candidates, cutoff=0.86)
-            if dup is not None:
-                dup_name = next((nm for nm, i in supplier_candidates if i == dup), None)
-                warn = (
-                    "supplier_duplicate_risk: extracted name may match an existing supplier "
-                    f"({dup_name or 'directory'}) — confirm before creating a duplicate."
-                )
-                meta_out.parse_warnings = [*meta_out.parse_warnings, warn]
-
-    if broker_hint:
-        qb = _norm_dir_name(str(broker_hint))
-        for nm, bid in broker_candidates:
-            if _norm_dir_name(nm) == qb:
-                broker_id = bid
-                break
-        if broker_id is None:
-            dup_b = _fuzzy_duplicate_hint(str(broker_hint), broker_candidates, cutoff=0.86)
-            if dup_b is not None:
-                dup_name = next((nm for nm, i in broker_candidates if i == dup_b), None)
-                warn = (
-                    "broker_duplicate_risk: extracted name may match an existing broker "
-                    f"({dup_name or 'directory'}) — confirm before creating a duplicate."
-                )
-                meta_out.parse_warnings = [*meta_out.parse_warnings, warn]
-
-    ocr_on = await is_ocr_enabled(db, settings)
-    if not text.strip():
-        missing.append("readable_text")
-
-    uniq_missing: list[str] = []
-    seen: set[str] = set()
-    for m in missing:
-        if m not in seen:
-            seen.add(m)
-            uniq_missing.append(m)
-
-    if not ocr_on:
-        return ScanPurchaseResponse(
-            text=text[:5000],
-            confidence=conf if conf > 0 else (0.35 if items_out else 0.0),
-            supplier_name=supplier_hint,
-            supplier_id=supplier_id,
-            broker_name=broker_hint,
-            broker_id=broker_id,
-            charges=charges,
-            items=items_out,
-            missing_fields=sorted(set(uniq_missing + (["enable_ocr"] if not items_out else []))),
-            requires_user_confirmation=True,
-            auto_save_allowed=False,
-            note="OCR/cloud vision is off — parsing may be incomplete; confirm before saving.",
-            meta=meta_out,
-        )
-
-    return ScanPurchaseResponse(
-        text=text[:5000],
-        confidence=conf if conf > 0 else (0.5 if items_out else 0.25),
-        supplier_name=supplier_hint,
-        supplier_id=supplier_id,
-        broker_name=broker_hint,
-        broker_id=broker_id,
-        charges=charges,
-        items=items_out,
-        missing_fields=uniq_missing,
-        requires_user_confirmation=True,
-        auto_save_allowed=False,
-        note="Review and edit extracted fields — no purchase is saved from this endpoint.",
-        meta=meta_out,
+    sr = await scan_purchase_v2(
+        db=db,
+        business_id=business_id,
+        user_id=uid,
+        settings=settings,
+        image_bytes=raw,
     )
+    return _scan_result_to_legacy_scan_purchase(sr)
 
 
 @router.post("/scan-purchase-v2", response_model=ScanResult)
@@ -541,11 +452,10 @@ async def scan_purchase_bill_v2(
     _m: Annotated[Membership, Depends(require_membership)],
     image: UploadFile = File(..., description="Bill photo (JPEG/PNG/WebP)"),
 ):
-    """Scanner v2: OCR + LLM + matching → editable preview with scan_token.
+    """Scanner v2: OpenAI Vision + LLM + matching → editable preview with scan_token.
 
     NEVER saves. Caller must use /confirm after user review.
     """
-    del user
     raw = await image.read()
     if len(raw) == 0:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Empty upload")
@@ -553,7 +463,13 @@ async def scan_purchase_bill_v2(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Image too large (max ~8MB)")
     from app.services.scanner_v2.pipeline import scan_purchase_v2
 
-    return await scan_purchase_v2(db=db, business_id=business_id, settings=settings, image_bytes=raw)
+    return await scan_purchase_v2(
+        db=db,
+        business_id=business_id,
+        user_id=user.id,
+        settings=settings,
+        image_bytes=raw,
+    )
 
 
 class ScanPurchaseV3StartResponse(BaseModel):
@@ -570,7 +486,6 @@ async def scan_purchase_bill_v3_start(
     image: UploadFile = File(..., description="Bill photo (JPEG/PNG/WebP)"),
 ):
     """Scanner v3: start an async scan and return a scan_token immediately."""
-    del user
     del db  # v3 scan runs in background using async_session_factory
     raw = await image.read()
     if len(raw) == 0:
@@ -579,7 +494,7 @@ async def scan_purchase_bill_v3_start(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Image too large (max ~8MB)")
     from app.services.scanner_v3.pipeline import start_scan
 
-    token = start_scan(business_id=business_id, image_bytes=raw, settings=settings)
+    token = start_scan(business_id=business_id, user_id=user.id, image_bytes=raw, settings=settings)
     return ScanPurchaseV3StartResponse(scan_token=token)
 
 

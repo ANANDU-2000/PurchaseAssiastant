@@ -1,4 +1,6 @@
-"""Scanner V2 pipeline: OCR → LLM parse → matching → normalization.
+"""Scanner V2 pipeline: OpenAI Vision (image→JSON) → optional text fallback → matching → normalization.
+
+Third-party OCR (Google Vision, Gemini image→text, etc.) is not used for purchase bills.
 
 This module is intentionally side-effect free (no DB writes). The only
 write-path for scanner corrections is the `/correct` endpoint which upserts
@@ -39,6 +41,66 @@ from app.services.scanner_v2.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def llm_payload_is_not_a_bill(raw: Any) -> bool:
+    if not isinstance(raw, dict):
+        return False
+    err = str(raw.get("error") or "").strip().lower().replace(" ", "_").replace("-", "_")
+    return err in {"not_a_bill", "notabill"}
+
+
+def compute_bill_fingerprint(invoice_no: str | None, bill_date: str | None, supplier_name: str | None) -> str:
+    parts = [
+        (invoice_no or "").strip().lower().replace(" ", ""),
+        (bill_date or "").strip().lower().replace(" ", ""),
+        (supplier_name or "").strip().lower().replace(" ", ""),
+    ]
+    return "".join(parts)
+
+
+def parse_bill_date_maybe(value: Any) -> date | None:
+    if value is None:
+        return None
+    if isinstance(value, date):
+        return value
+    s = str(value).strip()[:10]
+    if len(s) < 8:
+        return None
+    try:
+        return date.fromisoformat(s)
+    except ValueError:
+        return None
+
+
+def normalize_llm_scan_dict(raw: dict[str, Any]) -> dict[str, Any]:
+    """Map alternate LLM keys to keys the matcher expects."""
+    out = dict(raw)
+    items = out.get("items")
+    if not isinstance(items, list):
+        return out
+    norm_items: list[dict[str, Any]] = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        dit = dict(it)
+        if (dit.get("name") in (None, "")) and dit.get("item_name"):
+            dit["name"] = dit.get("item_name")
+        if dit.get("total_kg") is None and dit.get("total_weight_kg") is not None:
+            dit["total_kg"] = dit.get("total_weight_kg")
+        ut_raw = dit.get("unit_type") if dit.get("unit_type") not in (None, "") else dit.get("unit")
+        if isinstance(ut_raw, str):
+            u = ut_raw.strip().lower()
+            if u == "loose":
+                dit["unit_type"] = "KG"
+            elif u in {"bag", "kg", "box", "tin", "pcs", "piece"}:
+                lut = {"bag": "BAG", "kg": "KG", "box": "BOX", "tin": "TIN", "pcs": "PCS", "piece": "PCS"}
+                dit["unit_type"] = lut.get(u, u.upper())
+            else:
+                dit["unit_type"] = ut_raw.strip().upper()
+        norm_items.append(dit)
+    out["items"] = norm_items
+    return out
 
 
 def _now_s() -> float:
@@ -122,9 +184,9 @@ async def _openai_parse_scanner_image_payload(
                     {
                         "type": "text",
                         "text": (
-                            "Analyze this purchase bill/photo directly and return exactly one JSON object "
-                            "matching the scanner schema. Read handwriting carefully. Do not invent values; "
-                            "use null for unclear fields."
+                            "Analyze this purchase bill image and return exactly one JSON object "
+                            "matching the scanner schema. If this is not a purchase bill, return {\"error\":\"not_a_bill\"}. "
+                            "Do not invent values; use null for unclear fields."
                         ),
                     },
                     {
@@ -315,10 +377,20 @@ async def _match_supplier_broker(
     supplier_name: str | None,
     broker_name: str | None,
 ) -> tuple[Match, Match | None]:
-    supplier = await matcher.match_one(db=db, business_id=business_id, raw_text=(supplier_name or ""), type="supplier")
+    supplier = await matcher.match_one(
+        db=db,
+        business_id=business_id,
+        raw_text=(supplier_name or ""),
+        match_type="supplier",
+    )
     broker = None
     if broker_name is not None and str(broker_name).strip():
-        broker = await matcher.match_one(db=db, business_id=business_id, raw_text=str(broker_name), type="broker")
+        broker = await matcher.match_one(
+            db=db,
+            business_id=business_id,
+            raw_text=str(broker_name),
+            match_type="broker",
+        )
     return supplier, broker
 
 
@@ -336,7 +408,12 @@ async def _match_items(
         if not raw_name:
             continue
 
-        m = await matcher.match_one(db=db, business_id=business_id, raw_text=raw_name, type="item")
+        m = await matcher.match_one(
+            db=db,
+            business_id=business_id,
+            raw_text=raw_name,
+            match_type="item",
+        )
         row = ItemRow(
             raw_name=raw_name,
             matched_catalog_item_id=m.matched_id,
@@ -376,8 +453,10 @@ def _confidence_from_matches(supplier: Match, broker: Match | None, items: list[
     return max(0.0, min(1.0, sum(scores) / len(scores)))
 
 
-def _needs_review(supplier: Match, items: list[ItemRow]) -> bool:
+def _needs_review(supplier: Match, broker: Match | None, items: list[ItemRow]) -> bool:
     if supplier.match_state != "auto":
+        return True
+    if broker is not None and broker.match_state != "auto":
         return True
     for it in items:
         if it.match_state != "auto":
@@ -414,9 +493,28 @@ def _compute_preview_line_total(it: ItemRow, warnings: list[Warning]) -> Decimal
             return None
         return dp.total(q * r)
     if u in ("BOX", "TIN"):
-        q = it.qty
+        q = it.qty or it.bags
         if q is None or q <= 0:
             return None
+        wpu = it.weight_per_unit_kg
+        tk = it.total_kg
+        # Align with BAG heuristic: small rates are usually ₹/kg on commodity lines.
+        if r < Decimal("500"):
+            if tk is not None and tk > 0:
+                return dp.total(tk * r)
+            if wpu is not None and wpu > 0:
+                return dp.total(q * wpu * r)
+            warnings.append(
+                Warning(
+                    code="BOX_TIN_WEIGHT_MISSING",
+                    severity="warn",
+                    target="items[]",
+                    message="Cannot derive line total: need total_kg or weight per box/tin when rate looks ₹/kg.",
+                    suggestion="Confirm qty, kg per unit, or total kg from the bill.",
+                )
+            )
+            return None
+        # Large rates: ₹ per box/tin (or per-case), not per kg.
         return dp.total(q * r)
     if u == "BAG":
         bags = it.bags or it.qty
@@ -509,10 +607,79 @@ def update_cached_scan_result(*, business_id: uuid.UUID, scan_token: str, scan: 
     return True
 
 
+async def _reject_not_a_bill_scan(
+    *,
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    user_id: uuid.UUID | None,
+    image_bytes: bytes,
+    raw_response: dict[str, Any] | None,
+    base_meta: dict[str, Any],
+) -> ScanResult:
+    token = str(uuid.uuid4())
+    scan_meta = ScanMeta(
+        image_bytes_in=len(image_bytes or b""),
+        ocr_chars=0,
+        error_stage="scan",
+        error_code="NOT_A_BILL",
+        error_message="not_a_bill",
+        provider_used=base_meta.get("provider_used"),
+        model_used=base_meta.get("model_used"),
+        extraction_duration_ms=base_meta.get("extraction_duration_ms"),
+        token_usage=base_meta.get("token_usage"),
+        failover=list(base_meta.get("failover") or []),
+        parse_warnings=["not_a_bill"],
+    )
+    supplier = Match(
+        raw_text="",
+        matched_id=None,
+        matched_name=None,
+        confidence=0.0,
+        match_state="unresolved",
+        candidates=[],
+    )
+    result = ScanResult(
+        supplier=supplier,
+        broker=None,
+        items=[],
+        charges=Charges(),
+        broker_commission=None,
+        payment_days=None,
+        totals=Totals(),
+        confidence_score=0.0,
+        needs_review=True,
+        warnings=[
+            Warning(
+                code="NOT_A_BILL",
+                severity="blocker",
+                target="scan",
+                message="This does not look like a purchase bill. Use a bill or broker purchase note photo.",
+                suggestion="Retake a clear photo of the wholesale purchase bill or handwritten purchase note.",
+            )
+        ],
+        scan_token=token,
+        scan_meta=scan_meta,
+    )
+    _put_scan_cache(token, _ScanCacheEntry(business_id=business_id, created_at_s=_now_s(), result=result))
+    from app.services.purchase_scan_trace import record_purchase_scan_trace
+
+    await record_purchase_scan_trace(
+        db,
+        business_id=business_id,
+        user_id=user_id,
+        scan_token=token,
+        raw_response=raw_response,
+        normalized=result,
+        stage="error",
+    )
+    return result
+
+
 async def scan_purchase_v2(
     *,
     db: AsyncSession,
     business_id: uuid.UUID,
+    user_id: uuid.UUID | None = None,
     settings: Settings,
     image_bytes: bytes,
 ) -> ScanResult:
@@ -522,6 +689,15 @@ async def scan_purchase_v2(
         settings=settings,
         db=db,
     )
+    if llm_payload_is_not_a_bill(direct_raw):
+        return await _reject_not_a_bill_scan(
+            db=db,
+            business_id=business_id,
+            user_id=user_id,
+            image_bytes=image_bytes,
+            raw_response=direct_raw if isinstance(direct_raw, dict) else None,
+            base_meta=direct_meta,
+        )
     text = ""
     if direct_raw is None:
         try:
@@ -571,6 +747,17 @@ async def scan_purchase_v2(
                 token,
                 _ScanCacheEntry(business_id=business_id, created_at_s=_now_s(), result=result),
             )
+            from app.services.purchase_scan_trace import record_purchase_scan_trace
+
+            await record_purchase_scan_trace(
+                db,
+                business_id=business_id,
+                user_id=user_id,
+                scan_token=token,
+                raw_response=None,
+                normalized=result,
+                stage="error",
+            )
             return result
 
     scan_meta = ScanMeta(image_bytes_in=len(image_bytes or b""), ocr_chars=len(text or ""))
@@ -598,8 +785,23 @@ async def scan_purchase_v2(
     charges_raw: dict[str, Any] = {}
     comm_raw: dict[str, Any] | None = None
     payment_days = None
+    invoice_number_out: str | None = None
+    bill_date_out: date | None = None
+    bill_fingerprint_out: str | None = None
+    bill_notes_out: str | None = None
+    scanned_total_amount: Decimal | None = None
 
     if isinstance(raw, dict):
+        if llm_payload_is_not_a_bill(raw):
+            return await _reject_not_a_bill_scan(
+                db=db,
+                business_id=business_id,
+                user_id=user_id,
+                image_bytes=image_bytes,
+                raw_response=raw,
+                base_meta=meta,
+            )
+        raw = normalize_llm_scan_dict(raw)
         supplier_name = raw.get("supplier_name") or raw.get("supplier") or None
         broker_name = raw.get("broker_name") or raw.get("broker") or None
         items_raw = raw.get("items") if isinstance(raw.get("items"), list) else []
@@ -609,6 +811,23 @@ async def scan_purchase_v2(
             payment_days = int(raw.get("payment_days")) if raw.get("payment_days") is not None else None
         except Exception:  # noqa: BLE001
             payment_days = None
+        inv = raw.get("invoice_no") or raw.get("invoice_number")
+        invoice_number_out = str(inv).strip() if inv not in (None, "") else None
+        bill_date_out = parse_bill_date_maybe(raw.get("bill_date"))
+        bn = raw.get("notes")
+        bill_notes_out = str(bn).strip() if bn not in (None, "") else None
+        scanned_total_amount = _d(raw.get("total_amount"))
+        fp_src = raw.get("bill_fingerprint")
+        bf = str(fp_src).strip() if fp_src not in (None, "") else ""
+        if not bf:
+            bd_src = raw.get("bill_date")
+            bd_for_fp = str(bd_src).strip() if bd_src not in (None, "") else None
+            bf = compute_bill_fingerprint(
+                invoice_number_out,
+                bd_for_fp,
+                str(supplier_name or "").strip() or None,
+            )
+        bill_fingerprint_out = bf if bf else None
     else:
         scan_meta.error_stage = scan_meta.error_stage or "parse"
         scan_meta.error_code = scan_meta.error_code or "PARSE_EMPTY"
@@ -669,6 +888,22 @@ async def scan_purchase_v2(
         total_amount=dp.total(sum((it.line_total or Decimal("0")) for it in items)),
     )
 
+    if scanned_total_amount is not None and totals.total_amount is not None:
+        try:
+            if abs(scanned_total_amount - totals.total_amount) > Decimal("0.05"):
+                warnings.append(
+                    Warning(
+                        code="TOTAL_MISMATCH",
+                        severity="warn",
+                        target="totals",
+                        message=(
+                            f"Bill total {scanned_total_amount} differs from computed line sum {totals.total_amount}."
+                        ),
+                    )
+                )
+        except Exception:  # noqa: BLE001
+            pass
+
     token = str(uuid.uuid4())
     result = ScanResult(
         supplier=supplier,
@@ -677,14 +912,30 @@ async def scan_purchase_v2(
         charges=charges,
         broker_commission=broker_commission,
         payment_days=payment_days,
+        invoice_number=invoice_number_out,
+        bill_date=bill_date_out,
+        bill_fingerprint=bill_fingerprint_out,
+        bill_notes=bill_notes_out,
+        scanned_total_amount=scanned_total_amount,
         totals=totals,
         confidence_score=_confidence_from_matches(supplier, broker, items),
-        needs_review=_needs_review(supplier, items),
+        needs_review=_needs_review(supplier, broker, items),
         warnings=_dedupe_warnings(warnings),
         scan_token=token,
         scan_meta=scan_meta,
     )
     _put_scan_cache(token, _ScanCacheEntry(business_id=business_id, created_at_s=_now_s(), result=result))
+    from app.services.purchase_scan_trace import record_purchase_scan_trace
+
+    await record_purchase_scan_trace(
+        db,
+        business_id=business_id,
+        user_id=user_id,
+        scan_token=token,
+        raw_response=raw if isinstance(raw, dict) else None,
+        normalized=result,
+        stage="preview",
+    )
     return result
 
 
@@ -703,6 +954,9 @@ def scan_result_to_trade_purchase_create(
     """
     if scan.supplier.matched_id is None:
         raise ValueError("supplier must be matched before confirm")
+    inv_final = invoice_number
+    if inv_final is None or (isinstance(inv_final, str) and not str(inv_final).strip()):
+        inv_final = scan.invoice_number
     lines: list[dict[str, Any]] = []
     for it in scan.items:
         if it.matched_catalog_item_id is None:
@@ -782,7 +1036,7 @@ def scan_result_to_trade_purchase_create(
         )
     return {
         "purchase_date": purchase_date.isoformat(),
-        "invoice_number": invoice_number,
+        "invoice_number": inv_final,
         "supplier_id": str(scan.supplier.matched_id),
         "broker_id": str(scan.broker.matched_id) if (scan.broker and scan.broker.matched_id) else None,
         "force_duplicate": force_duplicate,

@@ -1,5 +1,5 @@
 from app.models.base import Base
-from app.models.ai_engine import AssistantDecision, AssistantSession, CatalogAlias
+from app.models.ai_engine import AssistantDecision, AssistantSession, CatalogAlias, PurchaseScanTrace
 from app.models.business import Business
 from app.models.catalog import CatalogItem, CatalogVariant, CategoryType, ItemCategory
 from app.models.supplier_item_default import SupplierItemDefault
@@ -37,6 +37,7 @@ __all__ = [
     "AssistantSession",
     "AssistantDecision",
     "CatalogAlias",
+    "PurchaseScanTrace",
     "Membership",
     "Broker",
     "Supplier",

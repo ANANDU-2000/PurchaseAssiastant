@@ -15,6 +15,12 @@ This is the **canonical** wire format for both scan response and confirm request
   "broker_commission": BrokerCommission | null,
   "payment_days": number | null,
 
+  "invoice_number": string | null,
+  "bill_date": string | null,
+  "bill_fingerprint": string | null,
+  "bill_notes": string | null,
+  "scanned_total_amount": number | null,
+
   "totals": {
     "total_bags": number,
     "total_kg":   number,

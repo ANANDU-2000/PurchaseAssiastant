@@ -1,0 +1,30 @@
+---
+description: Purchase Assistant MASTER rules — finance accuracy, single scanner pipeline (OpenAI Vision only), trackers, and stack truth (Flutter + FastAPI).
+alwaysApply: true
+---
+
+# Purchase Assistant — MASTER agent rules
+
+Read and follow the full policies in:
+
+- `context/rules/MASTER_AGENT_RULES.md`
+- `context/rules/CURSOR_AGENT_EXECUTION_PROMPT.md`
+- `context/rules/AI_SCANNER_SYSTEM_PROMPT.md`
+
+Update after tasks: `TRACK.md`, `TASKS.md`, `CHANGELOG.md` at repository root.
+
+## Non‑negotiables
+
+- One AI scanning pipeline; **OpenAI Vision → strict JSON only**. No OCR stacks (Tesseract, MLKit, Google OCR, regex-OCR UI).
+- **All financial totals** computed on the **backend**; clients display formatted values only.
+- **Do not** duplicate aggregation logic, unit engines, or scan APIs for the same user journey.
+- Mobile-first, safe areas, loading/error/empty states.
+
+## Stack for this repo
+
+- Mobile: **Flutter** (`flutter_app/`), not React Native.
+- API: **FastAPI** (`backend/`), Postgres / Supabase-compatible DB URLs.
+
+## Verification
+
+After touching code: `pytest` (backend), `flutter analyze` (Flutter), and TS/build checks for `admin_web` when relevant.

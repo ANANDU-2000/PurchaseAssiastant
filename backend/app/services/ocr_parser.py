@@ -1,6 +1,6 @@
 """Purchase bill text parsing helpers (supplier hint + tabular rows).
 
-Used by `/v1/me/scan-purchase` and can be composed with OCR engines that return plain text."""
+Legacy regex/heuristic parsing for tests and non-image flows. Bill scans use OpenAI Vision via scanner v2/v3 — see ``purchase_scan_service``."""
 
 from __future__ import annotations
 

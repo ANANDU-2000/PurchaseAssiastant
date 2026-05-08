@@ -170,6 +170,7 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.0-flash"
     groq_api_key: str | None = None
     google_ai_api_key: str | None = None
+    # Legacy / non-bill endpoints only — purchase scanner does not use Google OCR (see purchase_scan_service).
     ocr_provider: str = "google_vision"
     ocr_api_key: str | None = None
     stt_provider: str = "openai_whisper"

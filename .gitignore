@@ -36,6 +36,9 @@ flutter_app/**/ephemeral/
 release_pack/
 *.zip
 
+# Local sample bill images (keep out of git)
+samplsimages/
+
 # Local data (images from chat / screenshots)
 data/*.jpg
 data/*.jpeg

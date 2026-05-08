@@ -1,4 +1,4 @@
-# 05 — AI Scanner (OCR → Parse → Match → Validate → Preview → Confirm)
+# 05 — AI Scanner (OpenAI Vision → Parse → Match → Validate → Preview → Confirm)
 
 This doc supersedes earlier scanner drafts for unit semantics. The scanner must output package-aware drafts aligned with:
 - `01_PACKAGE_ENGINE.md`
@@ -15,8 +15,8 @@ This doc supersedes earlier scanner drafts for unit semantics. The scanner must 
 ## Pipeline
 
 1. Image upload from Flutter
-2. OCR extraction (Google Vision preferred; fallback OpenAI vision)
-3. OpenAI structured parse (JSON only)
+2. **OpenAI Vision** — primary path returns structured JSON directly from the image; if that fails, OpenAI Vision extracts raw text only (no Google Vision / Gemini image OCR for bills).
+3. OpenAI structured parse from text when step 2 needed (JSON only)
 4. DB fuzzy matching (supplier, broker, catalog)
 5. Validation + conflict detection
 6. Editable preview **table** (full viewport, no cards)

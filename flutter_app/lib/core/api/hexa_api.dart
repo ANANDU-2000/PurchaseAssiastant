@@ -439,7 +439,7 @@ class HexaApi {
     return res.data ?? {};
   }
 
-  /// Bill image → OCR / text extract preview only (`requires_user_confirmation` on server).
+  /// Bill image → structured preview (legacy wire shape; server uses same Vision pipeline as v2).
   Future<Map<String, dynamic>> scanPurchaseBillMultipart({
     required String businessId,
     required List<int> imageBytes,
@@ -467,7 +467,7 @@ class HexaApi {
     return Map<String, dynamic>.from(res.data ?? {});
   }
 
-  /// Scanner v2: Bill image → OCR → LLM parse → matching → validated preview table.
+  /// Scanner v2: Bill image → OpenAI Vision → LLM parse → matching → validated preview table.
   Future<Map<String, dynamic>> scanPurchaseBillV2Multipart({
     required String businessId,
     required List<int> imageBytes,

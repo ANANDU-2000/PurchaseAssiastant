@@ -9,6 +9,7 @@ endpoint version. Decimal money/qty/kg are emitted as JSON numbers via
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from decimal import Decimal
 from typing import Any, Literal
 
@@ -142,6 +143,13 @@ class ScanResult(_BaseV2):
     charges: Charges = Field(default_factory=Charges)
     broker_commission: BrokerCommission | None = None
     payment_days: int | None = None
+
+    # Bill metadata from Vision/LLM (optional; confirm UI may prefill invoice_number).
+    invoice_number: str | None = None
+    bill_date: date | None = None
+    bill_fingerprint: str | None = None
+    bill_notes: str | None = None
+    scanned_total_amount: Decimal | None = None
 
     totals: Totals = Field(default_factory=Totals)
 

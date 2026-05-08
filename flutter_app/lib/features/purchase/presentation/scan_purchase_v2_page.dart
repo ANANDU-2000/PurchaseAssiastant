@@ -186,6 +186,8 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
           final stage = meta['error_stage']?.toString().trim();
           if (code != null && code.isNotEmpty) {
             final msg = switch (code) {
+              'NOT_A_BILL' =>
+                'This photo does not look like a purchase bill. Take a clear photo of your bill or broker note.',
               'OCR_EMPTY' =>
                 'Could not fully read handwriting from this photo. Review highlighted fields and correct anything missing.',
               'PARSE_EMPTY' =>
@@ -194,7 +196,7 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
                 'Text extraction failed for this image. Retake the photo (better light, less blur) or enter details manually.',
               _ => 'Scan needs review. Please confirm the extracted fields.',
             };
-            nextIssueBlocker = code == 'OCR_FAILED';
+            nextIssueBlocker = code == 'OCR_FAILED' || code == 'NOT_A_BILL';
             nextIssue = (stage != null && stage.isNotEmpty)
                 ? '${stage.toUpperCase()}: $msg'
                 : msg;
