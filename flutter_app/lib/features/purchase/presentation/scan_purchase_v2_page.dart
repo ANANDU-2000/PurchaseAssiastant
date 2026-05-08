@@ -14,6 +14,9 @@ import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/services/offline_store.dart';
 import '../../../core/theme/hexa_colors.dart';
 
+import 'purchase_scan_draft_map_provider.dart';
+import 'scan_draft_edit_item_sheet.dart';
+
 enum _ScanStage {
   idle,
   preparingImage,
@@ -44,7 +47,6 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
   String? _queuedScanId;
 
   Map<String, dynamic>? _scan; // raw ScanResult JSON (table-first UI)
-  bool _creating = false;
   double _stageProgress = 0;
 
   final ScrollController _scroll = ScrollController();
@@ -279,13 +281,6 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
     }
   }
 
-  String? _scanToken() {
-    final s = _scan;
-    if (s == null) return null;
-    final t = s['scan_token']?.toString().trim();
-    return (t != null && t.isNotEmpty) ? t : null;
-  }
-
   void _resetAll() {
     _stageTimer?.cancel();
     _pollTimer?.cancel();
@@ -293,7 +288,6 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
       _jpegBytes = null;
       _scan = null;
       _busy = false;
-      _creating = false;
       _stage = _ScanStage.idle;
       _error = null;
       _scanIssue = null;
@@ -302,83 +296,15 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
     });
   }
 
-  bool _hasDetectedItems() {
-    final items = _scan?['items'];
-    return items is List && items.whereType<Map>().isNotEmpty;
-  }
-
-  bool _canCreateReviewedScan() {
-    if (_busy || _creating || _scan == null || _scanIssueBlocker) return false;
-    if (!_hasDetectedItems()) return false;
-    final supplier = _scan?['supplier'];
-    final hasSupplier = supplier is Map &&
-        (supplier['matched_id']?.toString().trim().isNotEmpty ?? false);
-    if (!hasSupplier) return false;
-    final items = _scan?['items'];
-    if (items is! List) return false;
-    for (final item in items) {
-      if (item is! Map) return false;
-      final matched = (item['matched_catalog_item_id'] ?? item['matched_id'])
-          ?.toString()
-          .trim();
-      final rate = double.tryParse(item['purchase_rate']?.toString() ?? '');
-      if (matched == null || matched.isEmpty || rate == null || rate <= 0) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  Future<void> _createPurchaseFromReviewedScan() async {
-    final session = ref.read(sessionProvider);
+  Future<void> _openPurchaseDraftWizard() async {
     final s = _scan;
-    final token = _scanToken();
-    if (session == null || s == null || token == null) return;
-    if (_busy || _creating) return;
-    if (!_canCreateReviewedScan()) {
-      setState(() {
-        _error =
-            'Review is not complete: match supplier and item rows, then confirm again.';
-      });
-      return;
-    }
-
-    HapticFeedback.mediumImpact();
-    setState(() {
-      _creating = true;
-      _error = null;
-    });
-    try {
-      // Persist the reviewed edits back into the scan cache.
-      await ref.read(hexaApiProvider).scanPurchaseBillV2Update(
-            businessId: session.primaryBusiness.id,
-            body: {'scan_token': token, 'scan': s},
-          );
-
-      // Confirm and create purchase (duplicate prevention enforced on server).
-      final created = await ref.read(hexaApiProvider).scanPurchaseBillV2Confirm(
-            businessId: session.primaryBusiness.id,
-            body: {
-              'scan_token': token,
-              'purchase_date': DateTime.now().toIso8601String().substring(0, 10),
-              'status': 'confirmed',
-              'force_duplicate': false,
-            },
-          );
-
-      final id = created['id']?.toString().trim();
-      if (!mounted) return;
-      if (id != null && id.isNotEmpty) {
-        HapticFeedback.selectionClick();
-        context.go('/purchase/detail/$id');
-        return;
-      }
-      setState(() => _error = 'Created purchase, but could not open it (missing id).');
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _error = friendlyApiError(e));
-    } finally {
-      if (mounted) setState(() => _creating = false);
+    if (s == null || _busy) return;
+    ref.read(purchaseScanDraftMapProvider.notifier).setDraft(Map<String, dynamic>.from(s));
+    await context.push('/purchase/scan-draft');
+    if (!mounted) return;
+    final latest = ref.read(purchaseScanDraftMapProvider);
+    if (latest != null) {
+      setState(() => _scan = Map<String, dynamic>.from(latest));
     }
   }
 
@@ -433,156 +359,39 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
     if (name.isNotEmpty) next['matched_name'] = name;
     next['confidence'] = 0.99;
     s[key] = next;
+    ref.read(purchaseScanDraftMapProvider.notifier).setDraft(Map<String, dynamic>.from(s));
     setState(() => _scan = Map<String, dynamic>.from(s));
   }
 
   Future<void> _editItemRow(int index, Map<String, dynamic> item) async {
-    final nameCtrl = TextEditingController(
-      text: (item['matched_name'] ?? item['raw_name'] ?? '').toString(),
-    );
-    final qtyCtrl = TextEditingController(text: (item['bags'] ?? item['qty'] ?? '').toString());
-    final pCtrl = TextEditingController(text: (item['purchase_rate'] ?? '').toString());
-    final sCtrl = TextEditingController(text: (item['selling_rate'] ?? '').toString());
-    var unit = (item['unit_type'] ?? 'KG').toString().trim().toUpperCase();
-    if (unit.isEmpty) unit = 'KG';
-
-    final saved = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (ctx) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 12,
-            right: 12,
-            top: 8,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text('Edit item', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-              const SizedBox(height: 10),
-              TextField(
-                controller: nameCtrl,
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(labelText: 'Item'),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: qtyCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(labelText: 'Qty'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      initialValue: unit,
-                      items: const [
-                        DropdownMenuItem(value: 'BAG', child: Text('bag')),
-                        DropdownMenuItem(value: 'KG', child: Text('kg')),
-                        DropdownMenuItem(value: 'BOX', child: Text('box')),
-                        DropdownMenuItem(value: 'TIN', child: Text('tin')),
-                        DropdownMenuItem(value: 'PCS', child: Text('piece')),
-                      ],
-                      onChanged: (v) => unit = v ?? unit,
-                      decoration: const InputDecoration(labelText: 'Unit'),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: pCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(labelText: 'Purchase rate'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextField(
-                      controller: sCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      textInputAction: TextInputAction.done,
-                      decoration: const InputDecoration(labelText: 'Selling rate'),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(ctx).pop(false),
-                      child: const Text('Cancel'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () => Navigator.of(ctx).pop(true),
-                      child: const Text('Save'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
+    await editScanDraftItemRow(
+      context,
+      index: index,
+      item: item,
+      onSaved: (idx, next) {
+        final s = _scan;
+        if (s == null) return;
+        final items = s['items'];
+        if (items is! List || idx < 0 || idx >= items.length) return;
+        items[idx] = next;
+        ref.read(purchaseScanDraftMapProvider.notifier).setDraft(Map<String, dynamic>.from(s));
+        setState(() => _scan = Map<String, dynamic>.from(s));
       },
     );
-
-    if (saved != true) return;
-    final next = Map<String, dynamic>.from(item);
-    final nm = nameCtrl.text.trim();
-    if (nm.isNotEmpty) {
-      next['matched_name'] = nm;
-      next['raw_name'] = next['raw_name'] ?? nm;
-    }
-    next['unit_type'] = unit;
-    final q = double.tryParse(qtyCtrl.text.trim());
-    if (q != null && q > 0) {
-      if (unit == 'BAG') {
-        next['bags'] = q;
-      } else {
-        next['qty'] = q;
-      }
-    }
-    final pr = double.tryParse(pCtrl.text.trim());
-    if (pr != null && pr > 0) next['purchase_rate'] = pr;
-    final sr = double.tryParse(sCtrl.text.trim());
-    if (sr != null && sr > 0) next['selling_rate'] = sr;
-
-    final s = _scan;
-    if (s == null) return;
-    final items = s['items'];
-    if (items is! List || index < 0 || index >= items.length) return;
-    items[index] = next;
-    setState(() => _scan = Map<String, dynamic>.from(s));
   }
 
   String _stageLabel(_ScanStage s) {
+    // Vision-first wording only — no OCR-style labels in user-visible copy.
     return switch (s) {
       _ScanStage.idle => 'Upload a bill photo to begin.',
       _ScanStage.preparingImage => 'Preparing image…',
       _ScanStage.uploading => 'Uploading…',
-      _ScanStage.extractingText => 'Extracting text…',
-      _ScanStage.parsingItems => 'Parsing items…',
-      _ScanStage.matchingSuppliers => 'Matching suppliers…',
-      _ScanStage.validating => 'Validating quantities…',
-      _ScanStage.readyForReview => 'Ready for review…',
-      _ScanStage.done => 'Review detected items',
+      _ScanStage.extractingText => 'Reading bill (AI vision)…',
+      _ScanStage.parsingItems => 'Extracting line items…',
+      _ScanStage.matchingSuppliers => 'Matching supplier & catalog…',
+      _ScanStage.validating => 'Checking amounts…',
+      _ScanStage.readyForReview => 'Ready for your review…',
+      _ScanStage.done => 'Review and match items before saving',
       _ScanStage.error => 'Needs attention',
     };
   }
@@ -604,72 +413,6 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
       child: Text(
         label,
         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: fg),
-      ),
-    );
-  }
-
-  Widget _progressChecklist() {
-    final hasResult = _scan is Map;
-    final sup = (_scan is Map) ? (_scan!['supplier']) : null;
-    final bro = (_scan is Map) ? (_scan!['broker']) : null;
-    final items = (_scan is Map) ? (_scan!['items']) : null;
-    final charges = (_scan is Map) ? (_scan!['charges']) : null;
-
-    bool hasName(Object? m) =>
-        m is Map && ((m['matched_name']?.toString().trim().isNotEmpty ?? false) || (m['raw_text']?.toString().trim().isNotEmpty ?? false));
-    bool hasItems() => items is List && items.isNotEmpty;
-    bool hasUnits() => items is List && items.any((e) => e is Map && (e['unit_type']?.toString().trim().isNotEmpty ?? false));
-    bool hasRates() => items is List && items.any((e) => e is Map && ((e['purchase_rate'] is num) || (e['selling_rate'] is num))) ||
-        (charges is Map && (charges['delivered_rate'] is num));
-    bool hasQty() => items is List && items.any((e) => e is Map && ((e['bags'] is num) || (e['qty'] is num) || (e['kg'] is num)));
-
-    final steps = <(String label, bool done)>[
-      ('Image uploaded', _jpegBytes != null && (_jpegBytes?.isNotEmpty ?? false)),
-      ('Paper detected', _stage.index >= _ScanStage.preparingImage.index),
-      ('OCR extracting', _stage.index >= _ScanStage.extractingText.index || hasResult),
-      ('Supplier matched', hasName(sup)),
-      ('Broker matched', hasName(bro)),
-      ('Items identified', hasItems()),
-      ('Units identified', hasUnits()),
-      ('Rates validated', hasRates()),
-      ('Quantity calculated', hasQty()),
-      ('Final review ready', _stage == _ScanStage.readyForReview || hasResult),
-    ];
-
-    return Card(
-      margin: const EdgeInsets.only(top: 10),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('AI validation progress', style: HexaDsType.formSectionLabel),
-            const SizedBox(height: 8),
-            for (final s in steps)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Row(
-                  children: [
-                    Icon(
-                      s.$2 ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                      size: 18,
-                      color: s.$2 ? const Color(0xFF065F46) : Colors.black38,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        s.$1,
-                        style: TextStyle(
-                          fontWeight: s.$2 ? FontWeight.w700 : FontWeight.w600,
-                          color: s.$2 ? Colors.black87 : Colors.black54,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ),
       ),
     );
   }
@@ -939,7 +682,7 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
     final bytes = _jpegBytes;
     final hasImage = bytes != null && bytes.isNotEmpty;
     final hasResult = _scan != null;
-    final isWorking = _busy || _creating;
+    final isWorking = _busy;
     final pendingOffline = session != null &&
         OfflineStore.getPendingScanJobs(session.primaryBusiness.id).isNotEmpty;
 
@@ -955,7 +698,8 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
               Text('Scan purchase bill', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 4),
               const Text(
-                'Take photo or upload invoice. AI extracts supplier, items, rates and quantities.',
+                'Camera or gallery only here. AI reads the bill; then tap Draft wizard to match supplier/items '
+                'and create the purchase — nothing is saved until you confirm in the wizard.',
                 style: TextStyle(color: Colors.black54),
               ),
               const SizedBox(height: 12),
@@ -1034,7 +778,7 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
                                 style: const TextStyle(fontWeight: FontWeight.w700),
                               ),
                             ),
-                            if (_busy || _creating)
+                            if (_busy)
                               const SizedBox(
                                 width: 18,
                                 height: 18,
@@ -1046,7 +790,6 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
                     ],
                   ),
                 ),
-                _progressChecklist(),
               ],
               if (_error != null) ...[
                 const SizedBox(height: 12),
@@ -1149,9 +892,9 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
               const SizedBox(width: 8),
               Expanded(
                 child: FilledButton.icon(
-                  onPressed: _canCreateReviewedScan() ? _createPurchaseFromReviewedScan : null,
-                  icon: const Icon(Icons.check_circle_rounded),
-                  label: Text(_creating ? 'Creating…' : 'Create'),
+                  onPressed: (!isWorking && hasResult) ? _openPurchaseDraftWizard : null,
+                  icon: const Icon(Icons.fact_check_rounded),
+                  label: const Text('Draft wizard'),
                   style: FilledButton.styleFrom(
                     backgroundColor: HexaColors.brandPrimary,
                   ),

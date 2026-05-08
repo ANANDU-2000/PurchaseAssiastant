@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -34,6 +35,7 @@ import '../../features/purchase/domain/purchase_draft.dart';
 import '../../features/purchase/presentation/purchase_detail_page.dart';
 import '../../features/purchase/presentation/purchase_home_page.dart';
 import '../../features/purchase/presentation/purchase_entry_wizard_v2.dart';
+import '../../features/purchase/presentation/purchase_scan_draft_wizard_page.dart';
 import '../../features/purchase/presentation/scan_purchase_page.dart';
 import '../../features/reports/presentation/reports_item_detail_page.dart';
 import '../../features/notifications/presentation/notifications_page.dart';
@@ -53,18 +55,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     navigatorKey: _rootNavigatorKey,
     initialLocation: '/splash',
     refreshListenable: authRefresh,
-    errorBuilder: (context, state) => Scaffold(
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            'Could not open this page.',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-        ),
-      ),
-    ),
+    errorBuilder: (context, state) {
+      if (kDebugMode) {
+        debugPrint(
+          'GoRouter error: uri=${state.uri} matched=${state.matchedLocation} error=${state.error}',
+        );
+      }
+      return GoRouterErrorScreen(
+        uri: state.uri,
+        routerError: state.error,
+      );
+    },
     redirect: (context, state) {
       final loc = state.matchedLocation;
       final public = loc == '/splash' ||
@@ -397,6 +398,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
+        path: '/purchase/scan-draft',
+        name: 'purchase_scan_draft',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const PurchaseScanDraftWizardPage(),
+        ),
+      ),
+      GoRoute(
         path: '/purchase/edit/:purchaseId',
         name: 'purchase_edit',
         pageBuilder: (context, state) {
@@ -538,3 +547,66 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+/// Full-screen fallback for unknown routes or navigation errors.
+class GoRouterErrorScreen extends ConsumerWidget {
+  const GoRouterErrorScreen({
+    super.key,
+    required this.uri,
+    this.routerError,
+  });
+
+  final Uri uri;
+  final Object? routerError;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final session = ref.watch(sessionProvider);
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Could not open this page.',
+                style: theme.textTheme.titleMedium,
+              ),
+              const SizedBox(height: 8),
+              SelectableText(
+                uri.toString(),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              if (kDebugMode && routerError != null) ...[
+                const SizedBox(height: 12),
+                SelectableText(
+                  routerError.toString(),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+              const Spacer(),
+              FilledButton(
+                onPressed: () {
+                  if (session != null) {
+                    context.go('/home');
+                  } else {
+                    context.go('/login');
+                  }
+                },
+                child: Text(session != null ? 'Go home' : 'Go to login'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

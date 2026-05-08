@@ -1,5 +1,14 @@
 # 05 — AI Scanner (OpenAI Vision → Parse → Match → Validate → Preview → Confirm)
 
+## Related docs
+
+- [`AI_PURCHASE_DRAFT_ENGINE.md`](AI_PURCHASE_DRAFT_ENGINE.md) — draft-first architecture, 4-layer matching, wizard steps, gaps.
+- [`AI_PURCHASE_VALIDATION_AND_SAFETY.md`](AI_PURCHASE_VALIDATION_AND_SAFETY.md) — validation gates, NEVER/ALWAYS, financial safety.
+- [`SCAN_GUIDE_UX_SPEC.md`](SCAN_GUIDE_UX_SPEC.md) — full-screen Scan Guide for staff.
+- [`AI_SCANNER_SPEC.md`](AI_SCANNER_SPEC.md) — API contract and confirm flow.
+
+---
+
 This doc supersedes earlier scanner drafts for unit semantics. The scanner must output package-aware drafts aligned with:
 - `01_PACKAGE_ENGINE.md`
 - `03_DYNAMIC_FORM_RULES.md`

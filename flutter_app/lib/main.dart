@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
@@ -43,6 +43,13 @@ class _HexaBootstrap extends StatefulWidget {
 class _HexaBootstrapState extends State<_HexaBootstrap> {
   ProviderContainer? _container;
   Object? _error;
+  String? _errorStackTrace;
+
+  void _bootstrapLog(String message) {
+    if (kDebugMode) {
+      debugPrint('[bootstrap] $message');
+    }
+  }
 
   @override
   void initState() {
@@ -51,13 +58,18 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
   }
 
   Future<void> _prepare() async {
-    setState(() => _error = null);
+    setState(() {
+      _error = null;
+      _errorStackTrace = null;
+    });
 
     final cap = kIsWeb ? const Duration(seconds: 15) : const Duration(minutes: 2);
 
     try {
       await OfflineStore.init().timeout(cap);
+      _bootstrapLog('OfflineStore.init OK');
       final prefs = await SharedPreferences.getInstance().timeout(cap);
+      _bootstrapLog('SharedPreferences OK');
       await LocalNotificationsService.instance.init();
       final notifOptIn = prefs.getBool(kNotificationsOptInKey) ?? false;
       await LocalNotificationsService.instance.setOptIn(notifOptIn);
@@ -77,13 +89,16 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
       final container = ProviderContainer(
         overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
       );
+      _bootstrapLog('ProviderContainer OK');
 
       try {
         await container.read(sessionProvider.notifier).restore().timeout(
               kIsWeb ? const Duration(seconds: 20) : const Duration(seconds: 25),
             );
+        _bootstrapLog('session.restore OK');
       } catch (_) {
         // Offline / timeout — splash/login handle retry.
+        _bootstrapLog('session.restore skipped or failed (non-fatal)');
       }
 
       unawaited(() async {
@@ -115,14 +130,15 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
       OfflineSyncService.start(container);
 
       if (!mounted) return;
+      _bootstrapLog('starting HexaApp');
       setState(() => _container = container);
     } catch (e, st) {
-      assert(() {
-        debugPrint('Bootstrap failed: $e\n$st');
-        return true;
-      }());
+      debugPrint('Bootstrap failed: $e\n$st');
       if (!mounted) return;
-      setState(() => _error = e);
+      setState(() {
+        _error = e;
+        _errorStackTrace = kDebugMode ? st.toString() : null;
+      });
     }
   }
 
@@ -146,22 +162,53 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
             child: Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      kIsWeb
-                          ? 'Could not start offline storage. Try a hard refresh or another browser.'
-                          : 'Could not start the app.',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyLarge,
-                    ),
-                    const SizedBox(height: 16),
-                    FilledButton(
-                      onPressed: () => unawaited(_prepare()),
-                      child: const Text('Retry'),
-                    ),
-                  ],
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        kIsWeb
+                            ? 'Could not start offline storage. Try a hard refresh or another browser.'
+                            : 'Could not start the app.',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodyLarge,
+                      ),
+                      if (kDebugMode && _error != null) ...[
+                        const SizedBox(height: 16),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Debug detail',
+                            style: Theme.of(context).textTheme.labelLarge,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        SelectableText(
+                          _error.toString(),
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                fontFamily: 'monospace',
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                        if (_errorStackTrace != null) ...[
+                          const SizedBox(height: 12),
+                          SelectableText(
+                            _errorStackTrace!,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  fontFamily: 'monospace',
+                                  fontSize: 11,
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                        ],
+                      ],
+                      const SizedBox(height: 16),
+                      FilledButton(
+                        onPressed: () => unawaited(_prepare()),
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
