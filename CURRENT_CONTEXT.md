@@ -10,7 +10,7 @@ _Update this file after each meaningful agent session._
 ## Active task
 
 - **Reports parity:** `GET /dashboard?month=` and **`GET /analytics/insights/trade`** use `trade_purchase_status_in_reports()` — soft-deleted purchases excluded from month KPIs and insight rankings.
-- **Next:** supplier-scoped search params, remaining dashboard/chart consumers audit, Flutter delete paths (`TASKS.md`).
+- **Next:** supplier-scoped search params, any remaining chart/home consumers audit (`TASKS.md`).
 
 ## Why assistants pause between messages
 
@@ -30,6 +30,7 @@ _Update this file after each meaningful agent session._
 
 - `backend/app/routers/dashboard.py` — month KPI status filter
 - `backend/app/routers/analytics.py` — `/insights/trade` status filter
+- `flutter_app/lib/features/purchase/providers/trade_purchase_detail_provider.dart` — shared detail cache; invalidated on all delete paths
 - `backend/tests/test_reports_trade_breakdowns.py` — dashboard + analytics delete regressions
 - `flutter_app/lib/features/purchase/presentation/scan_draft_edit_item_sheet.dart` (unified search autocomplete)
 - `backend/app/services/scanner_v2/pack_gate.py`, `backend/app/services/scanner_v2/pipeline.py`

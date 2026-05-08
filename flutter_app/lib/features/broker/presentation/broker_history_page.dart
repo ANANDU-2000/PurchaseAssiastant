@@ -12,6 +12,7 @@ import '../../../core/providers/trade_purchases_provider.dart';
 import '../../../core/router/navigation_ext.dart';
 import '../../../core/services/broker_statement_pdf.dart';
 import '../../../core/utils/line_display.dart';
+import '../../purchase/providers/trade_purchase_detail_provider.dart';
 import '../../purchase/state/purchase_providers.dart';
 
 final _brokerHistoryHeaderProvider =
@@ -241,6 +242,7 @@ class BrokerHistoryPage extends ConsumerWidget {
             purchaseId: row.purchaseId,
           );
       invalidatePurchaseWorkspace(ref);
+      ref.invalidate(tradePurchaseDetailProvider(row.purchaseId));
       ref.invalidate(brokerHistoryLinesProvider(brokerId));
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));

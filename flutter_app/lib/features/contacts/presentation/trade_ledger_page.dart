@@ -24,6 +24,7 @@ import '../../../core/utils/trade_purchase_rate_display.dart';
 import '../../../shared/widgets/hexa_empty_state.dart';
 import '../../../shared/widgets/trade_intel_cards.dart';
 import '../../../shared/widgets/trade_purchase_ledger_cards.dart';
+import '../../purchase/providers/trade_purchase_detail_provider.dart';
 
 enum TradeLedgerKind { supplier, broker, catalogItem }
 
@@ -220,6 +221,7 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
             purchaseId: p.id,
           );
       invalidatePurchaseWorkspace(ref);
+      ref.invalidate(tradePurchaseDetailProvider(p.id));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Deleted')),

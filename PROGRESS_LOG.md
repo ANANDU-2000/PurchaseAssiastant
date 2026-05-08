@@ -12,6 +12,14 @@ Add a new entry **after significant merges or agent sessions**.
 
 ---
 
+## 2026-05-08 — Flutter: bust trade purchase detail cache on every delete path
+
+- Modules: `trade_purchase_detail_provider.dart`, `purchase_detail_page.dart`, `purchase_home_page.dart`, `trade_ledger_page.dart`, `broker_history_page.dart`, `item_history_page.dart`, `supplier_ledger_page.dart`, `BUGS.md`
+- Change summary: Moved detail fetch to shared `tradePurchaseDetailProvider` (keepAlive); after successful API delete, `ref.invalidate(tradePurchaseDetailProvider(id))` from all screens that delete purchases so stale detail cannot reopen from cache.
+- Validation: `dart analyze` on touched files — no issues.
+
+---
+
 ## 2026-05-08 — Analytics trade insights exclude deleted (report status filter)
 
 - Modules: `backend/app/routers/analytics.py`, `backend/tests/test_reports_trade_breakdowns.py`, `REPORT_ENGINE.md`

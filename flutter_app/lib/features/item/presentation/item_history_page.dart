@@ -10,6 +10,7 @@ import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/router/navigation_ext.dart';
 import '../../../core/utils/line_display.dart';
+import '../../purchase/providers/trade_purchase_detail_provider.dart';
 import '../../purchase/state/purchase_providers.dart';
 
 class ItemHistoryPage extends ConsumerWidget {
@@ -183,6 +184,7 @@ class ItemHistoryPage extends ConsumerWidget {
             purchaseId: row.purchaseId,
           );
       invalidatePurchaseWorkspace(ref);
+      ref.invalidate(tradePurchaseDetailProvider(row.purchaseId));
       ref.invalidate(itemHistoryLinesProvider(catalogItemId));
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));

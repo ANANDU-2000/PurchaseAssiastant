@@ -22,6 +22,7 @@ import '../../../core/providers/business_profile_provider.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart'
     show invalidatePurchaseWorkspace;
 import '../../../core/providers/trade_purchases_provider.dart';
+import '../providers/trade_purchase_detail_provider.dart';
 import '../state/purchase_local_wip_draft_provider.dart';
 import '../../../core/services/purchase_pdf.dart';
 import '../../../core/theme/hexa_colors.dart';
@@ -420,6 +421,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
             purchaseId: p.id,
           );
       invalidatePurchaseWorkspace(ref);
+      ref.invalidate(tradePurchaseDetailProvider(p.id));
       try {
         await ref.read(tradePurchasesListProvider.future);
       } catch (_) {}
@@ -472,6 +474,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
               businessId: session.primaryBusiness.id,
               purchaseId: id,
             );
+        ref.invalidate(tradePurchaseDetailProvider(id));
       } catch (_) {
         if (mounted) {
           setState(() => _pendingDeleteIds.remove(id));

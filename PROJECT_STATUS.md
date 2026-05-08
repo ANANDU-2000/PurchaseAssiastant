@@ -18,7 +18,7 @@ High-level snapshot. Detailed priorities: `TRACK.md`. Task checklist: `TASKS.md`
 
 - Multi-image bill merge; Malayalam/Manglish normalization dictionary service.
 - Field-level confidence + forced review on unit mismatch.
-- Delete flow audit (remaining: every Flutter delete path + cache invalidation UX) — see `BUGS.md`.
+- Delete flow: detail **keepAlive** cache busted on every delete entry point — see `trade_purchase_detail_provider.dart`.
 
 ## Blockers
 

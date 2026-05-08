@@ -22,18 +22,7 @@ import '../../../core/theme/hexa_colors.dart';
 import '../../../core/utils/unit_classifier.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../core/widgets/list_skeleton.dart';
-
-final _purchaseDetailProvider = FutureProvider.autoDispose
-    .family<TradePurchase, String>((ref, purchaseId) async {
-  ref.keepAlive();
-  final session = ref.watch(sessionProvider);
-  if (session == null) throw StateError('no session');
-  final m = await ref.read(hexaApiProvider).getTradePurchase(
-        businessId: session.primaryBusiness.id,
-        purchaseId: purchaseId,
-      );
-  return TradePurchase.fromJson(m);
-});
+import '../providers/trade_purchase_detail_provider.dart';
 
 String _inr(num n, {int fractionDigits = 2}) =>
     NumberFormat.currency(
@@ -210,7 +199,7 @@ class PurchaseDetailPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(_purchaseDetailProvider(purchaseId));
+    final async = ref.watch(tradePurchaseDetailProvider(purchaseId));
     return async.when(
       skipLoadingOnReload: true,
       skipLoadingOnRefresh: true,
@@ -240,7 +229,7 @@ class PurchaseDetailPage extends ConsumerWidget {
         ),
         body: FriendlyLoadError(
           message: "Couldn't load purchase",
-          onRetry: () => ref.invalidate(_purchaseDetailProvider(purchaseId)),
+          onRetry: () => ref.invalidate(tradePurchaseDetailProvider(purchaseId)),
         ),
       ),
       data: (p) => _LoadedPurchaseScaffold(p: p),
@@ -274,6 +263,7 @@ class _LoadedPurchaseScaffold extends ConsumerWidget {
             purchaseId: p.id,
           );
       invalidatePurchaseWorkspace(ref);
+      ref.invalidate(tradePurchaseDetailProvider(p.id));
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
       context.popOrGo('/purchase');
@@ -489,8 +479,8 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
             bottom: false,
             child: RefreshIndicator(
               onRefresh: () async {
-                ref.invalidate(_purchaseDetailProvider(p.id));
-                await ref.read(_purchaseDetailProvider(p.id).future);
+                ref.invalidate(tradePurchaseDetailProvider(p.id));
+                await ref.read(tradePurchaseDetailProvider(p.id).future);
               },
               child: SingleChildScrollView(
                 keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -1118,7 +1108,7 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
             paidAmount: v,
           );
       invalidatePurchaseWorkspace(ref);
-      ref.invalidate(_purchaseDetailProvider(p.id));
+      ref.invalidate(tradePurchaseDetailProvider(p.id));
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Payment saved')),

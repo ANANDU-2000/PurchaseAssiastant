@@ -56,7 +56,7 @@ Section order matches **AUTONOMOUS_CURSOR_EXECUTION_RULES.md** (TASKS structure)
 - [x] Purchase **draft wizard** route (`/purchase/scan-draft`) — scan does not single-button create purchase — _Flutter_
 - [x] Scanner **pack gate** (kg hint + bag/piece channel) demotes unsafe auto item matches — `scanner_v2/pack_gate.py`, tests `test_scan_pack_gate.py`
 - [x] Scan draft **item edit** live catalog suggestions — debounced `GET /v1/businesses/{id}/search` (`catalog_items`) in `scan_draft_edit_item_sheet.dart`; tap sets `matched_catalog_item_id` + optional last rates
-- [x] **Month dashboard** (`GET /dashboard?month=`) uses same trade-purchase status filter as trade reports — excludes `deleted` / `draft` / `cancelled` from aggregates; `test_month_dashboard_excludes_deleted_matches_trade_summary`
+- [x] Flutter **purchase detail cache** — shared `tradePurchaseDetailProvider`; invalidated after successful delete from detail, purchase home (single+bulk), supplier/broker/item ledgers, contacts trade ledger
 - [x] Repo trackers + verbatim policy docs; **TASKS.md** section order per autonomous rules
 
 # Blocked

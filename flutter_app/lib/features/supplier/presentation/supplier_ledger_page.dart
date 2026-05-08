@@ -9,6 +9,7 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/router/navigation_ext.dart';
 import '../../../shared/widgets/trade_intel_cards.dart';
+import '../../purchase/providers/trade_purchase_detail_provider.dart';
 import '../../purchase/state/purchase_providers.dart';
 
 final _supplierLedgerHeaderProvider =
@@ -105,6 +106,7 @@ class SupplierLedgerPage extends ConsumerWidget {
             purchaseId: row.purchaseId,
           );
       invalidatePurchaseWorkspace(ref);
+      ref.invalidate(tradePurchaseDetailProvider(row.purchaseId));
       ref.invalidate(supplierLedgerLinesProvider(supplierId));
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
