@@ -13,7 +13,7 @@ Section order matches **AUTONOMOUS_CURSOR_EXECUTION_RULES.md** (TASKS structure)
 ## Dashboard & reports
 
 - [ ] **P1** — Single aggregation endpoint / contract for home KPIs — _Validation: parity test vs purchase detail_
-- [ ] **P1** — Fix stale refresh after mutations — _Modules: providers — Validation: create purchase → home updates_
+- [ ] **P1** — Fix stale refresh after mutations — _Further: shell/report futures still lack generation guard — hive bust + inflight clear_
 - [ ] **P2** — Skeleton loaders, pull-to-refresh — _Flutter home_
 
 ## AI scanner & extraction
@@ -56,6 +56,7 @@ Section order matches **AUTONOMOUS_CURSOR_EXECUTION_RULES.md** (TASKS structure)
 - [x] Purchase **draft wizard** route (`/purchase/scan-draft`) — scan does not single-button create purchase — _Flutter_
 - [x] Scanner **pack gate** (kg hint + bag/piece channel) demotes unsafe auto item matches — `scanner_v2/pack_gate.py`, tests `test_scan_pack_gate.py`
 - [x] Scan draft **item edit** live catalog suggestions — debounced `GET /v1/businesses/{id}/search` (`catalog_items`) in `scan_draft_edit_item_sheet.dart`; tap sets `matched_catalog_item_id` + optional last rates
+- [x] Flutter **aggregate cache bust** — `invalidateBusinessAggregates` clears Hive trade/home/report keys + overview inflight/RAM + stale-fetch generation guard on home overview pull
 - [x] Flutter **purchase detail cache** — shared `tradePurchaseDetailProvider`; invalidated after successful delete from detail, purchase home (single+bulk), supplier/broker/item ledgers, contacts trade ledger
 - [x] Repo trackers + verbatim policy docs; **TASKS.md** section order per autonomous rules
 

@@ -12,6 +12,14 @@ Add a new entry **after significant merges or agent sessions**.
 
 ---
 
+## 2026-05-08 — Flutter: bust home/report aggregate caches on business invalidation
+
+- Modules: `business_aggregates_invalidation.dart`, `offline_store.dart`, `home_dashboard_provider.dart`, `home_breakdown_tab_providers.dart`, `reports_provider.dart`, `REPORT_ENGINE.md`, `BUGS.md`, `CURRENT_CONTEXT.md`
+- Change summary: On `invalidateBusinessAggregates`, clear home overview inflight + RAM maps (bump generation; discard stale in-flight overview pulls), shell reports + reports-purchase inflight dedupe maps, and Hive keys for trade dashboard snapshot / home shell / reports TP list plus legacy `dashboard` blob for the signed-in business.
+- Validation: `dart analyze` on touched files — no issues.
+
+---
+
 ## 2026-05-08 — Flutter: bust trade purchase detail cache on every delete path
 
 - Modules: `trade_purchase_detail_provider.dart`, `purchase_detail_page.dart`, `purchase_home_page.dart`, `trade_ledger_page.dart`, `broker_history_page.dart`, `item_history_page.dart`, `supplier_ledger_page.dart`, `BUGS.md`

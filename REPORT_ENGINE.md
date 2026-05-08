@@ -9,6 +9,7 @@ Flutter/admin must **not** re-implement divergent sum logic for the same KPIs sh
 ## Known risk areas
 
 - Stale cache after create/update/delete (invalidate Riverpod providers / HTTP caches narrowly).
+  **Flutter:** `invalidateBusinessAggregates` clears home-dashboard `_dashInflight` / RAM snapshot maps, shell reports inflight map, reports purchases inflight map, and Hive keys `trade_dash|*`, `home_shell|*`, `reports_tp|*` plus legacy `dashboard`; home overview fetch uses a **bust generation** guard so an older in-flight request cannot repopulate caches after a mutation.
 - Date-range boundaries (timezone, inclusive/exclusive).
 - Deleted or voided purchases still included in aggregates — verify query filters.  
   **Fixed for month dashboard:** `_compute_month_dashboard_payload` in `backend/app/routers/dashboard.py` filters with `trade_query.trade_purchase_status_in_reports()` (aligned with `/reports/trade-*` trade-summary status set).

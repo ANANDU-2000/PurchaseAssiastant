@@ -9,8 +9,8 @@ _Update this file after each meaningful agent session._
 
 ## Active task
 
-- **Reports parity:** `GET /dashboard?month=` and **`GET /analytics/insights/trade`** use `trade_purchase_status_in_reports()` — soft-deleted purchases excluded from month KPIs and insight rankings.
-- **Next:** supplier-scoped search params, any remaining chart/home consumers audit (`TASKS.md`).
+- **Home KPI refresh:** `invalidateBusinessAggregates` now wipes Hive trade/home/report caches + in-flight dedupe maps for home dashboard / shell / reports purchases; home overview pull aborts mid-flight when bust generation advances (`StaleHomeDashboardFetch`).
+- **Next:** supplier-scoped search params (`TASKS.md`).
 
 ## Why assistants pause between messages
 
@@ -28,6 +28,9 @@ _Update this file after each meaningful agent session._
 
 ## Latest code touchpoints
 
+- `flutter_app/lib/core/providers/business_aggregates_invalidation.dart` — Hive + inflight bust before KPI invalidation
+- `flutter_app/lib/core/providers/home_dashboard_provider.dart` — `_homeDashBustGeneration` / `StaleHomeDashboardFetch`
+- `flutter_app/lib/core/services/offline_store.dart` — `bustTradeAggregateCachesForBusiness`
 - `backend/app/routers/dashboard.py` — month KPI status filter
 - `backend/app/routers/analytics.py` — `/insights/trade` status filter
 - `flutter_app/lib/features/purchase/providers/trade_purchase_detail_provider.dart` — shared detail cache; invalidated on all delete paths

@@ -462,6 +462,8 @@ class _DashboardFailureStats {
 
 final Map<String, Future<HomeDashboardPayload>> _dashInflight = {};
 
+int _homeDashBustGeneration = 0;
+
 String _mapDashboardDioBanner(DioException e) {
   switch (e.type) {
     case DioExceptionType.connectionTimeout:
@@ -489,6 +491,21 @@ String _dashMemKey(String bid, String from, String to) => '$bid|$from|$to';
 
 final Map<String, Map<String, dynamic>> _homeOverviewSnapMemory = {};
 
+/// Clears in-flight fetches and RAM snapshots for [reportsHomeOverview] home aggregates.
+/// Call before invalidating [homeDashboardDataProvider] after purchase mutations so a
+/// concurrent request cannot resurrect pre-delete totals via [putIfAbsent] dedupe.
+void bustHomeDashboardVolatileCaches() {
+  _homeDashBustGeneration++;
+  _dashInflight.clear();
+  _homeOverviewSnapMemory.clear();
+}
+
+/// Thrown when [bustHomeDashboardVolatileCaches] ran while a fetch was in flight;
+/// the notifier will invalidate and schedule a fresh pull.
+class StaleHomeDashboardFetch implements Exception {
+  StaleHomeDashboardFetch();
+}
+
 /// Server snapshot holder + outstanding refresh flag (SWR-friendly).
 class HomeDashboardDashState {
   const HomeDashboardDashState({
@@ -503,6 +520,7 @@ class HomeDashboardDashState {
 
 Future<HomeDashboardPayload> _homeDashboardPullFresh({
   required String dedupeKey,
+  required int bustGenerationAtStart,
   required HexaApi api,
   required HomePeriod period,
   required ({DateTime start, DateTime endInclusive})? custom,
@@ -576,6 +594,10 @@ Future<HomeDashboardPayload> _homeDashboardPullFresh({
     await healthPreflightBestEffort();
   }
 
+  if (bustGenerationAtStart != _homeDashBustGeneration) {
+    throw StaleHomeDashboardFetch();
+  }
+
   try {
     final snap = await api.reportsHomeOverview(
       businessId: bid,
@@ -583,6 +605,9 @@ Future<HomeDashboardPayload> _homeDashboardPullFresh({
       to: to,
       compact: true,
     );
+    if (bustGenerationAtStart != _homeDashBustGeneration) {
+      throw StaleHomeDashboardFetch();
+    }
     final readDegraded = snap['degraded'] == true;
     final readDegradedBanner =
         readDegraded ? 'Showing last data — refresh delayed' : null;
@@ -609,6 +634,9 @@ Future<HomeDashboardPayload> _homeDashboardPullFresh({
       from: rangeStart,
       toInclusive: lastInclusive,
     );
+    if (bustGenerationAtStart != _homeDashBustGeneration) {
+      throw StaleHomeDashboardFetch();
+    }
     if (purchases.isEmpty) {
       return ok(
         fromSnapshot,
@@ -728,10 +756,12 @@ class HomeDashboardDataNotifier extends AutoDisposeNotifier<HomeDashboardDashSta
 
     Future<void>.microtask(() async {
       try {
+        final bustAtStart = _homeDashBustGeneration;
         final payload = await _dashInflight.putIfAbsent(
           dedupeKey,
           () => _homeDashboardPullFresh(
                 dedupeKey: dedupeKey,
+                bustGenerationAtStart: bustAtStart,
                 api: ref.read(hexaApiProvider),
                 period: period,
                 custom: custom,
@@ -744,6 +774,10 @@ class HomeDashboardDataNotifier extends AutoDisposeNotifier<HomeDashboardDashSta
         );
         if (_dead) return;
         state = HomeDashboardDashState(snapshot: payload, refreshing: false);
+      } on StaleHomeDashboardFetch {
+        if (!_dead) {
+          ref.invalidate(homeDashboardDataProvider);
+        }
       } catch (_) {
         if (_dead) return;
         // Never leave `refreshing: true` — empty catch used to strand the shell spinner.

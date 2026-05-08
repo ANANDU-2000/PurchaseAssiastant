@@ -20,6 +20,7 @@
 ## Caching
 
 - Flutter: Riverpod providers; invalidate on mutation routes (purchases, catalog, contacts).
+- **Purchase mutations:** `invalidateBusinessAggregates` clears home-dashboard inflight/RAM (`bustHomeDashboardVolatileCaches`), shell reports + reports-purchase inflight maps, and Hive aggregate keys for the current business (`OfflineStore.bustTradeAggregateCachesForBusiness`); home overview fetch compares bust generation to avoid applying stale responses.
 - Avoid optimistic UI that contradicts server totals without rollback.
 
 ## Related specs

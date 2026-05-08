@@ -13,6 +13,10 @@ import 'analytics_kpi_provider.dart';
 
 final Map<String, Future<List<TradePurchase>>> _reportsPurchasesInflight = {};
 
+void bustReportsPurchasesInflight() {
+  _reportsPurchasesInflight.clear();
+}
+
 class ReportsPurchasePayload {
   ReportsPurchasePayload({
     required this.items,

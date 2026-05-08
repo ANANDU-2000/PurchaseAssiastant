@@ -1,3 +1,7 @@
+import 'dart:async';
+
+import '../auth/session_notifier.dart';
+import '../services/offline_store.dart';
 import 'home_breakdown_tab_providers.dart';
 import 'home_dashboard_provider.dart';
 import 'cloud_expense_provider.dart';
@@ -40,6 +44,15 @@ void invalidateAnalyticsData(dynamic ref) {
 ///
 /// [ref] is any Riverpod `Ref` / `WidgetRef` with `invalidate`.
 void invalidateBusinessAggregates(dynamic ref) {
+  bustHomeDashboardVolatileCaches();
+  bustHomeShellReportsInflight();
+  bustReportsPurchasesInflight();
+  final session = ref.read(sessionProvider);
+  if (session != null) {
+    unawaited(
+      OfflineStore.bustTradeAggregateCachesForBusiness(session.primaryBusiness.id),
+    );
+  }
   invalidateAnalyticsData(ref);
   ref.invalidate(dashboardProvider);
   ref.invalidate(homeDashboardDataProvider);

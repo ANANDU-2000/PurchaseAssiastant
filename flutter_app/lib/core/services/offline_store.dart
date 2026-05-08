@@ -244,6 +244,21 @@ class OfflineStore {
     return Map<String, dynamic>.from(raw);
   }
 
+  /// Drops Hive-backed trade/home/report aggregates for [businessId], plus the legacy
+  /// `dashboard` summary blob, after mutations so offline seeds cannot show pre-delete totals.
+  static Future<void> bustTradeAggregateCachesForBusiness(String businessId) async {
+    final pDash = 'trade_dash|$businessId|';
+    final pShell = 'home_shell|$businessId|';
+    final pTp = 'reports_tp|$businessId|';
+    for (final k in _cache.keys.toList()) {
+      final ks = k.toString();
+      if (ks.startsWith(pDash) || ks.startsWith(pShell) || ks.startsWith(pTp)) {
+        await _cache.delete(k);
+      }
+    }
+    await _cache.delete('dashboard');
+  }
+
   static String _cloudCostKey(String businessId) => 'cloud_cost|$businessId';
 
   static Future<void> cacheCloudCost(

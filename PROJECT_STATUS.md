@@ -10,15 +10,15 @@ High-level snapshot. Detailed priorities: `TRACK.md`. Task checklist: `TASKS.md`
 
 ## In progress / current focus
 
-- Match engine: **pack gate** + **draft item edit autocomplete** (unified search); next supplier-scoped queries, report parity, delete/cache consistency.
+- Match engine: **pack gate** + **draft item edit autocomplete** (unified search); next supplier-scoped queries.
 - Item edit autocomplete wired to catalog/history APIs.
-- Report/dashboard aggregation: **month `GET /dashboard`** now shares the same trade-purchase status filter as trade reports (excludes deleted/draft/cancelled); regression test added.
+- Report/dashboard aggregation: **month `GET /dashboard`** aligned with trade reports; Flutter **`invalidateBusinessAggregates`** clears Hive + inflight dedupe maps and discards stale home-overview fetches (bust generation).
 
 ## Pending / backlog
 
 - Multi-image bill merge; Malayalam/Manglish normalization dictionary service.
 - Field-level confidence + forced review on unit mismatch.
-- Delete flow: detail **keepAlive** cache busted on every delete entry point — see `trade_purchase_detail_provider.dart`.
+- Shell/report `FutureProvider` paths: optional generation guard (Hive + inflight clear already on aggregate invalidation).
 
 ## Blockers
 

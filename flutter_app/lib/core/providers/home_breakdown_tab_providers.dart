@@ -102,6 +102,11 @@ final homeShellReportsSyncCacheProvider =
 
 final Map<String, Future<HomeShellReportsBundle>> _shellInflight = {};
 
+/// Clears shell tab dedupe futures after purchase mutations (see [bustHomeDashboardVolatileCaches]).
+void bustHomeShellReportsInflight() {
+  _shellInflight.clear();
+}
+
 const _shellEachTimeout = Duration(seconds: 28);
 
 Future<List<Map<String, dynamic>>> _fetchShellList(
