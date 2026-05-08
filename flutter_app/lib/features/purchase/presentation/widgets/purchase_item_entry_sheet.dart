@@ -319,6 +319,14 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     ]);
     _rebuildCatalogSearchItems();
     _storeFieldBaseline();
+    final cid = (_selectedCatalogItemId ?? '').trim();
+    final itemNm = _itemCtrl.text.trim();
+    if (cid.isEmpty && itemNm.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        FocusScope.of(context).requestFocus(_itemFocus);
+      });
+    }
   }
 
   void _syncKgStateFromCatalogRow() {

@@ -107,6 +107,12 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
   /// 0 party → 1 terms → 2 items → 3 review.
   int _wizStep = 0;
 
+  /// One-shot: AI bill has OCR supplier text but no `supplierId` — focus opens suggestion panel.
+  bool _didAutoFocusPartyFromAiScan = false;
+
+  /// One-shot: AI bill has supplier linked, OCR broker text, but no `brokerId` — focus broker field.
+  bool _didAutoFocusBrokerFromAiScan = false;
+
   final _supplierCtrl = TextEditingController();
   final _brokerCtrl = TextEditingController();
   final _partySupplierFocus = FocusNode();
@@ -183,6 +189,8 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
       }
       if (!mounted) return;
       _syncControllersFromDraft();
+      _maybeAutoFocusPartyForAiScan();
+      _maybeAutoFocusBrokerForAiScan();
       Future.microtask(() {
         if (!mounted) return;
         ref.invalidate(catalogItemsListProvider);
@@ -205,6 +213,45 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     }));
   }
 
+  void _maybeAutoFocusPartyForAiScan() {
+    final tok = widget.aiScanToken?.trim();
+    if (tok == null || tok.isEmpty) return;
+    if (_didAutoFocusPartyFromAiScan) return;
+    if (_wizStep != 0) return;
+    final d = ref.read(purchaseDraftProvider);
+    final noId = d.supplierId == null || d.supplierId!.trim().isEmpty;
+    final nameFromDraft = (d.supplierName ?? '').trim().isNotEmpty;
+    final nameFromCtrl = _supplierCtrl.text.trim().isNotEmpty;
+    if (!noId || (!nameFromDraft && !nameFromCtrl)) return;
+    _didAutoFocusPartyFromAiScan = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _wizStep != 0) return;
+      FocusScope.of(context).requestFocus(_partySupplierFocus);
+    });
+  }
+
+  void _maybeAutoFocusBrokerForAiScan() {
+    final tok = widget.aiScanToken?.trim();
+    if (tok == null || tok.isEmpty) return;
+    if (_didAutoFocusBrokerFromAiScan) return;
+    if (_wizStep != 0) return;
+    final d = ref.read(purchaseDraftProvider);
+    final supplierOk =
+        d.supplierId != null && d.supplierId!.trim().isNotEmpty;
+    if (!supplierOk) return;
+    final noBrokerId =
+        d.brokerId == null || d.brokerId!.trim().isEmpty;
+    if (!noBrokerId) return;
+    final nameFromDraft = (d.brokerName ?? '').trim().isNotEmpty;
+    final nameFromCtrl = _brokerCtrl.text.trim().isNotEmpty;
+    if (!nameFromDraft && !nameFromCtrl) return;
+    _didAutoFocusBrokerFromAiScan = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _wizStep != 0) return;
+      FocusScope.of(context).requestFocus(_partyBrokerFocus);
+    });
+  }
+
   void _syncControllersFromDraft() {
     final d = ref.read(purchaseDraftProvider);
 
@@ -214,23 +261,33 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     final supplierTrimmed = (d.supplierName ?? '').trim();
     final supplierCommitted =
         d.supplierId != null && d.supplierId!.trim().isNotEmpty;
-    if (!supplierCommitted) {
-      if (_supplierCtrl.text.isNotEmpty) _supplierCtrl.clear();
+    if (supplierCommitted) {
+      if (supplierTrimmed.isNotEmpty &&
+          _supplierCtrl.text != supplierTrimmed) {
+        _supplierCtrl.text = supplierTrimmed;
+      }
     } else if (supplierTrimmed.isNotEmpty) {
+      // AI / OCR name without directory id — keep text so user can pick supplier.
       if (_supplierCtrl.text != supplierTrimmed) {
         _supplierCtrl.text = supplierTrimmed;
       }
+    } else if (_supplierCtrl.text.isNotEmpty) {
+      _supplierCtrl.clear();
     }
 
     final brokerTrimmed = (d.brokerName ?? '').trim();
     final brokerCommitted =
         d.brokerId != null && d.brokerId!.trim().isNotEmpty;
-    if (!brokerCommitted) {
-      if (_brokerCtrl.text.isNotEmpty) _brokerCtrl.clear();
+    if (brokerCommitted) {
+      if (brokerTrimmed.isNotEmpty && _brokerCtrl.text != brokerTrimmed) {
+        _brokerCtrl.text = brokerTrimmed;
+      }
     } else if (brokerTrimmed.isNotEmpty) {
       if (_brokerCtrl.text != brokerTrimmed) {
         _brokerCtrl.text = brokerTrimmed;
       }
+    } else if (_brokerCtrl.text.isNotEmpty) {
+      _brokerCtrl.clear();
     }
     _paymentDaysCtrl.text = d.paymentDays != null ? '${d.paymentDays}' : '';
     _headerDiscCtrl.text = d.headerDiscountPercent != null

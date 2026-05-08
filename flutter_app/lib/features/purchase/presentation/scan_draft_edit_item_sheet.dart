@@ -134,6 +134,18 @@ class _ScanDraftItemSheetBodyState extends ConsumerState<_ScanDraftItemSheetBody
   bool _loading = false;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final q = widget.nameCtrl.text.trim();
+      if (q.isEmpty) return;
+      _debounce?.cancel();
+      unawaited(_search(q));
+    });
+  }
+
+  @override
   void dispose() {
     _debounce?.cancel();
     super.dispose();
@@ -211,6 +223,7 @@ class _ScanDraftItemSheetBodyState extends ConsumerState<_ScanDraftItemSheetBody
           TextField(
             controller: widget.nameCtrl,
             textInputAction: TextInputAction.next,
+            scrollPadding: const EdgeInsets.only(bottom: 220),
             decoration: const InputDecoration(
               labelText: 'Item',
               hintText: 'Search catalog — unit & last rate under each row',

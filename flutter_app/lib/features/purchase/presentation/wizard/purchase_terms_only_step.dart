@@ -53,14 +53,8 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final draft = ref.watch(purchaseDraftProvider);
-    if (draft.supplierId == null || draft.supplierId!.isEmpty) {
-      return const Center(
-        child: Text(
-          'Select a supplier first.',
-          style: TextStyle(fontSize: 14, color: Colors.grey),
-        ),
-      );
-    }
+    final needsSupplierLink =
+        draft.supplierId == null || draft.supplierId!.trim().isEmpty;
     final hasBroker =
         draft.brokerId != null && draft.brokerId!.trim().isNotEmpty;
     final sub = Theme.of(context).colorScheme.onSurfaceVariant;
@@ -100,7 +94,44 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (draft.supplierName != null && draft.supplierName!.trim().isNotEmpty)
+        if (needsSupplierLink) ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Material(
+              color: Colors.amber.shade50,
+              borderRadius: BorderRadius.circular(10),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.link_rounded,
+                        size: 20, color: Colors.amber.shade900),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        draft.supplierName != null &&
+                                draft.supplierName!.trim().isNotEmpty
+                            ? 'Bill shows “${draft.supplierName!.trim()}” — go back to Party and pick the matching directory supplier. You can still edit payment days and charges below.'
+                            : 'Select a supplier on the Party step first. You can still edit payment days and charges below.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.35,
+                          color: Colors.amber.shade900,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+        if (!needsSupplierLink &&
+            draft.supplierName != null &&
+            draft.supplierName!.trim().isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Container(
