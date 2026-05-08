@@ -9,14 +9,11 @@ _Update this file after each meaningful agent session._
 
 ## Active task
 
-- Policies on disk: **verbatim** `context/rules/MASTER_CURSOR_RULES.md` + `AUTONOMOUS_CURSOR_EXECUTION_RULES.md` (confirmed ends `UI demo builder.` / `FULL SYSTEM STABLE.` — no merged files).
-- `TASKS.md` section order matches autonomous spec: **Pending → In Progress → Completed → Blocked → Critical**.
+- **P0 matcher safety:** shipped first backend gate (`scanner_v2/pack_gate.py`): demotes `auto` item matches when **kg pack hints** (line vs catalog `default_kg_per_bag` / name) or **unit channel** (BAG vs piece/pcs) conflict. Covers v2+v3 scans via `_match_items`. Further work: ranking, aliases, supplier history (see `TASKS.md` Critical).
 
-## Why an assistant “stops” (platform limits, not ERP preference)
+## Why assistants pause between messages
 
-- Chat turns end after a **bounded amount of work** (commits, files, tests).
-- **“Full system stable”** for every bullet in your rules is **multi-sprint** engineering; it is executed as **chained tasks** from `TASKS.md` / `Critical`, not one infinite reply.
-- Next coding slice should start from **P0 Critical** (item match + unit safety) **after** tracing matcher + catalog schema in repo (no guessing).
+- Cursor/chat turns are **bounded**; **full ERP stability** is delivered as **chained commits**, not one infinite reply. Policies still require tracing dependents — next targets: search autocomplete, report parity, delete/cache.
 
 ## Important business rules (short)
 
@@ -30,9 +27,9 @@ _Update this file after each meaningful agent session._
 
 ## Latest code touchpoints
 
+- `backend/app/services/scanner_v2/pack_gate.py`, `backend/app/services/scanner_v2/pipeline.py`
 - `flutter_app/lib/features/purchase/presentation/scan_purchase_v2_page.dart`
 - `flutter_app/lib/features/purchase/presentation/purchase_scan_draft_wizard_page.dart`
-- `flutter_app/lib/features/purchase/presentation/scan_purchase_draft_logic.dart`
 - `flutter_app/lib/core/router/app_router.dart`
 
 ## Blockers

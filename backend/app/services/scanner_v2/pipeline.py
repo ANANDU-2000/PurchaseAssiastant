@@ -26,7 +26,7 @@ from app.config import Settings
 from app.services import decimal_precision as dp
 from app.services.llm_failover import resolve_provider_keys, run_ordered_failover
 from app.services.purchase_scan_service import image_bytes_to_text
-from app.services.scanner_v2 import bag_logic, matcher
+from app.services.scanner_v2 import bag_logic, matcher, pack_gate
 from app.services.scanner_v2.prompt import SYSTEM_PROMPT
 from app.services.scanner_v2.types import (
     BrokerCommission,
@@ -436,7 +436,7 @@ async def _match_items(
             notes=(str(it.get("notes")).strip() if it.get("notes") is not None else None),
         )
         out.append(row)
-    return out
+    return await pack_gate.apply_pack_gates_to_item_rows(db, business_id, out)
 
 
 def _confidence_from_matches(supplier: Match, broker: Match | None, items: list[ItemRow]) -> float:

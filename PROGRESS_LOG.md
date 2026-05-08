@@ -12,7 +12,13 @@ Add a new entry **after significant merges or agent sessions**.
 
 ---
 
-## 2026-05-08 — TASKS.md section order = Pending / In Progress / Completed / Blocked / Critical
+## 2026-05-08 — Scanner pack gate (kg hint + unit channel)
+
+- Modules: `scanner_v2/pack_gate.py`, `scanner_v2/pipeline.py`, `tests/test_scan_pack_gate.py`, `MATCH_ENGINE.md`, `BUGS.md`, `TASKS.md`
+- Change summary: After fuzzy catalog match, demote `auto` → `needs_confirmation` when line vs catalog pack kg diverge or BAG↔piece channel conflicts; batch-fetch catalog rows.
+- Validation: `pytest tests/test_scan_pack_gate.py` (5 passed).
+
+---
 
 - Modules: `TASKS.md`, `CURRENT_CONTEXT.md`
 - Change summary: Align task file headings with `AUTONOMOUS_CURSOR_EXECUTION_RULES.md`; document why multi-hour ERP chains span sessions.

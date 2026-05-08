@@ -10,7 +10,7 @@ High-level snapshot. Detailed priorities: `TRACK.md`. Task checklist: `TASKS.md`
 
 ## In progress / current focus
 
-- Match engine hardening (unit/pack-size guards, alias + fuzzy + supplier history).
+- Match engine: **pack kg + unit-channel gate** shipped on scan `_match_items` (demotes bad auto-matches); next: ranking, supplier history, autocomplete.
 - Item edit autocomplete wired to catalog/history APIs.
 - Report/dashboard single-source aggregation parity (see `REPORT_ENGINE.md`).
 

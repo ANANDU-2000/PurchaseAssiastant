@@ -20,7 +20,7 @@ Notes:
 
 | ID | Severity | Title | Status |
 |----|----------|--------|--------|
-| BUG-001 | P0 | Wrong item match (e.g. wholesale sugar line → unrelated retail SKU) | open |
+| BUG-001 | P0 | Wrong item match (e.g. wholesale sugar line → unrelated retail SKU) | **partial** — backend pack kg + unit-channel gate demotes bad auto-matches; aliases/fuzzy ranking still TBD |
 | BUG-002 | P0 | Unit/pack mismatch destroys kg/bags/totals | open |
 | BUG-003 | P1 | Dashboard/reports/charts disagree or flip to empty | open |
 | BUG-004 | P1 | Purchase deleted in UI but data/cache still surfaces | open |

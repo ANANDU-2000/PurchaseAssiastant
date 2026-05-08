@@ -44,6 +44,7 @@ Section order matches **AUTONOMOUS_CURSOR_EXECUTION_RULES.md** (TASKS structure)
 
 # In progress
 
+- [ ] **P0** — Matcher follow-ups (ranking, supplier history, richer aliases) after pack gate — _Modules: `scanner_v2/matcher.py`, search — Validation: golden scans_
 - [ ] **P2** — Align scan **preview** with policy (minimal edit on scan screen; heavy edit only in draft wizard) — _Modules: `scan_purchase_v2_page.dart`, wizard — Validation: UX review_
 - [ ] **P2** — Item field **live autocomplete** (`sug` → ranked suggestions) — _Modules: search API, edit sheet — Validation: integration test / manual_
 
@@ -54,8 +55,7 @@ Section order matches **AUTONOMOUS_CURSOR_EXECUTION_RULES.md** (TASKS structure)
 - [x] Purchase bill path: OpenAI Vision–based extraction (legacy OCR stacks removed from bill flow) — _see CHANGELOG_
 - [x] Strict scan JSON / normalization helpers (baseline) — `scanner_v2`/`scanner_v3`
 - [x] Purchase **draft wizard** route (`/purchase/scan-draft`) — scan does not single-button create purchase — _Flutter_
-- [x] Repo trackers + policy files: `PROJECT_STATUS.md`, `BUGS.md`, engine stubs, verbatim `MASTER_CURSOR_RULES`, `AUTONOMOUS_CURSOR_EXECUTION_RULES` — _docs_
-- [x] **TASKS.md** section order aligned to autonomous rules (Pending → In Progress → Completed → Blocked → Critical)
+- [x] Scanner **pack gate** (kg hint + bag/piece channel) demotes unsafe auto item matches — `scanner_v2/pack_gate.py`, tests `test_scan_pack_gate.py`
 
 ---
 
