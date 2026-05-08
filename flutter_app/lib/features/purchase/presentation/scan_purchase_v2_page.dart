@@ -366,6 +366,7 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
   Future<void> _editItemRow(int index, Map<String, dynamic> item) async {
     await editScanDraftItemRow(
       context,
+      ref: ref,
       index: index,
       item: item,
       onSaved: (idx, next) {

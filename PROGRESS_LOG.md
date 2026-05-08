@@ -12,6 +12,14 @@ Add a new entry **after significant merges or agent sessions**.
 
 ---
 
+## 2026-05-08 — Flutter scan draft item autocomplete (unified search)
+
+- Modules: `scan_draft_edit_item_sheet.dart`, `scan_purchase_v2_page.dart`, `purchase_scan_draft_wizard_page.dart`, `MATCH_ENGINE.md`, `BUGS.md`, `TASKS.md`
+- Change summary: Debounced `GET .../search` → `catalog_items` in draft item sheet; tap applies `matched_catalog_item_id`, optional last P/S from API row.
+- Validation: `dart analyze lib/features/purchase/presentation/scan_draft_edit_item_sheet.dart` — no issues.
+
+---
+
 ## 2026-05-08 — Scanner pack gate (kg hint + unit channel)
 
 - Modules: `scanner_v2/pack_gate.py`, `scanner_v2/pipeline.py`, `tests/test_scan_pack_gate.py`, `MATCH_ENGINE.md`, `BUGS.md`, `TASKS.md`
@@ -19,6 +27,8 @@ Add a new entry **after significant merges or agent sessions**.
 - Validation: `pytest tests/test_scan_pack_gate.py` (5 passed).
 
 ---
+
+## 2026-05-08 — TASKS.md section order = Pending / In Progress / Completed / Blocked / Critical
 
 - Modules: `TASKS.md`, `CURRENT_CONTEXT.md`
 - Change summary: Align task file headings with `AUTONOMOUS_CURSOR_EXECUTION_RULES.md`; document why multi-hour ERP chains span sessions.

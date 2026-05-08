@@ -10,7 +10,7 @@ High-level snapshot. Detailed priorities: `TRACK.md`. Task checklist: `TASKS.md`
 
 ## In progress / current focus
 
-- Match engine: **pack kg + unit-channel gate** shipped on scan `_match_items` (demotes bad auto-matches); next: ranking, supplier history, autocomplete.
+- Match engine: **pack gate** + **draft item edit autocomplete** (unified search); next supplier-scoped queries, report parity, delete/cache consistency.
 - Item edit autocomplete wired to catalog/history APIs.
 - Report/dashboard single-source aggregation parity (see `REPORT_ENGINE.md`).
 

@@ -9,11 +9,12 @@ _Update this file after each meaningful agent session._
 
 ## Active task
 
-- **P0 matcher safety:** shipped first backend gate (`scanner_v2/pack_gate.py`): demotes `auto` item matches when **kg pack hints** (line vs catalog `default_kg_per_bag` / name) or **unit channel** (BAG vs piece/pcs) conflict. Covers v2+v3 scans via `_match_items`. Further work: ranking, aliases, supplier history (see `TASKS.md` Critical).
+- **Matcher chain:** backend **pack gate** (`scanner_v2/pack_gate.py`) + Flutter scan draft **item autocomplete** (`scan_draft_edit_item_sheet.dart` → `unifiedSearch` / `catalog_items`, debounced ≥2 chars).
+- **Next:** supplier-scoped query params, reports/dashboard parity, delete/cache invalidation (`TASKS.md` Critical / Pending).
 
 ## Why assistants pause between messages
 
-- Cursor/chat turns are **bounded**; **full ERP stability** is delivered as **chained commits**, not one infinite reply. Policies still require tracing dependents — next targets: search autocomplete, report parity, delete/cache.
+- Cursor turns are **bounded**; your AUTONOMOUS doc’s **full checklist** is implemented as **successive commits** (this session added autocomplete). Remaining items are **explicit backlog rows**, not ignored.
 
 ## Important business rules (short)
 
@@ -27,10 +28,10 @@ _Update this file after each meaningful agent session._
 
 ## Latest code touchpoints
 
+- `flutter_app/lib/features/purchase/presentation/scan_draft_edit_item_sheet.dart` (unified search autocomplete)
 - `backend/app/services/scanner_v2/pack_gate.py`, `backend/app/services/scanner_v2/pipeline.py`
 - `flutter_app/lib/features/purchase/presentation/scan_purchase_v2_page.dart`
 - `flutter_app/lib/features/purchase/presentation/purchase_scan_draft_wizard_page.dart`
-- `flutter_app/lib/core/router/app_router.dart`
 
 ## Blockers
 
@@ -38,5 +39,6 @@ _Update this file after each meaningful agent session._
 
 ## Pending validation
 
-- Full `flutter test` + `pytest` on CI/local before release.
-- Manual: scan → wizard → create → dashboard total matches purchase detail.
+- `dart analyze` clean on `scan_draft_edit_item_sheet.dart`; full `flutter test` / `pytest` before release.
+- Manual: type `su`/`sug` in draft item editor → suggestions → save → wizard confirm still validates.
+

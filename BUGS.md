@@ -25,6 +25,6 @@ Notes:
 | BUG-003 | P1 | Dashboard/reports/charts disagree or flip to empty | open |
 | BUG-004 | P1 | Purchase deleted in UI but data/cache still surfaces | open |
 | BUG-005 | P2 | Scan extraction misses freight/bilty/delivered/commission fields | open |
-| BUG-006 | P2 | Item search typing short prefix returns no suggestions | open |
+| BUG-006 | P2 | Item search typing short prefix returns no suggestions | **partial** — draft item edit sheet uses unified search (≥2 chars); wizard + manual purchase fields may still differ |
 
 _Add rows as you confirm reproducers in this codebase._

@@ -272,6 +272,7 @@ class _PurchaseScanDraftWizardPageState extends ConsumerState<PurchaseScanDraftW
                         onEdit: () async {
                           await editScanDraftItemRow(
                             context,
+                            ref: ref,
                             index: i,
                             item: Map<String, dynamic>.from(items[i] as Map),
                             onSaved: (idx, next) {
