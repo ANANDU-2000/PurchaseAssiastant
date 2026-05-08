@@ -12,6 +12,7 @@ Flutter/admin must **not** re-implement divergent sum logic for the same KPIs sh
 - Date-range boundaries (timezone, inclusive/exclusive).
 - Deleted or voided purchases still included in aggregates — verify query filters.  
   **Fixed for month dashboard:** `_compute_month_dashboard_payload` in `backend/app/routers/dashboard.py` filters with `trade_query.trade_purchase_status_in_reports()` (aligned with `/reports/trade-*` trade-summary status set).
+  **Fixed for analytics insights:** `GET /analytics/insights/trade` uses the same filter (`backend/app/routers/analytics.py`).
 
 ## Code map
 

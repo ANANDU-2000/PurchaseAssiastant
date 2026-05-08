@@ -12,6 +12,14 @@ Add a new entry **after significant merges or agent sessions**.
 
 ---
 
+## 2026-05-08 — Analytics trade insights exclude deleted (report status filter)
+
+- Modules: `backend/app/routers/analytics.py`, `backend/tests/test_reports_trade_breakdowns.py`, `REPORT_ENGINE.md`
+- Change summary: `GET /analytics/insights/trade` now uses `trade_purchase_status_in_reports()` instead of `status != cancelled`, matching trade aggregates (soft-deleted rows no longer affect best/worst item ranking).
+- Validation: `pytest tests/test_reports_trade_breakdowns.py::test_analytics_trade_insights_excludes_deleted` — passed.
+
+---
+
 ## 2026-05-08 — Dashboard month aggregates exclude deleted (parity with trade reports)
 
 - Modules: `backend/app/routers/dashboard.py`, `backend/tests/test_reports_trade_breakdowns.py`, `REPORT_ENGINE.md`, `BUGS.md`, `PROJECT_STATUS.md`, `CURRENT_CONTEXT.md`

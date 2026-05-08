@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.db_resilience import execute_with_retry
 from app.deps import require_membership
+from app.services import trade_query as tq
 from app.models import (
     Broker,
     BusinessGoal,
@@ -783,7 +784,7 @@ async def analytics_trade_insights(
         TradePurchase.business_id == business_id,
         TradePurchase.purchase_date >= from_date,
         TradePurchase.purchase_date <= to_date,
-        TradePurchase.status != "cancelled",
+        tq.trade_purchase_status_in_reports(),
     )
     q_items = (
         select(
