@@ -1,30 +1,36 @@
 ---
-description: Purchase Assistant MASTER rules — finance accuracy, single scanner pipeline (OpenAI Vision only), trackers, and stack truth (Flutter + FastAPI).
+description: Purchase Assistant MASTER rules — ERP accuracy, AI scan → draft → confirm, trackers, stack truth (Flutter + FastAPI).
 alwaysApply: true
 ---
 
 # Purchase Assistant — MASTER agent rules
 
-Read and follow the full policies in:
+Read and follow (in order when trade-offs arise):
 
-- `context/rules/MASTER_AGENT_RULES.md`
-- `context/rules/CURSOR_AGENT_EXECUTION_PROMPT.md`
-- `context/rules/AI_SCANNER_SYSTEM_PROMPT.md`
+1. `context/rules/MASTER_CURSOR_RULES.md` — business + ERP non‑negotiables (matching, units, reports, delete parity).
+2. `context/rules/AUTONOMOUS_CURSOR_EXECUTION_RULES.md` — execution: trace dependents, validate, update trackers.
+3. `context/rules/MASTER_AGENT_RULES.md` — legacy/agent baseline (still applies where not superseded).
+4. `context/rules/CURSOR_AGENT_EXECUTION_PROMPT.md`
+5. `context/rules/AI_SCANNER_SYSTEM_PROMPT.md`
 
-Update after tasks: `TRACK.md`, `TASKS.md`, `CHANGELOG.md` at repository root.
+**Implementation note:** Purchase bills use **OpenAI Vision → strict JSON** on the backend. Policy docs may say “OCR/raw extraction”; that means **extracted text fields**, not third‑party OCR SDKs. Never add parallel client‑side “financial truth.”
+
+## Trackers (update after meaningful changes)
+
+- Root: `PROJECT_STATUS.md`, `CURRENT_CONTEXT.md`, `BUGS.md`, `TASKS.md`, `TRACK.md`, `SCAN_ENGINE.md`, `MATCH_ENGINE.md`, `REPORT_ENGINE.md`, `PROGRESS_LOG.md`, `ARCHITECTURE_STATE.md`
 
 ## Non‑negotiables
 
-- One AI scanning pipeline; **OpenAI Vision → strict JSON only**. No OCR stacks (Tesseract, MLKit, Google OCR, regex-OCR UI).
-- **All financial totals** computed on the **backend**; clients display formatted values only.
-- **Do not** duplicate aggregation logic, unit engines, or scan APIs for the same user journey.
-- Mobile-first, safe areas, loading/error/empty states.
+- **AI scan does not finalize purchases** — draft + wizard + explicit confirm + backend authoritative totals.
+- **No guessing** inventory, units, rates, suppliers, or report numbers — verify in codebase/DB/API.
+- **All financial totals** computed on the **backend**; Flutter/admin render formatted values only.
+- Mobile‑first, safe areas, keyboard‑safe sheets, no trusting optimistic UI as source of truth for money.
 
-## Stack for this repo
+## Stack
 
-- Mobile: **Flutter** (`flutter_app/`), not React Native.
-- API: **FastAPI** (`backend/`), Postgres / Supabase-compatible DB URLs.
+- Mobile: **Flutter** (`flutter_app/`).
+- API: **FastAPI** (`backend/`), Postgres / Supabase‑compatible URLs.
 
 ## Verification
 
-After touching code: `pytest` (backend), `flutter analyze` (Flutter), and TS/build checks for `admin_web` when relevant.
+After touching code: `pytest` (backend), `flutter analyze` / targeted `flutter test`, and `admin_web` checks when relevant.

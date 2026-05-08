@@ -1,5 +1,7 @@
 # PURCHASE ASSISTANT — TASKS
 
+Agent policy: `context/rules/MASTER_CURSOR_RULES.md`, `context/rules/AUTONOMOUS_CURSOR_EXECUTION_RULES.md`.
+
 # PHASE 0 — CLEANUP
 
 - [ ] Remove OCR packages

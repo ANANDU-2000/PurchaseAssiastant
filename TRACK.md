@@ -1,5 +1,7 @@
 # PURCHASE ASSISTANT — TRACKER
 
+See also: `PROJECT_STATUS.md`, `CURRENT_CONTEXT.md`, `BUGS.md`, engine notes (`SCAN_ENGINE.md`, `MATCH_ENGINE.md`, `REPORT_ENGINE.md`). Policy: `context/rules/MASTER_CURSOR_RULES.md`.
+
 ## CURRENT STATUS
 
 PROJECT: Purchase Assistant ERP  

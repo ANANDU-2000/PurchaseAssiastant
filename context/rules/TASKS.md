@@ -2,6 +2,8 @@
 
 Canonical copy for editing: repository root [TASKS.md](../../TASKS.md). Keep both in sync when changing phases.
 
+Agent policy: [MASTER_CURSOR_RULES.md](./MASTER_CURSOR_RULES.md), [AUTONOMOUS_CURSOR_EXECUTION_RULES.md](./AUTONOMOUS_CURSOR_EXECUTION_RULES.md).
+
 # PHASE 0 — CLEANUP
 
 - [ ] Remove OCR packages
