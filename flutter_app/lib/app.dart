@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +12,7 @@ import 'core/providers/analytics_kpi_provider.dart';
 import 'features/reports/reports_prefs.dart';
 import 'core/reporting/trade_report_aggregate.dart';
 import 'core/notifications/local_notifications_service.dart';
+import 'core/platform/launcher_quick_actions.dart';
 import 'core/platform/remove_boot_overlay.dart';
 import 'core/providers/api_degraded_provider.dart';
 import 'core/providers/tenant_branding_provider.dart';
@@ -123,6 +125,34 @@ class _HexaScrollBehavior extends ScrollBehavior {
   }
 }
 
+/// Binds launcher shortcuts to [appRouterProvider] on first frame so cold starts
+/// from a home-screen action work before [ShellScreen] exists.
+class _LauncherShortcutsBootstrap extends ConsumerStatefulWidget {
+  const _LauncherShortcutsBootstrap({required this.child});
+  final Widget child;
+
+  @override
+  ConsumerState<_LauncherShortcutsBootstrap> createState() =>
+      _LauncherShortcutsBootstrapState();
+}
+
+class _LauncherShortcutsBootstrapState
+    extends ConsumerState<_LauncherShortcutsBootstrap> {
+  @override
+  void initState() {
+    super.initState();
+    if (kIsWeb) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      bindLauncherShortcutsRouter(ref.read(appRouterProvider));
+      unawaited(setupLauncherQuickActions());
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
 class HexaApp extends ConsumerWidget {
   const HexaApp({super.key});
 
@@ -201,8 +231,10 @@ class HexaApp extends ConsumerWidget {
             : body;
         return DecoratedBox(
           decoration: BoxDecoration(gradient: HexaColors.appShellGradient),
-          child: _NotificationTapHandler(
-            child: PostLoginNotificationPrompt(child: shell),
+          child: _LauncherShortcutsBootstrap(
+            child: _NotificationTapHandler(
+              child: PostLoginNotificationPrompt(child: shell),
+            ),
           ),
         );
       },

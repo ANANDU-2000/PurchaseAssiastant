@@ -12,6 +12,22 @@ Add a new entry **after significant merges or agent sessions**.
 
 ---
 
+## 2026-05-09 — Flutter: Reports Overview donut + Settings Quick actions
+
+- Modules: `reports_overview_chart_section.dart`, `reports_page.dart`, `settings_page.dart`, `home_page.dart`, `docs/TASKS_CHECKLIST.md`, `docs/ERP_MOBILE_UX_ROADMAP.md`
+- Change summary: Reports **Overview** tab shows adaptive **SpendRingChart** (bag/box/tin/other ₹ mix), max ~35% viewport, **Shimmer** while initial load, compact empty state + actions; search field hidden on Overview so list tabs keep keyboard-safe search. Settings adds **Quick actions** card (scan, new purchase, resume draft, voice, history). Home empty ring shows small analytics icon.
+- Validation: `dart analyze` on touched paths; `flutter test test/trade_report_aggregate_test.dart`.
+
+---
+
+## 2026-05-09 — Flutter: reports/home aggregates + UX (deleted excluded, chart cap, scan CTA)
+
+- Modules: `trade_report_aggregate.dart`, `home_dashboard_provider.dart`, `home_page.dart`, `reports_page.dart`, `scan_purchase_v2_page.dart`, `docs/ERP_MOBILE_UX_ROADMAP.md`, `docs/TASKS_CHECKLIST.md`
+- Change summary: Client aggregates / PDF statement lines skip `deleted`/`cancelled` purchases. Home donut size capped vs viewport height; breakdown loading uses linear progress + text; reports empty state full-width actions + scan/new purchase; reports search keyboard `scrollPadding`; scan **Continue** button `flex: 2`. Roadmap + checklist docs for remaining phases.
+- Validation: `flutter test test/trade_report_aggregate_test.dart`, `dart analyze` on touched paths.
+
+---
+
 ## 2026-05-08 — Flutter: bust home/report aggregate caches on business invalidation
 
 - Modules: `business_aggregates_invalidation.dart`, `offline_store.dart`, `home_dashboard_provider.dart`, `home_breakdown_tab_providers.dart`, `reports_provider.dart`, `REPORT_ENGINE.md`, `BUGS.md`, `CURRENT_CONTEXT.md`

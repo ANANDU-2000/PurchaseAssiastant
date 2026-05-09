@@ -919,6 +919,7 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
               ),
               const SizedBox(width: 8),
               Expanded(
+                flex: 2,
                 child: FilledButton.icon(
                   onPressed: (!isWorking && hasResult) ? _openPurchaseEntryFromScan : null,
                   icon: const Icon(Icons.fact_check_rounded),

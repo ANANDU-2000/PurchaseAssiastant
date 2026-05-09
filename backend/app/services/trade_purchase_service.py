@@ -31,6 +31,7 @@ from app.schemas.trade_purchases import (
 from app.read_cache_generation import bump_trade_read_caches_for_business
 from app.services import decimal_precision as dp
 from app.services.purchase_status import compute_status
+from app.services.trade_query import trade_purchase_status_in_reports
 
 
 class TradePurchaseValidationError(Exception):
@@ -635,8 +636,13 @@ async def list_trade_purchases(
     catalog_item_id: uuid.UUID | None = None,
     purchase_from: date | None = None,
     purchase_to: date | None = None,
+    reports_eligible_only: bool = False,
 ) -> list[TradePurchaseOut]:
-    """List purchases; optional status_filter: all|draft|due_soon|overdue|paid and search q."""
+    """List purchases; optional status_filter: all|draft|due_soon|overdue|paid and search q.
+
+    When ``reports_eligible_only`` is True, restrict to the same status set as dashboards
+    and trade reports (excludes deleted, draft, cancelled, etc.).
+    """
     has_entity_filter = (
         supplier_id is not None or broker_id is not None or catalog_item_id is not None
     )
@@ -657,6 +663,8 @@ async def list_trade_purchases(
         .options(*_trade_purchase_load_opts())
         .order_by(TradePurchase.purchase_date.desc(), TradePurchase.created_at.desc())
     )
+    if reports_eligible_only:
+        stmt = stmt.where(trade_purchase_status_in_reports())
     if supplier_id is not None:
         stmt = stmt.where(TradePurchase.supplier_id == supplier_id)
     if broker_id is not None:

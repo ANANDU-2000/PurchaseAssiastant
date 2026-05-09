@@ -92,6 +92,12 @@ List<Map<String, dynamic>> _asMapListSkipBad(String key, Map<String, dynamic> da
   return out;
 }
 
+/// Align with trade reports / dashboard: omit soft-deleted, cancelled, and drafts.
+bool _purchaseVisibleInUnifiedSearchHints(Map<String, dynamic> p) {
+  final s = (p['status'] ?? '').toString().toLowerCase().trim();
+  return s != 'deleted' && s != 'cancelled' && s != 'draft';
+}
+
 Map<String, dynamic>? _pickPurchaseLine(Map<String, dynamic> p, String q) {
   final lines = (p['lines'] as List<dynamic>?) ?? [];
   for (final raw in lines) {
@@ -237,7 +243,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                 final suppliers = _asMapListSkipBad('suppliers', data);
                 final brokers = _asMapListSkipBad('brokers', data);
                 final types = _asMapListSkipBad('catalog_subcategories', data);
-                final bills = _asMapListSkipBad('recent_purchases', data);
+                final bills = _asMapListSkipBad('recent_purchases', data)
+                    .where(_purchaseVisibleInUnifiedSearchHints)
+                    .toList();
                 final fuzzyItems = data['fuzzy_catalog_used'] == true;
                 final fuzzySup = data['fuzzy_suppliers_used'] == true;
                 final fuzzyBro = data['fuzzy_brokers_used'] == true;

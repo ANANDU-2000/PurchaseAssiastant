@@ -2,15 +2,18 @@
   "name": "Harisree Purchases",
   "short_name": "Harisree",
   "id": "/",
+  "lang": "en",
+  "dir": "ltr",
   "start_url": "/?utm_source=pwa",
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "browser"],
-  "background_color": "#FFFFFF",
-  "theme_color": "#17A8A7",
+  "background_color": "#F5F7FA",
+  "theme_color": "#14523E",
   "description": "Purchase intelligence for Harisree Agency",
   "orientation": "portrait-primary",
   "prefer_related_applications": false,
+  "categories": ["business", "finance", "productivity"],
   "icons": [
     {
       "src": "icons/Icon-192.png",
@@ -33,6 +36,38 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Scan bill",
+      "short_name": "Scan",
+      "description": "Capture a purchase bill",
+      "url": "/purchase/scan"
+    },
+    {
+      "name": "New purchase",
+      "short_name": "New",
+      "description": "Start a new purchase entry",
+      "url": "/purchase/new"
+    },
+    {
+      "name": "Resume draft",
+      "short_name": "Draft",
+      "description": "Continue saved purchase draft",
+      "url": "/purchase/new?resumeDraft=true"
+    },
+    {
+      "name": "Voice note",
+      "short_name": "Voice",
+      "description": "Record a voice note",
+      "url": "/voice"
+    },
+    {
+      "name": "Purchase history",
+      "short_name": "History",
+      "description": "Purchase list",
+      "url": "/purchase"
     }
   ]
 }

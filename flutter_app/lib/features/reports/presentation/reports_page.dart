@@ -19,6 +19,7 @@ import '../../../core/widgets/list_skeleton.dart';
 import '../../../features/analytics/presentation/analytics_report_helpers.dart';
 import 'reports_full_list_page.dart';
 import 'reports_item_tile.dart';
+import 'reports_overview_chart_section.dart';
 import 'reports_whatsapp_sheet.dart';
 import '../reporting/reports_item_metrics.dart';
 
@@ -124,6 +125,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
   int _visibleCap = 40;
   bool _exportingCsv = false;
   bool _exportingPdf = false;
+  bool _reportsSummaryCollapsed = false;
 
   @override
   void initState() {
@@ -428,49 +430,69 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                   ),
                 ),
               ),
+              IconButton(
+                tooltip:
+                    _reportsSummaryCollapsed ? 'Show summary' : 'Hide summary',
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                onPressed: () => setState(() {
+                  _reportsSummaryCollapsed = !_reportsSummaryCollapsed;
+                }),
+                icon: Icon(
+                  _reportsSummaryCollapsed
+                      ? Icons.expand_more_rounded
+                      : Icons.expand_less_rounded,
+                  color: HexaColors.brandPrimary,
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 6),
-          Card(
-            margin: EdgeInsets.zero,
-            color: Colors.white,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'TOTAL AMOUNT',
-                    style: const TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.8,
-                      color: Color(0xFF888888),
+          if (!_reportsSummaryCollapsed) ...[
+            const SizedBox(height: 6),
+            Card(
+              margin: EdgeInsets.zero,
+              color: Colors.white,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'TOTAL AMOUNT',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.8,
+                        color: Color(0xFF888888),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  SelectableText(
-                    _inr0(t.inr.round()),
-                    style: tt.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w900,
-                      color: const Color(0xFF1A1A1A),
+                    const SizedBox(height: 4),
+                    SelectableText(
+                      _inr0(t.inr.round()),
+                      style: tt.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w900,
+                        color: const Color(0xFF1A1A1A),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _MetricTile(label: 'Total kg', value: _kgReadable(t.kg)),
-                      _MetricTile(label: 'Total bags', value: _qtyReadable(t.bags)),
-                      _MetricTile(label: 'Total boxes', value: _qtyReadable(t.boxes)),
-                      _MetricTile(label: 'Total tins', value: _qtyReadable(t.tins)),
-                    ],
-                  ),
-                ],
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _MetricTile(label: 'Total kg', value: _kgReadable(t.kg)),
+                        _MetricTile(label: 'Total bags', value: _qtyReadable(t.bags)),
+                        _MetricTile(label: 'Total boxes', value: _qtyReadable(t.boxes)),
+                        _MetricTile(label: 'Total tins', value: _qtyReadable(t.tins)),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
+          ] else ...[
+            const SizedBox(height: 4),
+          ],
           const SizedBox(height: 2),
           TextButton(
             onPressed: _syncRangeWithHome,
@@ -873,6 +895,9 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              Icon(Icons.analytics_outlined,
+                  size: 36, color: Colors.grey.shade400),
+              const SizedBox(height: 8),
               Text(
                 msg,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -881,29 +906,37 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                       fontWeight: FontWeight.w700,
                     ),
               ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  FilledButton.tonal(
-                    onPressed: canRetry
-                        ? () {
-                            _bumpInvalidate();
-                            ref.invalidate(reportsPurchasesPayloadProvider);
-                          }
-                        : null,
-                    child: const Text('Retry'),
-                  ),
-                  OutlinedButton(
-                    onPressed: canRetry ? _syncRangeWithHome : null,
-                    child: const Text('Match Home period'),
-                  ),
-                  OutlinedButton(
-                    onPressed: canRetry ? _pickCustomRange : null,
-                    child: const Text('Pick date range'),
-                  ),
-                ],
+              const SizedBox(height: 12),
+              FilledButton.tonal(
+                onPressed: canRetry
+                    ? () {
+                        _bumpInvalidate();
+                        ref.invalidate(reportsPurchasesPayloadProvider);
+                      }
+                    : null,
+                child: const Text('Retry'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: canRetry ? _syncRangeWithHome : null,
+                child: const Text('Match Home period'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: canRetry ? _pickCustomRange : null,
+                child: const Text('Pick date range'),
+              ),
+              const SizedBox(height: 8),
+              FilledButton.icon(
+                onPressed: () => context.pushNamed('purchase_scan'),
+                icon: const Icon(Icons.document_scanner_outlined, size: 18),
+                label: const Text('Scan purchase bill'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () => context.go('/purchase/new'),
+                icon: const Icon(Icons.add_shopping_cart_outlined, size: 18),
+                label: const Text('New purchase'),
               ),
             ],
           ),
@@ -1213,37 +1246,64 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                         ),
                       ),
                     ],
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _searchCtl,
-                      onChanged: (_) => setState(() {}),
-                      decoration: InputDecoration(
-                        hintText: 'Search…',
-                        isDense: true,
-                        prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                        filled: true,
-                        fillColor: HexaColors.brandCard,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: HexaColors.brandBorder),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: HexaColors.brandBorder),
+                    if (_mainTab == ReportsMainTab.overview) ...[
+                      const SizedBox(height: 4),
+                      ReportsOverviewChartSection(
+                        agg: aggAll,
+                        viewportHeight: MediaQuery.sizeOf(context).height,
+                        isLoadingInitial: showSkeleton,
+                        isEmpty: showEmpty,
+                        canRetry: !purchasesAsync.isLoading,
+                        onRetry: () {
+                          _bumpInvalidate();
+                          ref.invalidate(reportsPurchasesPayloadProvider);
+                        },
+                        onMatchHome: _syncRangeWithHome,
+                        onPickRange: () => unawaited(_pickCustomRange()),
+                      ),
+                      if (!showEmpty && !showSkeleton) ...[
+                        const SizedBox(height: 6),
+                        _overviewBody(aggAll.totals),
+                      ],
+                    ] else ...[
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _searchCtl,
+                        onChanged: (_) => setState(() {}),
+                        scrollPadding: const EdgeInsets.only(bottom: 280),
+                        decoration: InputDecoration(
+                          hintText: 'Search…',
+                          isDense: true,
+                          prefixIcon:
+                              const Icon(Icons.search_rounded, size: 20),
+                          filled: true,
+                          fillColor: HexaColors.brandCard,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide:
+                                BorderSide(color: HexaColors.brandBorder),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide:
+                                BorderSide(color: HexaColors.brandBorder),
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    if (showSkeleton)
-                      const ListSkeleton(
-                        rowCount: 5,
-                        rowHeight: 72,
-                        padding: EdgeInsets.fromLTRB(0, 0, 0, 24),
-                      )
-                    else if (showEmpty)
-                      emptyCard()
-                    else
-                      _listBody(aggList, aggAll, merged),
+                      const SizedBox(height: 10),
+                      if (showSkeleton)
+                        const ListSkeleton(
+                          rowCount: 5,
+                          rowHeight: 72,
+                          padding: EdgeInsets.fromLTRB(0, 0, 0, 24),
+                        )
+                      else if (showEmpty)
+                        emptyCard()
+                      else
+                        RepaintBoundary(
+                          child: _listBody(aggList, aggAll, merged),
+                        ),
+                    ],
                   ],
                 ),
               ),

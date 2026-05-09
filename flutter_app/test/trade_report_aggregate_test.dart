@@ -226,4 +226,67 @@ void main() {
     );
     expect(latest.first.name, 'Rice');
   });
+
+  test('excludes deleted and cancelled purchases from aggregates', () {
+    final active = _purchase(
+      id: 'active',
+      lines: [
+        TradePurchaseLine(
+          id: 'l1',
+          itemName: 'Sugar',
+          qty: 1,
+          unit: 'bag',
+          landingCost: 100,
+          lineTotal: 100,
+          kgPerUnit: 50,
+        ),
+      ],
+    );
+    final deleted = TradePurchase(
+      id: 'del',
+      humanId: 'del',
+      purchaseDate: DateTime(2026, 1, 15),
+      paidAmount: 0,
+      totalAmount: 9999,
+      storedStatus: 'deleted',
+      derivedStatus: 'deleted',
+      remaining: 0,
+      lines: [
+        TradePurchaseLine(
+          id: 'lx',
+          itemName: 'Ghost',
+          qty: 99,
+          unit: 'bag',
+          landingCost: 1,
+          lineTotal: 99,
+          kgPerUnit: 50,
+        ),
+      ],
+    );
+    final cancelled = TradePurchase(
+      id: 'can',
+      humanId: 'can',
+      purchaseDate: DateTime(2026, 1, 15),
+      paidAmount: 0,
+      totalAmount: 888,
+      storedStatus: 'cancelled',
+      derivedStatus: 'cancelled',
+      remaining: 0,
+      lines: [
+        TradePurchaseLine(
+          id: 'ly',
+          itemName: 'Void',
+          qty: 10,
+          unit: 'bag',
+          landingCost: 1,
+          lineTotal: 10,
+          kgPerUnit: 50,
+        ),
+      ],
+    );
+    final agg = buildTradeReportAgg([active, deleted, cancelled]);
+    expect(agg.totals.bags, 1);
+    expect(agg.totals.inr, 100);
+    expect(buildTradeStatementLines([active, deleted, cancelled]).length, 1);
+  });
 }

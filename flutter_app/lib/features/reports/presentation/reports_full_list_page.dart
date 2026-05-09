@@ -103,93 +103,96 @@ class ReportsFullListPage extends StatelessWidget {
           ),
           Expanded(
             child: switch (kind) {
-              // [Bug 7/8 fix] BAG rows: "5000 KG • 100 BAGS"; BOX/TIN: count
-              // only — no kg suffix. Using shared formatPackagedQty so the
-              // same rules apply across home / detail / reports / history.
-              ReportsFullListKind.itemsBag => ListView.builder(
-                  padding:
-                      const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                  itemCount:
-                      _filterItems(agg.itemsBag).length,
-                  itemBuilder: (c, i) {
-                    final r = _filterItems(agg.itemsBag)[i];
-                    final qty = formatPackagedQty(
-                      unit: 'bag',
-                      pieces: r.bags,
-                      kg: r.kg,
-                    );
-                    return ListTile(
-                      title: Text(r.name),
-                      subtitle: Text(
-                        '$qty · ${_inr0(r.amountInr)} · ${r.dealIds.length} deals',
-                      ),
-                    );
-                  },
-                ),
-              ReportsFullListKind.itemsBox => ListView.builder(
-                  padding:
-                      const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                  itemCount:
-                      _filterItems(agg.itemsBox).length,
-                  itemBuilder: (c, i) {
-                    final r = _filterItems(agg.itemsBox)[i];
-                    final qty =
-                        formatPackagedQty(unit: 'box', pieces: r.boxes);
-                    return ListTile(
-                      title: Text(r.name),
-                      subtitle: Text(
-                        '$qty · ${_inr0(r.amountInr)} · ${r.dealIds.length} deals',
-                      ),
-                    );
-                  },
-                ),
-              ReportsFullListKind.itemsTin => ListView.builder(
-                  padding:
-                      const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                  itemCount:
-                      _filterItems(agg.itemsTin).length,
-                  itemBuilder: (c, i) {
-                    final r = _filterItems(agg.itemsTin)[i];
-                    final qty =
-                        formatPackagedQty(unit: 'tin', pieces: r.tins);
-                    return ListTile(
-                      title: Text(r.name),
-                      subtitle: Text(
-                        '$qty · ${_inr0(r.amountInr)} · ${r.dealIds.length} deals',
-                      ),
-                    );
-                  },
-                ),
-              ReportsFullListKind.suppliers => ListView.builder(
-                  padding:
-                      const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                  itemCount:
-                      _filterSup(agg.suppliers).length,
-                  itemBuilder: (c, i) {
-                    final s = _filterSup(agg.suppliers)[i];
-                    return ListTile(
-                      title: Text(s.name),
-                      subtitle: Text(
-                        '${s.dealIds.length} deals · bags ${_qtyReadable(s.bagQty)} · ${_kgReadable(s.bagKg)} kg',
-                      ),
-                    );
-                  },
-                ),
-              ReportsFullListKind.brokers => ListView.builder(
-                  padding:
-                      const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                  itemCount:
-                      _filterBro(agg.brokers).length,
-                  itemBuilder: (c, i) {
-                    final b = _filterBro(agg.brokers)[i];
-                    return ListTile(
-                      title: Text(b.name),
-                      subtitle: Text(
-                        '${b.purchaseIds.length} deals · ${_inr0(b.commission)} commission',
-                      ),
-                    );
-                  },
-                ),
+              ReportsFullListKind.itemsBag => () {
+                  // BAG rows: kg + bags via formatPackagedQty; BOX/TIN use count only.
+                  final rows = _filterItems(agg.itemsBag);
+                  return ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                    itemCount: rows.length,
+                    itemBuilder: (c, i) {
+                      final r = rows[i];
+                      final qty = formatPackagedQty(
+                        unit: 'bag',
+                        pieces: r.bags,
+                        kg: r.kg,
+                      );
+                      return ListTile(
+                        title: Text(r.name),
+                        subtitle: Text(
+                          '$qty · ${_inr0(r.amountInr)} · ${r.dealIds.length} deals',
+                        ),
+                      );
+                    },
+                  );
+                }(),
+              ReportsFullListKind.itemsBox => () {
+                  final rows = _filterItems(agg.itemsBox);
+                  return ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                    itemCount: rows.length,
+                    itemBuilder: (c, i) {
+                      final r = rows[i];
+                      final qty =
+                          formatPackagedQty(unit: 'box', pieces: r.boxes);
+                      return ListTile(
+                        title: Text(r.name),
+                        subtitle: Text(
+                          '$qty · ${_inr0(r.amountInr)} · ${r.dealIds.length} deals',
+                        ),
+                      );
+                    },
+                  );
+                }(),
+              ReportsFullListKind.itemsTin => () {
+                  final rows = _filterItems(agg.itemsTin);
+                  return ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                    itemCount: rows.length,
+                    itemBuilder: (c, i) {
+                      final r = rows[i];
+                      final qty =
+                          formatPackagedQty(unit: 'tin', pieces: r.tins);
+                      return ListTile(
+                        title: Text(r.name),
+                        subtitle: Text(
+                          '$qty · ${_inr0(r.amountInr)} · ${r.dealIds.length} deals',
+                        ),
+                      );
+                    },
+                  );
+                }(),
+              ReportsFullListKind.suppliers => () {
+                  final rows = _filterSup(agg.suppliers);
+                  return ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                    itemCount: rows.length,
+                    itemBuilder: (c, i) {
+                      final s = rows[i];
+                      return ListTile(
+                        title: Text(s.name),
+                        subtitle: Text(
+                          '${s.dealIds.length} deals · bags ${_qtyReadable(s.bagQty)} · ${_kgReadable(s.bagKg)} kg',
+                        ),
+                      );
+                    },
+                  );
+                }(),
+              ReportsFullListKind.brokers => () {
+                  final rows = _filterBro(agg.brokers);
+                  return ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                    itemCount: rows.length,
+                    itemBuilder: (c, i) {
+                      final b = rows[i];
+                      return ListTile(
+                        title: Text(b.name),
+                        subtitle: Text(
+                          '${b.purchaseIds.length} deals · ${_inr0(b.commission)} commission',
+                        ),
+                      );
+                    },
+                  );
+                }(),
             },
           ),
         ],

@@ -15,7 +15,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Harisree">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="theme-color" content="#17A8A7">
+  <meta name="theme-color" content="#14523E">
 
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
   <link rel="icon" type="image/png" href="favicon.png"/>
@@ -52,14 +52,58 @@
     flt-glass-pane {
       touch-action: pan-y !important;
     }
-    #boot {
-      position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 1;
-      font: 12px/1.4 system-ui, sans-serif; color: #64748b; pointer-events: none;
+    #splash {
+      position: fixed;
+      inset: 0;
+      z-index: 99998;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      background: linear-gradient(165deg, #E8F5F0 0%, #F5F7FA 45%, #FFFFFF 100%);
+      transition: opacity 0.25s ease-out;
+      pointer-events: none;
+    }
+    #splash.removing {
+      opacity: 0;
+    }
+    #splash img {
+      width: 96px;
+      height: 96px;
+      border-radius: 20px;
+      box-shadow: 0 8px 28px rgba(20, 82, 62, 0.18);
+    }
+    #splash span {
+      font: 600 14px system-ui, sans-serif;
+      color: #14523E;
+      letter-spacing: 0.02em;
     }
   </style>
 </head>
 <body>
+  <div id="splash" aria-hidden="true">
+    <img src="icons/Icon-192.png" alt="" width="96" height="96" />
+    <span>Harisree Purchases</span>
+  </div>
   <div id="boot" aria-live="polite">Starting…</div>
+  <script>
+    (function () {
+      function hideSplash() {
+        var el = document.getElementById('splash');
+        if (!el || el.dataset.dismissed === '1') return;
+        el.dataset.dismissed = '1';
+        el.classList.add('removing');
+        window.setTimeout(function () {
+          try {
+            el.remove();
+          } catch (_) {}
+        }, 280);
+      }
+      window.addEventListener('flutter-first-frame', hideSplash);
+      window.setTimeout(hideSplash, 15000);
+    })();
+  </script>
   <script src="flutter_bootstrap.js" defer></script>
 </body>
 </html>

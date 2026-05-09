@@ -1,6 +1,14 @@
 import '../models/trade_purchase_models.dart';
 import '../utils/trade_purchase_commission.dart';
 
+/// Purchases that contribute to reports / PDF / aggregates (exclude deleted & cancelled).
+List<TradePurchase> reportActivePurchases(List<TradePurchase> purchases) {
+  return purchases.where((p) {
+    final s = p.statusEnum;
+    return s != PurchaseStatus.deleted && s != PurchaseStatus.cancelled;
+  }).toList();
+}
+
 /// Bag / Box / Tin — lines that do not match are excluded from aggregates.
 enum ReportPackKind {
   bag,
@@ -260,6 +268,7 @@ TradeReportAgg buildTradeReportAgg(
   List<TradePurchase> purchases, {
   ReportPackKind? onlyKind,
 }) {
+  final active = reportActivePurchases(purchases);
   final bagMap = <String, TradeReportItemRow>{};
   final boxMap = <String, TradeReportItemRow>{};
   final tinMap = <String, TradeReportItemRow>{};
@@ -301,7 +310,7 @@ TradeReportAgg buildTradeReportAgg(
     }
   }
 
-  for (final p in purchases) {
+  for (final p in active) {
     var purchaseTouchesClassified = false;
 
     final bid = (p.brokerId ?? '').trim();
@@ -528,7 +537,7 @@ class TradeReportStatementLine {
 List<TradeReportStatementLine> buildTradeStatementLines(
     List<TradePurchase> purchases) {
   final out = <TradeReportStatementLine>[];
-  for (final p in purchases) {
+  for (final p in reportActivePurchases(purchases)) {
     final sup = reportSupplierTitle(p);
     for (final l in p.lines) {
       if (reportClassifyPackKind(l) == null) continue;

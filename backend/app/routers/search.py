@@ -722,6 +722,7 @@ async def unified_search(
                     offset=0,
                     status_filter="all",
                     q=q.strip(),
+                    reports_eligible_only=True,
                 )
             )
             recent_purchases_out = [r.model_dump(mode="json") for r in recent_rows]

@@ -599,6 +599,58 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ),
           const SizedBox(height: 12),
+          Text('Quick actions',
+              style: tt.titleSmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          Card(
+            color: context.adaptiveCard,
+            child: Column(
+              children: [
+                ListTile(
+                  leading: Icon(Icons.document_scanner_outlined,
+                      color: cs.primary),
+                  title: const Text('Scan purchase bill'),
+                  trailing:
+                      Icon(Icons.chevron_right_rounded, color: cs.outline),
+                  onTap: () => context.pushNamed('purchase_scan'),
+                ),
+                ListTile(
+                  leading:
+                      Icon(Icons.add_shopping_cart_outlined, color: cs.primary),
+                  title: const Text('New purchase'),
+                  trailing:
+                      Icon(Icons.chevron_right_rounded, color: cs.outline),
+                  onTap: () => context.go('/purchase/new'),
+                ),
+                ListTile(
+                  leading: Icon(Icons.edit_note_rounded, color: cs.primary),
+                  title: const Text('Resume purchase draft'),
+                  subtitle: const Text('Opens purchase entry if a draft exists'),
+                  trailing:
+                      Icon(Icons.chevron_right_rounded, color: cs.outline),
+                  onTap: () =>
+                      context.go('/purchase/new?resumeDraft=true'),
+                ),
+                ListTile(
+                  leading: Icon(Icons.mic_none_rounded, color: cs.primary),
+                  title: const Text('Voice note'),
+                  trailing:
+                      Icon(Icons.chevron_right_rounded, color: cs.outline),
+                  onTap: () => context.push('/voice'),
+                ),
+                ListTile(
+                  leading: Icon(Icons.history_rounded, color: cs.primary),
+                  title: const Text('Purchase history'),
+                  trailing:
+                      Icon(Icons.chevron_right_rounded, color: cs.outline),
+                  onTap: () => context.go('/purchase'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
           Text('Purchases & sharing',
               style: tt.titleSmall?.copyWith(
                   color: cs.onSurfaceVariant,

@@ -872,6 +872,10 @@ HomeDashboardData _aggregate({
   final globalItem = <String, _ItemAgg>{};
 
   for (final p in purchases) {
+    final st = p.statusEnum;
+    if (st == PurchaseStatus.deleted || st == PurchaseStatus.cancelled) {
+      continue;
+    }
     if (p.purchaseDate.isBefore(rangeStart) ||
         !p.purchaseDate.isBefore(rangeEnd)) {
       continue;

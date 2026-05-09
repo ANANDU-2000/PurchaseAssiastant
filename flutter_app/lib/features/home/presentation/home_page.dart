@@ -765,14 +765,21 @@ String _categoryQtyLabel(CategoryStat c) {
 const int _homeRingPreviewCap = 8;
 const double _homeBreakdownRowExtent = 54;
 
-const _chartEmptyCenter = Text(
-  'No data',
-  textAlign: TextAlign.center,
-  style: TextStyle(
-    fontWeight: FontWeight.w800,
-    fontSize: 14,
-    color: Color(0xFF475569),
-  ),
+const _chartEmptyCenter = Column(
+  mainAxisSize: MainAxisSize.min,
+  children: [
+    Icon(Icons.donut_large_rounded, size: 26, color: Color(0xFF94A3B8)),
+    SizedBox(height: 6),
+    Text(
+      'No data',
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        fontWeight: FontWeight.w800,
+        fontSize: 13,
+        color: Color(0xFF475569),
+      ),
+    ),
+  ],
 );
 
 const _chartSkeletonCenterInner = Column(
@@ -837,9 +844,34 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
     final data = widget.data;
     final colors = widget.categoryColors;
     if (_portfolioEmpty(data)) {
+      final shellBusy = tab != HomeBreakdownTab.category &&
+          shell.isLoading &&
+          shell.valueOrNull == null &&
+          peekShell == null;
       final Widget center = widget.paintShellSkeleton
           ? _chartSkeletonCenterInner
-          : _chartEmptyCenter;
+          : shellBusy
+              ? const Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(height: 6),
+                    Text(
+                      'Updating…',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 11,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                )
+              : _chartEmptyCenter;
       return RepaintBoundary(
         child: SpendRingChart(
           diameter: previewSide,
@@ -962,7 +994,10 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
         const SizedBox(height: 2),
         LayoutBuilder(
           builder: (context, c) {
-            final previewSide = math.min(200.0, c.maxWidth * 0.82);
+            final screenH = MediaQuery.sizeOf(context).height;
+            final maxRing = math.min(screenH * 0.34, 220.0);
+            final previewSide =
+                math.min(maxRing, math.min(200.0, c.maxWidth * 0.82));
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4),
               child: _ring(context, tab, shell, peekShell, rc, previewSide),
@@ -979,30 +1014,28 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
                   if (shell.isLoading &&
                       shell.valueOrNull == null &&
                       peekShell == null) {
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const SizedBox(
-                              width: 36,
-                              height: 36,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              'Loading ${tab.label} breakdown…',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.grey.shade700,
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const LinearProgressIndicator(minHeight: 2),
+                        Expanded(
+                          child: Center(
+                            child: Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 24),
+                              child: Text(
+                                'Loading ${tab.label} breakdown…',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.grey.shade700,
+                                ),
                               ),
                             ),
-                          ],
+                          ),
                         ),
-                      ),
+                      ],
                     );
                   }
                   if (shell.hasError &&
