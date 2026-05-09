@@ -226,6 +226,11 @@ class Settings(BaseSettings):
         """Call on startup when app_env is production."""
         if self.app_env.lower() != "production":
             return
+        if os.environ.get("HEXA_USE_SQLITE", "").strip().lower() in ("1", "true", "yes"):
+            raise RuntimeError(
+                "HEXA_USE_SQLITE must not be enabled in production — "
+                "unset it so Postgres/Supabase is used."
+            )
         if self.dev_return_otp:
             raise RuntimeError("DEV_RETURN_OTP must be false in production")
         if "change-me" in self.jwt_secret.lower() or "change-me" in self.jwt_refresh_secret.lower():

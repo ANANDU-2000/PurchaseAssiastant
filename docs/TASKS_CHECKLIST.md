@@ -30,11 +30,19 @@ Legend: `[x]` done · `[~]` partial · `[ ]` pending
 
 ## P3 — OCR & automation
 
-- [ ] Alias / fuzzy catalog matching pipeline (server + client ranking)
-- [ ] WhatsApp automation: queue visibility, retries, env docs
+- [~] **Catalog alias / fuzzy:** Unified search already applies **substring + fuzzy fallback** + ranking (`backend/app/routers/search.py`, `catalog_fuzzy.dart`). Deeper “alias pipeline” (synonyms, ERP crosswalk) remains optional.
+- [~] **WhatsApp automation:** Flow + internal cron endpoints exist; **env vars** for Cloud API + cron secret documented in **`.env.example`** (see WhatsApp section). Queue visibility / retries are ops-specific (monitor logs, Sentry, cron dashboards).
 
 ## Validation
 
-- [ ] Manual: Reports month range with mix of active + deleted purchases → totals match expectations
-- [ ] Manual: Home donut visible, not oversized on iPhone / medium Android
-- [x] `flutter test test/trade_report_aggregate_test.dart` (run after aggregate changes)
+- [x] **Automated — backend:** `cd backend && pytest -q` (CI + local); **`Settings.validate_production_safety`** rejects **`HEXA_USE_SQLITE=1`** when **`APP_ENV=production`** (`test_production_settings.py`).
+- [x] **Automated — Flutter:** `cd flutter_app && flutter analyze && flutter test` (CI parity).
+- [x] **Automated — aggregates:** `flutter test test/trade_report_aggregate_test.dart` includes **deleted + cancelled** exclusion case.
+- [ ] **Manual (before client UAT):** Spot-check Reports month range + Home donut on **one physical phone** (sizes vary).
+
+## Production handoff (operator)
+
+1. **`APP_ENV=production`**, strong **`JWT_*`**, **`DEV_RETURN_OTP=false`**, Postgres **`DATABASE_URL`** (or pooler + password split). **Never** set **`HEXA_USE_SQLITE=1`** on the server (API now **fails fast** if SQLite is on in production).
+2. Run **`alembic upgrade head`** against production DB (see `backend/docs/migrations_and_backfill.md`).
+3. **`CORS_ORIGINS`** / **`TRUSTED_HOSTS`** match deployed web + admin origins.
+4. Optional: **`SENTRY_DSN`**, tune **`DATABASE_POOL_SIZE`** / **`API_READ_BUDGET_SECONDS`** under load.
