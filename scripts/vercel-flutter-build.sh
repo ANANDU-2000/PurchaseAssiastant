@@ -21,7 +21,10 @@ flutter pub get
 API_URL="${API_BASE_URL:-https://my-purchases-api.onrender.com}"
 GOOGLE_ID="${GOOGLE_OAUTH_CLIENT_ID:-}"
 
+# --no-web-resources-cdn: ship CanvasKit under build/web/canvaskit/ so
+# web/flutter_bootstrap.js (canvasKitBaseUrl: '/canvaskit/') works on static hosts.
 flutter build web --release \
+  --no-web-resources-cdn \
   --dart-define=API_BASE_URL="$API_URL" \
   --dart-define=GOOGLE_OAUTH_CLIENT_ID="$GOOGLE_ID"
 

@@ -619,21 +619,33 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     ];
     return KeyedSubtree(
       key: ValueKey<String>('unit|$v'),
-      child: DropdownButtonFormField<String>(
-        isExpanded: true,
-        initialValue: v,
-        decoration: _deco('Unit *', errorText: errorText),
-        items: [
-          for (final u in finalOrdered)
-            DropdownMenuItem<String>(
-              value: u,
-              child: Text(
-                u,
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+      child: Theme(
+        data: Theme.of(context).copyWith(
+          hoverColor: HexaColors.primaryLight.withValues(alpha: 0.35),
+          highlightColor: HexaColors.primaryLight.withValues(alpha: 0.5),
+        ),
+        child: DropdownButtonFormField<String>(
+          isExpanded: true,
+          initialValue: v,
+          dropdownColor: HexaColors.surfaceApp,
+          borderRadius: BorderRadius.circular(12),
+          decoration: _deco('Unit *', errorText: errorText),
+          items: [
+            for (final u in finalOrdered)
+              DropdownMenuItem<String>(
+                value: u,
+                child: Text(
+                  u,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: HexaColors.inputText,
+                  ),
+                ),
               ),
-            ),
-        ],
-        onChanged: _onUnitDropdownChanged,
+          ],
+          onChanged: _onUnitDropdownChanged,
+        ),
       ),
     );
   }
@@ -715,7 +727,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(6),
-        borderSide: BorderSide(color: Colors.grey[300]!),
+        borderSide: const BorderSide(color: HexaColors.inputBorderGrey),
       ),
       focusedBorder: const OutlineInputBorder(
         borderRadius: BorderRadius.all(Radius.circular(6)),
@@ -730,7 +742,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         borderSide: BorderSide(color: Colors.red[700]!, width: 1.5),
       ),
       filled: true,
-      fillColor: Colors.grey[50],
+      fillColor: HexaColors.surfaceApp,
       contentPadding: pad,
     );
   }
@@ -1051,6 +1063,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   }
 
   double _profitPreview() {
+    if (_qtyVal() <= 0) return 0;
     final sell = _ratesPerKgEconomics
         ? _sellingParsedAsPerKg()
         : _parseD(_sellingCtrl.text);
@@ -2215,7 +2228,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
 
     lines.add(const SizedBox(height: 4));
     lines.add(Text(
-      sell == null ? 'Profit —' : 'Profit ₹${profit.toStringAsFixed(2)}',
+      (sell == null || q <= 0) ? 'Profit —' : 'Profit ₹${profit.toStringAsFixed(2)}',
       style: theme.textTheme.bodySmall?.copyWith(
         fontSize: 12,
         fontWeight: FontWeight.w600,

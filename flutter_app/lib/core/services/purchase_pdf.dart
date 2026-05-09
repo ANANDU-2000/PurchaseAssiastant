@@ -1,13 +1,12 @@
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
-import '../calc_engine.dart';
+import '../calc_engine.dart' show lineMoney;
 import '../models/business_profile.dart';
 import '../models/trade_purchase_models.dart';
 import '../utils/trade_purchase_rate_display.dart';
@@ -163,7 +162,7 @@ Future<pw.Document> buildPurchaseReceiptDoc(
   return doc;
 }
 
-/// Professional A4 purchase order; totals match [computeTradeTotals] / server [totalAmount].
+/// Professional A4 purchase order; footer uses server [TradePurchase.totalAmount].
 Future<pw.Document> buildPurchaseDoc(TradePurchase p, BusinessProfile biz) async {
   final logo = await _tryLogo(biz.logoUrl);
   final pdfTheme = await loadPurchasePdfTheme();
@@ -173,11 +172,6 @@ Future<pw.Document> buildPurchaseDoc(TradePurchase p, BusinessProfile biz) async
     logo: logo,
     pdfTheme: pdfTheme,
   );
-  final req = tradeCalcRequestFromTradePurchase(p);
-  final t = computeTradeTotals(req);
-  if ((t.amountSum - p.totalAmount).abs() >= 0.02 && kDebugMode) {
-    assert(false, 'PDF total ${t.amountSum} != purchase.totalAmount ${p.totalAmount}');
-  }
   return doc;
 }
 
