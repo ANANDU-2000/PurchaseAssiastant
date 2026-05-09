@@ -14,6 +14,7 @@ import '../../../../core/providers/suppliers_list_provider.dart';
 import '../../../../core/search/catalog_fuzzy.dart';
 import '../../../../core/theme/hexa_colors.dart';
 import '../../domain/purchase_draft.dart';
+import 'scan_review_shared.dart';
 
 /// Bill scan + editable preview → [onApplyDraft] merges into wizard (no standalone route).
 class PurchaseBillScanPanel extends ConsumerStatefulWidget {
@@ -43,6 +44,9 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
   bool _busy = false;
   String? _note;
   bool _userConfirmedPreview = false;
+  double? _legacyScanConfidence;
+  bool _legacyHasTotalMismatch = false;
+  List<String> _legacyParseWarnings = [];
 
   /// Server keys for red borders after scan.
   final Set<String> _missing = {};
@@ -153,6 +157,9 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
       _rows = [];
       _missing.clear();
       _note = null;
+      _legacyScanConfidence = null;
+      _legacyHasTotalMismatch = false;
+      _legacyParseWarnings = [];
       _supplierCtrl.clear();
       _supplierDirectoryId = null;
       _supplierFuzzySuggestion = null;
@@ -188,6 +195,9 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
     setState(() {
       _busy = true;
       _note = null;
+      _legacyScanConfidence = null;
+      _legacyHasTotalMismatch = false;
+      _legacyParseWarnings = [];
     });
     try {
       final res = await ref.read(hexaApiProvider).scanPurchaseBillMultipart(
@@ -267,17 +277,20 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
           }
         }
       }
+      final legacyTotalMismatch =
+          warns.any((w) => w.toUpperCase().contains('TOTAL_MISMATCH'));
+      final overallConf = (res['confidence'] is num)
+          ? (res['confidence'] as num).toDouble()
+          : double.tryParse(res['confidence']?.toString() ?? '') ?? 0.0;
       setState(() {
         _missing.clear();
         _missing.addAll(nextMiss);
         _rows = nextRows.isEmpty ? [_BillRowEdit.empty()] : nextRows;
-        final baseNote = res['note']?.toString() ?? '';
-        if (warns.isEmpty) {
-          _note = baseNote.isEmpty ? null : baseNote;
-        } else {
-          final extra = warns.join('\n');
-          _note = baseNote.isEmpty ? extra : '$baseNote\n$extra';
-        }
+        final baseNote = (res['note']?.toString() ?? '').trim();
+        _note = baseNote.isEmpty ? null : baseNote;
+        _legacyParseWarnings = List<String>.from(warns);
+        _legacyScanConfidence = overallConf;
+        _legacyHasTotalMismatch = legacyTotalMismatch;
         _userConfirmedPreview = false;
         if (sid != null && sid.isNotEmpty) {
           _supplierDirectoryId = sid;
@@ -585,6 +598,19 @@ class _PurchaseBillScanPanelState extends ConsumerState<PurchaseBillScanPanel> {
                         : const Icon(Icons.document_scanner_rounded),
                     label: Text(_busy ? 'Scanning…' : 'Extract text'),
                   ),
+                ],
+                if (_legacyScanConfidence != null) ...[
+                  const SizedBox(height: 10),
+                  scanReviewConfidenceSummaryCard(
+                    context: context,
+                    overall: _legacyScanConfidence!,
+                    needsReview: _missing.isNotEmpty ||
+                        _legacyParseWarnings.isNotEmpty ||
+                        ((_legacyScanConfidence ?? 0) < 0.85 && _rows.isNotEmpty),
+                    ocrExtractConfidence: null,
+                    hasTotalMismatch: _legacyHasTotalMismatch,
+                  ),
+                  scanReviewLegacyWarningsList(context, _legacyParseWarnings),
                 ],
                 if (_note != null && _note!.isNotEmpty) ...[
                   const SizedBox(height: 10),

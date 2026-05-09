@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,6 +18,16 @@ import '../../../core/theme/hexa_colors.dart';
 import '../mapping/ai_scan_purchase_draft_map.dart';
 import 'purchase_scan_draft_map_provider.dart';
 import 'scan_draft_edit_item_sheet.dart';
+import 'widgets/scan_review_shared.dart';
+
+List<int> _compressImageIsolate(List<int> raw) {
+  final decoded = img.decodeImage(Uint8List.fromList(raw));
+  if (decoded == null) return raw;
+  const maxW = 1600;
+  final resized =
+      decoded.width > maxW ? img.copyResize(decoded, width: maxW) : decoded;
+  return List<int>.from(img.encodeJpg(resized, quality: 82));
+}
 
 enum _ScanStage {
   idle,
@@ -52,31 +63,23 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
 
   final ScrollController _scroll = ScrollController();
 
-  Timer? _stageTimer;
   Timer? _pollTimer;
 
   @override
   void dispose() {
-    _stageTimer?.cancel();
     _pollTimer?.cancel();
     _scroll.dispose();
     super.dispose();
   }
 
   Future<List<int>> _compressForUpload(List<int> raw) async {
-    final decoded = img.decodeImage(Uint8List.fromList(raw));
-    if (decoded == null) return Uint8List.fromList(raw);
-    const maxW = 1600;
-    final resized =
-        decoded.width > maxW ? img.copyResize(decoded, width: maxW) : decoded;
-    return List<int>.from(img.encodeJpg(resized, quality: 82));
+    return compute(_compressImageIsolate, raw);
   }
 
   Future<void> _pick(ImageSource src) async {
     final x = await ImagePicker().pickImage(source: src);
     if (x == null) return;
     final raw = await x.readAsBytes();
-    _stageTimer?.cancel();
     _pollTimer?.cancel();
     setState(() {
       _scan = null;
@@ -147,7 +150,6 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
       _stageProgress = 0;
       _stage = _ScanStage.preparingImage;
     });
-    _stageTimer?.cancel();
     _pollTimer?.cancel();
     try {
       // Start async scan (v3) and poll true backend stages.
@@ -276,14 +278,10 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
         _stage = _ScanStage.error;
         _error = friendlyApiError(e);
       });
-    } finally {
-      _stageTimer?.cancel();
-      // polling timer stays active on success until ready/error
     }
   }
 
   void _resetAll() {
-    _stageTimer?.cancel();
     _pollTimer?.cancel();
     setState(() {
       _jpegBytes = null;
@@ -414,7 +412,7 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
       _ScanStage.idle => 'Upload a bill photo to begin.',
       _ScanStage.preparingImage => 'Preparing image…',
       _ScanStage.uploading => 'Uploading…',
-      _ScanStage.extractingText => 'Reading bill (AI vision)…',
+      _ScanStage.extractingText => 'Reading bill…',
       _ScanStage.parsingItems => 'Extracting line items…',
       _ScanStage.matchingSuppliers => 'Matching supplier & catalog…',
       _ScanStage.validating => 'Checking amounts…',
@@ -424,25 +422,64 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
     };
   }
 
-  Widget _confidencePill(double c) {
-    // Trader-friendly confidence bands (no numeric % UI).
-    final (bg, fg, label) = c >= 0.85
-        ? (const Color(0xFFECFDF5), const Color(0xFF065F46), 'HIGH')
-        : (c >= 0.55
-            ? (const Color(0xFFFFFBEB), const Color(0xFF92400E), 'MEDIUM')
-            : (const Color(0xFFFEF2F2), const Color(0xFF991B1B), 'LOW'));
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: fg.withAlpha(35)),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: fg),
-      ),
+  Widget _reviewConfidenceHeader() {
+    final s = _scan;
+    if (s == null) return const SizedBox.shrink();
+    final overall = (s['confidence_score'] is num)
+        ? (s['confidence_score'] as num).toDouble()
+        : double.tryParse(s['confidence_score']?.toString() ?? '') ?? 0.0;
+    final needs = s['needs_review'] == true || s['needs_review']?.toString().toLowerCase() == 'true';
+    final meta = s['scan_meta'];
+    double? ocrConf;
+    if (meta is Map && meta['ocr_extract_confidence'] != null) {
+      ocrConf = (meta['ocr_extract_confidence'] is num)
+          ? (meta['ocr_extract_confidence'] as num).toDouble()
+          : double.tryParse(meta['ocr_extract_confidence']?.toString() ?? '');
+    }
+    final warns = s['warnings'];
+    var hasTotalMismatch = false;
+    if (warns is List) {
+      for (final w in warns) {
+        if (w is! Map) continue;
+        final code = (w['code'] ?? '').toString().toUpperCase();
+        if (code == 'TOTAL_MISMATCH') {
+          hasTotalMismatch = true;
+          break;
+        }
+      }
+    }
+
+    return scanReviewConfidenceSummaryCard(
+      context: context,
+      overall: overall,
+      needsReview: needs,
+      ocrExtractConfidence: ocrConf,
+      hasTotalMismatch: hasTotalMismatch,
     );
+  }
+
+  int _severityRank(Object? sev) {
+    final s = (sev ?? 'warn').toString().trim().toLowerCase();
+    return switch (s) {
+      'blocker' => 0,
+      'warn' => 1,
+      'info' => 2,
+      _ => 3,
+    };
+  }
+
+  List<Map<String, dynamic>> _sortedWarnings(List warns) {
+    final maps = <Map<String, dynamic>>[];
+    for (final w in warns) {
+      if (w is Map) maps.add(Map<String, dynamic>.from(w));
+    }
+    maps.sort((a, b) {
+      final ra = _severityRank(a['severity']);
+      final rb = _severityRank(b['severity']);
+      if (ra != rb) return ra.compareTo(rb);
+      return (a['message'] ?? '').toString().compareTo((b['message'] ?? '').toString());
+    });
+    return maps;
   }
 
   Widget _supplierBrokerSummary() {
@@ -462,6 +499,16 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
     double supConf() =>
         (sup is Map && sup['confidence'] is num) ? (sup['confidence'] as num).toDouble() : 0.0;
 
+    String supRaw() => (sup is Map) ? (sup['raw_text']?.toString().trim() ?? '') : '';
+
+    bool supMismatch() {
+      if (sup is! Map) return false;
+      final raw = supRaw();
+      final mat = (sup['matched_name']?.toString().trim() ?? '');
+      if (raw.isEmpty || mat.isEmpty) return false;
+      return raw.toLowerCase() != mat.toLowerCase();
+    }
+
     String broName() {
       if (bro is Map) {
         return (bro['matched_name']?.toString().trim().isNotEmpty == true)
@@ -473,6 +520,16 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
 
     double broConf() =>
         (bro is Map && bro['confidence'] is num) ? (bro['confidence'] as num).toDouble() : 0.0;
+
+    String broRaw() => (bro is Map) ? (bro['raw_text']?.toString().trim() ?? '') : '';
+
+    bool broMismatch() {
+      if (bro is! Map) return false;
+      final raw = broRaw();
+      final mat = (bro['matched_name']?.toString().trim() ?? '');
+      if (raw.isEmpty || mat.isEmpty) return false;
+      return raw.toLowerCase() != mat.toLowerCase();
+    }
 
     List<Map<String, dynamic>> candidatesOf(Object? x) {
       if (x is! Map) return const [];
@@ -506,6 +563,13 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
                       Text(supName(),
                           style: const TextStyle(
                               fontSize: 15, fontWeight: FontWeight.w800)),
+                      if (supMismatch()) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'On bill: ${supRaw().length > 48 ? '${supRaw().substring(0, 45)}…' : supRaw()}',
+                          style: const TextStyle(fontSize: 11, color: Colors.black54, fontWeight: FontWeight.w600),
+                        ),
+                      ],
                       if (supCands.isNotEmpty && supConf() < 0.92) ...[
                         const SizedBox(height: 6),
                         Wrap(
@@ -530,7 +594,14 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
                     ],
                   ),
                 ),
-                _confidencePill(supConf()),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (sup is Map) scanReviewMatchStateChip(sup['match_state']),
+                    const SizedBox(height: 6),
+                    scanReviewConfidencePill(supConf()),
+                  ],
+                ),
               ],
             ),
             const SizedBox(height: 10),
@@ -545,6 +616,13 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
                       Text(broName(),
                           style: const TextStyle(
                               fontSize: 14, fontWeight: FontWeight.w700)),
+                      if (broMismatch()) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'On bill: ${broRaw().length > 48 ? '${broRaw().substring(0, 45)}…' : broRaw()}',
+                          style: const TextStyle(fontSize: 11, color: Colors.black54, fontWeight: FontWeight.w600),
+                        ),
+                      ],
                       if (broCands.isNotEmpty && broConf() < 0.92) ...[
                         const SizedBox(height: 6),
                         Wrap(
@@ -569,7 +647,14 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
                     ],
                   ),
                 ),
-                _confidencePill(broConf()),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (bro is Map) scanReviewMatchStateChip(bro['match_state']),
+                    const SizedBox(height: 6),
+                    scanReviewConfidencePill(broConf()),
+                  ],
+                ),
               ],
             ),
           ],
@@ -629,27 +714,80 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
     if (s == null) return const SizedBox.shrink();
     final warns = s['warnings'];
     if (warns is! List || warns.isEmpty) return const SizedBox.shrink();
-    final first = warns.take(3).toList();
+    final sorted = _sortedWarnings(warns);
+    final worst = sorted.isNotEmpty ? _severityRank(sorted.first['severity']) : 3;
+    final Color cardBg = worst <= 0
+        ? const Color(0xFFFEF2F2)
+        : (worst <= 1 ? const Color(0xFFFFFBEB) : const Color(0xFFF8FAFC));
+    final Color titleFg = worst <= 0
+        ? const Color(0xFF991B1B)
+        : (worst <= 1 ? const Color(0xFF92400E) : const Color(0xFF374151));
+
+    Widget sevBadge(Object? sev) {
+      final r = _severityRank(sev);
+      final (bg, fg, t) = r == 0
+          ? (const Color(0xFFFECACA), const Color(0xFF991B1B), 'BLOCKER')
+          : (r == 1
+              ? (const Color(0xFFFDE68A), const Color(0xFF92400E), 'WARN')
+              : (const Color(0xFFE5E7EB), const Color(0xFF374151), 'INFO'));
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(4)),
+        child: Text(t, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: fg)),
+      );
+    }
+
     return Card(
       margin: const EdgeInsets.only(top: 12),
-      color: const Color(0xFFFFFBEB),
+      color: cardBg,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'Needs review',
-              style: TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF92400E)),
+            Text(
+              'Warnings (${sorted.length})',
+              style: TextStyle(fontWeight: FontWeight.w900, color: titleFg),
             ),
-            const SizedBox(height: 6),
-            for (final w in first)
-              if (w is Map && (w['message']?.toString().trim().isNotEmpty ?? false))
+            const SizedBox(height: 8),
+            for (final w in sorted)
+              if ((w['message']?.toString().trim() ?? '').isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Text(
-                    '• ${w['message']}',
-                    style: const TextStyle(color: Color(0xFF92400E), fontWeight: FontWeight.w600),
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      sevBadge(w['severity']),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              (w['message'] ?? '').toString().trim(),
+                              style: TextStyle(
+                                color: titleFg,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                            if ((w['code']?.toString().trim() ?? '').isNotEmpty)
+                              Text(
+                                [
+                                  if ((w['target']?.toString().trim() ?? '').isNotEmpty)
+                                    '${(w['target'] ?? '').toString().trim()} · ',
+                                  (w['code'] ?? '').toString().trim(),
+                                ].join(),
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.black45,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
           ],
@@ -666,6 +804,22 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text('$k $v', style: const TextStyle(fontWeight: FontWeight.w800)),
+    );
+  }
+
+  Widget _itemTrailing(Map<String, dynamic> item) {
+    final ms = item['match_state'];
+    final st = (ms ?? '').toString().trim().toLowerCase();
+    final showState = st.isNotEmpty && st != 'auto';
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (showState) ...[
+          scanReviewMatchStateChip(ms),
+          const SizedBox(width: 6),
+        ],
+        _confChip(item['confidence']),
+      ],
     );
   }
 
@@ -696,7 +850,7 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
                 _ScanTableRow(
                   item: Map<String, dynamic>.from(items[i] as Map),
                   onTap: () => _editItemRow(i, Map<String, dynamic>.from(items[i] as Map)),
-                  trailing: _confChip((items[i] as Map)['confidence']),
+                  trailing: _itemTrailing(Map<String, dynamic>.from(items[i] as Map)),
                 ),
           ],
         ),
@@ -719,7 +873,12 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
       body: SafeArea(
         child: SingleChildScrollView(
           controller: _scroll,
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 110),
+          padding: EdgeInsets.fromLTRB(
+            12,
+            12,
+            12,
+            110 + MediaQuery.viewInsetsOf(context).bottom,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -783,14 +942,16 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      AspectRatio(
-                        aspectRatio: 16 / 9,
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 260),
                         child: InteractiveViewer(
                           minScale: 0.8,
                           maxScale: 4,
-                          child: Image.memory(
-                            Uint8List.fromList(bytes),
-                            fit: BoxFit.contain,
+                          child: Center(
+                            child: Image.memory(
+                              Uint8List.fromList(bytes),
+                              fit: BoxFit.contain,
+                            ),
                           ),
                         ),
                       ),
@@ -856,6 +1017,7 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
                 ),
               ],
               if (hasResult) ...[
+                _reviewConfidenceHeader(),
                 _supplierBrokerSummary(),
                 _chargesSummary(),
                 _warningsSummary(),
@@ -878,7 +1040,9 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
         ),
       ),
       bottomNavigationBar: SafeArea(
-        child: Container(
+        child: Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+          child: Container(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
           decoration: const BoxDecoration(
             color: Colors.white,
@@ -932,6 +1096,7 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
             ],
           ),
         ),
+        ),
       ),
     );
   }
@@ -977,7 +1142,13 @@ class _ScanTableRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = _s(item['matched_name'] ?? item['raw_name']);
+    final displayName = _s(item['matched_name'] ?? item['raw_name']);
+    final raw = item['raw_name']?.toString().trim() ?? '';
+    final mat = item['matched_name']?.toString().trim() ?? '';
+    final showBillLine = raw.isNotEmpty &&
+        mat.isNotEmpty &&
+        raw.toLowerCase() != mat.toLowerCase() &&
+        displayName.toLowerCase() == mat.toLowerCase();
     final qty = _n(item['bags'] ?? item['qty']);
     final unit = _s(item['unit_type'], '—').toLowerCase();
     final p = _n(item['purchase_rate']);
@@ -988,7 +1159,11 @@ class _ScanTableRow extends StatelessWidget {
     final hasMatch = matched != null && matched.isNotEmpty;
     final hasRate = (item['purchase_rate'] is num) ||
         (double.tryParse(item['purchase_rate']?.toString() ?? '') != null);
-    final needsReview = (c == null || c < 0.70) || !hasMatch || !hasRate;
+    final matchState = (item['match_state'] ?? '').toString().trim().toLowerCase();
+    final needsReview = (c == null || c < 0.70) ||
+        !hasMatch ||
+        !hasRate ||
+        (matchState.isNotEmpty && matchState != 'auto');
     final bg = !needsReview
         ? Colors.transparent
         : (c != null && c >= 0.70 ? const Color(0xFFFFFBEB) : const Color(0xFFFEF2F2));
@@ -1008,11 +1183,23 @@ class _ScanTableRow extends StatelessWidget {
           children: [
             Expanded(
               flex: 6,
-              child: Text(
-                name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w800),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    displayName,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  if (showBillLine)
+                    Text(
+                      raw.length > 42 ? 'Bill: ${raw.substring(0, 39)}…' : 'Bill: $raw',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 10, color: Colors.black54, fontWeight: FontWeight.w600),
+                    ),
+                ],
               ),
             ),
             Expanded(flex: 2, child: Text(qty, textAlign: TextAlign.right)),
