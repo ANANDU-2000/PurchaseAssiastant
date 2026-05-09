@@ -1,4 +1,5 @@
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -918,14 +919,18 @@ class _PriceHistoryLineChart extends StatelessWidget {
             const SizedBox(height: 8),
             SizedBox(
               height: 132,
-              child: RepaintBoundary(
-                child: LayoutBuilder(
-                  builder: (context, c) {
-                    if (c.maxWidth <= 0) return const SizedBox.shrink();
-                    return LineChart(
+              child: LayoutBuilder(
+                builder: (context, c) {
+                  if (c.maxWidth <= 0) return const SizedBox.shrink();
+                  final maxX = (spots.length - 1).toDouble();
+                  return ClipRect(
+                    child: LineChart(
                       LineChartData(
+                        minX: 0,
+                        maxX: maxX,
                         minY: minY - span * 0.08,
                         maxY: maxY + span * 0.08,
+                        backgroundColor: Colors.transparent,
                         gridData: const FlGridData(show: false),
                         titlesData: const FlTitlesData(show: false),
                         borderData: FlBorderData(show: false),
@@ -934,22 +939,31 @@ class _PriceHistoryLineChart extends StatelessWidget {
                           LineChartBarData(
                             spots: spots,
                             isCurved: true,
+                            preventCurveOverShooting: true,
                             color: HexaColors.accentInfo,
                             barWidth: 2.5,
                             dotData: FlDotData(
                               show: points.length <= 18,
-                              getDotPainter: (a, b, c, d) =>
-                                  FlDotCirclePainter(
-                                radius: 2.5,
-                                color: HexaColors.primaryNavy,
-                              ),
+                              getDotPainter: (a, b, c, d) {
+                                final dark = cs.brightness == Brightness.dark;
+                                return FlDotCirclePainter(
+                                  radius: 2.5,
+                                  color: dark ? cs.surface : HexaColors.accentInfo,
+                                  strokeColor:
+                                      dark ? HexaColors.accentInfo : cs.surface,
+                                  strokeWidth: 1.25,
+                                );
+                              },
                             ),
                           ),
                         ],
                       ),
-                    );
-                  },
-                ),
+                      duration: kIsWeb
+                          ? Duration.zero
+                          : const Duration(milliseconds: 150),
+                    ),
+                  );
+                },
               ),
             ),
           ],
@@ -1029,20 +1043,24 @@ class _SupplierDealsDonut extends StatelessWidget {
             const SizedBox(height: 8),
             SizedBox(
               height: 200,
-              child: RepaintBoundary(
-                child: LayoutBuilder(
-                  builder: (context, c) {
-                    if (c.maxWidth <= 0) return const SizedBox.shrink();
-                    return Stack(
+              child: LayoutBuilder(
+                builder: (context, c) {
+                  if (c.maxWidth <= 0) return const SizedBox.shrink();
+                  return ClipRect(
+                    child: Stack(
                       alignment: Alignment.center,
                       children: [
                         PieChart(
                           PieChartData(
                             sectionsSpace: 1.2,
                             centerSpaceRadius: 44,
+                            centerSpaceColor: cs.surface,
                             sections: sections,
                             pieTouchData: PieTouchData(enabled: false),
                           ),
+                          duration: kIsWeb
+                              ? Duration.zero
+                              : const Duration(milliseconds: 150),
                         ),
                         Column(
                           mainAxisSize: MainAxisSize.min,
@@ -1051,7 +1069,7 @@ class _SupplierDealsDonut extends StatelessWidget {
                               '$total',
                               style: tt.titleLarge?.copyWith(
                                 fontWeight: FontWeight.w900,
-                                color: HexaColors.primaryNavy,
+                                color: cs.onSurface,
                               ),
                             ),
                             Text(
@@ -1064,9 +1082,9 @@ class _SupplierDealsDonut extends StatelessWidget {
                           ],
                         ),
                       ],
-                    );
-                  },
-                ),
+                    ),
+                  );
+                },
               ),
             ),
             const SizedBox(height: 8),
