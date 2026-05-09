@@ -5,20 +5,42 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/json_coerce.dart';
+import '../../../core/providers/home_breakdown_tab_providers.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/theme/theme_context_ext.dart';
+import '../../../core/utils/line_display.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 
 final _pipProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, itemName) async {
   final session = ref.watch(sessionProvider);
   if (session == null) throw StateError('Not signed in');
+  final hq = homeDateRangeForRef(ref);
+  final from = DateTime.parse(hq.from);
+  final to = DateTime.parse(hq.to);
+  final spanDays = to.difference(from).inDays.abs() + 1;
+  final windowDays = spanDays.clamp(7, 365);
   return ref.read(hexaApiProvider).priceIntelligence(
         businessId: session.primaryBusiness.id,
         item: itemName,
         priceField: 'landing',
+        windowDays: windowDays,
       );
 });
+
+Map<String, dynamic>? _shellItemRowForName(Ref<Object?> ref, String itemName) {
+  final async = ref.watch(homeShellReportsProvider);
+  final peek = ref.watch(homeShellReportsSyncCacheProvider);
+  final bundle =
+      async.asData?.value ?? peek ?? HomeShellReportsBundle.empty;
+  final want = itemName.trim().toLowerCase();
+  for (final m in bundle.items) {
+    final n = m['item_name']?.toString().trim().toLowerCase() ?? '';
+    if (n == want) return m;
+  }
+  return null;
+}
 
 class ItemAnalyticsDetailPage extends ConsumerStatefulWidget {
   const ItemAnalyticsDetailPage({super.key, required this.itemName});
@@ -55,6 +77,11 @@ class _ItemAnalyticsDetailPageState
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(_pipProvider(widget.itemName));
+    final shellRow = _shellItemRowForName(ref as Ref<Object?>, widget.itemName);
+    final hq = homeDateRangeForRef(ref as Ref<Object?>);
+    final df = DateFormat('d MMM yyyy');
+    final periodLabel =
+        '${df.format(DateTime.parse(hq.from))} → ${df.format(DateTime.parse(hq.to))}';
     final tt = Theme.of(context).textTheme;
     final onSurf = Theme.of(context).colorScheme.onSurface;
 
@@ -174,6 +201,13 @@ class _ItemAnalyticsDetailPageState
                 28 + MediaQuery.viewPaddingOf(context).bottom,
               ),
               children: [
+                _HomePeriodTradeFactsCard(
+                  periodLabel: periodLabel,
+                  shellRow: shellRow,
+                  itemName: widget.itemName,
+                  inr: _inr,
+                ),
+                const SizedBox(height: 12),
                 _DecisionCard(
                   itemName: widget.itemName,
                   best: best,
@@ -203,6 +237,14 @@ class _ItemAnalyticsDetailPageState
                     fontWeight: FontWeight.w700,
                     fontSize: 16,
                     color: onSurf,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Compared using the same window length as Home ($periodLabel).',
+                  style: tt.labelSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    height: 1.3,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -239,11 +281,19 @@ class _ItemAnalyticsDetailPageState
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  'Key numbers',
+                  'Landing price stats',
                   style: tt.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                     fontSize: 16,
                     color: onSurf,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Per-bill averages (₹/kg or unit). Different from “Spend” in trade totals — useful for negotiating.',
+                  style: tt.labelSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    height: 1.35,
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -444,6 +494,165 @@ class _ItemAnalyticsDetailPageState
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// Shell row from [homeShellReportsProvider] — matches Home Items breakdown dates.
+class _HomePeriodTradeFactsCard extends StatelessWidget {
+  const _HomePeriodTradeFactsCard({
+    required this.periodLabel,
+    required this.shellRow,
+    required this.itemName,
+    required this.inr,
+  });
+
+  final String periodLabel;
+  final Map<String, dynamic>? shellRow;
+  final String itemName;
+  final String Function(num?) inr;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final spend =
+        shellRow != null ? coerceToDouble(shellRow!['total_purchase']) : null;
+    final qtyLine =
+        shellRow != null ? tradeShellItemQtySummaryLine(shellRow!) : null;
+    final deals =
+        shellRow != null ? coerceToInt(shellRow!['purchase_count']) : null;
+    final lines =
+        shellRow != null ? coerceToInt(shellRow!['line_count']) : null;
+    final profit =
+        shellRow != null ? coerceToDouble(shellRow!['total_profit']) : null;
+
+    return Card(
+      color: cs.surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: cs.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Trade totals (Home period)',
+              style: tt.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+                fontSize: 15,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              periodLabel,
+              style: tt.labelSmall?.copyWith(
+                color: cs.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (shellRow == null)
+              Text(
+                'No shell row for “$itemName” in the cached Home bundle. Open Home and pull to refresh, or check your date filters.',
+                style: tt.bodySmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  height: 1.35,
+                  fontWeight: FontWeight.w600,
+                ),
+              )
+            else ...[
+              Text(
+                'Spend ${inr(spend)}',
+                style: tt.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 26,
+                  height: 1.15,
+                ),
+              ),
+              if (qtyLine != null && qtyLine.trim().isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  qtyLine,
+                  style: tt.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                children: [
+                  _ShellTradeFactChip(
+                    label: 'Deals',
+                    value: '${deals ?? 0}',
+                  ),
+                  _ShellTradeFactChip(
+                    label: 'Bill lines',
+                    value: '${lines ?? 0}',
+                  ),
+                  _ShellTradeFactChip(
+                    label: 'Est. margin',
+                    value: profit != null ? inr(profit) : '—',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Below: per-bill landing analytics (separate from spend totals; may be empty if no lines in the look-back).',
+                style: tt.labelSmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  height: 1.35,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ShellTradeFactChip extends StatelessWidget {
+  const _ShellTradeFactChip({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: tt.labelSmall?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+              fontSize: 10,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+          ),
+        ],
       ),
     );
   }

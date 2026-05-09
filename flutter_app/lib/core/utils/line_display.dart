@@ -1,6 +1,7 @@
 import 'package:intl/intl.dart';
 
 import '../calc_engine.dart';
+import '../json_coerce.dart';
 import '../models/trade_purchase_models.dart';
 import '../reporting/trade_report_aggregate.dart'
     show ReportPackKind, reportEffectivePack, reportLineKg;
@@ -206,6 +207,45 @@ int? inferBagCountForKgOnlyDisplay({
   final impliedKg = bags * kgPerBag;
   if ((totalKg - impliedKg).abs() > totalKg * 0.15 + 1.0) return null;
   return bags;
+}
+
+/// Trade shell item row ([`/trade-report-items`-style map][home breakdown]): quantity subtitle.
+String tradeShellItemQtySummaryLine(Map<String, dynamic> m) {
+  final itemTitle = m['item_name']?.toString() ?? '';
+  final tb = coerceToDouble(m['total_bags']);
+  final txb = coerceToDouble(m['total_boxes']);
+  final ttn = coerceToDouble(m['total_tins']);
+  final tkg = coerceToDouble(m['total_kg']);
+  String fmtQty(double q) =>
+      q == q.roundToDouble() ? q.round().toString() : q.toStringAsFixed(1);
+  final parts = <String>[];
+  if (tb > 0) {
+    parts.add('${fmtQty(tb)} ${tb == 1 ? 'BAG' : 'BAGS'}');
+  } else if (itemTitle.trim().isNotEmpty) {
+    final inferred = inferBagCountForKgOnlyDisplay(
+      itemName: itemTitle,
+      totalKg: tkg,
+      totalBags: tb,
+    );
+    if (inferred != null) {
+      final ib = inferred.toDouble();
+      parts.add('${fmtQty(ib)} ${ib == 1 ? 'BAG' : 'BAGS'}');
+    }
+  }
+  if (txb > 0) {
+    parts.add('${fmtQty(txb)} ${txb == 1 ? 'BOX' : 'BOXES'}');
+  }
+  if (ttn > 0) {
+    parts.add('${fmtQty(ttn)} ${ttn == 1 ? 'TIN' : 'TINS'}');
+  }
+  if (tkg > 0) parts.add('${fmtQty(tkg)} KG');
+  if (parts.isNotEmpty) return parts.join(' • ');
+  final q = coerceToDouble(m['total_qty']);
+  final u = m['unit']?.toString().trim();
+  if (q > 0 && u != null && u.isNotEmpty && u != '—') {
+    return '${fmtQty(q)} $u';
+  }
+  return '—';
 }
 
 class PurchaseHistoryMonthStats {
