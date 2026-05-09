@@ -15,6 +15,7 @@ import '../../../core/providers/reports_provider.dart';
 import '../../../core/reporting/trade_report_aggregate.dart';
 import '../../../core/services/reports_pdf.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/widgets/focused_search_chrome.dart';
 import '../../../core/widgets/list_skeleton.dart';
 import '../../../features/analytics/presentation/analytics_report_helpers.dart';
 import 'reports_full_list_page.dart';
@@ -116,6 +117,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
   TradeReportItemSort _itemSort = TradeReportItemSort.highQty;
 
   final TextEditingController _searchCtl = TextEditingController();
+  final FocusNode _reportsSearchFocus = FocusNode();
   String _debouncedQuery = '';
   Timer? _searchDebounce;
   Timer? _rangeInvalidateDebounce;
@@ -131,6 +133,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
   void initState() {
     super.initState();
     _searchCtl.addListener(_onSearchTyping);
+    _reportsSearchFocus.addListener(() => setState(() {}));
   }
 
   void _onSearchTyping() {
@@ -140,6 +143,9 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
       setState(() {
         _debouncedQuery = _searchCtl.text;
         _visibleCap = 40;
+        if (_debouncedQuery.trim().isNotEmpty) {
+          _reportsSummaryCollapsed = true;
+        }
       });
     });
   }
@@ -148,6 +154,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
   void dispose() {
     _searchCtl.removeListener(_onSearchTyping);
     _searchCtl.dispose();
+    _reportsSearchFocus.dispose();
     _searchDebounce?.cancel();
     _rangeInvalidateDebounce?.cancel();
     _stallTimer?.cancel();
@@ -661,7 +668,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
         }
         final cap = _visibleCap < filtered.length ? _visibleCap : filtered.length;
         final children = <Widget>[];
-        if (q.isNotEmpty) {
+        if (q.isNotEmpty && filtered.length > 1) {
           children.add(_searchAggregateCard(filtered));
         }
         for (var i = 0; i < cap; i++) {
@@ -1099,31 +1106,39 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                           ),
                         ),
                       ),
-                    // If we have cached data and are currently refreshing, show an
-                    // "Updating" hint (not an offline error).
-                    if (purchasesAsync.isLoading && merged.isNotEmpty)
-                      Material(
-                        color: const Color(0xFFEFF6FF),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 6),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.sync_rounded,
-                                  size: 18, color: Color(0xFF1D4ED8)),
-                              const SizedBox(width: 8),
-                              const Expanded(
-                                child: Text(
-                                  'Refreshing live data… showing saved copy for now.',
-                                  style: TextStyle(
-                                      fontSize: 12, color: Color(0xFF1D4ED8)),
-                                ),
-                              ),
-                            ],
+                    if (_mainTab != ReportsMainTab.overview) ...[
+                      TextField(
+                        controller: _searchCtl,
+                        focusNode: _reportsSearchFocus,
+                        onChanged: (_) => setState(() {}),
+                        scrollPadding: const EdgeInsets.only(bottom: 280),
+                        decoration: InputDecoration(
+                          hintText: 'Search…',
+                          isDense: true,
+                          prefixIcon:
+                              const Icon(Icons.search_rounded, size: 20),
+                          filled: true,
+                          fillColor: HexaColors.brandCard,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide:
+                                BorderSide(color: HexaColors.brandBorder),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide:
+                                BorderSide(color: HexaColors.brandBorder),
                           ),
                         ),
                       ),
-                    _summaryHeader(aggAll.totals, rangeFmt),
+                      const SizedBox(height: 6),
+                    ],
+                    CollapsibleSearchChrome(
+                      searchActive: _mainTab != ReportsMainTab.overview &&
+                          (_reportsSearchFocus.hasFocus ||
+                              _debouncedQuery.trim().isNotEmpty),
+                      chrome: _summaryHeader(aggAll.totals, rangeFmt),
+                    ),
                     const SizedBox(height: 4),
                     SizedBox(
                       height: 36,
@@ -1266,31 +1281,6 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                         _overviewBody(aggAll.totals),
                       ],
                     ] else ...[
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _searchCtl,
-                        onChanged: (_) => setState(() {}),
-                        scrollPadding: const EdgeInsets.only(bottom: 280),
-                        decoration: InputDecoration(
-                          hintText: 'Search…',
-                          isDense: true,
-                          prefixIcon:
-                              const Icon(Icons.search_rounded, size: 20),
-                          filled: true,
-                          fillColor: HexaColors.brandCard,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide:
-                                BorderSide(color: HexaColors.brandBorder),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide:
-                                BorderSide(color: HexaColors.brandBorder),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
                       if (showSkeleton)
                         const ListSkeleton(
                           rowCount: 5,

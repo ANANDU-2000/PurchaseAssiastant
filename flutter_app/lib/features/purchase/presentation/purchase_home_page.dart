@@ -29,6 +29,7 @@ import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart'
     show FriendlyLoadError, kFriendlyLoadNetworkSubtitle;
 import '../../../core/widgets/list_skeleton.dart';
+import '../../../core/widgets/focused_search_chrome.dart';
 
 enum _HistPeriodPreset { today, week, month, year, custom }
 
@@ -115,6 +116,100 @@ List<TradePurchase> _filterPurchasesBySearch(
   );
 }
 
+bool _purchaseHistoryMatchesDuePrimary(TradePurchase p) {
+  final st = p.statusEnum;
+  if (st == PurchaseStatus.paid ||
+      st == PurchaseStatus.draft ||
+      st == PurchaseStatus.cancelled ||
+      st == PurchaseStatus.deleted) {
+    return false;
+  }
+  if (st == PurchaseStatus.overdue || st == PurchaseStatus.dueSoon) {
+    return true;
+  }
+  if (p.remaining > 1e-6 &&
+      (st == PurchaseStatus.confirmed ||
+          st == PurchaseStatus.partiallyPaid ||
+          st == PurchaseStatus.saved)) {
+    return true;
+  }
+  return false;
+}
+
+void _purchaseHistorySortPurchases(List<TradePurchase> list, bool newestFirst) {
+  list.sort((a, b) {
+    if (newestFirst) {
+      final c = b.purchaseDate.compareTo(a.purchaseDate);
+      if (c != 0) return c;
+      return b.humanId.compareTo(a.humanId);
+    }
+    final c = a.purchaseDate.compareTo(b.purchaseDate);
+    if (c != 0) return c;
+    return a.humanId.compareTo(b.humanId);
+  });
+}
+
+/// Shared filter + sort pipeline for Purchase History (main screen + fullscreen search).
+List<TradePurchase> purchaseHistoryVisibleSortedForRef(
+  WidgetRef ref,
+  List<TradePurchase> items,
+  String searchQ, {
+  Set<String> pendingDeleteIds = const {},
+}) {
+  var v = items;
+  final primary = ref.read(purchaseHistoryPrimaryFilterProvider);
+  if (primary == 'due') {
+    v = v.where(_purchaseHistoryMatchesDuePrimary).toList();
+  }
+  final s = ref.read(purchaseHistorySecondaryFilterProvider);
+  if (s != null) {
+    v = v.where((p) {
+      final st = p.statusEnum;
+      switch (s) {
+        case 'pending':
+          return st == PurchaseStatus.confirmed;
+        case 'overdue':
+          return st == PurchaseStatus.overdue;
+        default:
+          return true;
+      }
+    }).toList();
+  }
+  final subSup =
+      ref.read(purchaseHistorySupplierContainsProvider)?.trim().toLowerCase();
+  final subBr =
+      ref.read(purchaseHistoryBrokerContainsProvider)?.trim().toLowerCase();
+  final pack = ref.read(purchaseHistoryPackKindFilterProvider);
+  if (!((subSup == null || subSup.isEmpty) &&
+      (subBr == null || subBr.isEmpty) &&
+      (pack == null || pack.isEmpty))) {
+    v = v.where((p) {
+      if (subSup != null && subSup.isNotEmpty) {
+        final n = (p.supplierName ?? '').toLowerCase();
+        if (!n.contains(subSup)) return false;
+      }
+      if (subBr != null && subBr.isNotEmpty) {
+        final n = (p.brokerName ?? '').toLowerCase();
+        if (!n.contains(subBr)) return false;
+      }
+      if (pack != null && pack.isNotEmpty) {
+        if (!purchaseHistoryMatchesPackKindFilter(p, pack)) return false;
+      }
+      return true;
+    }).toList();
+  }
+  if (pendingDeleteIds.isNotEmpty) {
+    v = v.where((p) => !pendingDeleteIds.contains(p.id)).toList();
+  }
+  v = _filterPurchasesBySearch(v, searchQ);
+  final out = List<TradePurchase>.of(v);
+  _purchaseHistorySortPurchases(
+    out,
+    ref.read(purchaseHistorySortNewestFirstProvider),
+  );
+  return out;
+}
+
 /// Purchase History — filters, search, swipe actions, multi-select.
 class PurchaseHomePage extends ConsumerStatefulWidget {
   const PurchaseHomePage({super.key});
@@ -125,6 +220,7 @@ class PurchaseHomePage extends ConsumerStatefulWidget {
 
 class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
   final _searchCtrl = TextEditingController();
+  final _searchFocus = FocusNode();
   final _scroll = ScrollController();
   Timer? _debounce;
   bool _selectMode = false;
@@ -226,6 +322,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
   void initState() {
     super.initState();
     _searchCtrl.addListener(_onSearchChanged);
+    _searchFocus.addListener(() => setState(() {}));
   }
 
   @override
@@ -261,6 +358,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
   void dispose() {
     _debounce?.cancel();
     _searchCtrl.dispose();
+    _searchFocus.dispose();
     _scroll.dispose();
     super.dispose();
   }
@@ -295,107 +393,16 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
     );
   }
 
-  List<TradePurchase> _withoutPendingDeletes(List<TradePurchase> all) {
-    if (_pendingDeleteIds.isEmpty) return all;
-    return all.where((p) => !_pendingDeleteIds.contains(p.id)).toList();
-  }
-
-  List<TradePurchase> _applySecondary(List<TradePurchase> all) {
-    final s = ref.read(purchaseHistorySecondaryFilterProvider);
-    if (s == null) return all;
-    return all.where((p) {
-      final st = p.statusEnum;
-      switch (s) {
-        case 'pending':
-          return st == PurchaseStatus.confirmed;
-        case 'overdue':
-          return st == PurchaseStatus.overdue;
-        default:
-          return true;
-      }
-    }).toList();
-  }
-
-  bool _matchesDuePrimary(TradePurchase p) {
-    final st = p.statusEnum;
-    if (st == PurchaseStatus.paid ||
-        st == PurchaseStatus.draft ||
-        st == PurchaseStatus.cancelled ||
-        st == PurchaseStatus.deleted) {
-      return false;
-    }
-    if (st == PurchaseStatus.overdue || st == PurchaseStatus.dueSoon) {
-      return true;
-    }
-    if (p.remaining > 1e-6 &&
-        (st == PurchaseStatus.confirmed ||
-            st == PurchaseStatus.partiallyPaid ||
-            st == PurchaseStatus.saved)) {
-      return true;
-    }
-    return false;
-  }
-
-  List<TradePurchase> _applyPrimaryClient(List<TradePurchase> all) {
-    final primary = ref.read(purchaseHistoryPrimaryFilterProvider);
-    if (primary == 'due') {
-      return all.where(_matchesDuePrimary).toList();
-    }
-    return all;
-  }
-
-  List<TradePurchase> _applyAdvanced(List<TradePurchase> all) {
-    final subSup =
-        ref.read(purchaseHistorySupplierContainsProvider)?.trim().toLowerCase();
-    final subBr =
-        ref.read(purchaseHistoryBrokerContainsProvider)?.trim().toLowerCase();
-    final pack = ref.read(purchaseHistoryPackKindFilterProvider);
-    if ((subSup == null || subSup.isEmpty) &&
-        (subBr == null || subBr.isEmpty) &&
-        (pack == null || pack.isEmpty)) {
-      return all;
-    }
-    return all.where((p) {
-      if (subSup != null && subSup.isNotEmpty) {
-        final n = (p.supplierName ?? '').toLowerCase();
-        if (!n.contains(subSup)) return false;
-      }
-      if (subBr != null && subBr.isNotEmpty) {
-        final n = (p.brokerName ?? '').toLowerCase();
-        if (!n.contains(subBr)) return false;
-      }
-      if (pack != null && pack.isNotEmpty) {
-        if (!purchaseHistoryMatchesPackKindFilter(p, pack)) return false;
-      }
-      return true;
-    }).toList();
-  }
-
-  void _sortPurchases(List<TradePurchase> list, bool newestFirst) {
-    list.sort((a, b) {
-      if (newestFirst) {
-        final c = b.purchaseDate.compareTo(a.purchaseDate);
-        if (c != 0) return c;
-        return b.humanId.compareTo(a.humanId);
-      }
-      final c = a.purchaseDate.compareTo(b.purchaseDate);
-      if (c != 0) return c;
-      return a.humanId.compareTo(b.humanId);
-    });
-  }
-
   List<TradePurchase> _buildVisibleSorted(
     List<TradePurchase> items,
     String searchQ,
   ) {
-    var v = _applyPrimaryClient(items);
-    v = _applySecondary(v);
-    v = _applyAdvanced(v);
-    v = _withoutPendingDeletes(v);
-    v = _filterPurchasesBySearch(v, searchQ);
-    final out = List<TradePurchase>.of(v);
-    _sortPurchases(out, ref.read(purchaseHistorySortNewestFirstProvider));
-    return out;
+    return purchaseHistoryVisibleSortedForRef(
+      ref,
+      items,
+      searchQ,
+      pendingDeleteIds: _pendingDeleteIds,
+    );
   }
 
   Future<void> _confirmDelete(BuildContext context, TradePurchase p) async {
@@ -730,95 +737,19 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
               data: (List<TradePurchase> items) {
                 final visible = _buildVisibleSorted(items, searchQ);
                 final showLocalWipRow = localWip != null && !_selectMode;
+                final searchActive = _searchFocus.hasFocus ||
+                    _searchCtrl.text.trim().isNotEmpty;
                 return Column(
                   children: [
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            _HistMetricPill(
-                              label: switch (_preset) {
-                                _HistPeriodPreset.today => 'Today',
-                                _HistPeriodPreset.week => 'Week',
-                                _HistPeriodPreset.month => 'Month',
-                                _HistPeriodPreset.year => 'Year',
-                                _HistPeriodPreset.custom => 'Custom',
-                              },
-                              onTap: _openPeriodPicker,
-                            ),
-                            const SizedBox(width: 6),
-                            _HistMetricPill(
-                              label: '${alerts['dueSoon'] ?? 0} Due',
-                              onTap: () => _selectPrimary('due'),
-                            ),
-                            const SizedBox(width: 6),
-                            _HistMetricPill(
-                              label: '${monthStats.purchaseCount} Purch',
-                            ),
-                            const SizedBox(width: 6),
-                            _HistMetricPill(
-                              label: monthStats.purchaseCount == 0 &&
-                                      monthStats.totalInr < 1e-6
-                                  ? '₹0 Mo'
-                                  : '${_compactInrLakh(monthStats.totalInr)} Mo',
-                            ),
-                            const SizedBox(width: 6),
-                            _HistMetricPill(
-                              label: '${alerts['overdue'] ?? 0} Overdue',
-                              onTap: () => _selectSecondary('overdue'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
-                      child: Material(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                monthStats.purchaseCount == 0 &&
-                                        monthStats.totalInr < 1e-6
-                                    ? 'No purchases in this period'
-                                    : _compactInrLakh(monthStats.totalInr),
-                                style: const TextStyle(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w900,
-                                  color: Color(0xFF0F172A),
-                                  letterSpacing: -0.3,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                formatPurchaseHistoryMonthPackLine(monthStats),
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF7C2D12),
-                                  height: 1.2,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+                      padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(
-                            flex: 82,
                             child: TextField(
                               controller: _searchCtrl,
+                              focusNode: _searchFocus,
                               decoration: const InputDecoration(
                                 hintText:
                                     'Search supplier, PUR ID, items, broker…',
@@ -836,15 +767,119 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                               ),
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            flex: 18,
-                            child: Align(
-                              alignment: Alignment.topCenter,
-                              child: IconButton.filledTonal(
-                                tooltip: 'Filters & sort',
-                                onPressed: _openMoreFilters,
-                                icon: const Icon(Icons.tune_rounded),
+                          IconButton.filledTonal(
+                            tooltip: 'Full-screen search',
+                            onPressed: () {
+                              Navigator.of(context)
+                                  .push<void>(
+                                MaterialPageRoute<void>(
+                                  fullscreenDialog: true,
+                                  builder: (ctx) =>
+                                      _PurchaseHistoryFullscreenSearchPage(
+                                    initialSearchText:
+                                        ref.read(purchaseHistorySearchProvider),
+                                  ),
+                                ),
+                              )
+                                  .then((_) {
+                                if (!mounted) return;
+                                _searchCtrl.text =
+                                    ref.read(purchaseHistorySearchProvider);
+                              });
+                            },
+                            icon: const Icon(Icons.open_in_full_rounded),
+                          ),
+                          IconButton.filledTonal(
+                            tooltip: 'Filters & sort',
+                            onPressed: _openMoreFilters,
+                            icon: const Icon(Icons.tune_rounded),
+                          ),
+                        ],
+                      ),
+                    ),
+                    CollapsibleSearchChrome(
+                      searchActive: searchActive,
+                      chrome: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(8, 0, 8, 2),
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                children: [
+                                  _HistMetricPill(
+                                    label: switch (_preset) {
+                                      _HistPeriodPreset.today => 'Today',
+                                      _HistPeriodPreset.week => 'Week',
+                                      _HistPeriodPreset.month => 'Month',
+                                      _HistPeriodPreset.year => 'Year',
+                                      _HistPeriodPreset.custom => 'Custom',
+                                    },
+                                    onTap: _openPeriodPicker,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  _HistMetricPill(
+                                    label: '${alerts['dueSoon'] ?? 0} Due',
+                                    onTap: () => _selectPrimary('due'),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  _HistMetricPill(
+                                    label: '${monthStats.purchaseCount} Purch',
+                                  ),
+                                  const SizedBox(width: 6),
+                                  _HistMetricPill(
+                                    label: monthStats.purchaseCount == 0 &&
+                                            monthStats.totalInr < 1e-6
+                                        ? '₹0 Mo'
+                                        : '${_compactInrLakh(monthStats.totalInr)} Mo',
+                                  ),
+                                  const SizedBox(width: 6),
+                                  _HistMetricPill(
+                                    label:
+                                        '${alerts['overdue'] ?? 0} Overdue',
+                                    onTap: () => _selectSecondary('overdue'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
+                            child: Material(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              child: Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      monthStats.purchaseCount == 0 &&
+                                              monthStats.totalInr < 1e-6
+                                          ? 'No purchases in this period'
+                                          : _compactInrLakh(monthStats.totalInr),
+                                      style: const TextStyle(
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.w900,
+                                        color: Color(0xFF0F172A),
+                                        letterSpacing: -0.3,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      formatPurchaseHistoryMonthPackLine(
+                                          monthStats),
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF7C2D12),
+                                        height: 1.2,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -1432,6 +1467,214 @@ class _LocalWipDraftHistoryRow extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _PurchaseHistoryFullscreenSearchPage extends ConsumerStatefulWidget {
+  const _PurchaseHistoryFullscreenSearchPage({
+    required this.initialSearchText,
+  });
+
+  final String initialSearchText;
+
+  @override
+  ConsumerState<_PurchaseHistoryFullscreenSearchPage> createState() =>
+      _PurchaseHistoryFullscreenSearchPageState();
+}
+
+class _PurchaseHistoryFullscreenSearchPageState
+    extends ConsumerState<_PurchaseHistoryFullscreenSearchPage> {
+  late final TextEditingController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = TextEditingController(text: widget.initialSearchText);
+    _c.addListener(() {
+      ref.read(purchaseHistorySearchProvider.notifier).state = _c.text.trim();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(purchaseHistorySearchProvider.notifier).state =
+          widget.initialSearchText.trim();
+    });
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  Future<void> _markPaid(BuildContext ctx, TradePurchase p) async {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    try {
+      await ref.read(hexaApiProvider).markPurchasePaid(
+            businessId: session.primaryBusiness.id,
+            purchaseId: p.id,
+          );
+      invalidatePurchaseWorkspace(ref);
+      try {
+        await ref.read(tradePurchasesListProvider.future);
+      } catch (_) {}
+      if (ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          const SnackBar(content: Text('Marked paid')),
+        );
+      }
+    } catch (e) {
+      if (!ctx.mounted) return;
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        SnackBar(
+          content: Text(
+            e is DioException
+                ? friendlyApiError(e)
+                : 'Something went wrong. Please try again.',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _confirmDelete(BuildContext ctx, TradePurchase p) async {
+    final ok = await showDialog<bool>(
+      context: ctx,
+      builder: (dCtx) => AlertDialog(
+        title: const Text('Delete purchase?'),
+        content: Text('Remove ${p.humanId}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dCtx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dCtx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !ctx.mounted) return;
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    try {
+      await ref.read(hexaApiProvider).deleteTradePurchase(
+            businessId: session.primaryBusiness.id,
+            purchaseId: p.id,
+          );
+      invalidatePurchaseWorkspace(ref);
+      ref.invalidate(tradePurchaseDetailProvider(p.id));
+      try {
+        await ref.read(tradePurchasesListProvider.future);
+      } catch (_) {}
+      if (ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          const SnackBar(content: Text('Deleted')),
+        );
+      }
+    } catch (e) {
+      if (!ctx.mounted) return;
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        SnackBar(
+          content: Text(
+            e is DioException
+                ? friendlyApiError(e)
+                : 'Something went wrong. Please try again.',
+          ),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = ref.watch(tradePurchasesParsedProvider);
+    final searchQ = ref.watch(purchaseHistorySearchProvider);
+    return FullscreenSearchShell(
+      title: 'Search purchases',
+      searchField: TextField(
+        controller: _c,
+        autofocus: true,
+        decoration: const InputDecoration(
+          hintText: 'Search supplier, PUR ID, items, broker…',
+          isDense: true,
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.all(Radius.circular(12)),
+          ),
+          prefixIcon: Icon(Icons.search_rounded, size: 22),
+          contentPadding: EdgeInsets.symmetric(vertical: 10),
+        ),
+      ),
+      body: rows.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (_, __) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              'Could not load purchases.',
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+          ),
+        ),
+        data: (items) {
+          final visible = purchaseHistoryVisibleSortedForRef(
+            ref,
+            items,
+            searchQ,
+            pendingDeleteIds: const {},
+          );
+          if (visible.isEmpty) {
+            return Center(
+              child: Text(
+                searchQ.trim().isEmpty
+                    ? 'No purchases in this view.'
+                    : 'No matches.',
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+            );
+          }
+          return ListView.separated(
+            keyboardDismissBehavior:
+                ScrollViewKeyboardDismissBehavior.onDrag,
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
+            padding: EdgeInsets.fromLTRB(
+              16,
+              8,
+              16,
+              12 + MediaQuery.viewPaddingOf(context).bottom,
+            ),
+            itemCount: visible.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 4),
+            itemBuilder: (ctx, i) {
+              final p = visible[i];
+              return _PurchaseRow(
+                p: p,
+                serial: i + 1,
+                selectMode: false,
+                selected: false,
+                onLongPress: () {},
+                onTap: () => context.push('/purchase/detail/${p.id}'),
+                onEdit: () => context.push('/purchase/edit/${p.id}'),
+                onMarkPaid: () => _markPaid(ctx, p),
+                onDelete: () => _confirmDelete(ctx, p),
+                onShare: () async {
+                  try {
+                    final biz = ref.read(invoiceBusinessProfileProvider);
+                    await sharePurchasePdf(p, biz);
+                    invalidatePurchaseWorkspace(ref);
+                  } catch (_) {}
+                },
+              );
+            },
+          );
+        },
       ),
     );
   }

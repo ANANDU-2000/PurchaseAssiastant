@@ -177,6 +177,37 @@ String formatPackagedQty({
   return '-';
 }
 
+/// Parses a nominal kg-per-bag hint from names like `SUGAR 50 KG` or `RICE 26KG`.
+final RegExp kgPerBagHintFromItemNameRe =
+    RegExp(r'(\d+(?:\.\d+)?)\s*KG\b', caseSensitive: false);
+
+double? parseKgPerBagHintFromItemName(String itemName) {
+  final m = kgPerBagHintFromItemNameRe.firstMatch(itemName.trim());
+  if (m == null) return null;
+  return double.tryParse(m.group(1)!);
+}
+
+/// When [totalBags] is zero but [totalKg] is positive (kg-only persisted lines),
+/// infer a bag count from the item name's `NN KG` hint — **display only**.
+///
+/// Returns null when inference would be misleading (no hint, bad divisor, or
+/// implied total weight diverges too far from [totalKg]).
+int? inferBagCountForKgOnlyDisplay({
+  required String itemName,
+  required double totalKg,
+  required double totalBags,
+}) {
+  if (totalBags > 1e-9) return null;
+  if (totalKg <= 1e-9) return null;
+  final kgPerBag = parseKgPerBagHintFromItemName(itemName);
+  if (kgPerBag == null || kgPerBag <= 1e-9) return null;
+  final bags = (totalKg / kgPerBag).round();
+  if (bags < 1 || bags > 1000000) return null;
+  final impliedKg = bags * kgPerBag;
+  if ((totalKg - impliedKg).abs() > totalKg * 0.15 + 1.0) return null;
+  return bags;
+}
+
 class PurchaseHistoryMonthStats {
   const PurchaseHistoryMonthStats({
     required this.purchaseCount,

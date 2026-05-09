@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
+import '../../../core/widgets/focused_search_chrome.dart';
 import '../../../core/widgets/list_skeleton.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/brokers_list_provider.dart';
@@ -369,6 +370,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   final _searchCtrl = TextEditingController();
+  final _searchFocus = FocusNode();
   Timer? _debounce;
   String _searchQuery = '';
   Map<String, dynamic>? _searchSnapshot;
@@ -398,6 +400,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
     super.initState();
     _tabController = TabController(length: 5, vsync: this);
     _tabController.addListener(_onTabChanged);
+    _searchFocus.addListener(() => setState(() {}));
   }
 
   @override
@@ -406,6 +409,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
     _tabController.removeListener(_onTabChanged);
     _debounce?.cancel();
     _searchCtrl.dispose();
+    _searchFocus.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -1082,6 +1086,9 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final searchBusy = _searchFocus.hasFocus ||
+        _searchCtrl.text.trim().isNotEmpty ||
+        _isSearching;
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 72,
@@ -1093,15 +1100,20 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
           children: [
             Text('Contacts',
                 style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-            const SizedBox(height: 2),
-            Text(
-              'Suppliers · brokers · categories · catalog types · item names.',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: tt.labelSmall?.copyWith(
-                color: cs.onSurfaceVariant,
-                fontWeight: FontWeight.w500,
-                height: 1.2,
+            CollapsibleSearchChrome(
+              searchActive: searchBusy,
+              chrome: Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  'Suppliers · brokers · categories · catalog types · item names.',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: tt.labelSmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w500,
+                    height: 1.2,
+                  ),
+                ),
               ),
             ),
           ],
@@ -1119,30 +1131,6 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
           ),
           const AppSettingsAction(),
         ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(48),
-          child: Material(
-            color: cs.surface,
-            child: DecoratedBox(
-              decoration: const BoxDecoration(
-                border:
-                    Border(bottom: BorderSide(color: HexaColors.borderSubtle)),
-              ),
-              child: TabBar(
-                controller: _tabController,
-                isScrollable: true,
-                tabAlignment: TabAlignment.start,
-                tabs: [
-                  _tabWithBadge('Suppliers', _searchCountForTab(0)),
-                  _tabWithBadge('Brokers', _searchCountForTab(1)),
-                  _tabWithBadge('Categories', _searchCountForTab(2)),
-                  _tabWithBadge('Types', _searchCountForTab(3)),
-                  _tabWithBadge('Items', _searchCountForTab(4)),
-                ],
-              ),
-            ),
-          ),
-        ),
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1151,6 +1139,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
             child: TextField(
               controller: _searchCtrl,
+              focusNode: _searchFocus,
               onChanged: _scheduleSearch,
               decoration: InputDecoration(
                 hintText: 'Search (name, phone, type…) — 1+ characters',
@@ -1174,7 +1163,31 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
               ),
             ),
           ),
-          _contactsHubCountsStrip(),
+          Material(
+            color: cs.surface,
+            child: DecoratedBox(
+              decoration: const BoxDecoration(
+                border:
+                    Border(bottom: BorderSide(color: HexaColors.borderSubtle)),
+              ),
+              child: TabBar(
+                controller: _tabController,
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
+                tabs: [
+                  _tabWithBadge('Suppliers', _searchCountForTab(0)),
+                  _tabWithBadge('Brokers', _searchCountForTab(1)),
+                  _tabWithBadge('Categories', _searchCountForTab(2)),
+                  _tabWithBadge('Types', _searchCountForTab(3)),
+                  _tabWithBadge('Items', _searchCountForTab(4)),
+                ],
+              ),
+            ),
+          ),
+          CollapsibleSearchChrome(
+            searchActive: searchBusy,
+            chrome: _contactsHubCountsStrip(),
+          ),
           Expanded(
             child: _isSearching
                 ? (_searchLoading

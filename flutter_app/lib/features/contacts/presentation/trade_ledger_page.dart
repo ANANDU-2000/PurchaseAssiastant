@@ -19,6 +19,7 @@ import '../../../core/services/item_statement_pdf.dart';
 import '../../../core/services/supplier_statement_pdf.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/utils/line_display.dart';
+import '../../../core/widgets/focused_search_chrome.dart';
 import '../../../core/utils/trade_purchase_commission.dart';
 import '../../../core/utils/trade_purchase_rate_display.dart';
 import '../../../shared/widgets/hexa_empty_state.dart';
@@ -50,6 +51,7 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
   String? _error;
   List<TradePurchase> _rows = const [];
   final _searchCtrl = TextEditingController();
+  final _ledgerSearchFocus = FocusNode();
 
   late DateTime _to;
   late DateTime _from;
@@ -62,12 +64,14 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
     _to = n;
     _from = _dOnly(DateTime(2020));
     _searchCtrl.addListener(() => setState(() {}));
+    _ledgerSearchFocus.addListener(() => setState(() {}));
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   @override
   void dispose() {
     _searchCtrl.dispose();
+    _ledgerSearchFocus.dispose();
     super.dispose();
   }
 
@@ -463,18 +467,40 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
                         parent: BouncingScrollPhysics()),
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                     children: [
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(14),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                entityTitle,
-                                style: tt.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
+                      TextField(
+                        controller: _searchCtrl,
+                        focusNode: _ledgerSearchFocus,
+                        decoration: const InputDecoration(
+                          hintText:
+                              'Search invoice, item, supplier, date (e.g. Apr)…',
+                          filled: true,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.all(Radius.circular(12)),
+                          ),
+                          isDense: true,
+                          prefixIcon: Icon(Icons.search_rounded, size: 20),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      CollapsibleSearchChrome(
+                        searchActive: _ledgerSearchFocus.hasFocus ||
+                            _searchCtrl.text.trim().isNotEmpty,
+                        chrome: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(14),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      entityTitle,
+                                      style: tt.titleMedium?.copyWith(
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
                               if (widget.kind == TradeLedgerKind.catalogItem &&
                                   itemAsync != null)
                                 itemAsync.when(
@@ -639,18 +665,7 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
                             ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _searchCtrl,
-                        decoration: const InputDecoration(
-                          hintText:
-                              'Search invoice, item, supplier, date (e.g. Apr)…',
-                          filled: true,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.all(Radius.circular(12)),
-                          ),
-                          isDense: true,
-                          prefixIcon: Icon(Icons.search_rounded, size: 20),
+                          ],
                         ),
                       ),
                       const SizedBox(height: 12),

@@ -10,13 +10,33 @@ import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/router/navigation_ext.dart';
 import '../../../core/utils/line_display.dart';
+import '../../../core/widgets/focused_search_chrome.dart';
 import '../../purchase/providers/trade_purchase_detail_provider.dart';
 import '../../purchase/state/purchase_providers.dart';
 
-class ItemHistoryPage extends ConsumerWidget {
+class ItemHistoryPage extends ConsumerStatefulWidget {
   const ItemHistoryPage({super.key, required this.catalogItemId});
 
   final String catalogItemId;
+
+  @override
+  ConsumerState<ItemHistoryPage> createState() => _ItemHistoryPageState();
+}
+
+class _ItemHistoryPageState extends ConsumerState<ItemHistoryPage> {
+  final _searchFocus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _searchFocus.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _searchFocus.dispose();
+    super.dispose();
+  }
 
   String _kg(num n) => NumberFormat('#,##,##0.##', 'en_IN').format(n);
 
@@ -26,11 +46,11 @@ class ItemHistoryPage extends ConsumerWidget {
         decimalDigits: n % 1 == 0 ? 0 : 2,
       ).format(n);
 
-  String _qty(num n) => n % 1 == 0 ? n.toInt().toString() : n.toStringAsFixed(2);
+  String _qty(num n) =>
+      n % 1 == 0 ? n.toInt().toString() : n.toStringAsFixed(2);
 
   Widget _rowCard(
     BuildContext context,
-    WidgetRef ref,
     LedgerLineRow row,
     DateFormat fmt,
   ) {
@@ -50,12 +70,13 @@ class ItemHistoryPage extends ConsumerWidget {
                     totalWeightKg: row.kg > 1e-9 ? row.kg : null,
                     kgPerUnit: null,
                   );
-    final rateSuffix = (row.unit.trim().toLowerCase() == 'kg' || row.kg > 1e-9)
-        ? '/kg'
-        : '/${row.unit.trim().isEmpty ? 'unit' : row.unit.trim()}';
+    final rateSuffix =
+        (row.unit.trim().toLowerCase() == 'kg' || row.kg > 1e-9)
+            ? '/kg'
+            : '/${row.unit.trim().isEmpty ? 'unit' : row.unit.trim()}';
     return InkWell(
       onTap: () => context.push('/purchase/detail/${row.purchaseId}'),
-      onLongPress: () => _openRowActions(context, ref, row),
+      onLongPress: () => _openRowActions(context, row),
       borderRadius: BorderRadius.circular(14),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -131,7 +152,10 @@ class ItemHistoryPage extends ConsumerWidget {
     );
   }
 
-  Future<void> _openRowActions(BuildContext context, WidgetRef ref, LedgerLineRow row) async {
+  Future<void> _openRowActions(
+    BuildContext context,
+    LedgerLineRow row,
+  ) async {
     if (!context.mounted) return;
     final action = await showModalBottomSheet<String>(
       context: context,
@@ -149,8 +173,10 @@ class ItemHistoryPage extends ConsumerWidget {
                 onTap: () => ctx.pop('edit'),
               ),
               ListTile(
-                leading: Icon(Icons.delete_outline, color: Theme.of(ctx).colorScheme.error),
-                title: Text('Delete', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+                leading: Icon(Icons.delete_outline,
+                    color: Theme.of(ctx).colorScheme.error),
+                title: Text('Delete',
+                    style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
                 onTap: () => ctx.pop('delete'),
               ),
             ],
@@ -170,8 +196,10 @@ class ItemHistoryPage extends ConsumerWidget {
         title: const Text('Delete purchase?'),
         content: Text('Remove bill ${row.humanId ?? row.purchaseId}?'),
         actions: [
-          TextButton(onPressed: () => ctx.pop(false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => ctx.pop(true), child: const Text('Delete')),
+          TextButton(
+              onPressed: () => ctx.pop(false), child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => ctx.pop(true), child: const Text('Delete')),
         ],
       ),
     );
@@ -185,13 +213,17 @@ class ItemHistoryPage extends ConsumerWidget {
           );
       invalidatePurchaseWorkspace(ref);
       ref.invalidate(tradePurchaseDetailProvider(row.purchaseId));
-      ref.invalidate(itemHistoryLinesProvider(catalogItemId));
+      ref.invalidate(itemHistoryLinesProvider(widget.catalogItemId));
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Deleted')));
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e is DioException ? friendlyApiError(e) : 'Could not delete')),
+        SnackBar(
+            content: Text(e is DioException
+                ? friendlyApiError(e)
+                : 'Could not delete')),
       );
     }
   }
@@ -233,14 +265,19 @@ class ItemHistoryPage extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(itemHistoryLinesProvider(catalogItemId));
-    final itemAsync = ref.watch(catalogItemDetailProvider(catalogItemId));
+  Widget build(BuildContext context) {
+    final state = ref.watch(itemHistoryLinesProvider(widget.catalogItemId));
+    final itemAsync = ref.watch(catalogItemDetailProvider(widget.catalogItemId));
     final fmt = DateFormat.yMMMd();
-    final notifier = ref.read(itemHistoryLinesProvider(catalogItemId).notifier);
+    final notifier =
+        ref.read(itemHistoryLinesProvider(widget.catalogItemId).notifier);
 
-    final showLoadMore =
-        !state.loadingInitial && (state.canRevealMoreLocally || !state.exhausted);
+    final showLoadMore = !state.loadingInitial &&
+        (state.canRevealMoreLocally || !state.exhausted);
+
+    final searchActive = _searchFocus.hasFocus ||
+        state.searchTyping.trim().isNotEmpty ||
+        state.searchEffective.trim().isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -263,22 +300,8 @@ class ItemHistoryPage extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              itemAsync.maybeWhen(
-                data: (m) {
-                  final name = m['name']?.toString().trim() ?? 'Item';
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      name,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w900,
-                          ),
-                    ),
-                  );
-                },
-                orElse: () => const SizedBox.shrink(),
-              ),
               TextField(
+                focusNode: _searchFocus,
                 decoration: const InputDecoration(
                   hintText: 'Search supplier, invoice (PUR-…), id…',
                   isDense: true,
@@ -288,15 +311,41 @@ class ItemHistoryPage extends ConsumerWidget {
                 onChanged: notifier.setSearchTyping,
               ),
               const SizedBox(height: 12),
+              CollapsibleSearchChrome(
+                searchActive: searchActive,
+                chrome: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    itemAsync.maybeWhen(
+                      data: (m) {
+                        final name = m['name']?.toString().trim() ?? 'Item';
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            name,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w900),
+                          ),
+                        );
+                      },
+                      orElse: () => const SizedBox.shrink(),
+                    ),
+                    _metrics(context, state),
+                  ],
+                ),
+              ),
               if (state.errorMessage != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Text(
                     state.errorMessage!,
-                    style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    style:
+                        TextStyle(color: Theme.of(context).colorScheme.error),
                   ),
                 ),
-              _metrics(context, state),
               if (state.loadingInitial && state.rows.isEmpty)
                 const Expanded(child: Center(child: CircularProgressIndicator()))
               else ...[
@@ -305,9 +354,13 @@ class ItemHistoryPage extends ConsumerWidget {
                       ? const Center(child: Text('No matching lines'))
                       : ListView.separated(
                           itemCount: state.visibleRows().length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 8),
-                          itemBuilder: (ctx, i) =>
-                              _rowCard(context, ref, state.visibleRows()[i], fmt),
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 8),
+                          itemBuilder: (ctx, i) => _rowCard(
+                            context,
+                            state.visibleRows()[i],
+                            fmt,
+                          ),
                         ),
                 ),
                 if (showLoadMore)
@@ -322,10 +375,12 @@ class ItemHistoryPage extends ConsumerWidget {
                             ? const SizedBox(
                                 width: 18,
                                 height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2),
                               )
                             : const Icon(Icons.expand_more_rounded),
-                        label: Text(state.loadingMore ? 'Loading…' : 'Load more'),
+                        label: Text(
+                            state.loadingMore ? 'Loading…' : 'Load more'),
                       ),
                     ),
                   ),

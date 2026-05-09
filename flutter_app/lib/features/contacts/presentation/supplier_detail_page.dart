@@ -13,6 +13,7 @@ import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/providers/purchase_prefill_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
+import '../../../core/widgets/focused_search_chrome.dart';
 import '../../../shared/widgets/hexa_empty_state.dart';
 import '../../../shared/widgets/trade_purchase_ledger_cards.dart';
 import 'supplier_create_wizard_page.dart';
@@ -58,6 +59,7 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
   /// PUR bills in the selected date range (trade flow only; legacy entries removed)
   List<TradePurchase> _trades = const [];
   final _searchCtrl = TextEditingController();
+  final _supplierSearchFocus = FocusNode();
   /// Matches ENTRY date chips: This Month / 3 Months / 6 Months / All
   String _dateChip = '3 Months';
 
@@ -68,11 +70,13 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
     _to = n;
     _from = n.subtract(const Duration(days: 89));
     WidgetsBinding.instance.addPostFrameCallback((_) => _reload());
+    _supplierSearchFocus.addListener(() => setState(() {}));
   }
 
   @override
   void dispose() {
     _searchCtrl.dispose();
+    _supplierSearchFocus.dispose();
     super.dispose();
   }
 
@@ -326,7 +330,33 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 88),
               children: [
                 const SizedBox(height: 8),
-                Card(
+                TextField(
+                  controller: _searchCtrl,
+                  focusNode: _supplierSearchFocus,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    hintText: 'Search by invoice, item…',
+                    prefixIcon: const Icon(Icons.search, size: 20),
+                    filled: true,
+                    fillColor:
+                        cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                        vertical: 10, horizontal: 12),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                CollapsibleSearchChrome(
+                  searchActive: _supplierSearchFocus.hasFocus ||
+                      _searchCtrl.text.trim().isNotEmpty,
+                  chrome: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Card(
                   margin: EdgeInsets.zero,
                   child: Padding(
                     padding: const EdgeInsets.all(14),
@@ -554,24 +584,10 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                   '${fmt.format(_from)} – ${fmt.format(_to)}',
                   style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
                 ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _searchCtrl,
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                    hintText: 'Search by invoice, item…',
-                    prefixIcon: const Icon(Icons.search, size: 20),
-                    filled: true,
-                    fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.5),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                        vertical: 10, horizontal: 12),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 if (filtered && shown.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),

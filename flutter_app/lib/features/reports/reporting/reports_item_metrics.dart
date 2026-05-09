@@ -14,8 +14,18 @@ String reportQtySummaryBoldLine(TradeReportItemRow r) {
   if (r.bags > 1e-9) {
     parts.add(formatPackagedQty(unit: 'bag', pieces: r.bags, kg: r.kg));
   } else if (r.kg > 1e-9) {
-    // Loose-kg rows (rare in Items tab): show kg only.
-    parts.add(formatPackagedQty(unit: 'kg', pieces: r.kg));
+    final inferred = inferBagCountForKgOnlyDisplay(
+      itemName: r.name,
+      totalKg: r.kg,
+      totalBags: r.bags,
+    );
+    if (inferred != null) {
+      parts.add(
+        formatPackagedQty(unit: 'bag', pieces: inferred.toDouble(), kg: r.kg),
+      );
+    } else {
+      parts.add(formatPackagedQty(unit: 'kg', pieces: r.kg));
+    }
   }
   if (r.boxes > 1e-9) {
     parts.add(formatPackagedQty(unit: 'box', pieces: r.boxes));

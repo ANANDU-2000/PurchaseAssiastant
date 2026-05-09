@@ -7,6 +7,8 @@ import '../../../core/json_coerce.dart';
 import '../../../core/providers/home_breakdown_tab_providers.dart';
 import '../../../core/providers/home_dashboard_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/utils/line_display.dart';
+import '../../../core/widgets/focused_search_chrome.dart';
 import '../home_pack_unit_word.dart';
 
 String _inr(num n) =>
@@ -16,13 +18,25 @@ String _inr(num n) =>
 String _fmtQty(double q) =>
     q == q.roundToDouble() ? q.round().toString() : q.toStringAsFixed(1);
 
-String _itemUpperQtyLine(Map<String, dynamic> m) {
+String _itemUpperQtyLine(Map<String, dynamic> m, {String? itemTitle}) {
   final tb = coerceToDouble(m['total_bags']);
   final txb = coerceToDouble(m['total_boxes']);
   final ttn = coerceToDouble(m['total_tins']);
   final tkg = coerceToDouble(m['total_kg']);
   final parts = <String>[];
-  if (tb > 0) parts.add('${_fmtQty(tb)} ${homePackUnitWord('BAG', tb)}');
+  if (tb > 0) {
+    parts.add('${_fmtQty(tb)} ${homePackUnitWord('BAG', tb)}');
+  } else if (itemTitle != null && itemTitle.trim().isNotEmpty) {
+    final inferred = inferBagCountForKgOnlyDisplay(
+      itemName: itemTitle,
+      totalKg: tkg,
+      totalBags: tb,
+    );
+    if (inferred != null) {
+      final ib = inferred.toDouble();
+      parts.add('${_fmtQty(ib)} ${homePackUnitWord('BAG', ib)}');
+    }
+  }
   if (txb > 0) parts.add('${_fmtQty(txb)} ${homePackUnitWord('BOX', txb)}');
   if (ttn > 0) parts.add('${_fmtQty(ttn)} ${homePackUnitWord('TIN', ttn)}');
   if (tkg > 0) parts.add('${_fmtQty(tkg)} KG');
@@ -105,9 +119,28 @@ String _dashboardUnitsLineFromTotals({
   return (bags: bags, boxes: boxes, tins: tins, kg: kg);
 }
 
-class HomeBreakdownListPage extends ConsumerWidget {
+bool _breakdownRowMatchesQuery({
+  required String title,
+  required String qtyLine,
+  required String query,
+}) {
+  final q = query.trim().toLowerCase();
+  if (q.isEmpty) return true;
+  return title.toLowerCase().contains(q) || qtyLine.toLowerCase().contains(q);
+}
+
+class HomeBreakdownListPage extends ConsumerStatefulWidget {
   const HomeBreakdownListPage({super.key, required this.tab});
   final HomeBreakdownTab tab;
+
+  @override
+  ConsumerState<HomeBreakdownListPage> createState() =>
+      _HomeBreakdownListPageState();
+}
+
+class _HomeBreakdownListPageState extends ConsumerState<HomeBreakdownListPage> {
+  final _breakdownSearchCtrl = TextEditingController();
+  final _breakdownSearchFocus = FocusNode();
 
   static const _dotColors = <Color>[
     Color(0xFF0D9488),
@@ -121,7 +154,27 @@ class HomeBreakdownListPage extends ConsumerWidget {
   ];
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  void initState() {
+    super.initState();
+    _breakdownSearchCtrl.addListener(() => setState(() {}));
+    _breakdownSearchFocus.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _breakdownSearchCtrl.dispose();
+    _breakdownSearchFocus.dispose();
+    super.dispose();
+  }
+
+  bool get _breakdownSearchActive =>
+      _breakdownSearchFocus.hasFocus ||
+      _breakdownSearchCtrl.text.trim().isNotEmpty;
+
+  @override
+  Widget build(BuildContext context) {
+    final tab = widget.tab;
+    final ref = this.ref;
     final title = 'All — ${tab.label}';
     final asyncDash = ref.watch(homeDashboardDataProvider);
     final peekDash = ref.watch(homeDashboardSyncCacheProvider);
@@ -155,6 +208,7 @@ class HomeBreakdownListPage extends ConsumerWidget {
                 ..sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
               return _buildScroll(
                 header: _totalHeader(dashboard),
+                showBreakdownSearch: false,
                 children: [
                   for (var i = 0; i < rows.length; i++)
                     _rowCategory(context, rows[i], i),
@@ -185,12 +239,47 @@ class HomeBreakdownListPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildScroll({Widget? header, required List<Widget> children}) {
+  Widget _buildScroll({
+    Widget? header,
+    required List<Widget> children,
+    bool showBreakdownSearch = false,
+  }) {
+    final searchField = TextField(
+      controller: _breakdownSearchCtrl,
+      focusNode: _breakdownSearchFocus,
+      decoration: InputDecoration(
+        hintText: 'Search title or quantity…',
+        isDense: true,
+        prefixIcon: const Icon(Icons.search_rounded, size: 22),
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: HexaColors.brandBorder),
+        ),
+        suffixIcon: _breakdownSearchCtrl.text.isEmpty
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.clear_rounded),
+                onPressed: () {
+                  _breakdownSearchCtrl.clear();
+                  setState(() {});
+                },
+              ),
+      ),
+    );
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
       children: [
+        if (showBreakdownSearch) ...[
+          searchField,
+          const SizedBox(height: 10),
+        ],
         if (header != null) ...[
-          header,
+          CollapsibleSearchChrome(
+            searchActive: showBreakdownSearch && _breakdownSearchActive,
+            chrome: header,
+          ),
           const SizedBox(height: 10),
         ],
         ...children,
@@ -299,11 +388,24 @@ class HomeBreakdownListPage extends ConsumerWidget {
         final pc = coerceToDouble(c['total_purchase']);
         return pc.compareTo(pa);
       });
+    final q = _breakdownSearchCtrl.text;
+    final filtered = rows.where((a) {
+      final typ = a['type_name']?.toString().trim() ?? '';
+      final title = typ.isNotEmpty
+          ? typ
+          : (a['category_name']?.toString() ?? '—');
+      return _breakdownRowMatchesQuery(
+        title: title,
+        qtyLine: _itemUpperQtyLine(a),
+        query: q,
+      );
+    }).toList();
     return _buildScroll(
       header: dashboard == null ? null : _totalHeader(dashboard, unitsOverride),
+      showBreakdownSearch: true,
       children: [
-        for (var i = 0; i < rows.length; i++)
-          _rowSub(context, rows[i], i),
+        for (var i = 0; i < filtered.length; i++)
+          _rowSub(context, filtered[i], i),
       ],
     );
   }
@@ -336,11 +438,21 @@ class HomeBreakdownListPage extends ConsumerWidget {
         final pc = coerceToDouble(c['total_purchase']);
         return pc.compareTo(pa);
       });
+    final q = _breakdownSearchCtrl.text;
+    final filtered = rows.where((a) {
+      final name = a['supplier_name']?.toString() ?? '—';
+      return _breakdownRowMatchesQuery(
+        title: name,
+        qtyLine: _itemUpperQtyLine(a),
+        query: q,
+      );
+    }).toList();
     return _buildScroll(
       header: dashboard == null ? null : _totalHeader(dashboard, unitsOverride),
+      showBreakdownSearch: true,
       children: [
-        for (var i = 0; i < rows.length; i++)
-          _rowSup(context, rows[i], i),
+        for (var i = 0; i < filtered.length; i++)
+          _rowSup(context, filtered[i], i),
       ],
     );
   }
@@ -375,11 +487,21 @@ class HomeBreakdownListPage extends ConsumerWidget {
         final pc = coerceToDouble(c['total_purchase']);
         return pc.compareTo(pa);
       });
+    final q = _breakdownSearchCtrl.text;
+    final filtered = rows.where((a) {
+      final name = a['item_name']?.toString() ?? '—';
+      return _breakdownRowMatchesQuery(
+        title: name,
+        qtyLine: _itemUpperQtyLine(a, itemTitle: name),
+        query: q,
+      );
+    }).toList();
     return _buildScroll(
       header: dashboard == null ? null : _totalHeader(dashboard, unitsOverride),
+      showBreakdownSearch: true,
       children: [
-        for (var i = 0; i < rows.length; i++)
-          _rowItem(context, rows[i], i),
+        for (var i = 0; i < filtered.length; i++)
+          _rowItem(context, filtered[i], i),
       ],
     );
   }
@@ -387,7 +509,7 @@ class HomeBreakdownListPage extends ConsumerWidget {
   Widget _rowItem(BuildContext context, Map<String, dynamic> r, int index) {
     final name = r['item_name']?.toString() ?? '—';
     final amt = coerceToDouble(r['total_purchase']);
-    final bold = _itemUpperQtyLine(r);
+    final bold = _itemUpperQtyLine(r, itemTitle: name);
     final dot = _dotColors[index % _dotColors.length];
     return _breakdownTile(
       dot: dot,
