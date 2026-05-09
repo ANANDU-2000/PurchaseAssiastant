@@ -27,6 +27,7 @@ import '../../../core/providers/home_dashboard_provider.dart';
 import '../../../core/providers/maintenance_payment_provider.dart';
 import '../../../widgets/spend_ring_chart.dart';
 import 'maintenance_home_card.dart';
+import 'home_spend_ring_diameter.dart';
 import '../home_pack_unit_word.dart';
 
 String _inr(num n) =>
@@ -994,10 +995,10 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
         const SizedBox(height: 2),
         LayoutBuilder(
           builder: (context, c) {
-            final screenH = MediaQuery.sizeOf(context).height;
-            final maxRing = math.min(screenH * 0.34, 220.0);
-            final previewSide =
-                math.min(maxRing, math.min(200.0, c.maxWidth * 0.82));
+            final previewSide = computeHomeSpendRingDiameter(
+              screenHeight: MediaQuery.sizeOf(context).height,
+              layoutMaxWidth: c.maxWidth,
+            );
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4),
               child: _ring(context, tab, shell, peekShell, rc, previewSide),
