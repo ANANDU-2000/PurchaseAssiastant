@@ -152,7 +152,8 @@ def _match_condition(
     cond: dict[str, Any],
 ) -> bool:
     any_tokens = [str(x).upper() for x in (cond.get("contains_any") or [])]
-    if any_tokens and not any(t in upper_name for t in any_tokens):
+    compact_name = upper_name.replace(" ", "")
+    if any_tokens and not any(t in upper_name or t.replace(" ", "") in compact_name for t in any_tokens):
         return False
     excludes = [str(x).upper() for x in (cond.get("excludes_any") or [])]
     if excludes and any(t in upper_name for t in excludes):
@@ -275,8 +276,33 @@ def resolve_for_catalog_item(
     """Prefer persisted ``catalog_items`` smart fields; fall back to ``resolve_from_text``."""
     name = (item.name if item is not None else None) or item_name
     cat = category_name
+    text_res = resolve_from_text(name, category_name=cat, brand_detected=brand_detected)
     if item is not None and (item.selling_unit or "").strip():
         su = item.selling_unit.strip().upper()
+        validation_status = (getattr(item, "validation_status", None) or "").strip().lower()
+        smart_source = (getattr(item, "smart_classification", None) or "").strip().lower()
+        row_is_verified = validation_status == "unit_profile_verified" or smart_source.startswith("master_item_profiles")
+        # Old production rows may have persisted PCS/PIECE from raw imports. If a
+        # high-confidence rule resolves the package differently and the row has
+        # not been verified by the canonical profile migration, prefer the rule.
+        if (
+            not row_is_verified
+            and su in {"PCS", "PIECE"}
+            and text_res.selling_unit != su
+            and text_res.confidence >= Decimal("80")
+        ):
+            return UnitResolution(
+                selling_unit=text_res.selling_unit,
+                stock_unit=text_res.stock_unit,
+                display_unit=text_res.display_unit,
+                package_type=text_res.package_type,
+                package_size=text_res.package_size,
+                package_measurement=text_res.package_measurement,
+                conversion_factor=text_res.conversion_factor,
+                confidence=text_res.confidence,
+                rule_id=(text_res.rule_id or "text_rule") + "+override_unverified_row",
+                canonical_unit_type=text_res.canonical_unit_type or text_res.selling_unit,
+            )
         size = item.package_size
         meas = (item.package_measurement or "").upper() or None
         pt = (item.package_type or "").upper() if item.package_type else None
@@ -297,7 +323,6 @@ def resolve_for_catalog_item(
             canonical_unit_type=su,
         )
 
-    text_res = resolve_from_text(name, category_name=cat, brand_detected=brand_detected)
     if item is not None and item.default_kg_per_bag and text_res.selling_unit == "BAG":
         kpb = item.default_kg_per_bag
         return UnitResolution(

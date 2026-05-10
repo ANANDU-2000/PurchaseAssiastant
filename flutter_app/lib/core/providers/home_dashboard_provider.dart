@@ -564,7 +564,11 @@ Future<HomeDashboardPayload> _homeDashboardPullFresh({
 
   List<ConnectivityResult> reachability;
   try {
-    reachability = await Connectivity().checkConnectivity();
+    reachability = await Connectivity()
+        .checkConnectivity()
+        .timeout(const Duration(seconds: 3));
+  } on TimeoutException {
+    reachability = const <ConnectivityResult>[ConnectivityResult.other];
   } catch (_) {
     reachability = const <ConnectivityResult>[ConnectivityResult.other];
   }

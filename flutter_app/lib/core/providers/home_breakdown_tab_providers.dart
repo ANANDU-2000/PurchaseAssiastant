@@ -118,6 +118,12 @@ void bustHomeShellReportsInflight() {
 
 const _shellEachTimeout = Duration(seconds: 28);
 
+/// connectivity_plus can hang on some devices; never block shell forever.
+const _connectivityTimeout = Duration(seconds: 3);
+
+/// Hard cap so [work] always completes (releases [_shellInflight]).
+const _shellWorkHardTimeout = Duration(seconds: 42);
+
 Future<List<Map<String, dynamic>>> _fetchShellList(
   Future<List<Map<String, dynamic>>> Function() fn,
 ) async {
@@ -144,13 +150,18 @@ final homeShellReportsProvider =
   final dedupeKey = '$bid|${q.from}|${q.to}';
 
   Future<HomeShellReportsBundle> work() async {
+    Future<HomeShellReportsBundle> guarded() async {
     final cachedRaw =
         OfflineStore.getCachedHomeShellReports(bid, q.from, q.to);
     // connectivity_plus can throw or misbehave on some browsers; never fail
     // the whole Home shell — assume online and fall back to cache on fetch errors.
     List<ConnectivityResult> reachability;
     try {
-      reachability = await Connectivity().checkConnectivity();
+      reachability = await Connectivity()
+          .checkConnectivity()
+          .timeout(_connectivityTimeout);
+    } on TimeoutException {
+      reachability = const <ConnectivityResult>[ConnectivityResult.other];
     } catch (_) {
       reachability = const <ConnectivityResult>[ConnectivityResult.other];
     }
@@ -198,6 +209,15 @@ final homeShellReportsProvider =
     } on DioException {
       return _homeShellFromHive(cachedRaw);
     } catch (_) {
+      return _homeShellFromHive(cachedRaw);
+    }
+    }
+
+    try {
+      return await guarded().timeout(_shellWorkHardTimeout);
+    } on TimeoutException {
+      final cachedRaw =
+          OfflineStore.getCachedHomeShellReports(bid, q.from, q.to);
       return _homeShellFromHive(cachedRaw);
     }
   }

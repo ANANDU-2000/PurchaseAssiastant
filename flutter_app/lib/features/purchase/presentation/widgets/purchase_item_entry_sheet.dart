@@ -12,6 +12,7 @@ import '../../../../core/models/trade_purchase_models.dart';
 import '../../../../core/strict_decimal.dart';
 import '../../../../core/theme/hexa_colors.dart';
 import '../../../../core/units/dynamic_unit_label_engine.dart' as unit_lbl;
+import '../../../../core/units/resolved_item_unit_context.dart';
 import '../../../../core/utils/line_display.dart';
 import '../../../../core/utils/unit_classifier.dart';
 import '../../../../shared/widgets/inline_search_field.dart';
@@ -432,12 +433,34 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     );
   }
 
+  ResolvedItemUnitContext _resolvedUnitContext() {
+    final row = _rowForClassification();
+    return resolveItemUnitContext(
+      itemName: _itemCtrl.text.trim(),
+      currentLineUnit: _unitCtrl.text,
+      catalogRow: row,
+      fallbackClassification: _activeClassification(),
+    );
+  }
+
   String _wireUnitFromClassification({
     required UnitClassification c,
     required Map<String, dynamic>? row,
     required double? kpbD,
     required String displayName,
   }) {
+    final resolved = resolveItemUnitContext(
+      itemName: displayName,
+      currentLineUnit: row?['default_purchase_unit']?.toString() ??
+          row?['default_unit']?.toString() ??
+          '',
+      catalogRow: row,
+      fallbackClassification: c,
+    );
+    if (resolved.unitConfidence >= 60 &&
+        const {'bag', 'box', 'tin', 'kg', 'pcs'}.contains(resolved.sellingUnit)) {
+      return resolved.sellingUnit == 'pcs' ? 'pcs' : resolved.sellingUnit;
+    }
     final dn = displayName.toUpperCase();
     switch (c.type) {
       case UnitType.weightBag:
@@ -522,10 +545,20 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     final row = _selectedCatalogItemId != null ? _catalogRowById(_selectedCatalogItemId!) : null;
     final du = (row?['default_unit']?.toString() ?? '').trim().toLowerCase();
     final c = _activeClassification();
+    final resolved = _resolvedUnitContext();
 
     // Default: keep the list short to reduce mis-taps.
     // Always include the currently selected unit (even if it isn't in the base list).
     final out = <String>{};
+
+    if (resolved.unitConfidence >= 60) {
+      out.add(resolved.sellingUnit);
+      if (resolved.sellingUnit == 'bag') out.add('kg');
+      if (resolved.sellingUnit == 'kg') out.add('bag');
+      if (resolved.sellingUnit == 'box' || resolved.sellingUnit == 'tin') {
+        out.add(resolved.sellingUnit);
+      }
+    }
 
     if (du == 'bag' || du == 'sack') {
       out.addAll(const {'bag', 'kg'});
@@ -552,8 +585,10 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       out.addAll(_unitDropdownBaseChoices);
     }
 
-    final current = _unitCtrl.text.trim().toLowerCase();
-    if (current.isNotEmpty) out.add(current == 'qtl' ? 'quintal' : current);
+    final current = normalizeUnitToken(_unitCtrl.text);
+    if (current.isNotEmpty && current != 'unit') {
+      out.add(current == 'qtl' ? 'quintal' : current);
+    }
 
     // Return ordered by our base list first, then anything else.
     final ordered = <String>[
@@ -566,7 +601,13 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   }
 
   String _unitDropdownValue() {
-    var t = _unitCtrl.text.trim().toLowerCase();
+    var t = normalizeUnitToken(_unitCtrl.text);
+    final resolved = _resolvedUnitContext();
+    if ((t == 'piece' || t == 'pcs' || t == 'unit') &&
+        resolved.unitConfidence >= 60 &&
+        resolved.sellingUnit != 'pcs') {
+      t = resolved.sellingUnit;
+    }
     if (t == 'qtl') t = 'quintal';
     if (t.isNotEmpty && !_unitDropdownBaseChoices.contains(t)) return t;
     if (_unitDropdownBaseChoices.contains(t)) return t;
@@ -629,6 +670,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         child: DropdownButtonFormField<String>(
           isExpanded: true,
           initialValue: v,
+          menuMaxHeight: 280,
           dropdownColor: HexaColors.surfaceApp,
           borderRadius: BorderRadius.circular(12),
           decoration: _deco('Unit *', errorText: errorText),
@@ -880,6 +922,10 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   }
 
   String _qtyFieldLabel() {
+    final resolved = _resolvedUnitContext();
+    if (_qtyEntryMode != 'kg' && resolved.unitConfidence >= 60) {
+      return resolved.quantityLabel;
+    }
     final u = _unitCtrl.text.trim().toLowerCase();
     if (_qtyEntryMode == 'kg' && (u == 'bag' || u == 'sack')) {
       return 'Qty (kg) *';
@@ -1714,6 +1760,10 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   }
 
   String _purchaseRateLabel(bool _) {
+    final resolved = _resolvedUnitContext();
+    if (!_showPerKgLandingLabels && resolved.unitConfidence >= 60) {
+      return resolved.purchaseRateFieldLabel;
+    }
     final sfx = unit_lbl.purchaseRateSuffix(_draftLineForLabelsOnly());
     if (widget.fullPage) {
       return 'Purchase Rate (₹/$sfx) *';
@@ -1722,6 +1772,10 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   }
 
   String _sellingRateLabel(bool _) {
+    final resolved = _resolvedUnitContext();
+    if (!_showPerKgLandingLabels && resolved.unitConfidence >= 60) {
+      return resolved.sellingRateFieldLabel;
+    }
     final sfx = unit_lbl.sellingRateSuffix(_draftLineForLabelsOnly());
     if (widget.fullPage) {
       return 'Selling Rate (₹/$sfx)';
@@ -1743,9 +1797,29 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         return du;
       }
     }
-    if (dpu != null && dpu.isNotEmpty) return dpu;
-    if (du != null && du.isNotEmpty) return du;
-    return 'kg';
+    String? pick() {
+      if (dpu != null && dpu.isNotEmpty) return dpu;
+      if (du != null && du.isNotEmpty) return du;
+      return null;
+    }
+
+    final chosen = pick() ?? 'kg';
+    final low = chosen.toLowerCase();
+    // DB/catalog often store consumer packs as `piece`; wholesale UI uses tin/box/kg.
+    if (low == 'piece' || low == 'pcs' || low == 'pieces') {
+      final nm = (row['name']?.toString() ?? '').toUpperCase();
+      if (nm.contains('TIN') || nm.contains('CAN') || nm.contains('JAR')) {
+        return 'tin';
+      }
+      if (RegExp(r'\d+\s*(GM|GRAMS?|ML|LTR|LITERS?)\b', caseSensitive: false)
+          .hasMatch(nm)) {
+        return 'tin';
+      }
+      if (nm.contains('BOX') || nm.contains('CTN') || nm.contains('CARTON')) {
+        return 'box';
+      }
+    }
+    return chosen;
   }
 
   void _recomputeModeFromUnitAndCatalog() {
