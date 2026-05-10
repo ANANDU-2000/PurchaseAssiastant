@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import String, case, cast, desc, func, literal, select
+from sqlalchemy import String, and_, case, cast, desc, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -17,9 +17,7 @@ from app.models import (
     Broker,
     BusinessGoal,
     CatalogItem,
-    CatalogVariant,
-    Entry,
-    EntryLineItem,
+    CategoryType,
     ItemCategory,
     Membership,
     Supplier,
@@ -47,38 +45,38 @@ async def analytics_summary(
     to_date: date = Query(..., alias="to"),
 ):
     del _m
-    base_filter = (
-        Entry.business_id == business_id,
-        Entry.entry_date >= from_date,
-        Entry.entry_date <= to_date,
-    )
+    tp_f = tq.trade_purchase_date_filter(business_id, from_date, to_date)
     purchase = await execute_with_retry(
         lambda: db.execute(
-            select(func.coalesce(func.sum(EntryLineItem.qty * EntryLineItem.buy_price), 0))
-            .select_from(EntryLineItem)
-            .join(Entry, Entry.id == EntryLineItem.entry_id)
-            .where(*base_filter)
+            select(func.coalesce(func.sum(tq.trade_line_amount_expr()), 0))
+            .select_from(TradePurchaseLine)
+            .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+            .where(tp_f)
         )
     )
     profit = await execute_with_retry(
         lambda: db.execute(
-            select(func.coalesce(func.sum(EntryLineItem.profit), 0))
-            .select_from(EntryLineItem)
-            .join(Entry, Entry.id == EntryLineItem.entry_id)
-            .where(*base_filter)
+            select(func.coalesce(func.sum(tq.trade_line_profit_expr()), 0))
+            .select_from(TradePurchaseLine)
+            .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+            .where(tp_f)
         )
     )
     qty = await execute_with_retry(
         lambda: db.execute(
-            select(
-                func.coalesce(func.sum(func.coalesce(EntryLineItem.qty_base, EntryLineItem.qty)), 0)
-            )
-            .select_from(EntryLineItem)
-            .join(Entry, Entry.id == EntryLineItem.entry_id)
-            .where(*base_filter)
+            select(func.coalesce(func.sum(tq.trade_line_weight_expr()), 0))
+            .select_from(TradePurchaseLine)
+            .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+            .where(tp_f)
         )
     )
-    cnt = await execute_with_retry(lambda: db.execute(select(func.count(Entry.id.distinct())).where(*base_filter)))
+    cnt = await execute_with_retry(
+        lambda: db.execute(
+            select(func.count(TradePurchase.id.distinct()))
+            .select_from(TradePurchase)
+            .where(tp_f)
+        )
+    )
     return AnalyticsSummary(
         total_purchase=float(purchase.scalar() or 0),
         total_qty_base=float(qty.scalar() or 0),
@@ -88,11 +86,7 @@ async def analytics_summary(
 
 
 def _date_filter(business_id: uuid.UUID, from_date: date, to_date: date):
-    return (
-        Entry.business_id == business_id,
-        Entry.entry_date >= from_date,
-        Entry.entry_date <= to_date,
-    )
+    return tq.trade_purchase_date_filter(business_id, from_date, to_date)
 
 
 def _profit_trend_label(p_old: float, p_new: float) -> str:
@@ -129,10 +123,10 @@ def _prior_month_mtd_window(from_date: date, to_date: date) -> tuple[date, date]
 async def _sum_profit(db: AsyncSession, business_id: uuid.UUID, from_date: date, to_date: date) -> float:
     bf = _date_filter(business_id, from_date, to_date)
     r = await db.execute(
-        select(func.coalesce(func.sum(EntryLineItem.profit), 0))
-        .select_from(EntryLineItem)
-        .join(Entry, Entry.id == EntryLineItem.entry_id)
-        .where(*bf)
+        select(func.coalesce(func.sum(tq.trade_line_profit_expr()), 0))
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .where(bf)
     )
     return float(r.scalar() or 0)
 
@@ -166,17 +160,18 @@ async def home_insights(
 ):
     del _m
     bf = _date_filter(business_id, from_date, to_date)
+    profit_expr = tq.trade_line_profit_expr()
     # Top item by total profit
     q_top = (
         select(
-            EntryLineItem.item_name,
-            func.coalesce(func.sum(EntryLineItem.profit), 0).label("tp"),
+            TradePurchaseLine.item_name,
+            func.coalesce(func.sum(profit_expr), 0).label("tp"),
         )
-        .select_from(EntryLineItem)
-        .join(Entry, Entry.id == EntryLineItem.entry_id)
-        .where(*bf)
-        .group_by(EntryLineItem.item_name)
-        .order_by(func.coalesce(func.sum(EntryLineItem.profit), 0).desc())
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .where(bf)
+        .group_by(TradePurchaseLine.item_name)
+        .order_by(func.coalesce(func.sum(profit_expr), 0).desc())
         .limit(1)
     )
     top = await db.execute(q_top)
@@ -186,14 +181,14 @@ async def home_insights(
 
     q_worst = (
         select(
-            EntryLineItem.item_name,
-            func.coalesce(func.sum(EntryLineItem.profit), 0).label("tp"),
+            TradePurchaseLine.item_name,
+            func.coalesce(func.sum(profit_expr), 0).label("tp"),
         )
-        .select_from(EntryLineItem)
-        .join(Entry, Entry.id == EntryLineItem.entry_id)
-        .where(*bf)
-        .group_by(EntryLineItem.item_name)
-        .order_by(func.coalesce(func.sum(EntryLineItem.profit), 0).asc())
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .where(bf)
+        .group_by(TradePurchaseLine.item_name)
+        .order_by(func.coalesce(func.sum(profit_expr), 0).asc())
         .limit(1)
     )
     worst = await db.execute(q_worst)
@@ -204,14 +199,14 @@ async def home_insights(
     q_best_sup = (
         select(
             Supplier.name,
-            func.coalesce(func.sum(EntryLineItem.profit), 0).label("tp"),
+            func.coalesce(func.sum(profit_expr), 0).label("tp"),
         )
-        .select_from(Entry)
-        .join(EntryLineItem, EntryLineItem.entry_id == Entry.id)
-        .join(Supplier, Supplier.id == Entry.supplier_id)
-        .where(*bf, Entry.supplier_id.isnot(None))
+        .select_from(TradePurchase)
+        .join(TradePurchaseLine, TradePurchaseLine.trade_purchase_id == TradePurchase.id)
+        .join(Supplier, Supplier.id == TradePurchase.supplier_id)
+        .where(bf, TradePurchase.supplier_id.isnot(None))
         .group_by(Supplier.id, Supplier.name)
-        .order_by(func.coalesce(func.sum(EntryLineItem.profit), 0).desc())
+        .order_by(func.coalesce(func.sum(profit_expr), 0).desc())
         .limit(1)
     )
     bs = await db.execute(q_best_sup)
@@ -228,21 +223,23 @@ async def home_insights(
         mom_pct = ((cur_profit - prev_profit) / base) * 100.0
 
     alerts: list[HomeInsightAlert] = []
-    entry_cnt = await db.execute(select(func.count(Entry.id.distinct())).where(*bf))
+    entry_cnt = await db.execute(
+        select(func.count(TradePurchase.id.distinct())).select_from(TradePurchase).where(bf)
+    )
     n_entries = int(entry_cnt.scalar() or 0)
     if n_entries == 0:
         alerts.append(
             HomeInsightAlert(
                 code="no_entries",
-                message="No purchase entries in this period yet — add one from the dashboard.",
+                message="No wholesale purchases in this period yet — add one from the dashboard.",
                 severity="info",
             )
         )
     neg = await db.execute(
-        select(func.count(EntryLineItem.id))
-        .select_from(EntryLineItem)
-        .join(Entry, Entry.id == EntryLineItem.entry_id)
-        .where(*bf, EntryLineItem.profit < 0)
+        select(func.count(TradePurchaseLine.id))
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .where(bf, profit_expr < 0)
     )
     n_neg = int(neg.scalar() or 0)
     if n_neg > 0:
@@ -291,19 +288,20 @@ async def analytics_items(
 ):
     del _m
     bf = _date_filter(business_id, from_date, to_date)
+    profit_expr = tq.trade_line_profit_expr()
     q = (
         select(
-            EntryLineItem.item_name,
-            func.coalesce(func.sum(EntryLineItem.qty), 0).label("tq"),
-            func.coalesce(func.avg(EntryLineItem.landing_cost), 0).label("al"),
-            func.coalesce(func.sum(EntryLineItem.profit), 0).label("tp"),
-            func.count(EntryLineItem.id).label("lc"),
+            TradePurchaseLine.item_name,
+            func.coalesce(func.sum(TradePurchaseLine.qty), 0).label("tq"),
+            func.coalesce(func.avg(TradePurchaseLine.landing_cost), 0).label("al"),
+            func.coalesce(func.sum(profit_expr), 0).label("tp"),
+            func.count(TradePurchaseLine.id).label("lc"),
         )
-        .select_from(EntryLineItem)
-        .join(Entry, Entry.id == EntryLineItem.entry_id)
-        .where(*bf)
-        .group_by(EntryLineItem.item_name)
-        .order_by(func.coalesce(func.sum(EntryLineItem.profit), 0).desc())
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .where(bf)
+        .group_by(TradePurchaseLine.item_name)
+        .order_by(func.coalesce(func.sum(profit_expr), 0).desc())
     )
     r = await db.execute(q)
     rows = r.all()
@@ -311,17 +309,16 @@ async def analytics_items(
     span_days = (to_date - from_date).days
     if span_days >= 1:
         mid = from_date + timedelta(days=span_days // 2)
-        profit_x = func.coalesce(EntryLineItem.profit, 0)
         q_tr = (
             select(
-                EntryLineItem.item_name,
-                func.sum(case((Entry.entry_date <= mid, profit_x), else_=0)).label("p_old"),
-                func.sum(case((Entry.entry_date > mid, profit_x), else_=0)).label("p_new"),
+                TradePurchaseLine.item_name,
+                func.sum(case((TradePurchase.purchase_date <= mid, profit_expr), else_=0)).label("p_old"),
+                func.sum(case((TradePurchase.purchase_date > mid, profit_expr), else_=0)).label("p_new"),
             )
-            .select_from(EntryLineItem)
-            .join(Entry, Entry.id == EntryLineItem.entry_id)
-            .where(*bf)
-            .group_by(EntryLineItem.item_name)
+            .select_from(TradePurchaseLine)
+            .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+            .where(bf)
+            .group_by(TradePurchaseLine.item_name)
         )
         r_tr = await db.execute(q_tr)
         for tr in r_tr.all():
@@ -355,15 +352,15 @@ async def analytics_items(
     # Best supplier / broker by summed profit per item_name
     q_sup = (
         select(
-            EntryLineItem.item_name,
+            TradePurchaseLine.item_name,
             Supplier.name,
-            func.coalesce(func.sum(EntryLineItem.profit), 0).label("sp"),
+            func.coalesce(func.sum(profit_expr), 0).label("sp"),
         )
-        .select_from(EntryLineItem)
-        .join(Entry, Entry.id == EntryLineItem.entry_id)
-        .join(Supplier, Supplier.id == Entry.supplier_id)
-        .where(*bf, Entry.supplier_id.isnot(None), EntryLineItem.item_name.in_(names))
-        .group_by(EntryLineItem.item_name, Supplier.name)
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .join(Supplier, Supplier.id == TradePurchase.supplier_id)
+        .where(bf, TradePurchase.supplier_id.isnot(None), TradePurchaseLine.item_name.in_(names))
+        .group_by(TradePurchaseLine.item_name, Supplier.name)
     )
     r_sup = await db.execute(q_sup)
     best_sup: dict[str, tuple[str, float]] = {}
@@ -375,15 +372,15 @@ async def analytics_items(
 
     q_br = (
         select(
-            EntryLineItem.item_name,
+            TradePurchaseLine.item_name,
             Broker.name,
-            func.coalesce(func.sum(EntryLineItem.profit), 0).label("bp"),
+            func.coalesce(func.sum(profit_expr), 0).label("bp"),
         )
-        .select_from(EntryLineItem)
-        .join(Entry, Entry.id == EntryLineItem.entry_id)
-        .join(Broker, Broker.id == Entry.broker_id)
-        .where(*bf, Entry.broker_id.isnot(None), EntryLineItem.item_name.in_(names))
-        .group_by(EntryLineItem.item_name, Broker.name)
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .join(Broker, Broker.id == TradePurchase.broker_id)
+        .where(bf, TradePurchase.broker_id.isnot(None), TradePurchaseLine.item_name.in_(names))
+        .group_by(TradePurchaseLine.item_name, Broker.name)
     )
     r_br = await db.execute(q_br)
     best_br: dict[str, tuple[str, float]] = {}
@@ -396,20 +393,20 @@ async def analytics_items(
     # max(uuid) is not defined on PostgreSQL < 13; aggregate text then parse in Python.
     q_meta = (
         select(
-            EntryLineItem.item_name,
+            TradePurchaseLine.item_name,
             func.max(ItemCategory.name).label("icn"),
-            func.max(EntryLineItem.category).label("lcat"),
+            literal(None).cast(String).label("lcat"),
             func.max(CatalogItem.name).label("cin"),
-            func.max(CatalogVariant.name).label("cvn"),
+            func.max(CategoryType.name).label("cvn"),
             func.max(cast(CatalogItem.category_id, String)).label("catid"),
         )
-        .select_from(EntryLineItem)
-        .join(Entry, Entry.id == EntryLineItem.entry_id)
-        .outerjoin(CatalogItem, CatalogItem.id == EntryLineItem.catalog_item_id)
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .join(CatalogItem, CatalogItem.id == TradePurchaseLine.catalog_item_id)
         .outerjoin(ItemCategory, ItemCategory.id == CatalogItem.category_id)
-        .outerjoin(CatalogVariant, CatalogVariant.id == EntryLineItem.catalog_variant_id)
-        .where(*bf, EntryLineItem.item_name.in_(names))
-        .group_by(EntryLineItem.item_name)
+        .outerjoin(CategoryType, CategoryType.id == CatalogItem.type_id)
+        .where(bf, TradePurchaseLine.item_name.in_(names))
+        .group_by(TradePurchaseLine.item_name)
     )
     r_meta = await db.execute(q_meta)
     meta_by_item: dict[str, tuple[str | None, str | None, str | None, str | None, uuid.UUID | None]] = {}
@@ -486,24 +483,25 @@ async def analytics_categories(
 ):
     del _m
     bf = _date_filter(business_id, from_date, to_date)
-    cat_key = func.coalesce(ItemCategory.name, EntryLineItem.category, literal("Uncategorized"))
-    type_key = func.coalesce(CatalogVariant.name, CatalogItem.name, literal("—"))
+    profit_expr = tq.trade_line_profit_expr()
+    cat_key = func.coalesce(ItemCategory.name, literal("Uncategorized"))
+    type_key = func.coalesce(CategoryType.name, CatalogItem.name, literal("—"))
     q = (
         select(
             cat_key.label("cat"),
             type_key.label("typ"),
-            func.coalesce(func.sum(EntryLineItem.profit), 0).label("tp"),
-            func.coalesce(func.sum(EntryLineItem.qty), 0).label("tq"),
-            func.count(EntryLineItem.id).label("lc"),
+            func.coalesce(func.sum(profit_expr), 0).label("tp"),
+            func.coalesce(func.sum(TradePurchaseLine.qty), 0).label("tq"),
+            func.count(TradePurchaseLine.id).label("lc"),
         )
-        .select_from(EntryLineItem)
-        .join(Entry, Entry.id == EntryLineItem.entry_id)
-        .outerjoin(CatalogItem, CatalogItem.id == EntryLineItem.catalog_item_id)
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .join(CatalogItem, CatalogItem.id == TradePurchaseLine.catalog_item_id)
         .outerjoin(ItemCategory, ItemCategory.id == CatalogItem.category_id)
-        .outerjoin(CatalogVariant, CatalogVariant.id == EntryLineItem.catalog_variant_id)
-        .where(*bf)
+        .outerjoin(CategoryType, CategoryType.id == CatalogItem.type_id)
+        .where(bf)
         .group_by(cat_key, type_key)
-        .order_by(desc(func.coalesce(func.sum(EntryLineItem.profit), 0)))
+        .order_by(desc(func.coalesce(func.sum(profit_expr), 0)))
     )
     r = await db.execute(q)
     cat_rows = r.all()
@@ -512,16 +510,16 @@ async def analytics_categories(
         select(
             cat_key.label("cat"),
             type_key.label("typ"),
-            EntryLineItem.item_name,
-            func.coalesce(func.sum(EntryLineItem.profit), 0).label("ip"),
+            TradePurchaseLine.item_name,
+            func.coalesce(func.sum(profit_expr), 0).label("ip"),
         )
-        .select_from(EntryLineItem)
-        .join(Entry, Entry.id == EntryLineItem.entry_id)
-        .outerjoin(CatalogItem, CatalogItem.id == EntryLineItem.catalog_item_id)
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .join(CatalogItem, CatalogItem.id == TradePurchaseLine.catalog_item_id)
         .outerjoin(ItemCategory, ItemCategory.id == CatalogItem.category_id)
-        .outerjoin(CatalogVariant, CatalogVariant.id == EntryLineItem.catalog_variant_id)
-        .where(*bf)
-        .group_by(cat_key, type_key, EntryLineItem.item_name)
+        .outerjoin(CategoryType, CategoryType.id == CatalogItem.type_id)
+        .where(bf)
+        .group_by(cat_key, type_key, TradePurchaseLine.item_name)
     )
     r2 = await db.execute(q_best)
     best_item: dict[tuple[str, str], tuple[str, float]] = {}
@@ -537,15 +535,15 @@ async def analytics_categories(
             cat_key.label("cat"),
             type_key.label("typ"),
             Supplier.name,
-            func.coalesce(func.sum(EntryLineItem.profit), 0).label("sp"),
+            func.coalesce(func.sum(profit_expr), 0).label("sp"),
         )
-        .select_from(EntryLineItem)
-        .join(Entry, Entry.id == EntryLineItem.entry_id)
-        .join(Supplier, Supplier.id == Entry.supplier_id)
-        .outerjoin(CatalogItem, CatalogItem.id == EntryLineItem.catalog_item_id)
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .join(Supplier, Supplier.id == TradePurchase.supplier_id)
+        .join(CatalogItem, CatalogItem.id == TradePurchaseLine.catalog_item_id)
         .outerjoin(ItemCategory, ItemCategory.id == CatalogItem.category_id)
-        .outerjoin(CatalogVariant, CatalogVariant.id == EntryLineItem.catalog_variant_id)
-        .where(*bf, Entry.supplier_id.isnot(None))
+        .outerjoin(CategoryType, CategoryType.id == CatalogItem.type_id)
+        .where(bf, TradePurchase.supplier_id.isnot(None))
         .group_by(cat_key, type_key, Supplier.name)
     )
     r3 = await db.execute(q_bsup)
@@ -599,21 +597,22 @@ async def analytics_suppliers(
 ):
     del _m
     bf = _date_filter(business_id, from_date, to_date)
+    profit_expr = tq.trade_line_profit_expr()
     q = (
         select(
             Supplier.id,
             Supplier.name,
-            func.count(Entry.id.distinct()).label("deals"),
-            func.coalesce(func.avg(EntryLineItem.landing_cost), 0).label("al"),
-            func.coalesce(func.sum(EntryLineItem.qty), 0).label("tq"),
-            func.coalesce(func.sum(EntryLineItem.profit), 0).label("tp"),
+            func.count(TradePurchase.id.distinct()).label("deals"),
+            func.coalesce(func.avg(TradePurchaseLine.landing_cost), 0).label("al"),
+            func.coalesce(func.sum(TradePurchaseLine.qty), 0).label("tq"),
+            func.coalesce(func.sum(profit_expr), 0).label("tp"),
         )
-        .select_from(Entry)
-        .join(EntryLineItem, EntryLineItem.entry_id == Entry.id)
-        .join(Supplier, Supplier.id == Entry.supplier_id)
-        .where(*bf, Entry.supplier_id.isnot(None))
+        .select_from(TradePurchase)
+        .join(TradePurchaseLine, TradePurchaseLine.trade_purchase_id == TradePurchase.id)
+        .join(Supplier, Supplier.id == TradePurchase.supplier_id)
+        .where(bf, TradePurchase.supplier_id.isnot(None))
         .group_by(Supplier.id, Supplier.name)
-        .order_by(func.coalesce(func.sum(EntryLineItem.profit), 0).desc())
+        .order_by(func.coalesce(func.sum(profit_expr), 0).desc())
     )
     r = await db.execute(q)
     out: list[SupplierAnalyticsRow] = []
@@ -660,29 +659,30 @@ async def analytics_supplier_items(
     to_date: date = Query(..., alias="to"),
 ):
     del _m
-    bf = (
-        *_date_filter(business_id, from_date, to_date),
-        Entry.supplier_id == supplier_id,
+    bf = and_(
+        _date_filter(business_id, from_date, to_date),
+        TradePurchase.supplier_id == supplier_id,
     )
+    profit_expr = tq.trade_line_profit_expr()
     q = (
         select(
-            EntryLineItem.item_name,
-            func.coalesce(func.sum(EntryLineItem.qty), 0).label("tq"),
-            func.coalesce(func.avg(EntryLineItem.landing_cost), 0).label("al"),
-            func.coalesce(func.sum(EntryLineItem.profit), 0).label("tp"),
+            TradePurchaseLine.item_name,
+            func.coalesce(func.sum(TradePurchaseLine.qty), 0).label("tq"),
+            func.coalesce(func.avg(TradePurchaseLine.landing_cost), 0).label("al"),
+            func.coalesce(func.sum(profit_expr), 0).label("tp"),
             func.max(ItemCategory.name).label("icn"),
-            func.max(EntryLineItem.category).label("lcat"),
-            func.max(CatalogVariant.name).label("cvn"),
+            literal(None).cast(String).label("lcat"),
+            func.max(CategoryType.name).label("cvn"),
             func.max(CatalogItem.name).label("cin"),
         )
-        .select_from(EntryLineItem)
-        .join(Entry, Entry.id == EntryLineItem.entry_id)
-        .outerjoin(CatalogItem, CatalogItem.id == EntryLineItem.catalog_item_id)
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .join(CatalogItem, CatalogItem.id == TradePurchaseLine.catalog_item_id)
         .outerjoin(ItemCategory, ItemCategory.id == CatalogItem.category_id)
-        .outerjoin(CatalogVariant, CatalogVariant.id == EntryLineItem.catalog_variant_id)
-        .where(*bf)
-        .group_by(EntryLineItem.item_name)
-        .order_by(desc(func.coalesce(func.sum(EntryLineItem.profit), 0)))
+        .outerjoin(CategoryType, CategoryType.id == CatalogItem.type_id)
+        .where(bf)
+        .group_by(TradePurchaseLine.item_name)
+        .order_by(desc(func.coalesce(func.sum(profit_expr), 0)))
     )
     r = await db.execute(q)
     out: list[SupplierItemBreakdownRow] = []
@@ -728,20 +728,38 @@ async def analytics_brokers(
 ):
     del _m
     bf = _date_filter(business_id, from_date, to_date)
+    profit_expr = tq.trade_line_profit_expr()
+    comm_sq = (
+        select(
+            TradePurchase.broker_id.label("broker_id"),
+            func.count(TradePurchase.id.distinct()).label("deals"),
+            func.coalesce(func.sum(TradePurchase.commission_money), 0).label("tc"),
+        )
+        .where(bf, TradePurchase.broker_id.isnot(None))
+        .group_by(TradePurchase.broker_id)
+    ).subquery()
+    profit_sq = (
+        select(
+            TradePurchase.broker_id.label("broker_id"),
+            func.coalesce(func.sum(profit_expr), 0).label("tp"),
+        )
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .where(bf, TradePurchase.broker_id.isnot(None))
+        .group_by(TradePurchase.broker_id)
+    ).subquery()
     q = (
         select(
             Broker.id,
             Broker.name,
-            func.count(Entry.id.distinct()).label("deals"),
-            func.coalesce(func.sum(Entry.commission_amount), 0).label("tc"),
-            func.coalesce(func.sum(EntryLineItem.profit), 0).label("tp"),
+            comm_sq.c.deals,
+            comm_sq.c.tc,
+            func.coalesce(profit_sq.c.tp, 0).label("tp"),
         )
-        .select_from(Entry)
-        .join(EntryLineItem, EntryLineItem.entry_id == Entry.id)
-        .join(Broker, Broker.id == Entry.broker_id)
-        .where(*bf, Entry.broker_id.isnot(None))
-        .group_by(Broker.id, Broker.name)
-        .order_by(func.coalesce(func.sum(EntryLineItem.profit), 0).desc())
+        .select_from(Broker)
+        .join(comm_sq, comm_sq.c.broker_id == Broker.id)
+        .outerjoin(profit_sq, profit_sq.c.broker_id == Broker.id)
+        .order_by(func.coalesce(profit_sq.c.tp, 0).desc())
     )
     r = await db.execute(q)
     out: list[BrokerAnalyticsRow] = []

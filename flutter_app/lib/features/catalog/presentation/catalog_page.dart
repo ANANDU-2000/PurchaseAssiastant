@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/router/navigation_ext.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/search/search_highlight.dart';
@@ -125,7 +126,7 @@ class _CatalogPageState extends ConsumerState<CatalogPage> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.pop(),
+          onPressed: () => context.popOrGo('/home'),
         ),
         title: const Text('Catalog'),
       ),

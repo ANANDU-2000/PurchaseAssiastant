@@ -2,10 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/navigation/open_trade_item_from_report.dart';
+import '../../../core/router/navigation_ext.dart';
 import '../../../core/providers/contacts_hub_provider.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 
@@ -36,7 +36,7 @@ class CategoryItemsPage extends ConsumerWidget {
       appBar: AppBar(
         leading: IconButton(
             icon: const Icon(Icons.arrow_back_rounded),
-            onPressed: () => context.pop()),
+            onPressed: () => context.popOrGo('/contacts')),
         title: Text(category),
       ),
       body: async.when(

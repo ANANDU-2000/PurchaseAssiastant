@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/json_coerce.dart';
 import '../../../core/navigation/open_trade_item_from_report.dart';
+import '../../../core/router/navigation_ext.dart';
 import '../../../core/providers/home_breakdown_tab_providers.dart';
 import '../../../core/providers/home_dashboard_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
@@ -195,7 +196,7 @@ class _HomeBreakdownListPageState extends ConsumerState<HomeBreakdownListPage> {
         title: Text(title),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.pop(),
+          onPressed: () => context.popOrGo('/home'),
         ),
       ),
       body: switch (tab) {

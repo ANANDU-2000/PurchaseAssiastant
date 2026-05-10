@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/catalog/item_trade_history.dart' show tradeLineToCalc;
 import '../../../core/calc_engine.dart';
 import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart'
@@ -35,16 +36,7 @@ String _qtyFmt(double q) =>
     q == q.roundToDouble() ? q.toInt().toString() : q.toStringAsFixed(2);
 
 double _lineInclusive(TradePurchaseLine l) {
-  return lineMoney(
-    TradeCalcLine(
-      qty: l.qty,
-      landingCost: l.landingCost,
-      kgPerUnit: l.kgPerUnit,
-      landingCostPerKg: l.landingCostPerKg,
-      taxPercent: l.taxPercent,
-      discountPercent: l.discount,
-    ),
-  );
+  return l.lineTotal ?? lineMoney(tradeLineToCalc(l));
 }
 
 double _lineKg(TradePurchaseLine l) {

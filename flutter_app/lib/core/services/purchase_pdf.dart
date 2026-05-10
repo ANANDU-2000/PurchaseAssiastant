@@ -125,7 +125,7 @@ Future<pw.Document> buildPurchaseReceiptDoc(
             style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
           ),
           pw.Text(
-            '  ${l.qty} ${l.unit}  ·  P ${_pdfReceiptPurchase(l)}  ·  S ${_pdfReceiptSelling(l)}  ·  ${_inrPdf(lineMoney(tradePurchaseLineToCalcLine(l)))}',
+            '  ${l.qty} ${l.unit}  ·  P ${_pdfReceiptPurchase(l)}  ·  S ${_pdfReceiptSelling(l)}  ·  ${_inrPdf(l.lineTotal ?? lineMoney(tradePurchaseLineToCalcLine(l)))}',
             style: const pw.TextStyle(fontSize: 9, color: _muted),
           ),
           pw.SizedBox(height: 6),

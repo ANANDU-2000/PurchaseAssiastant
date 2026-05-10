@@ -40,7 +40,8 @@ class ItemTradeHistoryRow {
   final String? brokerPhone;
   final TradePurchaseLine line;
 
-  double get lineTotal => lineMoney(tradeLineToCalc(line));
+  double get lineTotal =>
+      line.lineTotal ?? lineMoney(tradeLineToCalc(line));
 
   /// Display rate: ₹/kg when weight line, else ₹ per line unit.
   String rateLabel() {

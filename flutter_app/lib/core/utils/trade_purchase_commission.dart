@@ -4,6 +4,7 @@ import '../strict_decimal.dart';
 
 /// Single line rupees (tax-inclusive), same as wizard / reports line math.
 double tradePurchaseLineSumForLine(TradePurchaseLine l) {
+  if (l.lineTotal != null) return l.lineTotal!;
   return lineMoney(
     TradeCalcLine(
       qty: l.qty,

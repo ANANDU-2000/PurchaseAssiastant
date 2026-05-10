@@ -2,6 +2,16 @@ from app.models.base import Base
 from app.models.ai_engine import AssistantDecision, AssistantSession, CatalogAlias, PurchaseScanTrace
 from app.models.business import Business
 from app.models.catalog import CatalogItem, CatalogVariant, CategoryType, ItemCategory
+from app.models.unit_intelligence import (
+    AiItemProfile,
+    ItemLearningHistory,
+    ItemPackagingProfile,
+    MasterUnit,
+    OcrItemAlias,
+    SmartPackageRule,
+    SmartUnitRule,
+    UnitConfidenceLog,
+)
 from app.models.supplier_item_default import SupplierItemDefault
 from app.models.contacts import Broker, Supplier
 from app.models.entry import Entry, EntryLineItem
@@ -46,6 +56,14 @@ __all__ = [
     "ItemCategory",
     "CategoryType",
     "CatalogItem",
+    "MasterUnit",
+    "ItemPackagingProfile",
+    "OcrItemAlias",
+    "SmartUnitRule",
+    "ItemLearningHistory",
+    "UnitConfidenceLog",
+    "AiItemProfile",
+    "SmartPackageRule",
     "CatalogVariant",
     "SupplierItemDefault",
     "BrokerSupplierLink",

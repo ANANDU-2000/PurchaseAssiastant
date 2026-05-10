@@ -12,6 +12,7 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.services.trade_query import trade_purchase_status_in_reports
 from app.db_resilience import execute_with_retry
 from app.deps import require_membership, require_owner_membership
 from app.models import (
@@ -24,6 +25,8 @@ from app.models import (
     ItemCategory,
     Membership,
     Supplier,
+    TradePurchase,
+    TradePurchaseLine,
 )
 
 router = APIRouter(prefix="/v1/businesses/{business_id}", tags=["contacts"])
@@ -797,6 +800,15 @@ def _date_filter(business_id: uuid.UUID, from_date: date, to_date: date):
     )
 
 
+def _trade_purchase_date_filter(business_id: uuid.UUID, from_date: date, to_date: date):
+    return (
+        TradePurchase.business_id == business_id,
+        TradePurchase.purchase_date >= from_date,
+        TradePurchase.purchase_date <= to_date,
+        trade_purchase_status_in_reports(),
+    )
+
+
 class SupplierMetricsOut(BaseModel):
     deals: int
     total_qty: float
@@ -1110,34 +1122,38 @@ async def category_items(
     to_date: date = Query(..., alias="to"),
 ):
     del _m
-    bf = _date_filter(business_id, from_date, to_date)
+    tf = _trade_purchase_date_filter(business_id, from_date, to_date)
     if category != "Uncategorized":
         q = (
             select(
-                EntryLineItem.item_name,
-                func.count(EntryLineItem.id).label("lc"),
-                func.coalesce(func.sum(EntryLineItem.profit), 0).label("tp"),
-                func.coalesce(func.sum(EntryLineItem.qty), 0).label("tq"),
+                TradePurchaseLine.item_name,
+                func.count(TradePurchaseLine.id).label("lc"),
+                func.coalesce(func.sum(TradePurchaseLine.profit), 0).label("tp"),
+                func.coalesce(func.sum(TradePurchaseLine.qty), 0).label("tq"),
             )
-            .select_from(EntryLineItem)
-            .join(Entry, Entry.id == EntryLineItem.entry_id)
-            .where(*bf, EntryLineItem.category == category)
-            .group_by(EntryLineItem.item_name)
-            .order_by(func.coalesce(func.sum(EntryLineItem.profit), 0).desc())
+            .select_from(TradePurchaseLine)
+            .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+            .join(CatalogItem, CatalogItem.id == TradePurchaseLine.catalog_item_id)
+            .join(ItemCategory, ItemCategory.id == CatalogItem.category_id)
+            .where(*tf, ItemCategory.name == category)
+            .group_by(TradePurchaseLine.item_name)
+            .order_by(func.coalesce(func.sum(TradePurchaseLine.profit), 0).desc())
         )
     else:
         q = (
             select(
-                EntryLineItem.item_name,
-                func.count(EntryLineItem.id).label("lc"),
-                func.coalesce(func.sum(EntryLineItem.profit), 0).label("tp"),
-                func.coalesce(func.sum(EntryLineItem.qty), 0).label("tq"),
+                TradePurchaseLine.item_name,
+                func.count(TradePurchaseLine.id).label("lc"),
+                func.coalesce(func.sum(TradePurchaseLine.profit), 0).label("tp"),
+                func.coalesce(func.sum(TradePurchaseLine.qty), 0).label("tq"),
             )
-            .select_from(EntryLineItem)
-            .join(Entry, Entry.id == EntryLineItem.entry_id)
-            .where(*bf, EntryLineItem.category.is_(None))
-            .group_by(EntryLineItem.item_name)
-            .order_by(func.coalesce(func.sum(EntryLineItem.profit), 0).desc())
+            .select_from(TradePurchaseLine)
+            .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+            .join(CatalogItem, CatalogItem.id == TradePurchaseLine.catalog_item_id)
+            .outerjoin(ItemCategory, ItemCategory.id == CatalogItem.category_id)
+            .where(*tf, ItemCategory.id.is_(None))
+            .group_by(TradePurchaseLine.item_name)
+            .order_by(func.coalesce(func.sum(TradePurchaseLine.profit), 0).desc())
         )
 
     r = await db.execute(q)

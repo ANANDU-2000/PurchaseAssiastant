@@ -308,3 +308,41 @@ def test_analytics_trade_insights_excludes_deleted():
     j1 = ins1.json()
     assert j1.get("best_item") is None
     assert j1.get("worst_item") is None
+
+
+def test_trade_daily_profit_series_shape_and_422():
+    h, bid, iid, sid, _cid = _register_and_item_with_supplier()
+    today = date.today()
+    body = {
+        "purchase_date": today.isoformat(),
+        "supplier_id": sid,
+        "lines": [
+            {
+                "catalog_item_id": iid,
+                "item_name": "DailyProfitSKU",
+                "qty": 2,
+                "unit": "bag",
+                "landing_cost": "2000",
+                "kg_per_unit": "50",
+                "landing_cost_per_kg": "40",
+                "selling_rate": "2100",
+            },
+        ],
+    }
+    pr = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
+    assert pr.status_code == 201, pr.text
+    q = f"from={today.isoformat()}&to={today.isoformat()}"
+    dr = client.get(f"/v1/businesses/{bid}/reports/trade-daily-profit?{q}", headers=h)
+    assert dr.status_code == 200, dr.text
+    series = dr.json()
+    assert isinstance(series, list)
+    assert len(series) >= 1
+    day_row = next(x for x in series if x.get("d") == today.isoformat())
+    assert "profit" in day_row
+    assert float(day_row["profit"]) > 0
+
+    bad = client.get(
+        f"/v1/businesses/{bid}/reports/trade-daily-profit?from={today.isoformat()}&to={(today - timedelta(days=1)).isoformat()}",
+        headers=h,
+    )
+    assert bad.status_code == 422, bad.text

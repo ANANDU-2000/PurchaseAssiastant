@@ -109,6 +109,7 @@ class TradePurchaseLine {
     this.billtyRate,
     this.totalWeight,
     this.lineTotal,
+    this.lineLandingGross,
     this.profit,
     this.sellingCost,
     this.discount,
@@ -142,7 +143,10 @@ class TradePurchaseLine {
   final double? deliveredRate;
   final double? billtyRate;
   final double? totalWeight;
+  /// Tax/discount-inclusive line purchase (API `line_total`); not pre-tax gross.
   final double? lineTotal;
+  /// Pre-discount / pre-tax landing gross (API `line_landing_gross`).
+  final double? lineLandingGross;
   final double? profit;
   /// When set, line was priced as qty × kg_per_unit × landing_cost_per_kg.
   final double? kgPerUnit;
@@ -179,8 +183,8 @@ class TradePurchaseLine {
       deliveredRate: _decNullableDouble(j['delivered_rate']),
       billtyRate: _decNullableDouble(j['billty_rate']),
       totalWeight: _decNullableDouble(j['total_weight']),
-      lineTotal: _decNullableDouble(
-          j['line_total'] ?? j['line_landing_gross']),
+      lineTotal: _decNullableDouble(j['line_total']),
+      lineLandingGross: _decNullableDouble(j['line_landing_gross']),
       profit: _decNullableDouble(j['profit']),
       sellingCost: _decNullableDouble(j['selling_cost'] ?? j['selling_rate']),
       discount: _decNullableDouble(j['discount']),
@@ -203,16 +207,20 @@ class TradePurchaseLine {
     );
   }
 
-  /// Gross landing value for the line (matches backend / invoice math).
+  /// Gross landing value for the line (pre-discount / pre-tax; matches backend `line_landing_gross`).
   double get landingGross {
-    if (lineTotal != null) return lineTotal!;
+    if (lineLandingGross != null) return lineLandingGross!;
+    final landing = purchaseRate ?? landingCost;
     if (kgPerUnit != null &&
         landingCostPerKg != null &&
         kgPerUnit! > 0 &&
         landingCostPerKg! > 0) {
-      return qty * kgPerUnit! * landingCostPerKg!;
+      final derived = kgPerUnit! * landingCostPerKg!;
+      if ((derived - landing).abs() <= 0.05 + 1e-9) {
+        return qty * kgPerUnit! * landingCostPerKg!;
+      }
     }
-    return qty * (purchaseRate ?? landingCost);
+    return qty * landing;
   }
 
   /// Gross selling when [sellingCost] is set (per-kg when weight line).

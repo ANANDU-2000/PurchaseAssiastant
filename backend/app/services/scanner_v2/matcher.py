@@ -176,6 +176,22 @@ async def _alias_hit(
 # --------------------------------------------------------------------------- #
 
 
+_WS_HINT_RE = re.compile(r"\s+")
+
+
+def _latin_letters_hint(s: str) -> str:
+    """Extract Latin letters/digits from a mixed Malayalam+English header for extra fuzzy pass."""
+    if not s:
+        return ""
+    parts: list[str] = []
+    for ch in s:
+        if ch.isdigit() or ("a" <= ch <= "z") or ("A" <= ch <= "Z"):
+            parts.append(ch.lower() if ch.isalpha() else ch)
+        elif ch in (" ", "-", ".", "/"):
+            parts.append(" ")
+    return _WS_HINT_RE.sub(" ", "".join(parts)).strip()
+
+
 async def match_one(
     db: AsyncSession,
     business_id: uuid.UUID,
@@ -194,6 +210,8 @@ async def match_one(
 
     norm = normalize(raw)
     norm_mng = manglish_normalize(norm)
+    hint_raw = _latin_letters_hint(raw)
+    hint_n = normalize(hint_raw) if hint_raw else ""
 
     # 1) Alias precedence (exact match on normalized OR manglish-normalized text).
     for q in (norm, norm_mng):
@@ -230,8 +248,10 @@ async def match_one(
     for (uid, name), (uid2, n) in zip(rows, norm_candidates):
         assert uid == uid2
         s = max(_blended_score(norm, n), _blended_score(norm_mng, n))
+        if hint_n and len(hint_n) >= 3:
+            s = max(s, _blended_score(hint_n, n))
         # Short query guard: require partial_ratio≥95 to count.
-        if len(norm) < 4:
+        if len(norm) < 4 and not (hint_n and len(hint_n) >= 3):
             partial = max(
                 fuzz.partial_ratio(norm, n),
                 fuzz.partial_ratio(norm_mng, n),
@@ -290,10 +310,13 @@ def top_candidates_for(
         return []
     q = normalize(query)
     qm = manglish_normalize(q)
+    hint_n = normalize(_latin_letters_hint(query))
     scored: list[tuple[uuid.UUID, str, int]] = []
     for uid, name in rows:
         n = normalize(name)
         s = max(_blended_score(q, n), _blended_score(qm, n))
+        if hint_n and len(hint_n) >= 3:
+            s = max(s, _blended_score(hint_n, n))
         scored.append((uid, name, s))
     scored.sort(key=lambda t: (-t[2], t[1].lower()))
     return [

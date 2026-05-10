@@ -10,6 +10,16 @@ import logging
 from sqlalchemy import inspect
 
 from app.models import Base
+from app.models.unit_intelligence import (
+    AiItemProfile,
+    ItemLearningHistory,
+    ItemPackagingProfile,
+    MasterUnit,
+    OcrItemAlias,
+    SmartPackageRule,
+    SmartUnitRule,
+    UnitConfidenceLog,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +27,19 @@ logger = logging.getLogger(__name__)
 def apply_sqlite_bootstrap(sync_conn) -> None:
     """Build schema and patch legacy SQLite columns (create_all does not ALTER)."""
     Base.metadata.create_all(sync_conn)
+    Base.metadata.create_all(
+        sync_conn,
+        tables=[
+            MasterUnit.__table__,
+            ItemPackagingProfile.__table__,
+            OcrItemAlias.__table__,
+            SmartUnitRule.__table__,
+            ItemLearningHistory.__table__,
+            UnitConfidenceLog.__table__,
+            AiItemProfile.__table__,
+            SmartPackageRule.__table__,
+        ],
+    )
     _ensure_entries_place(sync_conn)
     _ensure_suppliers_whatsapp_number(sync_conn)
     _ensure_entry_line_items_stock_note(sync_conn)
@@ -33,6 +56,7 @@ def apply_sqlite_bootstrap(sync_conn) -> None:
     _ensure_trade_purchases_lifecycle_columns(sync_conn)
     _ensure_trade_purchases_commission_mode_columns(sync_conn)
     _ensure_trade_purchase_line_columns(sync_conn)
+    _ensure_catalog_items_smart_unit_columns(sync_conn)
     logger.info("SQLite bootstrap: create_all + legacy column patches complete")
 
 
@@ -384,6 +408,82 @@ def _ensure_trade_purchases_commission_mode_columns(sync_conn):
             sync_conn.exec_driver_sql(
                 "ALTER TABLE trade_purchases ADD COLUMN commission_money NUMERIC(14,4) NULL"
             )
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _ensure_catalog_items_smart_unit_columns(sync_conn):
+    """Patch legacy SQLite DBs with smart-unit / packaging columns (Postgres uses Alembic)."""
+    insp = inspect(sync_conn)
+    if not insp.has_table("catalog_items"):
+        return
+    cols = {c["name"] for c in insp.get_columns("catalog_items")}
+    dialect = sync_conn.dialect.name
+    alters: list[str] = []
+    if "normalized_name" not in cols:
+        alters.append("ALTER TABLE catalog_items ADD COLUMN normalized_name VARCHAR(512) NULL")
+    if "selling_unit" not in cols:
+        alters.append("ALTER TABLE catalog_items ADD COLUMN selling_unit VARCHAR(32) NULL")
+    if "stock_unit" not in cols:
+        alters.append("ALTER TABLE catalog_items ADD COLUMN stock_unit VARCHAR(32) NULL")
+    if "display_unit" not in cols:
+        alters.append("ALTER TABLE catalog_items ADD COLUMN display_unit VARCHAR(32) NULL")
+    if "package_type" not in cols:
+        alters.append("ALTER TABLE catalog_items ADD COLUMN package_type VARCHAR(32) NULL")
+    if "package_size" not in cols:
+        alters.append("ALTER TABLE catalog_items ADD COLUMN package_size NUMERIC(14,4) NULL")
+    if "package_measurement" not in cols:
+        alters.append("ALTER TABLE catalog_items ADD COLUMN package_measurement VARCHAR(16) NULL")
+    if "package_volume" not in cols:
+        alters.append("ALTER TABLE catalog_items ADD COLUMN package_volume NUMERIC(14,4) NULL")
+    if "package_weight" not in cols:
+        alters.append("ALTER TABLE catalog_items ADD COLUMN package_weight NUMERIC(14,4) NULL")
+    if "conversion_factor" not in cols:
+        alters.append("ALTER TABLE catalog_items ADD COLUMN conversion_factor NUMERIC(14,6) NULL")
+    if "ai_detected_unit" not in cols:
+        alters.append("ALTER TABLE catalog_items ADD COLUMN ai_detected_unit VARCHAR(32) NULL")
+    if "smart_classification" not in cols:
+        alters.append("ALTER TABLE catalog_items ADD COLUMN smart_classification VARCHAR(64) NULL")
+    if "unit_confidence" not in cols:
+        alters.append("ALTER TABLE catalog_items ADD COLUMN unit_confidence NUMERIC(5,2) NULL")
+    if "packaging_confidence" not in cols:
+        alters.append("ALTER TABLE catalog_items ADD COLUMN packaging_confidence NUMERIC(5,2) NULL")
+    if "is_loose_item" not in cols:
+        if dialect == "postgresql":
+            alters.append("ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS is_loose_item BOOLEAN NULL")
+        else:
+            alters.append("ALTER TABLE catalog_items ADD COLUMN is_loose_item INTEGER NULL")
+    if "is_packaged_item" not in cols:
+        if dialect == "postgresql":
+            alters.append("ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS is_packaged_item BOOLEAN NULL")
+        else:
+            alters.append("ALTER TABLE catalog_items ADD COLUMN is_packaged_item INTEGER NULL")
+    if "auto_detect_enabled" not in cols:
+        if dialect == "postgresql":
+            alters.append(
+                "ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS auto_detect_enabled BOOLEAN NOT NULL DEFAULT true"
+            )
+        else:
+            alters.append(
+                "ALTER TABLE catalog_items ADD COLUMN auto_detect_enabled INTEGER NOT NULL DEFAULT 1"
+            )
+    if "ml_profile" not in cols:
+        alters.append("ALTER TABLE catalog_items ADD COLUMN ml_profile TEXT NULL")
+    if "validation_status" not in cols:
+        alters.append("ALTER TABLE catalog_items ADD COLUMN validation_status VARCHAR(32) NULL")
+    if "deleted_at" not in cols:
+        if dialect == "postgresql":
+            alters.append("ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ NULL")
+        else:
+            alters.append("ALTER TABLE catalog_items ADD COLUMN deleted_at DATETIME NULL")
+    if "archived_at" not in cols:
+        if dialect == "postgresql":
+            alters.append("ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ NULL")
+        else:
+            alters.append("ALTER TABLE catalog_items ADD COLUMN archived_at DATETIME NULL")
+    for sql in alters:
+        try:
+            sync_conn.exec_driver_sql(sql)
         except Exception:  # noqa: BLE001
             pass
 

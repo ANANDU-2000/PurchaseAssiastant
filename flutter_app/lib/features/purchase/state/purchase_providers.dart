@@ -12,6 +12,8 @@ import '../../../core/utils/trade_purchase_commission.dart';
 import '../../../core/utils/trade_purchase_rate_display.dart';
 
 export 'purchase_draft_provider.dart';
+export 'purchase_trade_preview_provider.dart';
+export 'purchase_totals_provider.dart';
 
 /// Server returns full purchases per page — we prefetch in chunks while the UI
 /// caps visible rows (+8 locally) until the next chunk is needed (`loadMore`).
@@ -108,7 +110,7 @@ LedgerLineRow ledgerRowFromPurchaseLine({
     purchaseRate: l.purchaseRate,
     kgPerUnit: l.kgPerUnit,
     landingCostPerKg: l.landingCostPerKg,
-    lineTotal: l.lineTotal,
+    lineLandingGross: l.lineLandingGross,
   );
   final rate = ledgerLineDisplayRate(
     qty: l.qty,
@@ -116,7 +118,7 @@ LedgerLineRow ledgerRowFromPurchaseLine({
     purchaseRate: l.purchaseRate,
     kgPerUnit: l.kgPerUnit,
     landingCostPerKg: l.landingCostPerKg,
-    lineTotal: l.lineTotal,
+    lineLandingGross: l.lineLandingGross,
   );
   final sellDisplay = tradePurchaseLineDisplaySellingRate(l);
   return LedgerLineRow(

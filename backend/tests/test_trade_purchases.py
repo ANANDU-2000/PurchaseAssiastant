@@ -713,3 +713,28 @@ def test_create_rejects_line_with_only_one_kg_field():
     }
     r = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
     assert r.status_code == 422, r.text
+
+
+def test_get_trade_purchase_line_total_is_line_money_landing_gross_is_pre_tax():
+    """API contract: line_total = tax/discount-inclusive purchase; line_landing_gross = line_gross_base."""
+    h, bid = _register_and_business()
+    sid = _supplier_id(h, bid)
+    iid = _catalog_item_id(h, bid)
+    line = _line_body(iid)
+    line["discount"] = "10"
+    line["tax_percent"] = "5"
+    body = {
+        "purchase_date": date.today().isoformat(),
+        "payment_days": 7,
+        "supplier_id": sid,
+        "lines": [line],
+    }
+    cr = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
+    assert cr.status_code == 201, cr.text
+    pid = cr.json()["id"]
+    gr = client.get(f"/v1/businesses/{bid}/trade-purchases/{pid}", headers=h)
+    assert gr.status_code == 200, gr.text
+    ln = gr.json()["lines"][0]
+    # Gross: 10 * 50 * 2 = 1000; after 10% disc -> 900; after 5% tax -> 945
+    assert abs(float(ln["line_landing_gross"]) - 1000.0) < 0.02
+    assert abs(float(ln["line_total"]) - 945.0) < 0.02

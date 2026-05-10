@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/providers/reports_provider.dart';
 import '../../../core/reporting/trade_report_aggregate.dart';
+import '../../../core/router/navigation_ext.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../reporting/reports_item_metrics.dart';
 
@@ -168,7 +168,7 @@ class ReportsItemDetailPage extends ConsumerWidget {
             }),
           const SizedBox(height: 24),
           OutlinedButton(
-            onPressed: () => context.pop(),
+            onPressed: () => context.popOrGo('/reports'),
             child: const Text('Back'),
           ),
         ],

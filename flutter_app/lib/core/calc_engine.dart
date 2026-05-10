@@ -424,9 +424,9 @@ double ledgerLineLandingGross({
   double? purchaseRate,
   double? kgPerUnit,
   double? landingCostPerKg,
-  double? lineTotal,
+  double? lineLandingGross,
 }) {
-  if (lineTotal != null) return _dec(lineTotal).toDouble();
+  if (lineLandingGross != null) return _dec(lineLandingGross).toDouble();
   if (kgPerUnit != null &&
       landingCostPerKg != null &&
       kgPerUnit > 0 &&
@@ -444,7 +444,7 @@ double ledgerLineDisplayRate({
   double? purchaseRate,
   double? kgPerUnit,
   double? landingCostPerKg,
-  double? lineTotal,
+  double? lineLandingGross,
 }) {
   final gross = ledgerLineLandingGross(
     qty: qty,
@@ -452,7 +452,7 @@ double ledgerLineDisplayRate({
     purchaseRate: purchaseRate,
     kgPerUnit: kgPerUnit,
     landingCostPerKg: landingCostPerKg,
-    lineTotal: lineTotal,
+    lineLandingGross: lineLandingGross,
   );
   if (qty <= 0 || gross <= 0) return 0;
   final weightPriced = kgPerUnit != null &&

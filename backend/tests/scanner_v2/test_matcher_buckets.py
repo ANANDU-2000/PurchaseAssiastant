@@ -256,3 +256,27 @@ def test_top_candidates_for_pure_helper():
     cands = matcher.top_candidates_for("suger", rows)
     assert cands
     assert cands[0].name == "SUGAR 50KG"
+
+
+def test_latin_letters_hint_strips_malayalam_keeps_english():
+    from app.services.scanner_v2.matcher import _latin_letters_hint
+
+    h = _latin_letters_hint("സുരാജ് SURAJ traders")
+    assert "suraj" in h
+    assert "traders" in h
+
+
+def test_mixed_script_supplier_header_prefers_latin_traders_name(seeded):
+    """Mixed Malayalam + English header should still fuzzy-match a Latin supplier row."""
+    import asyncio
+
+    async def _run():
+        async with async_session_factory() as db:
+            return await matcher.match_one(db, seeded["biz_id"], "സുരാജ് suraj traders", "supplier")
+
+    m = asyncio.run(_run())
+    assert m.match_state in {"auto", "needs_confirmation"}
+    ids = {c.id for c in m.candidates}
+    if m.matched_id is not None:
+        ids.add(m.matched_id)
+    assert seeded["sup1"] in ids

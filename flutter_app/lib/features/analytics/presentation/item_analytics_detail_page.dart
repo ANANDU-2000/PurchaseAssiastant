@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/json_coerce.dart';
+import '../../../core/router/navigation_ext.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/home_breakdown_tab_providers.dart';
 import '../../../core/providers/home_dashboard_provider.dart';
@@ -125,7 +126,7 @@ class _ItemAnalyticsDetailPageState
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
           icon: Icon(Icons.arrow_back_rounded, color: onSurf),
-          onPressed: () => context.pop(),
+          onPressed: () => context.popOrGo('/reports'),
         ),
         title: Text(
           widget.itemName,

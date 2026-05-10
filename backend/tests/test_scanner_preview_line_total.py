@@ -42,13 +42,40 @@ def test_box_large_rate_per_container() -> None:
     assert _compute_preview_line_total(it, w) == Decimal("5100.00")
 
 
-def test_box_small_rate_without_weight_warns_and_none() -> None:
+def test_bag_preview_requires_rate_context() -> None:
     w: list[Warning] = []
     it = ItemRow(
-        raw_name="mystery box",
-        unit_type="BOX",
-        qty=Decimal("5"),
-        purchase_rate=Decimal("100"),
+        raw_name="Sugar",
+        unit_type="BAG",
+        bags=Decimal("10"),
+        weight_per_unit_kg=Decimal("50"),
+        purchase_rate=Decimal("42"),
     )
     assert _compute_preview_line_total(it, w) is None
-    assert any(x.code == "BOX_TIN_WEIGHT_MISSING" for x in w)
+    assert any(x.code == "BAG_RATE_CONTEXT_REQUIRED" for x in w)
+
+
+def test_bag_per_kg_with_context_computes() -> None:
+    w: list[Warning] = []
+    it = ItemRow(
+        raw_name="Sugar",
+        unit_type="BAG",
+        bags=Decimal("10"),
+        weight_per_unit_kg=Decimal("50"),
+        purchase_rate=Decimal("42"),
+        rate_context="per_kg",
+    )
+    assert _compute_preview_line_total(it, w) == Decimal("21000.00")
+
+
+def test_bag_per_bag_with_context_computes() -> None:
+    w: list[Warning] = []
+    it = ItemRow(
+        raw_name="Sugar",
+        unit_type="BAG",
+        bags=Decimal("10"),
+        weight_per_unit_kg=Decimal("50"),
+        purchase_rate=Decimal("2100"),
+        rate_context="per_bag",
+    )
+    assert _compute_preview_line_total(it, w) == Decimal("21000.00")

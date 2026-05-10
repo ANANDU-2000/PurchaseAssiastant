@@ -16,6 +16,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 UnitType = Literal["BAG", "BOX", "TIN", "KG", "PCS"]
+RateContext = Literal["per_bag", "per_kg"]
 MatchState = Literal["auto", "needs_confirmation", "unresolved"]
 Severity = Literal["info", "warn", "blocker"]
 
@@ -73,6 +74,7 @@ class ItemRow(_BaseV2):
     purchase_rate: Decimal | None = None
     selling_rate: Decimal | None = None
     line_total: Decimal | None = None
+    rate_context: RateContext | None = None
 
     delivered_rate: Decimal | None = None
     billty_rate: Decimal | None = None
@@ -123,6 +125,8 @@ class ScanMeta(_BaseV2):
     parse_warnings: list[str] = Field(default_factory=list)
     ocr_chars: int = 0
     image_bytes_in: int = 0
+    #: Best-effort 0..1 from OpenAI Vision text extraction when OCR fallback ran; null for pure image-JSON path.
+    ocr_extract_confidence: float | None = None
     # Added in production rebuild: typed error hints for trader-friendly UI.
     error_stage: str | None = None  # e.g. ocr | parse | match | validate
     error_code: str | None = None  # stable string code for UX copy
@@ -168,6 +172,7 @@ __all__ = [
     "ItemRow",
     "Match",
     "MatchState",
+    "RateContext",
     "ScanMeta",
     "ScanResult",
     "Severity",

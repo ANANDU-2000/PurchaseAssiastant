@@ -143,13 +143,14 @@ PurchaseDraft purchaseDraftFromScanResultJson(Map<String, dynamic> scan) {
 
       if (ut.toUpperCase() == 'BAG' && wpu != null && wpu > 0) {
         kgPerUnit = wpu;
-        final looksPerBag = pr >= 500;
-        if (looksPerBag) {
-          landingCost = pr;
-          landingCostPerKg = pr / wpu;
-        } else {
+        final rateContext =
+            it['rate_context']?.toString().trim().toLowerCase() ?? 'per_bag';
+        if (rateContext == 'per_kg') {
           landingCostPerKg = pr;
-          landingCost = pr * wpu;
+          landingCost = pr > 0 && wpu > 0 ? pr * wpu : pr;
+        } else {
+          landingCost = pr;
+          landingCostPerKg = pr > 0 && wpu > 0 ? pr / wpu : null;
         }
       }
 

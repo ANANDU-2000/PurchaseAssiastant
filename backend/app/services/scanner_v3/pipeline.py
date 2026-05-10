@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database import async_session_factory
 from app.services.purchase_scan_service import image_bytes_to_text
+from app.services.scanner_trade_line_adapter import preview_line_money_ssot
 from app.services.scanner_v2.pipeline import (
     _confidence_from_matches,
     _compute_preview_line_total,
@@ -258,6 +259,7 @@ def _fallback_parse_text(text: str) -> dict[str, Any]:
                 "qty": bags,
                 "purchase_rate": pr,
                 "selling_rate": sr,
+                "rate_context": "per_bag",
             }
         ]
         if item_name
@@ -458,7 +460,8 @@ async def _run_job_with_db(*, token: str, settings: Settings, db: AsyncSession) 
         it.unit_type = bag_logic.detect_unit_type(it.raw_name, explicit_unit=it.unit_type, catalog=None)
         for code in bag_logic.normalize_bag_kg(it, catalog=None):
             warnings.append(Warning(code=code, severity="info", target="items[]", message=f"{code}"))
-        it.line_total = _compute_preview_line_total(it, warnings)
+        ssot = preview_line_money_ssot(it)
+        it.line_total = ssot if ssot is not None else _compute_preview_line_total(it, warnings)
 
     ch = Charges(
         delivered_rate=_d(charges_raw.get("delivered_rate")),

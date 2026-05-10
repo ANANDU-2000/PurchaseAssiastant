@@ -315,7 +315,11 @@ pw.Widget _lineItemsTable(TradePurchase p) {
           _tCell(safePdfText(l.unit.trim()), align: pw.TextAlign.center, fs: 6.2),
           _tCell(_pdfPurchaseRateStr(l), align: pw.TextAlign.right, fs: 5.9),
           _tCell(_pdfSellingRateStr(l), align: pw.TextAlign.right, fs: 5.9),
-          _tCell(_rsPdf(lineMoney(c)), align: pw.TextAlign.right, fs: 6.1),
+          _tCell(
+            _rsPdf(l.lineTotal ?? lineMoney(c)),
+            align: pw.TextAlign.right,
+            fs: 6.1,
+          ),
         ],
       ),
     );
@@ -368,7 +372,7 @@ _SummaryNumbers _computeSummaryBreakdown(TradePurchase p) {
   var sumLineTax = 0.0;
   for (final l in p.lines) {
     final c = _purchaseLineToCalc(l);
-    sumLineMoney += lineMoney(c);
+    sumLineMoney += l.lineTotal ?? lineMoney(c);
     sumTaxable += lineTaxableAfterLineDisc(c);
     sumLineTax += lineTaxAmount(c);
   }

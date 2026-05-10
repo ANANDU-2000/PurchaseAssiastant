@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -24,9 +24,16 @@ from app.schemas.trade_purchases import (
     TradePurchaseCreateRequest,
     TradePurchaseOut,
     TradePurchasePaymentPatch,
+    TradePurchasePreviewOut,
     TradePurchaseUpdateRequest,
+    TradePurchaseValidateOut,
 )
 from app.services import trade_purchase_service as tps
+from app.services.trade_preview_service import (
+    build_trade_purchase_preview,
+    build_trade_purchase_validate,
+    coerce_raw_to_trade_purchase_create,
+)
 
 router = APIRouter(prefix="/v1/businesses/{business_id}/trade-purchases", tags=["trade-purchases"])
 _log = logging.getLogger(__name__)
@@ -79,6 +86,35 @@ async def delete_trade_draft(
 ):
     await tps.delete_draft(db, business_id, user.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/preview-lines", response_model=TradePurchasePreviewOut)
+async def preview_trade_purchase_lines(
+    business_id: uuid.UUID,
+    user: Annotated[User, Depends(get_current_user)],
+    _m: Annotated[Membership, Depends(require_membership)],
+    body: dict[str, Any] = Body(...),
+):
+    """Non-mutating SSOT totals for wizard / PDF blocks (relaxed gross check for drafts)."""
+    del user
+    req = coerce_raw_to_trade_purchase_create(body)
+    errs = tps.collect_trade_purchase_preview_errors(req)
+    if errs:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=errs)
+    return build_trade_purchase_preview(req)
+
+
+@router.post("/validate", response_model=TradePurchaseValidateOut)
+async def validate_trade_purchase(
+    business_id: uuid.UUID,
+    user: Annotated[User, Depends(get_current_user)],
+    _m: Annotated[Membership, Depends(require_membership)],
+    body: dict[str, Any] = Body(...),
+):
+    """Full create/save validation without persisting (blocking issues for scanner / wizard)."""
+    del user
+    req = coerce_raw_to_trade_purchase_create(body)
+    return build_trade_purchase_validate(req)
 
 
 @router.post("/check-duplicate", response_model=TradeDuplicateCheckResponse)

@@ -40,19 +40,20 @@ pw.Document _buildBrokerStatementDocument({
   for (final p in purchases) {
     commissionSum += tradePurchaseCommissionInr(p);
     for (final l in p.lines) {
-      totalKg += ledgerTradeLineWeightKg(
-        itemName: l.itemName,
-        unit: l.unit,
-        qty: l.qty,
-        catalogDefaultUnit: l.defaultPurchaseUnit ?? l.defaultUnit,
-        catalogDefaultKgPerBag: l.defaultKgPerBag,
-        kgPerUnit: l.kgPerUnit,
-        boxMode: l.boxMode,
-        itemsPerBox: l.itemsPerBox,
-        weightPerItem: l.weightPerItem,
-        kgPerBox: l.kgPerBox,
-        weightPerTin: l.weightPerTin,
-      );
+      totalKg += l.totalWeight ??
+          ledgerTradeLineWeightKg(
+            itemName: l.itemName,
+            unit: l.unit,
+            qty: l.qty,
+            catalogDefaultUnit: l.defaultPurchaseUnit ?? l.defaultUnit,
+            catalogDefaultKgPerBag: l.defaultKgPerBag,
+            kgPerUnit: l.kgPerUnit,
+            boxMode: l.boxMode,
+            itemsPerBox: l.itemsPerBox,
+            weightPerItem: l.weightPerItem,
+            kgPerBox: l.kgPerBox,
+            weightPerTin: l.weightPerTin,
+          );
       final u = l.unit.trim().toLowerCase();
       if (u == 'bag' || u == 'sack') {
         totalBags += l.qty;
@@ -88,19 +89,20 @@ pw.Document _buildBrokerStatementDocument({
   for (final p in purchases) {
     for (var i = 0; i < p.lines.length; i++) {
       final l = p.lines[i];
-      final kgLine = ledgerTradeLineWeightKg(
-        itemName: l.itemName,
-        unit: l.unit,
-        qty: l.qty,
-        catalogDefaultUnit: l.defaultPurchaseUnit ?? l.defaultUnit,
-        catalogDefaultKgPerBag: l.defaultKgPerBag,
-        kgPerUnit: l.kgPerUnit,
-        boxMode: l.boxMode,
-        itemsPerBox: l.itemsPerBox,
-        weightPerItem: l.weightPerItem,
-        kgPerBox: l.kgPerBox,
-        weightPerTin: l.weightPerTin,
-      );
+      final kgLine = l.totalWeight ??
+          ledgerTradeLineWeightKg(
+            itemName: l.itemName,
+            unit: l.unit,
+            qty: l.qty,
+            catalogDefaultUnit: l.defaultPurchaseUnit ?? l.defaultUnit,
+            catalogDefaultKgPerBag: l.defaultKgPerBag,
+            kgPerUnit: l.kgPerUnit,
+            boxMode: l.boxMode,
+            itemsPerBox: l.itemsPerBox,
+            weightPerItem: l.weightPerItem,
+            kgPerBox: l.kgPerBox,
+            weightPerTin: l.weightPerTin,
+          );
       tableRows.add(
         pw.TableRow(
           children: [

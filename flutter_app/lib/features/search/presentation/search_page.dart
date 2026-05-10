@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/router/navigation_ext.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/trade_intel_cards.dart';
 
@@ -185,7 +186,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.pop(),
+          onPressed: () => context.popOrGo('/home'),
         ),
         title: const Text('Search'),
       ),

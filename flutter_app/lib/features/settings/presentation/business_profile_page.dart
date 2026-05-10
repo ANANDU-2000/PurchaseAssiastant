@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/router/navigation_ext.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/theme/theme_context_ext.dart';
 
@@ -141,7 +141,7 @@ class _BusinessProfilePageState extends ConsumerState<BusinessProfilePage> {
         ),
         leading: IconButton(
           icon: Icon(Icons.arrow_back_rounded, color: cs.onSurface),
-          onPressed: () => context.pop(),
+          onPressed: () => context.popOrGo('/settings'),
         ),
       ),
       body: ListView(

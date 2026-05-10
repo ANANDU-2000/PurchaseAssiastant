@@ -107,16 +107,28 @@ def _post_validate(payload: dict[str, Any]) -> tuple[dict[str, Any], list[str], 
             warnings.append(f"{pref}: ignoring name weight for KG unit")
             wpu_f = None
 
-        out_items.append(
-            {
-                "name": name or "Unknown item",
-                "qty": qty_f,
-                "unit": unit,
-                "purchase_rate": pr_f,
-                "selling_rate": (sr_f if sr_f > 0 else None),
-                "weight_per_unit_kg": (wpu_f if wpu_f and wpu_f > 0 else None),
-            }
-        )
+        rc: str | None = None
+        rc_raw = it.get("rate_context")
+        if isinstance(rc_raw, str):
+            x = rc_raw.strip().lower().replace("-", "_")
+            if x == "per_kg":
+                rc = "per_kg"
+            elif x == "per_bag":
+                rc = "per_bag"
+        if unit == "bag" and rc is None and (wpu_f or 0) > 0 and pr_f > 0:
+            rc = "per_kg" if pr_f < 500 else "per_bag"
+
+        row: dict[str, Any] = {
+            "name": name or "Unknown item",
+            "qty": qty_f,
+            "unit": unit,
+            "purchase_rate": pr_f,
+            "selling_rate": (sr_f if sr_f > 0 else None),
+            "weight_per_unit_kg": (wpu_f if wpu_f and wpu_f > 0 else None),
+        }
+        if rc is not None:
+            row["rate_context"] = rc
+        out_items.append(row)
 
     payload["supplier_name"] = sup or None
     payload["broker_name"] = _normalize_ws(str(payload.get("broker_name") or "")) or None
@@ -145,6 +157,7 @@ def _scanner_system_prompt() -> str:
         '      \"unit\": string,\n'
         '      \"purchase_rate\": number,\n'
         '      \"selling_rate\": number|null,\n'
+        '      \"rate_context\": \"per_bag\"|\"per_kg\"|null,\n'
         '      \"weight_per_unit_kg\": number|null\n'
         "    }\n"
         "  ]\n"
@@ -156,6 +169,7 @@ def _scanner_system_prompt() -> str:
         "- If you see two rates (P and S): first is purchase_rate, second is selling_rate.\n"
         "- If unit is KG, qty is already kg; do NOT treat '50 KG' in the name as multiplier.\n"
         "- If unit is bag and name contains '50 KG' etc, set weight_per_unit_kg to that.\n"
+        "- If unit is bag and weight_per_unit_kg is set: rate_context per_kg when purchase_rate is ₹/kg, else per_bag when ₹/bag; omit if unknown.\n"
         "- Extract header charges when present: delivered/delhead/delivery, billty/bilty/bilti, freight.\n"
         "- If freight looks included in the note, set freight_type='included' else 'separate' when freight_amount is set.\n"
         "- Units: prefer one of kg|bag|box|tin|piece.\n"

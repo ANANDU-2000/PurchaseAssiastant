@@ -12,6 +12,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../core/router/navigation_ext.dart';
 import '../../../core/services/offline_store.dart';
 import '../../../core/theme/hexa_colors.dart';
 
@@ -57,6 +58,9 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
   String? _scanIssue;
   bool _scanIssueBlocker = false;
   String? _queuedScanId;
+  /// Server [validateTradePurchase] failed on last Continue attempt (same rules as save).
+  String? _tradeValidateBanner;
+  bool _tradeValidateSubmitting = false;
 
   Map<String, dynamic>? _scan; // raw ScanResult JSON (table-first UI)
   double _stageProgress = 0;
@@ -87,6 +91,8 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
       _busy = false;
       _stage = _ScanStage.idle;
       _jpegBytes = null;
+      _tradeValidateBanner = null;
+      _tradeValidateSubmitting = false;
     });
     try {
       final compressed = await _compressForUpload(raw);
@@ -115,6 +121,8 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
       _error = null;
       _scan = null;
       _stage = _ScanStage.idle;
+      _tradeValidateBanner = null;
+      _tradeValidateSubmitting = false;
     });
     await _scanNow();
   }
@@ -146,6 +154,8 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
       _error = null;
       _scanIssue = null;
       _scanIssueBlocker = false;
+      _tradeValidateBanner = null;
+      _tradeValidateSubmitting = false;
       _scan = null;
       _stageProgress = 0;
       _stage = _ScanStage.preparingImage;
@@ -292,12 +302,35 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
       _scanIssue = null;
       _scanIssueBlocker = false;
       _queuedScanId = null;
+      _tradeValidateBanner = null;
+      _tradeValidateSubmitting = false;
     });
+  }
+
+  String _formatTradeValidateErrors(Map<String, dynamic> val) {
+    final errs = val['errors'];
+    if (errs is! List || errs.isEmpty) {
+      return 'Purchase did not pass server validation.';
+    }
+    final parts = <String>[];
+    for (final e in errs.take(5)) {
+      if (e is Map) {
+        final m = e['message']?.toString() ??
+            e['detail']?.toString() ??
+            e['msg']?.toString();
+        if (m != null && m.trim().isNotEmpty) {
+          parts.add(m.trim());
+        }
+      } else if (e != null && e.toString().trim().isNotEmpty) {
+        parts.add(e.toString().trim());
+      }
+    }
+    return parts.isEmpty ? 'Purchase did not pass server validation.' : parts.join('; ');
   }
 
   Future<void> _openPurchaseEntryFromScan() async {
     final s = _scan;
-    if (s == null || _busy) return;
+    if (s == null || _busy || _tradeValidateSubmitting) return;
     final snap = Map<String, dynamic>.from(s);
     final token = snap['scan_token']?.toString().trim();
     if (token == null || token.isEmpty) {
@@ -307,22 +340,73 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
       );
       return;
     }
-    ref.read(purchaseScanDraftMapProvider.notifier).setDraft(snap);
+    final session = ref.read(sessionProvider);
+    if (session == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Not signed in')),
+      );
+      return;
+    }
     final draft = purchaseDraftFromScanResultJson(snap);
-    await context.push(
-      '/purchase/new',
-      extra: {
-        'initialDraft': draft,
-        'aiScan': {
-          'token': token,
-          'baseScan': snap,
+    setState(() {
+      _tradeValidateSubmitting = true;
+      _tradeValidateBanner = null;
+    });
+    try {
+      final body = draft.toTradePurchaseCreateBody();
+      final val = await ref.read(hexaApiProvider).validateTradePurchase(
+            businessId: session.primaryBusiness.id,
+            body: body,
+          );
+      if (!mounted) return;
+      if (val['ok'] != true) {
+        final msg = _formatTradeValidateErrors(val);
+        setState(() {
+          _tradeValidateSubmitting = false;
+          _tradeValidateBanner = msg;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            backgroundColor: const Color(0xFF991B1B),
+          ),
+        );
+        return;
+      }
+      setState(() {
+        _tradeValidateSubmitting = false;
+        _tradeValidateBanner = null;
+      });
+      ref.read(purchaseScanDraftMapProvider.notifier).setDraft(snap);
+      await context.push(
+        '/purchase/new',
+        extra: {
+          'initialDraft': draft,
+          'aiScan': {
+            'token': token,
+            'baseScan': snap,
+          },
         },
-      },
-    );
-    if (!mounted) return;
-    final latest = ref.read(purchaseScanDraftMapProvider);
-    if (latest != null) {
-      setState(() => _scan = Map<String, dynamic>.from(latest));
+      );
+      if (!mounted) return;
+      final latest = ref.read(purchaseScanDraftMapProvider);
+      if (latest != null) {
+        setState(() => _scan = Map<String, dynamic>.from(latest));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      final msg = friendlyApiError(e);
+      setState(() {
+        _tradeValidateSubmitting = false;
+        _tradeValidateBanner = msg;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          backgroundColor: const Color(0xFF991B1B),
+        ),
+      );
     }
   }
 
@@ -378,7 +462,10 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
     next['confidence'] = 0.99;
     s[key] = next;
     ref.read(purchaseScanDraftMapProvider.notifier).setDraft(Map<String, dynamic>.from(s));
-    setState(() => _scan = Map<String, dynamic>.from(s));
+    setState(() {
+      _scan = Map<String, dynamic>.from(s);
+      _tradeValidateBanner = null;
+    });
   }
 
   Future<void> _editItemRow(int index, Map<String, dynamic> item) async {
@@ -401,7 +488,10 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
         if (items is! List || idx < 0 || idx >= items.length) return;
         items[idx] = next;
         ref.read(purchaseScanDraftMapProvider.notifier).setDraft(Map<String, dynamic>.from(s));
-        setState(() => _scan = Map<String, dynamic>.from(s));
+        setState(() {
+          _scan = Map<String, dynamic>.from(s);
+          _tradeValidateBanner = null;
+        });
       },
     );
   }
@@ -460,12 +550,24 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
 
   int _severityRank(Object? sev) {
     final s = (sev ?? 'warn').toString().trim().toLowerCase();
+    if (s == 'blocker' || s == 'block') return 0;
     return switch (s) {
-      'blocker' => 0,
       'warn' => 1,
       'info' => 2,
       _ => 3,
     };
+  }
+
+  bool _scanHasBlockerWarnings(Map<String, dynamic>? s) {
+    if (s == null) return false;
+    final warns = s['warnings'];
+    if (warns is! List) return false;
+    for (final w in warns) {
+      if (w is! Map) continue;
+      final sev = (w['severity'] ?? '').toString().trim().toLowerCase();
+      if (sev == 'blocker' || sev == 'block') return true;
+    }
+    return false;
   }
 
   List<Map<String, dynamic>> _sortedWarnings(List warns) {
@@ -864,12 +966,20 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
     final bytes = _jpegBytes;
     final hasImage = bytes != null && bytes.isNotEmpty;
     final hasResult = _scan != null;
+    final scanBlocked = _scanHasBlockerWarnings(_scan);
     final isWorking = _busy;
     final pendingOffline = session != null &&
         OfflineStore.getPendingScanJobs(session.primaryBusiness.id).isNotEmpty;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Scan purchase bill')),
+      resizeToAvoidBottomInset: true,
+      appBar: AppBar(
+        title: const Text('Scan purchase bill'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: isWorking ? null : () => context.popOrGo('/purchase'),
+        ),
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           controller: _scroll,
@@ -1016,6 +1126,22 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
                   ),
                 ),
               ],
+              if (_tradeValidateBanner != null) ...[
+                const SizedBox(height: 12),
+                Card(
+                  color: const Color(0xFFFEF2F2),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(
+                      _tradeValidateBanner!,
+                      style: const TextStyle(
+                        color: Color(0xFF991B1B),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
               if (hasResult) ...[
                 _reviewConfidenceHeader(),
                 _supplierBrokerSummary(),
@@ -1085,9 +1211,23 @@ class _ScanPurchaseV2PageState extends ConsumerState<ScanPurchaseV2Page> {
               Expanded(
                 flex: 2,
                 child: FilledButton.icon(
-                  onPressed: (!isWorking && hasResult) ? _openPurchaseEntryFromScan : null,
-                  icon: const Icon(Icons.fact_check_rounded),
-                  label: const Text('Continue'),
+                  onPressed: (!isWorking &&
+                          hasResult &&
+                          !scanBlocked &&
+                          !_tradeValidateSubmitting)
+                      ? _openPurchaseEntryFromScan
+                      : null,
+                  icon: _tradeValidateSubmitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.fact_check_rounded),
+                  label: Text(_tradeValidateSubmitting ? 'Checking…' : 'Continue'),
                   style: FilledButton.styleFrom(
                     backgroundColor: HexaColors.brandPrimary,
                   ),

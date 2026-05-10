@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/router/navigation_ext.dart';
 import '../mapping/ai_scan_purchase_draft_map.dart';
 import 'purchase_scan_draft_map_provider.dart';
 
@@ -33,7 +34,7 @@ class _PurchaseScanDraftWizardPageState
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No scan data. Go back and scan again.')),
       );
-      context.pop();
+      context.popOrGo('/purchase/scan');
       return;
     }
     final token = snap['scan_token']?.toString().trim();
@@ -42,7 +43,7 @@ class _PurchaseScanDraftWizardPageState
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Scan token missing — try scanning again.')),
       );
-      context.pop();
+      context.popOrGo('/purchase/scan');
       return;
     }
     final draft = purchaseDraftFromScanResultJson(Map<String, dynamic>.from(snap));

@@ -27,7 +27,7 @@ double? _inferPackSizeKgFromItemName(String name) {
   final v = double.tryParse(raw);
   if (v == null || v <= 0) return null;
   // Guard against nonsense (e.g. "2026 KG" in dates or IDs).
-  if (v > 200) return null;
+  if (v > 500) return null;
   return v;
 }
 
@@ -112,7 +112,13 @@ double reportLineKg(TradePurchaseLine l) {
   }
 }
 
-double reportLineAmountInr(TradePurchaseLine l) => l.landingGross;
+/// Amount for report INR totals: [TradePurchaseLine.lineTotal] when set (canonical
+/// tax/discount-inclusive line purchase), else [TradePurchaseLine.landingGross]
+/// (computed pre-tax gross; mirrors SQL `coalesce(line_total, computed_gross)`).
+double reportLineAmountInr(TradePurchaseLine l) {
+  if (l.lineTotal != null) return l.lineTotal!;
+  return l.landingGross;
+}
 
 class TradeReportItemRow {
   TradeReportItemRow({

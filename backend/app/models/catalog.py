@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, UniqueConstraint, Uuid
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, Numeric, String, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -82,6 +82,29 @@ class CatalogItem(Base):
     last_line_weight_kg: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
+    # Smart unit / packaging intelligence (nullable — backfilled by classifier + ops).
+    normalized_name: Mapped[str | None] = mapped_column(String(512), nullable=True, index=True)
+    selling_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    stock_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    display_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    package_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    package_size: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    package_measurement: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    package_volume: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    package_weight: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    conversion_factor: Mapped[Decimal | None] = mapped_column(Numeric(14, 6), nullable=True)
+    ai_detected_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    smart_classification: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    unit_confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    packaging_confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    is_loose_item: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    is_packaged_item: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    auto_detect_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    ml_profile: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    validation_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     category = relationship("ItemCategory", back_populates="items")
     catalog_type = relationship("CategoryType", back_populates="catalog_items")
     variants = relationship("CatalogVariant", back_populates="item", cascade="all, delete-orphan")
@@ -92,6 +115,11 @@ class CatalogItem(Base):
     )
     default_broker_links = relationship(
         "CatalogItemDefaultBroker",
+        back_populates="catalog_item",
+        cascade="all, delete-orphan",
+    )
+    packaging_profiles = relationship(
+        "ItemPackagingProfile",
         back_populates="catalog_item",
         cascade="all, delete-orphan",
     )

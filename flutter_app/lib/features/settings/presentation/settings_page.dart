@@ -16,6 +16,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/config/app_config.dart';
+import '../../../core/router/navigation_ext.dart';
 import '../../../core/models/session.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/maintenance/maintenance_payment_constants.dart';
@@ -569,13 +570,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         leading: IconButton(
           tooltip: 'Back',
           icon: Icon(Icons.arrow_back_rounded, color: onSurf),
-          onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go('/home');
-            }
-          },
+          onPressed: () => context.popOrGo('/home'),
         ),
       ),
       body: ListView(

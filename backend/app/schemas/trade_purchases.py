@@ -242,7 +242,10 @@ class TradePurchaseLineOut(DecimalModel):
     delivered_rate: Decimal | None = None
     billty_rate: Decimal | None = None
     total_weight: Decimal | None = None
-    line_total: Decimal | None = None
+    line_total: Decimal | None = Field(
+        default=None,
+        description="Tax/discount-inclusive line purchase amount (matches persisted line_total / line_money).",
+    )
     profit: Decimal | None = None
     box_mode: str | None = None
     items_per_box: Decimal | None = None
@@ -259,7 +262,10 @@ class TradePurchaseLineOut(DecimalModel):
     default_unit: str | None = None
     default_kg_per_bag: Decimal | None = None
     default_purchase_unit: str | None = None
-    line_landing_gross: Decimal = Decimal("0")
+    line_landing_gross: Decimal = Field(
+        default=Decimal("0"),
+        description="Pre-discount / pre-tax landing gross (line_gross_base); not interchangeable with line_total.",
+    )
     line_selling_gross: Decimal = Decimal("0")
     line_profit: Decimal | None = None
 
@@ -367,3 +373,32 @@ class TradeDraftOut(DecimalModel):
     step: int
     payload: dict[str, Any]
     updated_at: datetime
+
+
+class TradePurchasePreviewLineOut(DecimalModel):
+    """Per-line fiscal preview (matches persisted ``line_total`` / weight / profit math)."""
+
+    index: int = Field(..., ge=0)
+    line_total: Decimal
+    line_landing_gross: Decimal
+    line_profit: Decimal | None = None
+    line_total_weight_kg: Decimal = Decimal("0")
+    resolved_labels: dict[str, Any] = Field(
+        default_factory=dict,
+        description="``unit_resolution_service.resolve_from_text`` snapshot for labels.",
+    )
+
+
+class TradePurchasePreviewOut(DecimalModel):
+    lines: list[TradePurchasePreviewLineOut]
+    total_qty: Decimal
+    total_amount: Decimal
+    total_landing_subtotal: Decimal | None = None
+    total_selling_subtotal: Decimal | None = None
+    total_line_profit: Decimal | None = None
+
+
+class TradePurchaseValidateOut(DecimalModel):
+    ok: bool
+    errors: list[dict[str, Any]]
+    warnings: list[dict[str, Any]] = Field(default_factory=list)

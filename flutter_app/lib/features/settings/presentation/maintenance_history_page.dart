@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:hexa_purchase_assistant/core/maintenance/maintenance_month_record.dart';
 import 'package:hexa_purchase_assistant/core/maintenance/maintenance_payment_repository.dart';
 import 'package:hexa_purchase_assistant/core/providers/prefs_provider.dart';
+import 'package:hexa_purchase_assistant/core/router/navigation_ext.dart';
 import 'package:hexa_purchase_assistant/core/theme/hexa_colors.dart';
 import 'package:hexa_purchase_assistant/core/theme/theme_context_ext.dart';
 
@@ -27,7 +28,7 @@ class MaintenanceHistoryPage extends ConsumerWidget {
         title: Text('Maintenance history', style: tt.titleLarge),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.pop(),
+          onPressed: () => context.popOrGo('/settings'),
         ),
       ),
       body: rows.isEmpty
@@ -71,7 +72,7 @@ void _detail(BuildContext context, MaintenanceMonthRecord r) {
                 'Amount: ₹${r.amount}\n'
                 'Paid: ${r.paidAt != null ? DateFormat.yMMMd().add_jm().format(r.paidAt!) : "—"}'
             : 'Status: unpaid\nAmount: ₹${r.amount}',
-        style: const TextStyle(height: 1.35, color: HexaColors.textSecondary),
+        style: TextStyle(height: 1.35, color: HexaColors.textSecondary),
       ),
       actions: [
         TextButton(

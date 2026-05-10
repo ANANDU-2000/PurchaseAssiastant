@@ -6,6 +6,7 @@ import '../../../../core/strict_decimal.dart';
 import '../../../../core/theme/hexa_colors.dart';
 import '../../domain/purchase_draft.dart';
 import '../../state/purchase_draft_provider.dart';
+import '../../state/purchase_trade_preview_provider.dart';
 import 'purchase_wizard_shared.dart' show kPurchaseFieldHeight;
 
 typedef OpenItemEditor = Future<void> Function({
@@ -139,7 +140,9 @@ class _PurchaseItemsStepState extends ConsumerState<PurchaseItemsStep> {
       taxPercent: it.taxPercent,
       discountPercent: it.lineDiscountPercent,
     );
-    final total = lineMoney(line);
+    final snap = ref.watch(tradePurchasePreviewProvider);
+    final pt = tradePreviewLineTotal(snap, i);
+    final total = pt ?? lineMoney(line);
     final kpu = it.kgPerUnit;
     final lck = it.landingCostPerKg;
     final rateUnit = (kpu != null && lck != null && kpu > 0 && lck > 0)

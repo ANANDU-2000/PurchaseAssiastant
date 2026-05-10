@@ -2,8 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show immutable;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
-
 import '../../../core/calc_engine.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/strict_decimal.dart';
@@ -27,9 +25,6 @@ double? _decimalFromObject(Object? value) {
     return null;
   }
 }
-
-String _fixed(Object value, int scale) =>
-    StrictDecimal.fromObject(value).format(scale);
 
 // --- Parity with legacy `purchase_entry_wizard_v2.dart` (same math as _strictFooter / computeTradeTotals) ---
 
@@ -147,12 +142,24 @@ PurchaseStrictBreakdown strictFooterBreakdown(PurchaseDraft d) {
   );
 }
 
-final purchaseTotalsProvider = Provider<TradeCalcTotals>((ref) {
-  return computePurchaseTotals(ref.watch(purchaseDraftProvider));
-});
-
 final purchaseStrictBreakdownProvider = Provider<PurchaseStrictBreakdown>((ref) {
-  return strictFooterBreakdown(ref.watch(purchaseDraftProvider));
+  ref.watch(
+    purchaseDraftProvider.select(
+      (d) => (
+        lines: d.lines,
+        headerDiscountPercent: d.headerDiscountPercent,
+        commissionMode: d.commissionMode,
+        commissionPercent: d.commissionPercent,
+        commissionMoney: d.commissionMoney,
+        freightAmount: d.freightAmount,
+        freightType: d.freightType,
+        billtyRate: d.billtyRate,
+        deliveredRate: d.deliveredRate,
+      ),
+    ),
+  );
+  final d = ref.read(purchaseDraftProvider);
+  return strictFooterBreakdown(d);
 });
 
 /// Rolled-up physical quantities for Summary (kg + counts by unit).
@@ -675,46 +682,15 @@ class PurchaseDraftNotifier extends Notifier<PurchaseDraft> {
   /// `freight_amount`, and purchase `discount` are authoritative; line JSON may
   /// still include legacy per-line charges when loaded from older saves.
   Map<String, dynamic> buildTradePurchaseBody({bool forceDuplicate = false}) {
-    final d = state;
-    final lines = <Map<String, dynamic>>[
-      for (final l in d.lines) l.toLineMap(),
-    ];
-    final body = <String, dynamic>{
-      'purchase_date': DateFormat('yyyy-MM-dd').format(d.purchaseDate ?? DateTime.now()),
-      'status': 'confirmed',
-      'lines': lines,
-      'freight_type': d.freightType,
-      if (forceDuplicate) 'force_duplicate': true,
-    };
-    if (d.supplierId != null && d.supplierId!.isNotEmpty) {
-      body['supplier_id'] = d.supplierId;
-    }
-    if (d.brokerId != null && d.brokerId!.isNotEmpty) {
-      body['broker_id'] = d.brokerId;
-    }
-    final pd = d.paymentDays;
-    if (pd != null && pd >= 0) body['payment_days'] = pd;
-    final hd = d.headerDiscountPercent;
-    if (hd != null && hd > 0) body['discount'] = _fixed(hd, 2);
-    body['commission_mode'] = d.commissionMode;
-    if (d.commissionMode == kPurchaseCommissionModePercent) {
-      final comm = d.commissionPercent;
-      if (comm != null && comm > 0) {
-        body['commission_percent'] = _fixed(comm, 2);
-      }
-    } else {
-      final cm = d.commissionMoney;
-      if (cm != null && cm > 0) {
-        body['commission_money'] = _fixed(cm, 4);
-      }
-    }
-    final dlr = d.deliveredRate;
-    if (dlr != null && dlr >= 0) body['delivered_rate'] = _fixed(dlr, 2);
-    final brt = d.billtyRate;
-    if (brt != null && brt >= 0) body['billty_rate'] = _fixed(brt, 2);
-    final fa = d.freightAmount;
-    if (fa != null && fa > 0) body['freight_amount'] = _fixed(fa, 2);
-    return body;
+    return state.toTradePurchaseCreateBody(forceDuplicate: forceDuplicate);
+  }
+
+  /// JSON for [HexaApi.previewTradePurchaseLines] — `draft` status so the server
+  /// skips the line-gross gate while the user is still editing rates.
+  Map<String, dynamic> buildTradePurchasePreviewBody() {
+    final m = Map<String, dynamic>.from(buildTradePurchaseBody(forceDuplicate: false));
+    m['status'] = 'draft';
+    return m;
   }
 
   void applyFromPrefsMap(Map<String, dynamic> m) {

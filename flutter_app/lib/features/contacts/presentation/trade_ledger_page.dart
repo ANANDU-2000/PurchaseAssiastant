@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/models/trade_purchase_models.dart';
+import '../../../core/reporting/trade_report_aggregate.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/business_profile_provider.dart';
 import '../../../core/providers/business_write_revision.dart';
@@ -419,7 +420,7 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => context.popOrGo('/home'),
         ),
-        title: Text(_title),
+        title: Text(_title, overflow: TextOverflow.ellipsis, maxLines: 1),
         actions: [
           if (widget.kind == TradeLedgerKind.supplier ||
               widget.kind == TradeLedgerKind.broker ||
@@ -497,6 +498,8 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
                                   children: [
                                     Text(
                                       entityTitle,
+                                      overflow: TextOverflow.ellipsis,
+                                      maxLines: 1,
                                       style: tt.titleMedium?.copyWith(
                                         fontWeight: FontWeight.w900,
                                       ),
@@ -526,6 +529,8 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
                                 const SizedBox(height: 4),
                                 Text(
                                   phone,
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
                                   style: tt.bodySmall?.copyWith(
                                     fontWeight: FontWeight.w600,
                                     color: cs.onSurfaceVariant,
@@ -536,6 +541,8 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
                                 const SizedBox(height: 4),
                                 Text(
                                   addr,
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 2,
                                   style: tt.bodySmall?.copyWith(
                                     color: cs.onSurfaceVariant,
                                   ),
@@ -749,6 +756,8 @@ class _LedgerPurchaseCard extends StatelessWidget {
                       children: [
                         Text(
                           p.humanId,
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
                           style: TextStyle(
                             fontWeight: FontWeight.w900,
                             color: cs.primary,
@@ -769,8 +778,6 @@ class _LedgerPurchaseCard extends StatelessWidget {
                     child: Text(
                       _inr(p.totalAmount.round()),
                       textAlign: TextAlign.end,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                       style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w900),
                     ),
                   ),
@@ -781,6 +788,8 @@ class _LedgerPurchaseCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   p.supplierName!,
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                   style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
                 ),
               ],
@@ -800,6 +809,8 @@ class _LedgerPurchaseCard extends StatelessWidget {
                         children: [
                           Text(
                             ln.itemName,
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
                             style: tt.bodyMedium?.copyWith(
                               fontWeight: FontWeight.w800,
                             ),
@@ -820,8 +831,7 @@ class _LedgerPurchaseCard extends StatelessWidget {
                               };
                               final q = formatLineQtyWeightFromTradeLine(ln);
                               final r = tradeIntelRatePairLine(intel);
-                              final lineAmt =
-                                  ln.lineTotal ?? (ln.qty * ln.landingCost);
+                              final lineAmt = reportLineAmountInr(ln);
                               return Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [

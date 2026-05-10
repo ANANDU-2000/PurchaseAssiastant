@@ -9,10 +9,11 @@ import 'package:dio/dio.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
-import '../../../core/json_coerce.dart';
+import '../../../core/router/navigation_ext.dart';
 import '../../../core/api/fastapi_error.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/json_coerce.dart' show coerceToDoubleNullable;
 import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart'
     show invalidatePurchaseWorkspace, invalidateWorkspaceSeedData;
@@ -25,6 +26,7 @@ import '../../../core/notifications/local_notifications_service.dart';
 import '../../purchase/domain/purchase_draft.dart';
 import '../../purchase/mapping/ai_scan_purchase_draft_map.dart';
 import '../../purchase/state/purchase_draft_provider.dart';
+import '../../purchase/state/purchase_trade_preview_provider.dart';
 
 import '../../contacts/presentation/broker_wizard_page.dart';
 import '../../contacts/presentation/supplier_create_simple.dart';
@@ -70,7 +72,8 @@ class PurchaseEntryWizardV2 extends ConsumerStatefulWidget {
       _PurchaseEntryWizardV2State();
 }
 
-class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
+class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
+    with WidgetsBindingObserver {
   bool _isBootstrapping = false;
   String? _editBootstrapError;
   bool _isSaving = false;
@@ -133,9 +136,19 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _partySupplierFocus.addListener(_partyFieldFocusNotify);
     _partyBrokerFocus.addListener(_partyFieldFocusNotify);
     WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrap());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.paused && _formDirty) {
+      _draftDebounce?.cancel();
+      _flushDraftToPrefs();
+    }
   }
 
   Future<void> _bootstrap() async {
@@ -564,6 +577,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _draftDebounce?.cancel();
     if (widget.editingId == null || widget.editingId!.isEmpty) {
       final s = ref.read(sessionProvider);
@@ -1190,16 +1204,16 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     await _clearDraftInPrefs();
     if (!mounted) return;
     setState(() => _formDirty = false);
-    if (context.canPop()) context.pop();
+    context.popOrGo('/purchase');
   }
 
   Future<void> _handleWizardExitFromRoot() async {
     if (_isEditMode()) {
-      if (context.canPop()) context.pop();
+      context.popOrGo('/purchase');
       return;
     }
     if (!_formDirty) {
-      if (context.canPop()) context.pop();
+      context.popOrGo('/purchase');
       return;
     }
     final choice = await showCupertinoDialog<_WizardExitDraftChoice>(
@@ -1233,7 +1247,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     if (choice == _WizardExitDraftChoice.keepEditing) return;
     if (choice == _WizardExitDraftChoice.saveDraft) {
       _saveDraftNow();
-      if (context.canPop()) context.pop();
+      context.popOrGo('/purchase');
       return;
     }
     await _discardDraftAndPop();
@@ -1344,6 +1358,55 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
     return false;
   }
 
+  String _formatTradeValidateErrors(Map<String, dynamic> val) {
+    final errs = val['errors'];
+    if (errs is! List || errs.isEmpty) {
+      return 'Purchase did not pass server validation.';
+    }
+    final parts = <String>[];
+    for (final e in errs.take(5)) {
+      if (e is Map) {
+        final m = e['message']?.toString() ??
+            e['detail']?.toString() ??
+            e['msg']?.toString();
+        if (m != null && m.trim().isNotEmpty) {
+          parts.add(m.trim());
+        }
+      } else if (e != null && e.toString().trim().isNotEmpty) {
+        parts.add(e.toString().trim());
+      }
+    }
+    return parts.isEmpty ? 'Purchase did not pass server validation.' : parts.join('; ');
+  }
+
+  Future<bool> _runServerTradeValidate(String bid, Map<String, dynamic> body) async {
+    try {
+      final val = await ref.read(hexaApiProvider).validateTradePurchase(
+            businessId: bid,
+            body: body,
+          );
+      if (val['ok'] == true) return true;
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+          _inlineSaveError = _formatTradeValidateErrors(val);
+          _wizStep = 2;
+        });
+      }
+      return false;
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+          _inlineSaveError =
+              'Could not validate purchase with the server. Check your connection.';
+          _wizStep = 2;
+        });
+      }
+      return false;
+    }
+  }
+
   Future<void> _savePurchaseAttempt({required bool forceDuplicate}) async {
     if (_isSaving) return;
     final session = ref.read(sessionProvider);
@@ -1411,6 +1474,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
         final tradeBody = ref
             .read(purchaseDraftProvider.notifier)
             .buildTradePurchaseBody(forceDuplicate: forceDuplicate);
+        if (!await _runServerTradeValidate(bid, tradeBody)) return;
         final forceDup = tradeBody['force_duplicate'] == true;
         final pd = d.purchaseDate ?? DateTime.now();
         saved = await scanPurchaseUpdateAndConfirm(
@@ -1422,12 +1486,14 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
           forceDuplicate: forceDup,
         );
       } else if (isEdit) {
+        if (!await _runServerTradeValidate(bid, body)) return;
         saved = await api.updateTradePurchase(
               businessId: bid,
               purchaseId: widget.editingId!,
               body: body,
             );
       } else {
+        if (!await _runServerTradeValidate(bid, body)) return;
         saved = await api.createTradePurchase(
               businessId: bid,
               body: body,
@@ -1913,6 +1979,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(tradePurchasePreviewProvider);
     ref.listen(catalogItemsListProvider, (_, next) {
       next.whenData((d) {
         _lastCatalogSnapshot = d

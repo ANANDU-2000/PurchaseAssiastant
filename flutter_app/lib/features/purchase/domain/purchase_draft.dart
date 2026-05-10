@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/strict_decimal.dart';
 
@@ -194,6 +195,50 @@ class PurchaseDraft {
       default:
         return kPurchaseCommissionModePercent;
     }
+  }
+
+  /// Same wire shape as [PurchaseDraftNotifier.buildTradePurchaseBody] — used
+  /// from scan review and other call sites without mutating provider state.
+  Map<String, dynamic> toTradePurchaseCreateBody({bool forceDuplicate = false}) {
+    final lines = <Map<String, dynamic>>[
+      for (final l in this.lines) l.toLineMap(),
+    ];
+    final body = <String, dynamic>{
+      'purchase_date': DateFormat('yyyy-MM-dd').format(purchaseDate ?? DateTime.now()),
+      'status': 'confirmed',
+      'lines': lines,
+      'freight_type': freightType,
+      if (forceDuplicate) 'force_duplicate': true,
+    };
+    if (supplierId != null && supplierId!.isNotEmpty) {
+      body['supplier_id'] = supplierId;
+    }
+    if (brokerId != null && brokerId!.isNotEmpty) {
+      body['broker_id'] = brokerId;
+    }
+    final pd = paymentDays;
+    if (pd != null && pd >= 0) body['payment_days'] = pd;
+    final hd = headerDiscountPercent;
+    if (hd != null && hd > 0) body['discount'] = _fixed(hd, 2);
+    body['commission_mode'] = commissionMode;
+    if (commissionMode == kPurchaseCommissionModePercent) {
+      final comm = commissionPercent;
+      if (comm != null && comm > 0) {
+        body['commission_percent'] = _fixed(comm, 2);
+      }
+    } else {
+      final cm = commissionMoney;
+      if (cm != null && cm > 0) {
+        body['commission_money'] = _fixed(cm, 4);
+      }
+    }
+    final dlr = deliveredRate;
+    if (dlr != null && dlr >= 0) body['delivered_rate'] = _fixed(dlr, 2);
+    final brt = billtyRate;
+    if (brt != null && brt >= 0) body['billty_rate'] = _fixed(brt, 2);
+    final fa = freightAmount;
+    if (fa != null && fa > 0) body['freight_amount'] = _fixed(fa, 2);
+    return body;
   }
 
   /// Replaces broker commission header fields (null-safe for API modes).
@@ -447,6 +492,11 @@ bool _isBagUnit(String unit) {
 bool _isBoxUnit(String unit) => unit.trim().toLowerCase() == 'box';
 bool _isTinUnit(String unit) => unit.trim().toLowerCase() == 'tin';
 
+bool _isPieceUnit(String unit) {
+  final x = unit.trim().toLowerCase();
+  return x == 'piece' || x == 'pcs' || x == 'pieces';
+}
+
 /// First validation failure for [l] that would also fail API line rules, or null
 /// when the line is save-ready (aligned with [TradePurchase] create/update).
 ///
@@ -475,7 +525,8 @@ String? purchaseLineSaveBlockReason(PurchaseLineDraft l) {
   final unitIsBag = _isBagUnit(l.unit);
   final unitIsBox = _isBoxUnit(l.unit);
   final unitIsTin = _isTinUnit(l.unit);
-  if (unitIsBag || unitIsBox || unitIsTin) {
+  final unitIsPiece = _isPieceUnit(l.unit);
+  if (unitIsBag || unitIsBox || unitIsTin || unitIsPiece) {
     if ((l.qty - l.qty.roundToDouble()).abs() > 1e-6) {
       return 'Use a whole number quantity for ${l.unit.trim()} lines (no decimals).';
     }
@@ -483,6 +534,12 @@ String? purchaseLineSaveBlockReason(PurchaseLineDraft l) {
   // BOX & TIN are count-only in master rebuild default wholesale mode.
   // Only require qty > 0 + a positive landing cost.
   if (unitIsBox || unitIsTin) {
+    if (l.landingCost <= 0) {
+      return 'Purchase rate must be greater than 0.';
+    }
+    return null;
+  }
+  if (unitIsPiece) {
     if (l.landingCost <= 0) {
       return 'Purchase rate must be greater than 0.';
     }
@@ -501,9 +558,9 @@ String? purchaseLineSaveBlockReason(PurchaseLineDraft l) {
     return 'Landing cost must be greater than 0.';
   }
   final tax = l.taxPercent ?? 0;
-  if (tax > 0 || unitIsBag) {
+  if (tax > 0) {
     if ((l.hsnCode ?? '').trim().isEmpty) {
-      return 'HSN is required when the line has tax or the unit is bag.';
+      return 'HSN code is required for taxed items (tax% > 0).';
     }
   }
   return null;

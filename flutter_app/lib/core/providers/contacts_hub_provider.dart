@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
@@ -16,7 +18,8 @@ const int contactsLookbackDays = 90;
 /// Suppliers merged with last-90d analytics rows (key `_metrics` when present).
 final contactsSuppliersEnrichedProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  ref.keepAlive();
+  final keepAliveLink = ref.keepAlive();
+  Timer(const Duration(minutes: 30), keepAliveLink.close);
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   final api = ref.read(hexaApiProvider);
@@ -40,7 +43,8 @@ final contactsSuppliersEnrichedProvider =
 
 final contactsBrokersEnrichedProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  ref.keepAlive();
+  final keepAliveLink = ref.keepAlive();
+  Timer(const Duration(minutes: 30), keepAliveLink.close);
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   final api = ref.read(hexaApiProvider);
@@ -64,7 +68,8 @@ final contactsBrokersEnrichedProvider =
 
 final contactsCategoriesProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  ref.keepAlive();
+  final keepAliveLink = ref.keepAlive();
+  Timer(const Duration(minutes: 30), keepAliveLink.close);
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   final api = ref.read(hexaApiProvider);
@@ -79,7 +84,8 @@ final contactsCategoriesProvider =
 
 final contactsItemsProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  ref.keepAlive();
+  final keepAliveLink = ref.keepAlive();
+  Timer(const Duration(minutes: 30), keepAliveLink.close);
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   final api = ref.read(hexaApiProvider);

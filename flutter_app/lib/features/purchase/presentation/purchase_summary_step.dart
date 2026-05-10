@@ -7,6 +7,7 @@ import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../domain/purchase_draft.dart';
 import '../state/purchase_draft_provider.dart';
+import '../state/purchase_trade_preview_provider.dart';
 
 class PurchaseSummaryStep extends ConsumerWidget {
   const PurchaseSummaryStep({
@@ -82,12 +83,14 @@ class PurchaseSummaryStep extends ConsumerWidget {
     final b = ref.watch(purchaseStrictBreakdownProvider);
     final qtot = ref.watch(purchaseQuantityTotalsProvider);
     final saveVal = ref.watch(purchaseSaveValidationProvider);
+    final previewSnap = ref.watch(tradePurchasePreviewProvider);
+    final itemsSubFromServer = tradePreviewSumLineTotals(previewSnap);
 
     final delivered = draft.deliveredRate ?? 0;
     final billty = draft.billtyRate ?? 0;
     final freight =
         draft.freightType == 'included' ? 0.0 : (draft.freightAmount ?? 0);
-    final itemsSub = _itemsSumLines(draft.lines);
+    final itemsSub = itemsSubFromServer ?? _itemsSumLines(draft.lines);
     final bags = (qtot.qtyByUnit['bag'] ?? 0);
 
     return Column(
@@ -114,7 +117,8 @@ class PurchaseSummaryStep extends ConsumerWidget {
             final i = e.key;
             final it = e.value;
             final calc = _toCalc(it);
-            final lineTot = lineMoney(calc);
+            final lineTot =
+                tradePreviewLineTotal(previewSnap, i) ?? lineMoney(calc);
             final rate = it.qty > 0 ? lineTot / it.qty : it.landingCost;
             final wkg = _lineWeightKg(it);
             final err = saveVal.lineErrors[i];

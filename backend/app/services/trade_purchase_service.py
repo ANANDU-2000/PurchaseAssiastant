@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 
 from app.db_resilience import execute_with_retry
 from app.models import CatalogItem, SupplierItemDefault, TradePurchase, TradePurchaseDraft, TradePurchaseLine
-from app.services.trade_unit_type import derive_trade_unit_type, parse_kg_per_bag_from_name
+from app.services.trade_unit_type import derive_trade_unit_type
 from app.schemas.trade_purchases import (
     TradeDuplicateCheckRequest,
     TradeDuplicateCheckResponse,
@@ -30,6 +30,14 @@ from app.schemas.trade_purchases import (
 )
 from app.read_cache_generation import bump_trade_read_caches_for_business
 from app.services import decimal_precision as dp
+from app.services.aggregate_totals_service import aggregate_landing_selling_profit
+from app.services.line_totals_service import (
+    line_gross_base as _line_gross_base,
+    line_item_freight_charges,
+    line_money as _line_money,
+    line_profit as _line_profit,
+    line_total_weight as _line_total_weight,
+)
 from app.services.purchase_status import compute_status
 from app.services.trade_query import trade_purchase_status_in_reports
 
@@ -74,14 +82,20 @@ _UNIT_PATTERN = re.compile(r"^[a-z][a-z0-9\- ]{0,31}$")
 
 def _collect_trade_purchase_validation_errors(
     body: TradePurchaseCreateRequest,
+    *,
+    for_preview: bool = False,
 ) -> list[dict[str, Any]]:
-    """Post-schema checks: permissive units + authoritative line gross."""
+    """Post-schema checks: permissive units + authoritative line gross.
+
+    When ``for_preview`` is true, skip the line-gross > 0 rule so the wizard can
+    debounce-preview while the user is still entering rates/weights.
+    """
     errs: list[dict[str, Any]] = []
     if not body.lines:
         errs.append({"loc": ["body", "lines"], "msg": "At least one line item is required"})
         return errs
     status_l = (body.status or "").lower()
-    enforce_gross = status_l in {"confirmed", "saved", "draft"}
+    enforce_gross = (not for_preview) and status_l in {"confirmed", "saved", "draft"}
     for i, li in enumerate(body.lines):
         base: list[Any] = ["body", "lines", i]
         if not (li.item_name or "").strip():
@@ -311,38 +325,10 @@ def _purchase_has_missing_optional_details(tp: TradePurchase) -> bool:
     return False
 
 
-def _line_gross_base(li: TradePurchaseLineIn) -> Decimal:
-    if li.kg_per_unit is not None and li.landing_cost_per_kg is not None:
-        return _dec(li.qty) * _dec(li.kg_per_unit) * _dec(li.landing_cost_per_kg)
-    return _dec(li.qty) * _dec(li.landing_cost)
-
-
-def _line_total(li: TradePurchaseLineIn) -> Decimal:
-    return dp.total(_dec(li.qty) * _dec(li.purchase_rate or li.landing_cost))
-
-
-def _line_total_weight(li: TradePurchaseLineIn) -> Decimal:
-    unit = (li.unit or "").strip().upper()
-    qty = _dec(li.qty)
-    if unit == "KG":
-        return dp.total_weight(qty)
-    if unit == "BAG":
-        # [Bug 2 fix] Mirror the Flutter wizard: when `weight_per_unit` is
-        # missing we still want `100 bags × 50 kg = 5000 kg` if the item name
-        # is `SUGAR 50 KG`. Parse `NN KG` from the item label as a fallback.
-        per_bag = li.weight_per_unit or li.kg_per_unit
-        if per_bag is None:
-            per_bag = parse_kg_per_bag_from_name(li.item_name)
-        if per_bag is None:
-            return Decimal("0")
-        return dp.total_weight(qty * _dec(per_bag))
-    if unit in ("BOX", "TIN"):
-        # Master rebuild default wholesale mode: BOX/TIN are count-only.
-        # Do not track kg totals for these units unless advanced inventory is enabled.
-        return Decimal("0")
-    if li.weight_per_unit is not None:
-        return dp.total_weight(qty * _dec(li.weight_per_unit))
-    return Decimal("0")
+def _line_item_charges(li: TradePurchaseLineIn, req: TradePurchaseCreateRequest) -> Decimal:
+    """Per-line freight/charges (``req`` reserved for future header coupling)."""
+    del req
+    return line_item_freight_charges(li)
 
 
 def _strip_disallowed_fields_for_default_wholesale_mode(
@@ -379,42 +365,23 @@ def _strip_disallowed_fields_for_default_wholesale_mode(
     return li
 
 
-def _line_item_charges(li: TradePurchaseLineIn, req: TradePurchaseCreateRequest) -> Decimal:
-    del req
-    freight_type = li.freight_type
-    freight = li.freight_value
-    freight_dec = _dec(freight) if freight is not None and freight_type == "separate" else Decimal("0")
-    delivered = _dec(li.delivered_rate) if li.delivered_rate is not None else Decimal("0")
-    billty = _dec(li.billty_rate) if li.billty_rate is not None else Decimal("0")
-    return freight_dec + delivered + billty
+def normalize_trade_line_for_preview(li: TradePurchaseLineIn) -> TradePurchaseLineIn:
+    """BOX/TIN wholesale stripping; must match ``create_trade_purchase`` before line totals."""
+    return _strip_disallowed_fields_for_default_wholesale_mode(li)
 
 
-def _line_profit(li: TradePurchaseLineIn, req: TradePurchaseCreateRequest) -> Decimal | None:
-    if li.selling_rate is None:
-        return None
-    revenue = _dec(li.qty) * _dec(li.selling_rate)
-    total_cost = _line_money(li) + _line_item_charges(li, req)
-    return dp.total(revenue - total_cost)
+def collect_trade_purchase_validation_errors(
+    body: TradePurchaseCreateRequest,
+) -> list[dict[str, Any]]:
+    """Full save/create validation (same as ``create_trade_purchase``)."""
+    return _collect_trade_purchase_validation_errors(body, for_preview=False)
 
 
-def _line_money(li: TradePurchaseLineIn) -> Decimal:
-    base = _line_gross_base(li)
-    ld = _dec(li.discount) if li.discount is not None else Decimal("0")
-    after_disc = base * (Decimal("1") - dp.clamp_percent(ld) / Decimal("100"))
-    tax = _dec(li.tax_percent) if li.tax_percent is not None else Decimal("0")
-    return after_disc * (Decimal("1") + dp.clamp_percent(tax, Decimal("1000")) / Decimal("100"))
-
-
-def _line_landing_gross_in(li: TradePurchaseLineIn) -> Decimal:
-    return _line_gross_base(li)
-
-
-def _line_selling_gross_in(li: TradePurchaseLineIn) -> Decimal:
-    if li.selling_cost is None:
-        return Decimal("0")
-    if li.kg_per_unit is not None and li.landing_cost_per_kg is not None:
-        return _dec(li.qty) * _dec(li.kg_per_unit) * _dec(li.selling_cost)
-    return _dec(li.qty) * _dec(li.selling_cost)
+def collect_trade_purchase_preview_errors(
+    body: TradePurchaseCreateRequest,
+) -> list[dict[str, Any]]:
+    """Relaxed validation for debounced wizard preview (skips line-gross > 0)."""
+    return _collect_trade_purchase_validation_errors(body, for_preview=True)
 
 
 def _header_commission_rupees(req: TradePurchaseCreateRequest, after_header: Decimal) -> Decimal:
@@ -467,17 +434,6 @@ def _header_commission_rupees(req: TradePurchaseCreateRequest, after_header: Dec
             return Decimal("0")
         return dp.total(money * tins)
     return Decimal("0")
-
-
-def aggregate_landing_selling_profit(
-    req: TradePurchaseCreateRequest,
-) -> tuple[Decimal, Decimal | None, Decimal | None]:
-    """SSOT line subtotals (tax/disc-inclusive line money + per-line charges)."""
-    land = sum((_line_money(li) + _line_item_charges(li, req)) for li in req.lines)
-    sell = sum((_dec(li.qty) * _dec(li.selling_rate)) for li in req.lines if li.selling_rate is not None)
-    if sell <= 0:
-        return dp.total(land), None, None
-    return dp.total(land), dp.total(sell), dp.total(sell - land)
 
 
 def compute_totals(req: TradePurchaseCreateRequest) -> tuple[Decimal, Decimal]:
@@ -1245,15 +1201,57 @@ def _catalog_item_unit_hints(li: TradePurchaseLine) -> tuple[str | None, Decimal
     return du_s, kpb_f, dpu_s
 
 
-def _line_landing_gross_db(li: TradePurchaseLine) -> Decimal:
-    stored = getattr(li, "line_total", None)
-    if stored is not None:
-        return dp.total(stored)
-    kpu = getattr(li, "kg_per_unit", None)
-    lpk = getattr(li, "landing_cost_per_kg", None)
-    if kpu is not None and lpk is not None:
-        return dp.total(_dec(li.qty) * _dec(kpu) * _dec(lpk))
-    return dp.total(_dec(li.qty) * _dec(li.landing_cost))
+def _trade_purchase_line_in_from_db(li: TradePurchaseLine) -> TradePurchaseLineIn:
+    """Rebuild [TradePurchaseLineIn] from ORM row (``model_construct`` skips BAG-only validators)."""
+    pr = getattr(li, "purchase_rate", None) or li.landing_cost
+    kpu = getattr(li, "weight_per_unit", None) or getattr(li, "kg_per_unit", None)
+    sr = getattr(li, "selling_rate", None) or getattr(li, "selling_cost", None)
+    sc = getattr(li, "selling_cost", None) or getattr(li, "selling_rate", None)
+    return TradePurchaseLineIn.model_construct(
+        catalog_item_id=li.catalog_item_id,
+        item_name=(li.item_name or "").strip() or "—",
+        qty=li.qty,
+        unit=li.unit or "pcs",
+        landing_cost=li.landing_cost,
+        purchase_rate=pr,
+        kg_per_unit=kpu,
+        weight_per_unit=kpu,
+        landing_cost_per_kg=getattr(li, "landing_cost_per_kg", None),
+        selling_rate=sr,
+        selling_cost=sc,
+        freight_type=getattr(li, "freight_type", None),
+        freight_value=getattr(li, "freight_value", None),
+        delivered_rate=getattr(li, "delivered_rate", None),
+        billty_rate=getattr(li, "billty_rate", None),
+        box_mode=getattr(li, "box_mode", None),
+        items_per_box=getattr(li, "items_per_box", None),
+        weight_per_item=getattr(li, "weight_per_item", None),
+        kg_per_box=getattr(li, "kg_per_box", None),
+        weight_per_tin=getattr(li, "weight_per_tin", None),
+        discount=li.discount,
+        tax_percent=li.tax_percent,
+        payment_days=getattr(li, "payment_days", None),
+        hsn_code=getattr(li, "hsn_code", None),
+        item_code=getattr(li, "item_code", None),
+        description=getattr(li, "description", None),
+    )
+
+
+def _line_purchase_money_db(li: TradePurchaseLine, li_in: TradePurchaseLineIn) -> Decimal:
+    """Tax/discount-inclusive line purchase (persisted ``line_total`` when present)."""
+    raw = getattr(li, "line_total", None)
+    if raw is not None:
+        return dp.total(raw)
+    return _line_money(li_in)
+
+
+def _line_profit_dummy_trade_req() -> TradePurchaseCreateRequest:
+    """``line_profit`` ignores header fields; stable placeholder for ORM → Out mapping."""
+    return TradePurchaseCreateRequest(
+        purchase_date=date.today(),
+        supplier_id=uuid.UUID("00000000-0000-4000-8000-000000000000"),
+        lines=[],
+    )
 
 
 def _line_selling_gross_db(li: TradePurchaseLine) -> Decimal:
@@ -1271,14 +1269,19 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
     sum_sell = Decimal("0")
     for li in tp.lines:
         du_s, kpb_f, dpu_s = _catalog_item_unit_hints(li)
-        lg = _line_landing_gross_db(li)
+        li_in = _trade_purchase_line_in_from_db(li)
+        lg = dp.total(_line_gross_base(li_in))
+        lpm = _line_purchase_money_db(li, li_in)
         sg = _line_selling_gross_db(li)
         sum_land += lg
         sum_sell += sg
         stored_profit = getattr(li, "profit", None)
-        lp = dp.total(stored_profit) if stored_profit is not None else (
-            dp.total(sg - lg) if (getattr(li, "selling_rate", None) is not None or li.selling_cost is not None) else None
-        )
+        if stored_profit is not None:
+            lp = dp.total(stored_profit)
+        elif getattr(li, "selling_rate", None) is not None or li.selling_cost is not None:
+            lp = _line_profit(li_in, _line_profit_dummy_trade_req())
+        else:
+            lp = None
         kpu_raw = getattr(li, "weight_per_unit", None)
         if kpu_raw is None:
             kpu_raw = getattr(li, "kg_per_unit", None)
@@ -1319,7 +1322,7 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
                 delivered_rate=dp.money(getattr(li, "delivered_rate", None)) if getattr(li, "delivered_rate", None) is not None else None,
                 billty_rate=dp.money(getattr(li, "billty_rate", None)) if getattr(li, "billty_rate", None) is not None else None,
                 total_weight=total_weight,
-                line_total=lg,
+                line_total=lpm,
                 profit=lp,
                 box_mode=getattr(li, "box_mode", None),
                 items_per_box=dp.qty(getattr(li, "items_per_box", None)) if getattr(li, "items_per_box", None) is not None else None,

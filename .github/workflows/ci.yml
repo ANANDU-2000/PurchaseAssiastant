@@ -12,6 +12,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  flutter-ssot:
+    name: Flutter SSOT smoke (money + reports + classifier)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flutter_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Get packages
+        run: flutter pub get
+      - name: SSOT regression tests
+        run: flutter test test/trade_purchase_line_money_contract_test.dart test/trade_report_aggregate_test.dart test/smart_unit_classifier_test.dart test/purchase_draft_calc_test.dart
+
   backend:
     name: Backend pytest
     runs-on: ubuntu-latest
@@ -47,6 +64,8 @@ jobs:
           cache: true
       - name: Get packages
         run: flutter pub get
+      # Optional stricter gate (not enforced): ripgrep `\blineMoney\b` under lib with an allowlist
+      # for display-only paths, if you want CI to catch new client-side money calculations.
       - name: Analyze
         run: flutter analyze
       - name: Test

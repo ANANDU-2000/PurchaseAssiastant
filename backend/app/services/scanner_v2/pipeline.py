@@ -26,6 +26,7 @@ from app.config import Settings
 from app.services import decimal_precision as dp
 from app.services.llm_failover import resolve_provider_keys, run_ordered_failover
 from app.services.purchase_scan_service import image_bytes_to_text
+from app.services.scanner_trade_line_adapter import preview_line_money_ssot
 from app.services.scanner_v2 import bag_logic, matcher, pack_gate
 from app.services.scanner_v2.prompt import SYSTEM_PROMPT
 from app.services.scanner_v2.types import (
@@ -41,6 +42,21 @@ from app.services.scanner_v2.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Printed commodity rates below this (₹) are treated as likely ₹/kg for BOX/TIN
+# preview math only — BAG lines require explicit ``rate_context`` from the model.
+AMBIGUOUS_UNIT_RATE_INR_THRESHOLD = Decimal("500")
+
+
+def _parse_rate_context(raw: Any) -> str | None:
+    if not isinstance(raw, str):
+        return None
+    x = raw.strip().lower().replace("-", "_")
+    if x == "per_kg":
+        return "per_kg"
+    if x == "per_bag":
+        return "per_bag"
+    return None
 
 
 def llm_payload_is_not_a_bill(raw: Any) -> bool:
@@ -428,6 +444,7 @@ async def _match_items(
             qty=_d(it.get("qty")),
             purchase_rate=_d(it.get("purchase_rate")),
             selling_rate=_d(it.get("selling_rate")),
+            rate_context=_parse_rate_context(it.get("rate_context")),
             delivered_rate=_d(it.get("delivered_rate")),
             billty_rate=_d(it.get("billty_rate")),
             freight_amount=_d(it.get("freight_amount")),
@@ -436,10 +453,12 @@ async def _match_items(
             notes=(str(it.get("notes")).strip() if it.get("notes") is not None else None),
         )
         out.append(row)
-    return await pack_gate.apply_pack_gates_to_item_rows(db, business_id, out)
+    out = await pack_gate.apply_pack_gates_to_item_rows(db, business_id, out)
+    return out
 
 
 def _confidence_from_matches(supplier: Match, broker: Match | None, items: list[ItemRow]) -> float:
+    """Aggregate match confidence: weakest resolved field (min), so one bad line surfaces review."""
     scores: list[float] = []
     if supplier.match_state != "unresolved":
         scores.append(float(supplier.confidence))
@@ -450,7 +469,7 @@ def _confidence_from_matches(supplier: Match, broker: Match | None, items: list[
             scores.append(float(it.confidence))
     if not scores:
         return 0.0
-    return max(0.0, min(1.0, sum(scores) / len(scores)))
+    return max(0.0, min(1.0, min(scores)))
 
 
 def _needs_review(supplier: Match, broker: Match | None, items: list[ItemRow]) -> bool:
@@ -498,8 +517,9 @@ def _compute_preview_line_total(it: ItemRow, warnings: list[Warning]) -> Decimal
             return None
         wpu = it.weight_per_unit_kg
         tk = it.total_kg
-        # Align with BAG heuristic: small rates are usually ₹/kg on commodity lines.
-        if r < Decimal("500"):
+        # BOX/TIN: small printed rates are usually ₹/kg on commodity lines (see
+        # ``AMBIGUOUS_UNIT_RATE_INR_THRESHOLD``); larger rates are per unit.
+        if r < AMBIGUOUS_UNIT_RATE_INR_THRESHOLD:
             if tk is not None and tk > 0:
                 return dp.total(tk * r)
             if wpu is not None and wpu > 0:
@@ -521,21 +541,31 @@ def _compute_preview_line_total(it: ItemRow, warnings: list[Warning]) -> Decimal
         wpu = it.weight_per_unit_kg
         if bags is None or bags <= 0:
             return None
-        # Heuristic: small rates are typically ₹/kg; large rates are ₹/bag.
-        if wpu is not None and wpu > 0 and r < Decimal("500"):
-            return dp.total(bags * wpu * r)
-        if wpu is not None and wpu > 0 and r >= Decimal("500"):
-            return dp.total(bags * r)
-        warnings.append(
-            Warning(
-                code="BAG_RATE_AMBIGUOUS",
-                severity="warn",
-                target="items[].purchase_rate",
-                message="Bag line total could not be computed confidently (missing weight per bag).",
-                suggestion="Confirm kg per bag and whether the rate is ₹/kg or ₹/bag.",
+        if it.rate_context is None:
+            warnings.append(
+                Warning(
+                    code="BAG_RATE_CONTEXT_REQUIRED",
+                    severity="blocker",
+                    target="items[].rate_context",
+                    message="Bag lines require explicit rate_context (per_kg or per_bag) from extraction.",
+                    suggestion="Set whether purchase_rate is ₹ per kg or ₹ per whole bag.",
+                )
             )
-        )
-        return None
+            return None
+        if it.rate_context == "per_kg":
+            if wpu is None or wpu <= 0:
+                warnings.append(
+                    Warning(
+                        code="BAG_WEIGHT_REQUIRED",
+                        severity="blocker",
+                        target="items[].weight_per_unit_kg",
+                        message="per_kg bag lines need weight_per_unit_kg (kg per bag).",
+                        suggestion="Enter kg per bag from the bill.",
+                    )
+                )
+                return None
+            return dp.total(bags * wpu * r)
+        return dp.total(bags * r)
     return None
 
 
@@ -699,9 +729,10 @@ async def scan_purchase_v2(
             base_meta=direct_meta,
         )
     text = ""
+    ocr_extract_confidence: float | None = None
     if direct_raw is None:
         try:
-            text, _conf = await image_bytes_to_text(settings, image_bytes)
+            text, ocr_extract_confidence = await image_bytes_to_text(settings, image_bytes)
         except Exception as e:  # noqa: BLE001
             # Never hard-fail a scan: return a reviewable empty preview with typed error.
             token = str(uuid.uuid4())
@@ -760,7 +791,11 @@ async def scan_purchase_v2(
             )
             return result
 
-    scan_meta = ScanMeta(image_bytes_in=len(image_bytes or b""), ocr_chars=len(text or ""))
+    scan_meta = ScanMeta(
+        image_bytes_in=len(image_bytes or b""),
+        ocr_chars=len(text or ""),
+        ocr_extract_confidence=ocr_extract_confidence,
+    )
 
     if direct_raw is not None:
         raw, meta = direct_raw, direct_meta
@@ -859,7 +894,8 @@ async def scan_purchase_v2(
                     message=f"{code}",
                 )
             )
-        it.line_total = _compute_preview_line_total(it, warnings)
+        ssot = preview_line_money_ssot(it)
+        it.line_total = ssot if ssot is not None else _compute_preview_line_total(it, warnings)
 
     charges = Charges(
         delivered_rate=_d(charges_raw.get("delivered_rate")),
@@ -990,15 +1026,23 @@ def scan_result_to_trade_purchase_create(
             pr = it.purchase_rate or Decimal("0")
             if bags is None or bags <= 0 or wpu is None or wpu <= 0:
                 raise ValueError("bag line missing bags or weight_per_unit_kg")
-            # Normalize: always send kg_per_unit + landing_cost_per_kg for BAG so math is deterministic.
-            # If purchase_rate looks per-bag (large), convert to per-kg snapshot.
-            looks_per_bag = pr >= Decimal("500")
-            lcpk = (pr / wpu) if looks_per_bag else pr
-            per_bag = pr if looks_per_bag else (pr * wpu)
+            rc = it.rate_context
+            if rc is None:
+                raise ValueError(
+                    "bag line missing rate_context (per_kg or per_bag); re-scan with explicit context",
+                )
+            if rc == "per_kg":
+                lcpk = pr
+                per_bag = pr * wpu
+            else:
+                lcpk = pr / wpu
+                per_bag = pr
             sr = it.selling_rate
             if sr is not None:
-                sr_looks_per_bag = sr >= Decimal("500")
-                sr_per_bag = sr if sr_looks_per_bag else (sr * wpu)
+                if rc == "per_kg":
+                    sr_per_bag = sr * wpu
+                else:
+                    sr_per_bag = sr
             else:
                 sr_per_bag = None
             lines.append(

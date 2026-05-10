@@ -153,9 +153,15 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                       labelText: 'Default kg per bag (optional)',
                       hintText: 'e.g. 50',
                     ),
+                    onChanged: (_) => setSt(() {}),
                   ),
                   const SizedBox(height: 8),
-                  const BagDefaultUnitHint(),
+                  BagDefaultUnitHint(
+                    kgAlreadySet: () {
+                      final v = parseOptionalKgPerBag(kgCtrl.text);
+                      return v != null && v > 0;
+                    }(),
+                  ),
                 ],
                 if (unit == 'box') ...[
                   const SizedBox(height: 12),

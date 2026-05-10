@@ -11,7 +11,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from app.schemas.trade_purchases import TradePurchaseLineIn
-from app.services.trade_purchase_service import _line_total_weight
+from app.services.line_totals_service import line_total_weight
 from app.services.trade_unit_type import (
     derive_trade_unit_type,
     parse_kg_per_bag_from_name,
@@ -19,7 +19,7 @@ from app.services.trade_unit_type import (
 
 
 def _line(**kw) -> TradePurchaseLineIn:
-    """Bypass schema validation so we can probe `_line_total_weight` with the
+    """Bypass schema validation so we can probe `line_total_weight` with the
     legacy partial inputs the backend must still tolerate (BAG without
     weight_per_unit must auto-derive kg from the item name)."""
     base = {
@@ -83,18 +83,18 @@ def test_line_total_weight_bag_with_explicit_weight_per_unit() -> None:
         kg_per_unit=Decimal("50"),
         landing_cost_per_kg=Decimal("55"),
     )
-    assert _line_total_weight(li) == Decimal("5000.000")
+    assert line_total_weight(li) == Decimal("5000.000")
 
 
 def test_line_total_weight_bag_falls_back_to_name_when_weight_missing() -> None:
     """[Bug 2 fix] 100 bags × name-derived 50 kg = 5000 kg, never 100."""
     li = _line(item_name="SUGAR 50 KG", qty=Decimal("100"), unit="BAG")
-    assert _line_total_weight(li) == Decimal("5000.000")
+    assert line_total_weight(li) == Decimal("5000.000")
 
 
 def test_line_total_weight_bag_returns_zero_when_no_weight_or_name_hint() -> None:
     li = _line(item_name="Plain Rice", qty=Decimal("100"), unit="BAG")
-    assert _line_total_weight(li) == Decimal("0")
+    assert line_total_weight(li) == Decimal("0")
 
 
 def test_line_total_weight_box_is_zero() -> None:
@@ -104,7 +104,7 @@ def test_line_total_weight_box_is_zero() -> None:
         qty=Decimal("100"),
         unit="BOX",
     )
-    assert _line_total_weight(li) == Decimal("0")
+    assert line_total_weight(li) == Decimal("0")
 
 
 def test_line_total_weight_tin_is_zero_even_with_weight_per_tin() -> None:
@@ -114,12 +114,12 @@ def test_line_total_weight_tin_is_zero_even_with_weight_per_tin() -> None:
         unit="TIN",
         weight_per_tin=Decimal("15"),
     )
-    assert _line_total_weight(li) == Decimal("0")
+    assert line_total_weight(li) == Decimal("0")
 
 
 def test_line_total_weight_kg_unit_uses_qty() -> None:
     li = _line(item_name="Loose rice", qty=Decimal("125"), unit="KG")
-    assert _line_total_weight(li) == Decimal("125.000")
+    assert line_total_weight(li) == Decimal("125.000")
 
 
 def test_derive_trade_unit_type_canonical_set() -> None:

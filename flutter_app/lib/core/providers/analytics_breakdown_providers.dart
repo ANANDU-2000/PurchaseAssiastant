@@ -4,32 +4,13 @@ import '../json_coerce.dart';
 import 'package:intl/intl.dart';
 
 import '../auth/session_notifier.dart';
-import '../models/trade_purchase_models.dart';
-import '../trade/trade_line_profit.dart';
 import 'analytics_kpi_provider.dart';
 
 /// One calendar day of summed line profit (for Overview trend chart).
 typedef AnalyticsDailyProfitPoint = ({DateTime day, double profit});
 
-List<TradePurchase> _tradePurchasesInLocalDateRange(
-  List<TradePurchase> all,
-  DateTime startInclusive,
-  DateTime endInclusive,
-) {
-  final a = DateTime(startInclusive.year, startInclusive.month, startInclusive.day);
-  final b = DateTime(endInclusive.year, endInclusive.month, endInclusive.day);
-  return [
-    for (final p in all)
-      if (!DateTime(p.purchaseDate.year, p.purchaseDate.month, p.purchaseDate.day)
-              .isBefore(a) &&
-          !DateTime(p.purchaseDate.year, p.purchaseDate.month, p.purchaseDate.day)
-              .isAfter(b))
-        p,
-  ];
-}
-
 /// Last 30 calendar days ending on [analyticsDateRangeProvider].to (inclusive).
-/// **Trade lines only** — estimated from selling vs landed cost (see [estimatedTradeLineProfit]).
+/// Uses `GET …/reports/trade-daily-profit` (server line-profit SSOT).
 final analyticsDailyProfitProvider =
     FutureProvider.autoDispose<List<AnalyticsDailyProfitPoint>>((ref) async {
   final session = ref.watch(sessionProvider);
@@ -38,26 +19,18 @@ final analyticsDailyProfitProvider =
   final end = DateTime(range.to.year, range.to.month, range.to.day);
   final start = end.subtract(const Duration(days: 29));
   final fmt = DateFormat('yyyy-MM-dd');
-  final raw = await ref.read(hexaApiProvider).listTradePurchases(
+  final fromS = fmt.format(start);
+  final toS = fmt.format(end);
+  final raw = await ref.read(hexaApiProvider).tradeReportDailyProfit(
         businessId: session.primaryBusiness.id,
-        limit: 500,
-        status: 'all',
+        from: fromS,
+        to: toS,
       );
-  final purchases = <TradePurchase>[];
-  for (final row in raw) {
-    try {
-      purchases.add(TradePurchase.fromJson(Map<String, dynamic>.from(row)));
-    } catch (_) {}
-  }
-  final inRange = _tradePurchasesInLocalDateRange(purchases, start, end);
   final byDay = <String, double>{};
-  for (final p in inRange) {
-    final ds = p.purchaseDate.toIso8601String().split('T').first;
-    var pro = 0.0;
-    for (final ln in p.lines) {
-      pro += estimatedTradeLineProfit(ln);
-    }
-    byDay[ds] = (byDay[ds] ?? 0) + pro;
+  for (final row in raw) {
+    final ds = row['d']?.toString();
+    if (ds == null || ds.isEmpty) continue;
+    byDay[ds] = coerceToDouble(row['profit']);
   }
   final out = <AnalyticsDailyProfitPoint>[];
   for (var i = 0; i < 30; i++) {

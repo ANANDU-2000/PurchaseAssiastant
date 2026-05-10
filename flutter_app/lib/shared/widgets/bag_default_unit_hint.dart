@@ -11,10 +11,13 @@ double? parseOptionalKgPerBag(String s) {
 /// Shown when catalog default unit is **bag** — kg/bag is entered on purchase lines;
 /// a default weight can be stored on a **variant** from the item detail screen.
 class BagDefaultUnitHint extends StatelessWidget {
-  const BagDefaultUnitHint({super.key});
+  const BagDefaultUnitHint({super.key, required this.kgAlreadySet});
+
+  final bool kgAlreadySet;
 
   @override
   Widget build(BuildContext context) {
+    if (kgAlreadySet) return const SizedBox.shrink();
     final cs = Theme.of(context).colorScheme;
     return Material(
       color: cs.surfaceContainerHighest.withValues(alpha: 0.45),

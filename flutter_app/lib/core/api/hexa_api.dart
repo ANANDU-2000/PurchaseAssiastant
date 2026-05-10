@@ -36,7 +36,7 @@ String _newRequestCorrelationId() {
 List<Map<String, dynamic>> _parseJsonMapList(dynamic data) {
   if (data is List) {
     return data
-        .map((e) => e is Map ? Map<String, dynamic>.from(e as Map) : null)
+        .map((e) => e is Map ? Map<String, dynamic>.from(e) : null)
         .whereType<Map<String, dynamic>>()
         .toList();
   }
@@ -859,6 +859,30 @@ class HexaApi {
     return res.data ?? {};
   }
 
+  /// SSOT line + header totals (non-mutating). Same math as create/persist.
+  Future<Map<String, dynamic>> previewTradePurchaseLines({
+    required String businessId,
+    required Map<String, dynamic> body,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/trade-purchases/preview-lines',
+      data: body,
+    );
+    return Map<String, dynamic>.from(res.data ?? const {});
+  }
+
+  /// Full create validation without persisting (`ok` + `errors` + `warnings`).
+  Future<Map<String, dynamic>> validateTradePurchase({
+    required String businessId,
+    required Map<String, dynamic> body,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/trade-purchases/validate',
+      data: body,
+    );
+    return Map<String, dynamic>.from(res.data ?? const {});
+  }
+
   Future<String> nextTradePurchaseHumanId({
     required String businessId,
   }) async {
@@ -1039,6 +1063,19 @@ class HexaApi {
   }) async {
     final res = await _dio.get<dynamic>(
       '/v1/businesses/$businessId/reports/trade-types',
+      queryParameters: {'from': from, 'to': to},
+    );
+    return _parseJsonMapList(res.data);
+  }
+
+  /// Per-day line profit sums (SSOT for overview charts; replaces listTradePurchases slicing).
+  Future<List<Map<String, dynamic>>> tradeReportDailyProfit({
+    required String businessId,
+    required String from,
+    required String to,
+  }) async {
+    final res = await _dio.get<dynamic>(
+      '/v1/businesses/$businessId/reports/trade-daily-profit',
       queryParameters: {'from': from, 'to': to},
     );
     return _parseJsonMapList(res.data);

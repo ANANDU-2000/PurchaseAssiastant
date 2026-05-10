@@ -742,6 +742,32 @@ async def trade_purchase_summary(
     return payload
 
 
+@router.get("/trade-daily-profit")
+async def trade_daily_profit_series(
+    business_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    date_from: date = Query(..., alias="from"),
+    date_to: date = Query(..., alias="to"),
+) -> list[dict[str, Any]]:
+    """Per-calendar-day sum of line profit (same basis as [trade_line_profit_expr]) for charts."""
+    del _m
+    if date_from > date_to:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="from_must_not_exceed_to")
+    profit_e = tq.trade_line_profit_expr()
+    bf = _trade_purchase_date_filter(business_id, date_from, date_to)
+    q = (
+        select(TradePurchase.purchase_date, func.coalesce(func.sum(profit_e), 0.0))
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .where(bf)
+        .group_by(TradePurchase.purchase_date)
+        .order_by(TradePurchase.purchase_date)
+    )
+    r = await execute_with_retry(lambda: db.execute(q))
+    return [{"d": d.isoformat(), "profit": float(p or 0)} for d, p in r.all()]
+
+
 @router.get("/trade-items")
 async def trade_items_breakdown(
     business_id: uuid.UUID,

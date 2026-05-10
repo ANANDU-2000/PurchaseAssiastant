@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/models/trade_purchase_models.dart';
+import '../../../core/router/navigation_ext.dart';
 
 String _inr(num n) => NumberFormat.currency(
       locale: 'en_IN',
@@ -132,7 +133,7 @@ class _CatalogItemPurchaseHistoryPageState
         title: const Text('Purchase history (item)'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.pop(),
+          onPressed: () => context.popOrGo('/catalog'),
         ),
         actions: [
           IconButton(

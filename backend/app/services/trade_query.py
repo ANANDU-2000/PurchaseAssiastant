@@ -26,7 +26,17 @@ def trade_purchase_status_in_reports() -> ColumnElement[bool]:
 
 
 def trade_line_amount_expr() -> ColumnElement:
-    """Line spend: prefer stored canonical line total, fallback to legacy math."""
+    """Line spend for SQL aggregates (aligned with ``line_totals_service.line_money``).
+
+    **Policy (t07):** Prefer persisted ``trade_purchase_lines.line_total`` — this is the
+    tax/discount-inclusive line total the API persists on confirm/preview SSOT paths.
+
+    When ``line_total`` is NULL (legacy imports / partial rows), fall back to the same
+    **pre-discount gross** branch used in ``line_gross_base`` / ``trade_line_computed_amount_python``
+    (``qty`` × weight-priced amount when weight snapshots agree within 0.05, else ``qty`` ×
+    unit landing). This is **not** the full ``line_money`` inclusive path — backfill and
+    new writes should populate ``line_total`` so reports match fiscal truth.
+    """
     kpu = TradePurchaseLine.kg_per_unit
     lcpk = TradePurchaseLine.landing_cost_per_kg
     # Weight-priced lines are qty * kg_per_unit * landing_cost_per_kg, BUT older
@@ -76,7 +86,15 @@ def trade_line_qty_tins_expr() -> ColumnElement:
 
 
 def trade_line_weight_expr() -> ColumnElement:
-    """Physical kg movement for dashboards/reports."""
+    """Physical kg movement for dashboards/reports.
+
+    **BOX/TIN policy (t08):** Wholesale UI treats inventory as count-only for BOX/TIN in
+    the current product mode — this expression returns **0 kg** for box/tin lines so
+    dashboard ``total_kg`` reflects bag + loose kg only. Pure ``kg`` lines and bag-family
+    units still contribute (using ``total_weight`` when set, else ``qty`` × kg-per-unit
+    for bags, else raw qty for kg). Changing BOX/TIN rollup requires updating this
+    function, ``trade_line_weight_sql_python``, and any dependent labels together.
+    """
     kpu = func.coalesce(TradePurchaseLine.weight_per_unit, TradePurchaseLine.kg_per_unit)
     weight_ok = and_(kpu.isnot(None), kpu > 0)
     utype = TradePurchaseLine.unit_type

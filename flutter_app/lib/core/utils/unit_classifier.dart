@@ -113,7 +113,7 @@ class UnitClassifier {
   }
 
   static bool _isBagOrSackUnit(String effU) {
-    return effU == 'BAG';
+    return effU == 'BAG' || effU == 'SACK';
   }
 
   static double? _parseKgFromName(String itemName) {

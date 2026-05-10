@@ -5,9 +5,10 @@ import '../models/trade_purchase_models.dart';
 /// Trade-only estimated gross margin for a line (selling - landed cost). Uses
 /// the same [lineMoney] as dashboards when [sellingCost] is missing, profit is 0.
 double estimatedTradeLineProfit(TradePurchaseLine ln) {
+  if (ln.profit != null) return ln.profit!;
   final sell = ln.sellingCost;
   if (sell == null || sell <= 0) return 0.0;
-  final cost = lineMoney(tradeLineToCalc(ln));
+  final cost = ln.lineTotal ?? lineMoney(tradeLineToCalc(ln));
   final kpu = ln.kgPerUnit;
   final lcpk = ln.landingCostPerKg;
   if (kpu != null && lcpk != null && kpu > 0 && lcpk > 0) {

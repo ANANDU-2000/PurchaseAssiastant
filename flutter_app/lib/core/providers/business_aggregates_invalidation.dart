@@ -39,6 +39,12 @@ void invalidateAnalyticsData(dynamic ref) {
 /// After purchases, entries, or other business writes, bust derived KPIs so
 /// Home, Reports, Contacts KPIs, and lists do not show stale numbers.
 ///
+/// **Offline / Hive (t18):** Also calls [OfflineStore.bustTradeAggregateCachesForBusiness],
+/// which removes keys prefixed `trade_dash|`, `home_shell|`, and `reports_tp|` plus the
+/// legacy `dashboard` blob for that business. Pair with [invalidatePurchaseWorkspace]
+/// after any trade purchase create/update/delete/cancel/payment patch so Riverpod refetch
+/// and on-disk aggregates stay aligned.
+///
 /// Also invalidates the keepAlive supplier/broker list providers so pickers
 /// and preference JSON always reflect the latest server state.
 ///

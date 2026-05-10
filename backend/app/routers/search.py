@@ -130,7 +130,35 @@ def _hydrate_catalog_rows(rows: list[tuple[Any, ...]]) -> list[dict[str, Any]]:
         dsc = lsr = lq = lu = lwg = None
         lsid = lbid = None
         ltp_id = None
-        if len(row) >= 19:
+        su = st = pt = psz = pmeas = None
+        if len(row) >= 24:
+            (
+                _id,
+                name,
+                cat,
+                tname,
+                du,
+                dkg,
+                hsn,
+                icode,
+                tax,
+                dlc,
+                dsc,
+                lpp,
+                lsr,
+                lsid,
+                lbid,
+                lq,
+                lu,
+                lwg,
+                ltp_id,
+                su,
+                st,
+                pt,
+                psz,
+                pmeas,
+            ) = row[:24]
+        elif len(row) >= 19:
             (
                 _id,
                 name,
@@ -214,6 +242,11 @@ def _hydrate_catalog_rows(rows: list[tuple[Any, ...]]) -> list[dict[str, Any]]:
                 "last_line_unit": lu,
                 "last_line_weight_kg": float(lwg) if lwg is not None else None,
                 "last_trade_purchase_id": str(ltp_id) if ltp_id is not None else None,
+                "selling_unit": su,
+                "stock_unit": st,
+                "package_type": pt,
+                "package_size": float(psz) if psz is not None else None,
+                "package_measurement": pmeas,
                 "last_purchase_human_id": None,
                 "last_supplier_name": None,
                 "last_broker_name": None,
@@ -459,6 +492,11 @@ async def unified_search(
             CatalogItem.last_line_unit,
             CatalogItem.last_line_weight_kg,
             CatalogItem.last_trade_purchase_id,
+            CatalogItem.selling_unit,
+            CatalogItem.stock_unit,
+            CatalogItem.package_type,
+            CatalogItem.package_size,
+            CatalogItem.package_measurement,
         )
         item_name_cat_hsn = or_(
             *[
@@ -500,6 +538,7 @@ async def unified_search(
                 .outerjoin(ct, ct.id == CatalogItem.type_id)
                 .where(
                     CatalogItem.business_id == business_id,
+                    CatalogItem.deleted_at.is_(None),
                     item_name_cat_hsn,
                 )
                 .order_by(func.lower(CatalogItem.name))
@@ -516,6 +555,7 @@ async def unified_search(
                 .join(ic, ic.id == CatalogItem.category_id)
                 .where(
                     CatalogItem.business_id == business_id,
+                    CatalogItem.deleted_at.is_(None),
                     item_name_cat_hsn,
                 )
                 .order_by(func.lower(CatalogItem.name))
@@ -530,7 +570,8 @@ async def unified_search(
             pairs_r = await execute_with_retry(
                 lambda: db.execute(
                     select(CatalogItem.id, CatalogItem.name).where(
-                        CatalogItem.business_id == business_id
+                        CatalogItem.business_id == business_id,
+                        CatalogItem.deleted_at.is_(None),
                     ).limit(_PAIR_CAP)
                 )
             )
@@ -553,7 +594,7 @@ async def unified_search(
                         )
                         .join(ic, ic.id == CatalogItem.category_id)
                         .outerjoin(ct, ct.id == CatalogItem.type_id)
-                        .where(CatalogItem.id.in_(ids))
+                        .where(CatalogItem.id.in_(ids), CatalogItem.deleted_at.is_(None))
                     )
                 else:
                     sq_h = (
@@ -564,7 +605,7 @@ async def unified_search(
                             *extra_cols,
                         )
                         .join(ic, ic.id == CatalogItem.category_id)
-                        .where(CatalogItem.id.in_(ids))
+                        .where(CatalogItem.id.in_(ids), CatalogItem.deleted_at.is_(None))
                     )
                 hr = await execute_with_retry(lambda: db.execute(sq_h))
                 by_id = {row[0]: row for row in hr.all()}

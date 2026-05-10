@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/providers/business_write_revision.dart';
 import '../../../core/providers/catalog_providers.dart';
+import '../../../core/router/navigation_ext.dart';
 import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/search/search_highlight.dart';
 import '../../../core/theme/hexa_colors.dart';
@@ -106,13 +107,7 @@ class _CatalogCategoryDetailPageState
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go('/catalog');
-            }
-          },
+          onPressed: () => context.popOrGo('/catalog'),
         ),
         title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
       ),

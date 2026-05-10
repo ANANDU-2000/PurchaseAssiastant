@@ -949,10 +949,16 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                   ),
                   onChanged: (_) {
                     if (_kgErr != null) setState(() => _kgErr = null);
+                    setState(() {});
                   },
                 ),
                 const SizedBox(height: 8),
-                const BagDefaultUnitHint(),
+                BagDefaultUnitHint(
+                  kgAlreadySet: () {
+                    final v = parseOptionalKgPerBag(_kg.text);
+                    return v != null && v > 0;
+                  }(),
+                ),
               ],
               if (_unit == 'box') ...[
                 const SizedBox(height: 10),

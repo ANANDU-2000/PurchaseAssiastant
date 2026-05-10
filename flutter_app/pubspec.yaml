@@ -67,3 +67,4 @@ flutter:
     - assets/fonts/NotoSans-Regular.ttf
     - assets/fonts/NotoSans-Bold.ttf
     - assets/fonts/NotoSansMalayalam-Regular.ttf
+    - assets/config/unit_rules_master.json

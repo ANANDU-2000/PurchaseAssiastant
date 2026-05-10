@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import require_membership
-from app.models import Entry, EntryLineItem, Membership, Supplier
+from app.models import Membership, Supplier, TradePurchase, TradePurchaseLine
+from app.services.trade_query import trade_purchase_status_in_reports
 
 router = APIRouter(prefix="/v1/businesses/{business_id}/price-intelligence", tags=["price-intelligence"])
 
@@ -46,20 +47,23 @@ async def price_intelligence(
     needle = item.strip().lower()
     start = date.today() - timedelta(days=window_days)
 
-    price_col = EntryLineItem.landing_cost if price_field == "landing" else EntryLineItem.selling_price
+    price_col = (
+        TradePurchaseLine.landing_cost if price_field == "landing" else TradePurchaseLine.selling_cost
+    )
 
     line_filters = [
-        Entry.business_id == business_id,
-        Entry.entry_date >= start,
-        func.lower(EntryLineItem.item_name).contains(needle),
+        TradePurchase.business_id == business_id,
+        TradePurchase.purchase_date >= start,
+        trade_purchase_status_in_reports(),
+        func.lower(TradePurchaseLine.item_name).contains(needle),
     ]
     if price_field == "selling":
-        line_filters.append(EntryLineItem.selling_price.isnot(None))
+        line_filters.append(TradePurchaseLine.selling_cost.isnot(None))
 
     hist = await db.execute(
         select(price_col)
-        .select_from(EntryLineItem)
-        .join(Entry, Entry.id == EntryLineItem.entry_id)
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
         .where(and_(*line_filters))
     )
     landings = [float(x[0]) for x in hist.all() if x[0] is not None]
@@ -79,11 +83,11 @@ async def price_intelligence(
     frequency = len(landings)
 
     dated_rows = await db.execute(
-        select(Entry.entry_date, price_col)
-        .select_from(Entry)
-        .join(EntryLineItem, EntryLineItem.entry_id == Entry.id)
+        select(TradePurchase.purchase_date, price_col)
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
         .where(and_(*line_filters))
-        .order_by(Entry.entry_date.asc())
+        .order_by(TradePurchase.purchase_date.asc())
     )
     ordered = [(r[0], float(r[1])) for r in dated_rows.all()]
     last_price = ordered[-1][1] if ordered else None
@@ -127,12 +131,12 @@ async def price_intelligence(
             Supplier.id,
             Supplier.name,
             func.avg(price_col).label("avg_l"),
-            func.count(EntryLineItem.id).label("deals"),
-            func.coalesce(func.sum(EntryLineItem.profit), 0).label("profit_sum"),
+            func.count(TradePurchaseLine.id).label("deals"),
+            func.coalesce(func.sum(TradePurchaseLine.profit), 0).label("profit_sum"),
         )
-        .select_from(EntryLineItem)
-        .join(Entry, Entry.id == EntryLineItem.entry_id)
-        .join(Supplier, Supplier.id == Entry.supplier_id)
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .join(Supplier, Supplier.id == TradePurchase.supplier_id)
         .where(and_(*line_filters))
         .group_by(Supplier.id, Supplier.name)
     )

@@ -26,7 +26,8 @@ double lineKgEstimate(TradePurchaseLine ln) {
   return 0;
 }
 
-double lineAmountInr(TradePurchaseLine ln) => lineMoney(tradeLineToCalc(ln));
+double lineAmountInr(TradePurchaseLine ln) =>
+    ln.lineTotal ?? lineMoney(tradeLineToCalc(ln));
 
 bool defaultActiveBill(TradePurchase p) =>
     p.statusEnum != PurchaseStatus.draft &&

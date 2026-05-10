@@ -7,6 +7,7 @@ import '../../../../core/strict_decimal.dart';
 import '../../../../core/theme/hexa_colors.dart';
 import '../../domain/purchase_draft.dart';
 import '../../state/purchase_draft_provider.dart';
+import '../../state/purchase_trade_preview_provider.dart';
 
 String _inr(num n) =>
     NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
@@ -294,6 +295,7 @@ class PurchaseReviewTallyStep extends ConsumerWidget {
           for (var i = 0; i < draft.lines.length; i++)
             _ReviewLineTile(
               index: i + 1,
+              lineIndex: i,
               line: draft.lines[i],
             ),
           const SizedBox(height: 20),
@@ -306,23 +308,27 @@ class PurchaseReviewTallyStep extends ConsumerWidget {
   }
 }
 
-class _ReviewLineTile extends StatelessWidget {
+class _ReviewLineTile extends ConsumerWidget {
   const _ReviewLineTile({
     required this.index,
+    required this.lineIndex,
     required this.line,
   });
 
   final int index;
+  final int lineIndex;
   final PurchaseLineDraft line;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final tt = Theme.of(context).textTheme;
     final buy = _lineBuyApprox(line);
     final li = _lineToCalc(line);
     final g = lineGrossBase(li);
     final taxable = lineTaxableAfterLineDisc(li);
-    final lineTotal = lineMoney(li);
+    final snap = ref.watch(tradePurchasePreviewProvider);
+    final serverLt = tradePreviewLineTotal(snap, lineIndex);
+    final lineTotal = serverLt ?? lineMoney(li);
     final taxAmt = lineTotal - taxable;
     final discRupees = g - taxable;
 
