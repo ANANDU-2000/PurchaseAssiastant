@@ -30,7 +30,7 @@ final _pipProvider = FutureProvider.autoDispose
       );
 });
 
-Map<String, dynamic>? _shellItemRowForName(Ref<Object?> ref, String itemName) {
+Map<String, dynamic>? _shellItemRowForName(WidgetRef ref, String itemName) {
   final async = ref.watch(homeShellReportsProvider);
   final peek = ref.watch(homeShellReportsSyncCacheProvider);
   final bundle =
@@ -78,8 +78,8 @@ class _ItemAnalyticsDetailPageState
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(_pipProvider(widget.itemName));
-    final shellRow = _shellItemRowForName(ref as Ref<Object?>, widget.itemName);
-    final hq = homeDateRangeForRef(ref as Ref<Object?>);
+    final shellRow = _shellItemRowForName(ref, widget.itemName);
+    final hq = homeDateRangeForRef(ref);
     final df = DateFormat('d MMM yyyy');
     final periodLabel =
         '${df.format(DateTime.parse(hq.from))} → ${df.format(DateTime.parse(hq.to))}';

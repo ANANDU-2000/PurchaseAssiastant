@@ -45,16 +45,17 @@ class SpendRingChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final side = (!diameter.isFinite || diameter < 1) ? 120.0 : diameter;
     final sum = values.fold<double>(0, (a, b) => a + b);
     return GestureDetector(
-      onTapUp: (d) {
+      onTapUp: (details) {
         if (sum <= 0 || onSectionTap == null) return;
         final box = context.findRenderObject() as RenderBox?;
         if (box == null) return;
-        final local = box.globalToLocal(d.globalPosition);
-        final c = Offset(diameter / 2, diameter / 2);
+        final local = box.globalToLocal(details.globalPosition);
+        final c = Offset(side / 2, side / 2);
         final v = local - c;
-        final r = (diameter - strokeWidth) / 2;
+        final r = (side - strokeWidth) / 2;
         final dist = v.distance;
         if (dist < r - strokeWidth * 1.1 || dist > r + strokeWidth * 1.1) {
           return;
@@ -75,13 +76,13 @@ class SpendRingChart extends StatelessWidget {
         }
       },
       child: SizedBox(
-        width: diameter,
-        height: diameter,
+        width: side,
+        height: side,
         child: Stack(
           alignment: Alignment.center,
           children: [
             CustomPaint(
-              size: Size(diameter, diameter),
+              size: Size(side, side),
               painter: _RingPainter(
                 values: values,
                 colors: colors,
@@ -91,7 +92,7 @@ class SpendRingChart extends StatelessWidget {
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: _buildCenter(context),
+              child: _buildCenter(context, side),
             ),
           ],
         ),
@@ -99,12 +100,12 @@ class SpendRingChart extends StatelessWidget {
     );
   }
 
-  Widget _buildCenter(BuildContext context) {
+  Widget _buildCenter(BuildContext context, double layoutDiameter) {
     if (centerChild != null) {
       return FittedBox(
         fit: BoxFit.scaleDown,
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: diameter * 0.72),
+          constraints: BoxConstraints(maxWidth: layoutDiameter * 0.72),
           child: centerChild!,
         ),
       );
@@ -115,7 +116,7 @@ class SpendRingChart extends StatelessWidget {
     return FittedBox(
       fit: BoxFit.scaleDown,
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: diameter * 0.72),
+        constraints: BoxConstraints(maxWidth: layoutDiameter * 0.72),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

@@ -32,6 +32,24 @@ String _newRequestCorrelationId() {
   return '${seg(8)}-${seg(4)}-${seg(4)}-${seg(4)}-${seg(12)}';
 }
 
+/// Trade report endpoints normally return a JSON array; tolerate wrapped maps.
+List<Map<String, dynamic>> _parseJsonMapList(dynamic data) {
+  if (data is List) {
+    return data
+        .map((e) => e is Map ? Map<String, dynamic>.from(e as Map) : null)
+        .whereType<Map<String, dynamic>>()
+        .toList();
+  }
+  if (data is Map) {
+    for (final key in const ['items', 'data', 'rows', 'results']) {
+      final inner = data[key];
+      final out = _parseJsonMapList(inner);
+      if (out.isNotEmpty) return out;
+    }
+  }
+  return [];
+}
+
 /// Bill scans upload multi‑MB images and may wait on OCR/LLM — avoid false timeouts.
 Options get _scanMultipartOptions => Options(
       sendTimeout: const Duration(seconds: 120),
@@ -986,9 +1004,7 @@ class HexaApi {
       '/v1/businesses/$businessId/reports/trade-items',
       queryParameters: {'from': from, 'to': to},
     );
-    final data = res.data;
-    if (data is! List) return [];
-    return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    return _parseJsonMapList(res.data);
   }
 
   Future<List<Map<String, dynamic>>> tradeReportSuppliers({
@@ -1000,9 +1016,7 @@ class HexaApi {
       '/v1/businesses/$businessId/reports/trade-suppliers',
       queryParameters: {'from': from, 'to': to},
     );
-    final data = res.data;
-    if (data is! List) return [];
-    return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    return _parseJsonMapList(res.data);
   }
 
   Future<List<Map<String, dynamic>>> tradeReportCategories({
@@ -1014,9 +1028,7 @@ class HexaApi {
       '/v1/businesses/$businessId/reports/trade-categories',
       queryParameters: {'from': from, 'to': to},
     );
-    final data = res.data;
-    if (data is! List) return [];
-    return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    return _parseJsonMapList(res.data);
   }
 
   /// Subcategory (CategoryType) spend — matches catalog category → type → items.
@@ -1029,9 +1041,7 @@ class HexaApi {
       '/v1/businesses/$businessId/reports/trade-types',
       queryParameters: {'from': from, 'to': to},
     );
-    final data = res.data;
-    if (data is! List) return [];
-    return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    return _parseJsonMapList(res.data);
   }
 
   /// Single call: same definitions as trade reports + nested category line items + mapping recs.

@@ -555,7 +555,12 @@ Future<HomeDashboardPayload> _homeDashboardPullFresh({
 
   final cachedData = readCache();
 
-  final reachability = await Connectivity().checkConnectivity();
+  List<ConnectivityResult> reachability;
+  try {
+    reachability = await Connectivity().checkConnectivity();
+  } catch (_) {
+    reachability = const <ConnectivityResult>[ConnectivityResult.other];
+  }
   final looksOffline = reachability.isEmpty ||
       reachability.every((c) => c == ConnectivityResult.none);
   if (looksOffline) {

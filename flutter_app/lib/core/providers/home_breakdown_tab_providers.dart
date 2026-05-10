@@ -137,7 +137,14 @@ final homeShellReportsProvider =
   Future<HomeShellReportsBundle> work() async {
     final cachedRaw =
         OfflineStore.getCachedHomeShellReports(bid, q.from, q.to);
-    final reachability = await Connectivity().checkConnectivity();
+    // connectivity_plus can throw or misbehave on some browsers; never fail
+    // the whole Home shell — assume online and fall back to cache on fetch errors.
+    List<ConnectivityResult> reachability;
+    try {
+      reachability = await Connectivity().checkConnectivity();
+    } catch (_) {
+      reachability = const <ConnectivityResult>[ConnectivityResult.other];
+    }
     final looksOffline = reachability.isEmpty ||
         reachability.every((c) => c == ConnectivityResult.none);
     if (looksOffline) {
