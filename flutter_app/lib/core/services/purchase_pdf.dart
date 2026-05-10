@@ -10,6 +10,7 @@ import '../calc_engine.dart' show lineMoney;
 import '../models/business_profile.dart';
 import '../models/trade_purchase_models.dart';
 import '../utils/trade_purchase_rate_display.dart';
+import '../units/dynamic_unit_label_engine.dart' as unit_lbl;
 import '../config/app_config.dart';
 import 'pdf_purchase_fonts.dart';
 import 'purchase_invoice_amount_words.dart';
@@ -46,19 +47,13 @@ String _partyName(String? s) => (s == null || s.trim().isEmpty) ? '—' : safePd
 
 String _pdfReceiptPurchase(TradePurchaseLine l) {
   final r = tradePurchaseLineDisplayPurchaseRate(l);
-  final ul = l.unit.trim().toLowerCase();
-  if (tradePurchaseLineIsWeightPriced(l)) return '${_inrPdf(r)}/kg';
-  if (ul == 'kg') return '${_inrPdf(r)}/kg';
-  return '${_inrPdf(r)}/${safePdfText(l.unit.trim())}';
+  return '${_inrPdf(r)}/${unit_lbl.purchaseRateSuffix(l)}';
 }
 
 String _pdfReceiptSelling(TradePurchaseLine l) {
   final r = tradePurchaseLineDisplaySellingRate(l);
   if (r == null) return '—';
-  final ul = l.unit.trim().toLowerCase();
-  if (tradePurchaseLineIsWeightPriced(l)) return '${_inrPdf(r)}/kg';
-  if (ul == 'kg') return '${_inrPdf(r)}/kg';
-  return '${_inrPdf(r)}/${safePdfText(l.unit.trim())}';
+  return '${_inrPdf(r)}/${unit_lbl.sellingRateSuffix(l)}';
 }
 
 /// One-page receipt: minimal lines (Unicode-safe when [pdfTheme] set).

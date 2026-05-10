@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../core/models/trade_purchase_models.dart' show TradePurchaseLine;
 import '../../../core/router/navigation_ext.dart';
+import '../../../core/units/dynamic_unit_label_engine.dart' as unit_lbl;
+import '../../../core/utils/trade_purchase_rate_display.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
@@ -290,12 +292,9 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
   }
 
   String _pdfLandingCol(TradePurchaseLine ln) {
-    final kpu = ln.kgPerUnit;
-    final lcpk = ln.landingCostPerKg;
-    if (kpu != null && lcpk != null && kpu > 0 && lcpk > 0) {
-      return 'Rs. ${_fmtNum(lcpk)}/kg';
-    }
-    return 'Rs. ${_fmtNum(ln.landingCost)}/${ln.unit}';
+    final r = tradePurchaseLineDisplayPurchaseRate(ln);
+    final suff = unit_lbl.purchaseRateSuffix(ln);
+    return 'Rs. ${_fmtNum(r)}/$suff';
   }
 
   Future<void> _exportItemPdf(

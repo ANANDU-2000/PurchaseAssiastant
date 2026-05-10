@@ -20,6 +20,7 @@ import '../../../core/utils/line_display.dart';
 import '../../../core/utils/trade_purchase_commission.dart';
 import '../../../core/utils/trade_purchase_rate_display.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/units/dynamic_unit_label_engine.dart' as unit_lbl;
 import '../../../core/utils/unit_classifier.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../core/widgets/list_skeleton.dart';
@@ -722,17 +723,13 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
   }
 
   ({String purchase, String selling}) _lineRateLabels(TradePurchaseLine l) {
-    final u = l.unit.trim();
-    final ul = u.toLowerCase();
     final pk = tradePurchaseLineDisplayPurchaseRate(l);
     final sk = tradePurchaseLineDisplaySellingRate(l);
-    final pSuffix =
-        (tradePurchaseLineIsWeightPriced(l) || ul == 'kg') ? '/kg' : '/$u';
-    final purchase = '${_inr(pk)}$pSuffix';
+    final pDim = unit_lbl.purchaseRateSuffix(l);
+    final purchase = '${_inr(pk)}/$pDim';
     if (sk != null) {
-      final sSuffix =
-          tradePurchaseLineDisplaySellingRateIsPerKg(l) ? '/kg' : '/$u';
-      return (purchase: purchase, selling: '${_inr(sk)}$sSuffix');
+      final sDim = unit_lbl.sellingRateSuffix(l);
+      return (purchase: purchase, selling: '${_inr(sk)}/$sDim');
     }
     if (l.kgPerUnit != null &&
         l.landingCostPerKg != null &&
@@ -741,7 +738,8 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
       final kgQty = l.qty * l.kgPerUnit!;
       if (kgQty > 1e-9) {
         final implied = l.sellingGross / kgQty;
-        return (purchase: purchase, selling: '${_inr(implied)}/kg');
+        final dim = unit_lbl.sellingRateSuffix(l);
+        return (purchase: purchase, selling: '${_inr(implied)}/$dim');
       }
     }
     return (purchase: purchase, selling: '—');

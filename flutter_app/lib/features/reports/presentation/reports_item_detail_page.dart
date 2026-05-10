@@ -132,7 +132,7 @@ class ReportsItemDetailPage extends ConsumerWidget {
             ...List.generate(txns.length, (i) {
               final t = txns[i];
               final sell = t.sellRate != null && t.sellRate! > 0
-                  ? '${_inr0(t.sellRate!.round())}/kg'
+                  ? reportKgWeightedRateLabel(t.sellRate)
                   : '—';
               return Padding(
                 padding: const EdgeInsets.only(bottom: 16),
@@ -156,7 +156,7 @@ class ReportsItemDetailPage extends ConsumerWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '${_inr0(t.buyRate.round())}/kg → $sell',
+                      '${reportKgWeightedRateLabel(t.buyRate)} → $sell',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: const Color(0xFF555555),
                             fontWeight: FontWeight.w600,

@@ -27,7 +27,7 @@ jobs:
       - name: Get packages
         run: flutter pub get
       - name: SSOT regression tests
-        run: flutter test test/trade_purchase_line_money_contract_test.dart test/trade_report_aggregate_test.dart test/smart_unit_classifier_test.dart test/purchase_draft_calc_test.dart
+        run: flutter test test/trade_purchase_line_money_contract_test.dart test/trade_report_aggregate_test.dart test/smart_unit_classifier_test.dart test/purchase_draft_calc_test.dart test/calc_line_freight_parity_test.dart test/calc_header_parity_test.dart
 
   backend:
     name: Backend pytest

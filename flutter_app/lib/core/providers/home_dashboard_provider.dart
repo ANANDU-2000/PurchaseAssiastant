@@ -1,6 +1,7 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
+import 'package:flutter/foundation.dart'
+    show debugPrint, kDebugMode, kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
@@ -11,6 +12,7 @@ import '../models/trade_purchase_models.dart';
 import '../services/offline_store.dart';
 import '../utils/line_display.dart';
 import '../reporting/trade_report_aggregate.dart';
+import 'catalog_providers.dart';
 
 /// Period chips on the home dashboard. [custom] uses
 /// [homeCustomDateRangeProvider] (inclusive start/end dates).
@@ -523,6 +525,7 @@ class HomeDashboardDashState {
 }
 
 Future<HomeDashboardPayload> _homeDashboardPullFresh({
+  required Ref ref,
   required String dedupeKey,
   required int bustGenerationAtStart,
   required HexaApi api,
@@ -581,9 +584,10 @@ Future<HomeDashboardPayload> _homeDashboardPullFresh({
     );
   }
 
-  // Cold path only: health wake-up adds ~1s+ serial latency. Skip when we can
-  // already render from cache and are doing a background refresh.
-  if (cachedData == null) {
+  // Cold path only: health wake-up adds serial latency + CORS preflight on web.
+  // Skip when we have cache (background refresh) or on Flutter web (go straight to
+  // reportsHomeOverview; Dio retries handle cold Render).
+  if (cachedData == null && !kIsWeb) {
     Future<void> healthPreflightBestEffort() async {
       for (var attempt = 0; attempt <= 2; attempt++) {
         try {
@@ -612,12 +616,19 @@ Future<HomeDashboardPayload> _homeDashboardPullFresh({
   }
 
   try {
+    final overviewSw = Stopwatch()..start();
     final snap = await api.reportsHomeOverview(
       businessId: bid,
       from: from,
       to: to,
       compact: true,
     );
+    if (kDebugMode) {
+      debugPrint(
+        'homeDashboard: reportsHomeOverview ${overviewSw.elapsedMilliseconds}ms '
+        '($from..$to)',
+      );
+    }
     if (bustGenerationAtStart != _homeDashBustGeneration) {
       throw StaleHomeDashboardFetch();
     }
@@ -658,8 +669,23 @@ Future<HomeDashboardPayload> _homeDashboardPullFresh({
       );
     }
 
-    final items = await api.listCatalogItems(businessId: bid);
-    final categories = await api.listItemCategories(businessId: bid);
+    List<Map<String, dynamic>> items;
+    List<Map<String, dynamic>> categories;
+    try {
+      final pair = await Future.wait([
+        ref.read(catalogItemsListProvider.future),
+        ref.read(itemCategoriesListProvider.future),
+      ]);
+      items = List<Map<String, dynamic>>.from(pair[0] as List);
+      categories = List<Map<String, dynamic>>.from(pair[1] as List);
+    } catch (_) {
+      final pair = await Future.wait([
+        api.listCatalogItems(businessId: bid),
+        api.listItemCategories(businessId: bid),
+      ]);
+      items = pair[0];
+      categories = pair[1];
+    }
     return ok(
       aggregateHomeDashboard(
         period: period,
@@ -773,6 +799,7 @@ class HomeDashboardDataNotifier extends AutoDisposeNotifier<HomeDashboardDashSta
         final payload = await _dashInflight.putIfAbsent(
           dedupeKey,
           () => _homeDashboardPullFresh(
+                ref: ref,
                 dedupeKey: dedupeKey,
                 bustGenerationAtStart: bustAtStart,
                 api: ref.read(hexaApiProvider),

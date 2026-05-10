@@ -54,12 +54,17 @@ class PurchaseSummaryStep extends ConsumerWidget {
         landingCostPerKg: it.landingCostPerKg,
         taxPercent: it.taxPercent,
         discountPercent: it.lineDiscountPercent,
+        freightType: it.freightType,
+        freightValue: it.freightValue,
+        deliveredRate: it.deliveredRate,
+        billtyRate: it.billtyRate,
       );
 
   static double _itemsSumLines(List<PurchaseLineDraft> lines) {
     var s = 0.0;
     for (final it in lines) {
-      s += lineMoney(_toCalc(it));
+      final c = _toCalc(it);
+      s += lineMoney(c) + lineItemFreightCharges(c);
     }
     return s;
   }

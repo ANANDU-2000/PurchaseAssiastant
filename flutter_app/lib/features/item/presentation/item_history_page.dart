@@ -70,10 +70,10 @@ class _ItemHistoryPageState extends ConsumerState<ItemHistoryPage> {
                     totalWeightKg: row.kg > 1e-9 ? row.kg : null,
                     kgPerUnit: null,
                   );
-    final rateSuffix =
-        (row.unit.trim().toLowerCase() == 'kg' || row.kg > 1e-9)
-            ? '/kg'
-            : '/${row.unit.trim().isEmpty ? 'unit' : row.unit.trim()}';
+    final d = row.purchaseRateDim.trim();
+    final rateSuffix = d.isNotEmpty
+        ? '/$d'
+        : '/${row.unit.trim().isEmpty ? 'unit' : row.unit.trim()}';
     return InkWell(
       onTap: () => context.push('/purchase/detail/${row.purchaseId}'),
       onLongPress: () => _openRowActions(context, row),

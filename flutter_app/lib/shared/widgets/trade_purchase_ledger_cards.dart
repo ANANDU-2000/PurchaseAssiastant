@@ -213,25 +213,15 @@ class TradeLedgerCardList extends StatelessWidget {
 
   String _rateP(TradePurchaseLine ln) {
     final r = tradePurchaseLineDisplayPurchaseRate(ln);
-    final u = ln.unit.trim().toLowerCase();
-    final perKg = tradePurchaseLineIsWeightPriced(ln) ||
-        u == 'kg' ||
-        ((u == 'bag' || u == 'sack' || u == 'box' || u == 'tin') &&
-            (ln.kgPerUnit ?? 0) > 1e-9);
-    final suffix = perKg ? '/kg' : '/${ln.unit.trim().isEmpty ? 'unit' : ln.unit.trim()}';
-    return 'P:${_inr(r)}$suffix';
+    final suffix = ledgerPurchaseRateDisplayDim(ln);
+    return 'P:${_inr(r)}/$suffix';
   }
 
   String? _rateS(TradePurchaseLine ln) {
     final r = tradePurchaseLineDisplaySellingRate(ln);
     if (r == null) return null;
-    final u = ln.unit.trim().toLowerCase();
-    final perKg = tradePurchaseLineIsWeightPriced(ln) ||
-        u == 'kg' ||
-        ((u == 'bag' || u == 'sack' || u == 'box' || u == 'tin') &&
-            (ln.kgPerUnit ?? 0) > 1e-9);
-    final suffix = perKg ? '/kg' : '/${ln.unit.trim().isEmpty ? 'unit' : ln.unit.trim()}';
-    return 'S:${_inr(r)}$suffix';
+    final suffix = ledgerSellingRateDisplayDim(ln);
+    return 'S:${_inr(r)}/$suffix';
   }
 
   @override

@@ -35,6 +35,10 @@ TradeCalcLine _purchaseLineToCalc(TradePurchaseLine l) {
     landingCostPerKg: l.landingCostPerKg,
     discountPercent: l.discount,
     taxPercent: l.taxPercent,
+    freightType: l.freightType,
+    freightValue: l.freightValue,
+    deliveredRate: l.deliveredRate,
+    billtyRate: l.billtyRate,
   );
 }
 
@@ -67,6 +71,22 @@ TradeCalcRequest _purchaseToCalcRequest(TradePurchase p) {
     billtyRate: p.billtyRate,
     deliveredRate: p.deliveredRate,
   );
+}
+
+bool _purchaseLinesHaveItemLevelCharges(TradePurchase p) {
+  for (final l in p.lines) {
+    if (l.freightValue != null ||
+        l.deliveredRate != null ||
+        l.billtyRate != null) {
+      return true;
+    }
+  }
+  return false;
+}
+
+double _lineRollupMoney(TradePurchaseLine l) {
+  final c = _purchaseLineToCalc(l);
+  return l.lineTotal ?? (lineMoney(c) + lineItemFreightCharges(c));
 }
 
 pw.Widget _tCell(
@@ -121,13 +141,22 @@ pw.Widget _invoiceHeader({
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               pw.Text(
-                title,
+                safePdfText(kPurchaseOrderPdfTitle),
                 style: pw.TextStyle(
-                  fontSize: 15,
+                  fontSize: 14,
                   fontWeight: pw.FontWeight.bold,
                   color: PdfColors.black,
                 ),
               ),
+              if (biz.displayTitle.trim().isNotEmpty)
+                pw.Text(
+                  title,
+                  style: pw.TextStyle(
+                    fontSize: 12,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.black,
+                  ),
+                ),
               if (biz.address != null && biz.address!.trim().isNotEmpty)
                 pw.Text(
                   safePdfText(biz.address!),
@@ -151,11 +180,9 @@ pw.Widget _invoiceHeader({
           child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.end,
             children: [
-              pw.Text(
-                kPurchaseOrderPdfTitle,
-                style: pw.TextStyle(
-                    fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.black),
-              ),
+              pw.Text('Order',
+                  style: pw.TextStyle(
+                      fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
               pw.SizedBox(height: 4),
               pw.Text('No. ${_empty(p.humanId)}',
                   style: const pw.TextStyle(fontSize: 9.5, color: PdfColors.black)),
@@ -263,21 +290,13 @@ pw.Widget _supplierBrokerBlock(TradePurchase p) {
 
 String _pdfPurchaseRateStr(TradePurchaseLine l) {
   final r = tradePurchaseLineDisplayPurchaseRate(l);
-  final u = l.unit.trim();
-  final ul = u.toLowerCase();
-  if (tradePurchaseLineIsWeightPriced(l)) return '${_rsPdf(r)}/kg';
-  if (ul == 'kg') return '${_rsPdf(r)}/kg';
-  return '${_rsPdf(r)}/${safePdfText(u)}';
+  return '${_rsPdf(r)}/${ledgerPurchaseRateDisplayDim(l)}';
 }
 
 String _pdfSellingRateStr(TradePurchaseLine l) {
   final r = tradePurchaseLineDisplaySellingRate(l);
   if (r == null) return '—';
-  if (tradePurchaseLineDisplaySellingRateIsPerKg(l)) {
-    return '${_rsPdf(r)}/kg';
-  }
-  final u = l.unit.trim();
-  return '${_rsPdf(r)}/${safePdfText(u)}';
+  return '${_rsPdf(r)}/${ledgerSellingRateDisplayDim(l)}';
 }
 
 // (intentionally removed) kg column removed from the PDF items table.
@@ -306,7 +325,6 @@ pw.Widget _lineItemsTable(TradePurchase p) {
   final rows = <pw.TableRow>[header];
   for (var i = 0; i < p.lines.length; i++) {
     final l = p.lines[i];
-    final c = _purchaseLineToCalc(l);
     rows.add(
       pw.TableRow(
         children: [
@@ -316,7 +334,7 @@ pw.Widget _lineItemsTable(TradePurchase p) {
           _tCell(_pdfPurchaseRateStr(l), align: pw.TextAlign.right, fs: 5.9),
           _tCell(_pdfSellingRateStr(l), align: pw.TextAlign.right, fs: 5.9),
           _tCell(
-            _rsPdf(l.lineTotal ?? lineMoney(c)),
+            _rsPdf(_lineRollupMoney(l)),
             align: pw.TextAlign.right,
             fs: 6.1,
           ),
@@ -370,9 +388,10 @@ _SummaryNumbers _computeSummaryBreakdown(TradePurchase p) {
   var sumLineMoney = 0.0;
   var sumTaxable = 0.0;
   var sumLineTax = 0.0;
+  final lineCharges = _purchaseLinesHaveItemLevelCharges(p);
   for (final l in p.lines) {
     final c = _purchaseLineToCalc(l);
-    sumLineMoney += l.lineTotal ?? lineMoney(c);
+    sumLineMoney += _lineRollupMoney(l);
     sumTaxable += lineTaxableAfterLineDisc(c);
     sumLineTax += lineTaxAmount(c);
   }
@@ -380,7 +399,7 @@ _SummaryNumbers _computeSummaryBreakdown(TradePurchase p) {
   final hdf = hd > 100 ? 100.0 : hd;
   final afterHeader = sumLineMoney * (1.0 - hdf / 100.0);
   final headerDiscountAmount = sumLineMoney - afterHeader;
-  var freight = p.freightAmount ?? 0.0;
+  var freight = lineCharges ? 0.0 : (p.freightAmount ?? 0.0);
   if (p.freightType == 'included') freight = 0.0;
   final commission = tradePurchaseCommissionInr(p);
   return _SummaryNumbers(
@@ -430,8 +449,9 @@ pw.Widget _summaryBlock(TradePurchase p, _SummaryNumbers s, {required bool total
     );
   }
 
-  final bill = p.billtyRate ?? 0.0;
-  final del = p.deliveredRate ?? 0.0;
+  final lineCharges = _purchaseLinesHaveItemLevelCharges(p);
+  final bill = lineCharges ? 0.0 : (p.billtyRate ?? 0.0);
+  final del = lineCharges ? 0.0 : (p.deliveredRate ?? 0.0);
 
   return pw.Column(
     crossAxisAlignment: pw.CrossAxisAlignment.end,

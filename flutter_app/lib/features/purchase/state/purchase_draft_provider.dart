@@ -52,6 +52,10 @@ TradeCalcLine _lineToCalc(PurchaseLineDraft l) {
     landingCostPerKg: l.landingCostPerKg,
     taxPercent: l.taxPercent,
     discountPercent: l.lineDiscountPercent,
+    freightType: l.freightType,
+    freightValue: l.freightValue,
+    deliveredRate: l.deliveredRate,
+    billtyRate: l.billtyRate,
   );
 }
 
@@ -111,7 +115,7 @@ PurchaseStrictBreakdown strictFooterBreakdown(PurchaseDraft d) {
     subtotalGross += g;
     lineDiscountTotal += (g - ad);
     taxTotal += _wizLineTaxAmount(li);
-    linesTotal += lineMoney(li);
+    linesTotal += lineMoney(li) + lineItemFreightCharges(li);
   }
   final headerDisc = d.headerDiscountPercent ?? 0.0;
   final hd = headerDisc > 100 ? 100.0 : headerDisc;

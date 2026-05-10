@@ -268,6 +268,10 @@ class TradePurchaseLineOut(DecimalModel):
     )
     line_selling_gross: Decimal = Decimal("0")
     line_profit: Decimal | None = None
+    rate_context: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Display hints for DynamicUnitLabelEngine (not authoritative money).",
+    )
 
 
 class TradePurchaseOut(DecimalModel):
@@ -386,6 +390,10 @@ class TradePurchasePreviewLineOut(DecimalModel):
     resolved_labels: dict[str, Any] = Field(
         default_factory=dict,
         description="``unit_resolution_service.resolve_from_text`` snapshot for labels.",
+    )
+    rate_context: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Per-line display basis for rate/qty labels (Flutter DynamicUnitLabelEngine).",
     )
 
 

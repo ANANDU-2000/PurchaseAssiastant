@@ -1,10 +1,15 @@
-"""Scanner V2 pipeline: OpenAI Vision (image→JSON) → optional text fallback → matching → normalization.
+"""Scanner V2 pipeline — multi-stage flow:
+
+**Stage A** — OpenAI Vision (image→JSON) + optional text fallback.
+**Stage B** — SSOT preview / pack gates / unit normalization (``preview_line_money_ssot``, ``pack_gate``).
+**Stage C** — Catalog + supplier + broker matching (``matcher``).
 
 Third-party OCR (Google Vision, Gemini image→text, etc.) is not used for purchase bills.
 
 This module is intentionally side-effect free (no DB writes). The only
 write-path for scanner corrections is the `/correct` endpoint which upserts
-into `catalog_aliases`.
+into ``catalog_aliases``. Post-confirm **OCR learning** tables are defined in
+``backend/sql/supabase_020_ocr_learning.sql`` (wire via ``ocr_learning_service``).
 """
 
 from __future__ import annotations

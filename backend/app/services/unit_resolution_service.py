@@ -33,6 +33,7 @@ class UnitResolution:
     conversion_factor: Decimal = Decimal("1")
     confidence: Decimal = Decimal("0")
     rule_id: str | None = None
+    canonical_unit_type: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -40,6 +41,18 @@ class UnitResolution:
             v = d.get(k)
             if isinstance(v, Decimal):
                 d[k] = float(v) if v is not None else None
+        canon = (self.canonical_unit_type or self.selling_unit or "").upper()
+        d["canonical_unit_type"] = canon or None
+        d["inferred_confidence"] = float(self.confidence) if self.confidence is not None else None
+        d["unit_profile_source"] = self.rule_id
+        if (
+            (self.selling_unit or "").upper() == "BAG"
+            and self.package_measurement == "KG"
+            and self.package_size is not None
+        ):
+            d["kg_per_bag"] = float(self.package_size)
+        else:
+            d["kg_per_bag"] = None
         return d
 
 
@@ -78,6 +91,7 @@ def _apply_result(
     stock = str(st).upper() if st else None
     parsed_pt, stock2, cf2 = _infer_stock_and_conversion(su, size, meas, pt)
     conv_final = cf_explicit if cf_explicit is not None else cf2
+    canon = su if su else None
     return UnitResolution(
         selling_unit=su,
         stock_unit=stock or stock2,
@@ -88,6 +102,7 @@ def _apply_result(
         conversion_factor=conv_final,
         confidence=Decimal("85"),
         rule_id=rule_id,
+        canonical_unit_type=canon,
     )
 
 
@@ -119,6 +134,17 @@ def _infer_stock_and_conversion(
     return pt, stock, conv
 
 
+def _category_rule_matches_key(cat_upper: str, key: str) -> bool:
+    ku = key.upper().replace("_", " ").replace("-", " ")
+    if ku in cat_upper or cat_upper in ku:
+        return True
+    ku_compact = ku.replace(" ", "")
+    cc = cat_upper.replace(" ", "")
+    if ku_compact and ku_compact in cc:
+        return True
+    return False
+
+
 def _match_condition(
     upper_name: str,
     upper_cat: str,
@@ -128,11 +154,21 @@ def _match_condition(
     any_tokens = [str(x).upper() for x in (cond.get("contains_any") or [])]
     if any_tokens and not any(t in upper_name for t in any_tokens):
         return False
+    excludes = [str(x).upper() for x in (cond.get("excludes_any") or [])]
+    if excludes and any(t in upper_name for t in excludes):
+        return False
     cats = [str(x).upper() for x in (cond.get("category_any") or [])]
-    if cats and not any(c in upper_cat or upper_cat == c for c in cats):
+    if cats and not any(c in upper_cat or upper_cat == c or _category_rule_matches_key(upper_cat, c) for c in cats):
         return False
     if cond.get("brand_detected") is True and not brand_detected:
         return False
+    rx = cond.get("name_regex")
+    if rx:
+        try:
+            if not re.search(str(rx), upper_name, re.IGNORECASE):
+                return False
+        except re.error:
+            return False
     return True
 
 
@@ -155,6 +191,7 @@ def resolve_from_text(
             conversion_factor=Decimal("1"),
             confidence=Decimal("92"),
             rule_id="loose",
+            canonical_unit_type="KG",
         )
 
     detection = rules.get("smart_detection_rules") or []
@@ -169,7 +206,7 @@ def resolve_from_text(
 
     cat_rules = rules.get("category_rules") or {}
     for key, meta in cat_rules.items():
-        if key.upper() not in cat and cat != key.upper():
+        if not _category_rule_matches_key(cat, key):
             continue
         du = str((meta or {}).get("default_unit") or "").upper()
         if not du:
@@ -186,6 +223,7 @@ def resolve_from_text(
             conversion_factor=conv,
             confidence=Decimal("70"),
             rule_id=f"category_{key}",
+            canonical_unit_type=du,
         )
 
     size, meas = _parse_size_tokens(upper)
@@ -200,9 +238,31 @@ def resolve_from_text(
             conversion_factor=conv,
             confidence=Decimal("65"),
             rule_id="fallback_bag_sack",
+            canonical_unit_type="BAG",
         )
 
-    return UnitResolution(selling_unit="PCS", confidence=Decimal("40"), rule_id="fallback_pcs")
+    return UnitResolution(
+        selling_unit="PCS",
+        confidence=Decimal("40"),
+        rule_id="fallback_pcs",
+        canonical_unit_type="PCS",
+    )
+
+
+def merge_unit_resolution_into_catalog_row(item: CatalogItem, ur: UnitResolution) -> None:
+    """Persist smart-unit snapshot on a catalog row (caller commits)."""
+    item.normalized_name = (item.name or "").strip().upper()[:512] or None
+    item.selling_unit = ur.selling_unit
+    item.stock_unit = ur.stock_unit
+    item.display_unit = ur.display_unit or ur.selling_unit
+    item.package_type = ur.package_type
+    item.package_size = ur.package_size
+    item.package_measurement = ur.package_measurement
+    item.conversion_factor = ur.conversion_factor
+    item.unit_confidence = ur.confidence
+    item.smart_classification = ur.rule_id
+    if ur.package_measurement == "KG" and ur.selling_unit == "BAG" and ur.package_size is not None:
+        item.default_kg_per_bag = item.default_kg_per_bag or ur.package_size
 
 
 def resolve_for_catalog_item(
@@ -234,6 +294,7 @@ def resolve_for_catalog_item(
             conversion_factor=cf,
             confidence=uc,
             rule_id="catalog_item_row",
+            canonical_unit_type=su,
         )
 
     text_res = resolve_from_text(name, category_name=cat, brand_detected=brand_detected)
@@ -249,9 +310,9 @@ def resolve_for_catalog_item(
             conversion_factor=text_res.conversion_factor if text_res.package_size else kpb,
             confidence=min(text_res.confidence + Decimal("5"), Decimal("99")),
             rule_id=(text_res.rule_id or "") + "+kpb",
+            canonical_unit_type=text_res.canonical_unit_type or text_res.selling_unit,
         )
 
-    # Name-only kg hint for bags (align with trade line weight fallback)
     if item is not None and (item.default_kg_per_bag or parse_kg_per_bag_from_name(name)):
         kpb = item.default_kg_per_bag or parse_kg_per_bag_from_name(name)
         if kpb:
@@ -264,6 +325,18 @@ def resolve_for_catalog_item(
                 conversion_factor=kpb,
                 confidence=Decimal("72"),
                 rule_id="default_kg_per_bag",
+                canonical_unit_type="BAG",
             )
 
-    return text_res
+    return UnitResolution(
+        selling_unit=text_res.selling_unit,
+        stock_unit=text_res.stock_unit,
+        display_unit=text_res.display_unit,
+        package_type=text_res.package_type,
+        package_size=text_res.package_size,
+        package_measurement=text_res.package_measurement,
+        conversion_factor=text_res.conversion_factor,
+        confidence=text_res.confidence,
+        rule_id=text_res.rule_id,
+        canonical_unit_type=text_res.canonical_unit_type or text_res.selling_unit,
+    )

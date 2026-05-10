@@ -42,6 +42,12 @@ String _fmtRate(num? n) {
       .format(n);
 }
 
+/// Kg-weighted average (explicit basis — not a trade-line `rate_context`).
+String reportKgWeightedRateLabel(num? rate) {
+  if (rate == null || rate <= 0) return '—';
+  return '${_fmtRate(rate)}/kg wtd';
+}
+
 /// Kg-weighted average **₹/kg** purchase and selling rates for the item key.
 ///
 /// Using [TradePurchaseLine.landingGross] / kg avoids bag lines showing
@@ -81,8 +87,8 @@ String _fmtRate(num? n) {
 
 String reportItemRateArrowLine(List<TradePurchase> purchases, String itemKey) {
   final r = reportItemWeightedRates(purchases, itemKey);
-  final buyS = (r.buy != null && r.buy! > 0) ? '${_fmtRate(r.buy)}/kg' : '—';
-  final sellS = (r.sell != null && r.sell! > 0) ? '${_fmtRate(r.sell)}/kg' : '—';
+  final buyS = reportKgWeightedRateLabel(r.buy);
+  final sellS = reportKgWeightedRateLabel(r.sell);
   if (buyS == '—' && sellS == '—') return '';
   return '$buyS → $sellS';
 }

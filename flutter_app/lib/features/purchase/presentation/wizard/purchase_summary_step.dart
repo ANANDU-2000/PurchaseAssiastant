@@ -3,8 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/strict_decimal.dart';
 import '../../../../core/theme/hexa_colors.dart';
+import '../../../../core/units/dynamic_unit_label_engine.dart' as unit_lbl;
+import '../../../../core/utils/trade_purchase_rate_display.dart';
 import '../../domain/purchase_draft.dart';
+import '../../mapping/purchase_line_display_adapter.dart';
 import '../../state/purchase_draft_provider.dart';
+import '../../state/purchase_trade_preview_provider.dart';
 
 double _approxBuyLine(PurchaseLineDraft l) {
   final kpu = l.kgPerUnit;
@@ -15,27 +19,19 @@ double _approxBuyLine(PurchaseLineDraft l) {
   return l.qty * l.landingCost;
 }
 
-String _pRateDisplay(PurchaseLineDraft l) {
-  if (l.landingCostPerKg != null &&
-      l.landingCostPerKg! > 0 &&
-      l.kgPerUnit != null &&
-      l.kgPerUnit! > 0) {
-    return '₹${l.landingCostPerKg!.toStringAsFixed(2)}/kg';
-  }
-  return '₹${l.landingCost.toStringAsFixed(2)}';
+String _pRateDisplay(PurchaseLineDraft l, Map<String, dynamic>? rateContext) {
+  final tl = tradeLineForDisplay(l, rateContext: rateContext);
+  final r = tradePurchaseLineDisplayPurchaseRate(tl);
+  final suffix = unit_lbl.purchaseRateSuffix(tl);
+  return '₹${r.toStringAsFixed(2)}/$suffix';
 }
 
-String _sRateDisplay(PurchaseLineDraft l) {
-  final sp = l.sellingPrice;
-  if (sp == null || sp <= 0) return '—';
-  if (l.landingCostPerKg != null &&
-      l.landingCostPerKg! > 0 &&
-      l.kgPerUnit != null &&
-      l.kgPerUnit! > 0) {
-    final perKg = sp / l.kgPerUnit!;
-    return '₹${perKg.toStringAsFixed(2)}/kg';
-  }
-  return '₹${sp.toStringAsFixed(2)}';
+String _sRateDisplay(PurchaseLineDraft l, Map<String, dynamic>? rateContext) {
+  final tl = tradeLineForDisplay(l, rateContext: rateContext);
+  final r = tradePurchaseLineDisplaySellingRate(tl);
+  if (r == null || r <= 0) return '—';
+  final suffix = unit_lbl.sellingRateSuffix(tl);
+  return '₹${r.toStringAsFixed(2)}/$suffix';
 }
 
 /// Read-only recap + totals — use inside parent scroll views.
@@ -80,6 +76,7 @@ class PurchaseSummarySections extends ConsumerWidget {
     final draft = ref.watch(purchaseDraftProvider);
     final bd = ref.watch(purchaseStrictBreakdownProvider);
     final qt = ref.watch(purchaseQuantityTotalsProvider);
+    final preview = ref.watch(tradePurchasePreviewProvider);
 
     double estRetailMargin = 0;
     var hasRetailMargin = false;
@@ -113,6 +110,7 @@ class PurchaseSummarySections extends ConsumerWidget {
 
     for (var i = 0; i < draft.lines.length; i++) {
       final ln = draft.lines[i];
+      final rc = tradePreviewLineRateContext(preview, i);
       final buy = _approxBuyLine(ln);
       tableChildren.add(
         TableRow(
@@ -121,8 +119,8 @@ class PurchaseSummarySections extends ConsumerWidget {
             _TblCell(ln.itemName, maxLines: 2),
             _TblCell(StrictDecimal.fromObject(ln.qty).format(3, trim: true)),
             _TblCell(ln.unit),
-            _TblCell(_pRateDisplay(ln)),
-            _TblCell(_sRateDisplay(ln)),
+            _TblCell(_pRateDisplay(ln, rc)),
+            _TblCell(_sRateDisplay(ln, rc)),
             _TblCell('₹${buy.toStringAsFixed(2)}'),
           ],
         ),

@@ -8,8 +8,10 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/calc_engine.dart';
 import '../../../../core/json_coerce.dart';
+import '../../../../core/models/trade_purchase_models.dart';
 import '../../../../core/strict_decimal.dart';
 import '../../../../core/theme/hexa_colors.dart';
+import '../../../../core/units/dynamic_unit_label_engine.dart' as unit_lbl;
 import '../../../../core/utils/line_display.dart';
 import '../../../../core/utils/unit_classifier.dart';
 import '../../../../shared/widgets/inline_search_field.dart';
@@ -1014,10 +1016,58 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     );
   }
 
+  /// Minimal line for unit-label engine (purchase/selling suffix chips).
+  TradePurchaseLine _draftLineForLabelsOnly() {
+    final u = _unitCtrl.text.trim();
+    final unit = u.isEmpty ? 'unit' : u;
+    final kpu = _kgPer();
+    final lcpk = _landingParsedAsPerKg();
+
+    if (!_showPerKgLandingLabels) {
+      return TradePurchaseLine(
+        id: '_',
+        itemName: '',
+        qty: _qtyVal(),
+        unit: unit,
+        landingCost: _parseD(_landingCtrl.text) ?? 0,
+        kgPerUnit: kpu,
+        landingCostPerKg: lcpk,
+      );
+    }
+
+    final baseRc = unit_lbl.effectiveRateContextFields(
+      rateContext: null,
+      unit: u,
+      kgPerUnit: kpu,
+      landingCostPerKg: lcpk,
+    );
+    final altDim = _isBagFamilyUnit()
+        ? 'bag'
+        : (baseRc['purchase_rate_dim']?.toString() ?? 'unit');
+    final purchaseDim = _rateFieldsPerKg ? 'kg' : altDim;
+    final rc = Map<String, dynamic>.from(baseRc);
+    rc['purchase_rate_dim'] = purchaseDim;
+    rc['selling_rate_dim'] = purchaseDim;
+
+    return TradePurchaseLine(
+      id: '_',
+      itemName: '',
+      qty: _qtyVal(),
+      unit: unit,
+      landingCost: _parseD(_landingCtrl.text) ?? 0,
+      kgPerUnit: kpu,
+      landingCostPerKg: lcpk,
+      rateContext: rc,
+    );
+  }
+
   TradeCalcLine _currentLine() {
     final qty = _qtyVal();
     final disc = _parseD(_discCtrl.text);
     final tax = _parseD(_taxCtrl.text);
+    final fv = _parseD(_freightCtrl.text);
+    final dr = _parseD(_deliveredCtrl.text);
+    final br = _parseD(_billtyCtrl.text);
     if (_ratesPerKgEconomics) {
       final kpu = _kgPer()!;
       final perKg = _landingParsedAsPerKg() ?? 0;
@@ -1028,6 +1078,10 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         landingCostPerKg: perKg,
         discountPercent: disc,
         taxPercent: tax,
+        freightType: _freightType,
+        freightValue: fv,
+        deliveredRate: dr,
+        billtyRate: br,
       );
     }
     return TradeCalcLine(
@@ -1035,22 +1089,29 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       landingCost: _parseD(_landingCtrl.text) ?? 0,
       discountPercent: disc,
       taxPercent: tax,
+      freightType: _freightType,
+      freightValue: fv,
+      deliveredRate: dr,
+      billtyRate: br,
     );
   }
 
-  double _lineTotalPreview() => lineMoney(_currentLine());
+  double _lineTotalPreview() =>
+      lineMoney(_currentLine()) + lineItemFreightCharges(_currentLine());
 
   Widget? _rateEntryBasisSegmented(double? kPer, bool showPerKg) {
     if (!showPerKg || kPer == null || kPer <= 0) return null;
-    final unitLabel = _isBagFamilyUnit() ? '₹/bag' : '₹/unit';
+    final kgChip = unit_lbl.rupeePerDimChipLabel('kg');
+    final altDim = _isBagFamilyUnit() ? 'bag' : 'unit';
+    final altChip = unit_lbl.rupeePerDimChipLabel(altDim);
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Align(
         alignment: Alignment.centerLeft,
         child: SegmentedButton<bool>(
           segments: [
-            const ButtonSegment(value: true, label: Text('₹/kg')),
-            ButtonSegment(value: false, label: Text(unitLabel)),
+            ButtonSegment(value: true, label: Text(kgChip)),
+            ButtonSegment(value: false, label: Text(altChip)),
           ],
           selected: {_rateFieldsPerKg},
           onSelectionChanged: (s) {
@@ -1652,18 +1713,20 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     }
   }
 
-  String _purchaseRateLabel(bool showPerKg) {
+  String _purchaseRateLabel(bool _) {
+    final sfx = unit_lbl.purchaseRateSuffix(_draftLineForLabelsOnly());
     if (widget.fullPage) {
-      return showPerKg ? 'Purchase Rate (₹/kg) *' : 'Purchase Rate (₹/unit) *';
+      return 'Purchase Rate (₹/$sfx) *';
     }
-    return showPerKg ? 'Landing cost (₹/kg) *' : 'Landing cost *';
+    return 'Landing cost (₹/$sfx) *';
   }
 
-  String _sellingRateLabel(bool showPerKg) {
+  String _sellingRateLabel(bool _) {
+    final sfx = unit_lbl.sellingRateSuffix(_draftLineForLabelsOnly());
     if (widget.fullPage) {
-      return showPerKg ? 'Selling Rate (₹/kg)' : 'Selling Rate (₹/unit)';
+      return 'Selling Rate (₹/$sfx)';
     }
-    return showPerKg ? 'Selling price (₹/kg)' : 'Selling price';
+    return 'Selling price (₹/$sfx)';
   }
 
   /// Picks line unit: when the item has a bag weight but purchase unit is
@@ -2196,8 +2259,11 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
             color: Colors.blueGrey[800],
           ),
         ));
+        final ln = _draftLineForLabelsOnly();
+        final perDim = unit_lbl.purchaseRateSuffix(ln);
+        final perDisplay = _parseD(_landingCtrl.text) ?? 0;
         lines.add(Text(
-          '${_inQtyWtFmt.format(totalK)} kg × ₹${per.toStringAsFixed(2)}/kg → ₹${total.toStringAsFixed(2)}',
+          '${_inQtyWtFmt.format(totalK)} kg × ₹${perDisplay.toStringAsFixed(2)}/$perDim → ₹${total.toStringAsFixed(2)}',
           style: theme.textTheme.bodySmall?.copyWith(
             fontSize: 12,
             fontWeight: FontWeight.w700,

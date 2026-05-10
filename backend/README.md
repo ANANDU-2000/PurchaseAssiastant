@@ -74,7 +74,9 @@ Startup logs one line:
 
 **Tune via env** (see root `.env.example`): `HTTP_SLOW_REQUEST_WARNING_MS` (default **500** — requests slower than this log `SLOW_HTTP …`), `HTTP_PROPAGATE_REQUEST_ID` (**true** — sets `X-Request-Id` / `X-Process-Time-Ms` on responses), `LOG_LEVEL`, `DATABASE_SLOW_QUERY_LOG_MS`, `API_READ_BUDGET_SECONDS`, `SENTRY_DSN`.
 
-**Grepping logs:** `SLOW_HTTP`, `VERY_SLOW_HTTP`, `HTTP 503`, `Postgres warmup failed`, `database`, `x-database-unavailable` (from connectivity middleware on business routes). List endpoints also emit `**list_suppliers ok`**, `**list_brokers ok**`, `**list_catalog_items ok**` with `count` and `ms` for slow-empty triage.
+**Grepping logs:** `HTTP_JSON` (structured one-line JSON for `/v1/businesses/*`, slow requests, read-budget misses, and 4xx+), `READ_BUDGET_EXCEEDED` (GET `/reports/*` or catalog/category lists over `API_READ_BUDGET_SECONDS`), `SLOW_HTTP`, `VERY_SLOW_HTTP`, `HTTP 503`, `Postgres warmup failed`, `database`, `x-database-unavailable` (from connectivity middleware on business routes). List endpoints also emit `**list_suppliers ok`**, `**list_brokers ok**`, `**list_catalog_items ok**` with `count` and `ms` for slow-empty triage.
+
+**Postgres / Render:** Before deploy, `SELECT version_num FROM alembic_version;` must match the revision you ship. If Supabase SQL and Alembic both touch the same revision, align `alembic_version` or the next upgrade can abort (`exit 3`). Prefer **Pre-Deploy** `alembic upgrade head` and a **Start** command that only runs `uvicorn` when using `WEB_CONCURRENCY=1` to avoid port scan timeouts during long DDL.
 
 **Flutter:** each API call sends `**X-Request-Id`**; on failure (debug builds) DevTools/console prints it — paste into Render log search to match the same request on the server.
 

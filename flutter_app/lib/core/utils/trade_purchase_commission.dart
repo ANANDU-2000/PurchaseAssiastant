@@ -2,19 +2,23 @@ import '../calc_engine.dart';
 import '../models/trade_purchase_models.dart';
 import '../strict_decimal.dart';
 
-/// Single line rupees (tax-inclusive), same as wizard / reports line math.
+/// Single line rupees (tax-inclusive) plus line freight/delivered/billty when
+/// [lineTotal] is absent (matches backend roll-up for commission basis).
 double tradePurchaseLineSumForLine(TradePurchaseLine l) {
   if (l.lineTotal != null) return l.lineTotal!;
-  return lineMoney(
-    TradeCalcLine(
-      qty: l.qty,
-      landingCost: l.landingCost,
-      kgPerUnit: l.kgPerUnit,
-      landingCostPerKg: l.landingCostPerKg,
-      taxPercent: l.taxPercent,
-      discountPercent: l.discount,
-    ),
+  final li = TradeCalcLine(
+    qty: l.qty,
+    landingCost: l.landingCost,
+    kgPerUnit: l.kgPerUnit,
+    landingCostPerKg: l.landingCostPerKg,
+    taxPercent: l.taxPercent,
+    discountPercent: l.discount,
+    freightType: l.freightType,
+    freightValue: l.freightValue,
+    deliveredRate: l.deliveredRate,
+    billtyRate: l.billtyRate,
   );
+  return lineMoney(li) + lineItemFreightCharges(li);
 }
 
 TradeCommissionLine _tradeLineToCommissionBasis(TradePurchaseLine l) {

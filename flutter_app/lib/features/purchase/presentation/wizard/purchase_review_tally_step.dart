@@ -5,7 +5,10 @@ import 'package:intl/intl.dart';
 import '../../../../core/calc_engine.dart';
 import '../../../../core/strict_decimal.dart';
 import '../../../../core/theme/hexa_colors.dart';
+import '../../../../core/units/dynamic_unit_label_engine.dart' as unit_lbl;
+import '../../../../core/utils/trade_purchase_rate_display.dart';
 import '../../domain/purchase_draft.dart';
+import '../../mapping/purchase_line_display_adapter.dart';
 import '../../state/purchase_draft_provider.dart';
 import '../../state/purchase_trade_preview_provider.dart';
 
@@ -21,6 +24,10 @@ TradeCalcLine _lineToCalc(PurchaseLineDraft l) {
     landingCostPerKg: l.landingCostPerKg,
     taxPercent: l.taxPercent,
     discountPercent: l.lineDiscountPercent,
+    freightType: l.freightType,
+    freightValue: l.freightValue,
+    deliveredRate: l.deliveredRate,
+    billtyRate: l.billtyRate,
   );
 }
 
@@ -33,29 +40,19 @@ double _lineBuyApprox(PurchaseLineDraft l) {
   return l.qty * l.landingCost;
 }
 
-String _pRateLine(PurchaseLineDraft l) {
-  if (l.landingCostPerKg != null &&
-      l.landingCostPerKg! > 0 &&
-      l.kgPerUnit != null &&
-      l.kgPerUnit! > 0) {
-    return '₹${l.landingCostPerKg!.toStringAsFixed(2)}/kg';
-  }
-  return '₹${l.landingCost.toStringAsFixed(2)}';
+String _pRateLine(PurchaseLineDraft l, Map<String, dynamic>? rateContext) {
+  final tl = tradeLineForDisplay(l, rateContext: rateContext);
+  final r = tradePurchaseLineDisplayPurchaseRate(tl);
+  final suffix = unit_lbl.purchaseRateSuffix(tl);
+  return '₹${r.toStringAsFixed(2)}/$suffix';
 }
 
-String _sRateLine(PurchaseLineDraft l) {
-  final sp = l.sellingPrice;
-  if (sp == null || sp <= 0) return '—';
-  // Wire `selling_rate` for weight-priced bags is **per physical unit** (₹/bag);
-  // per-kg display = per-bag ÷ kg per bag.
-  if (l.landingCostPerKg != null &&
-      l.landingCostPerKg! > 0 &&
-      l.kgPerUnit != null &&
-      l.kgPerUnit! > 0) {
-    final perKg = sp / l.kgPerUnit!;
-    return '₹${perKg.toStringAsFixed(2)}/kg';
-  }
-  return '₹${sp.toStringAsFixed(2)}';
+String _sRateLine(PurchaseLineDraft l, Map<String, dynamic>? rateContext) {
+  final tl = tradeLineForDisplay(l, rateContext: rateContext);
+  final r = tradePurchaseLineDisplaySellingRate(tl);
+  if (r == null || r <= 0) return '—';
+  final suffix = unit_lbl.sellingRateSuffix(tl);
+  return '₹${r.toStringAsFixed(2)}/$suffix';
 }
 
 String _qtyHuman(PurchaseLineDraft l) {
@@ -327,6 +324,7 @@ class _ReviewLineTile extends ConsumerWidget {
     final g = lineGrossBase(li);
     final taxable = lineTaxableAfterLineDisc(li);
     final snap = ref.watch(tradePurchasePreviewProvider);
+    final rateCtx = tradePreviewLineRateContext(snap, lineIndex);
     final serverLt = tradePreviewLineTotal(snap, lineIndex);
     final lineTotal = serverLt ?? lineMoney(li);
     final taxAmt = lineTotal - taxable;
@@ -365,7 +363,7 @@ class _ReviewLineTile extends ConsumerWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                'P ${_pRateLine(line)}  ·  S ${_sRateLine(line)}',
+                'P ${_pRateLine(line, rateCtx)}  ·  S ${_sRateLine(line, rateCtx)}',
                 style: tt.bodySmall?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: Colors.black87,
@@ -390,8 +388,8 @@ class _ReviewLineTile extends ConsumerWidget {
             ),
           ),
           children: [
-            _detailRow('Purchase rate (display)', _pRateLine(line)),
-            _detailRow('Selling rate (display)', _sRateLine(line)),
+            _detailRow('Purchase rate (display)', _pRateLine(line, rateCtx)),
+            _detailRow('Selling rate (display)', _sRateLine(line, rateCtx)),
             _detailRow('Line gross (qty × purchase)', _inr(g)),
             if (discRupees > 1e-6)
               _detailRow(

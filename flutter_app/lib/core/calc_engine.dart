@@ -11,6 +11,10 @@ class TradeCalcLine {
     this.landingCostPerKg,
     this.discountPercent,
     this.taxPercent,
+    this.freightType,
+    this.freightValue,
+    this.deliveredRate,
+    this.billtyRate,
   });
 
   final double qty;
@@ -25,6 +29,11 @@ class TradeCalcLine {
   /// Line discount 0–100 (%), same semantics as backend.
   final double? discountPercent;
   final double? taxPercent;
+  /// Line freight type (`separate` adds [freightValue]); matches API `freight_type`.
+  final String? freightType;
+  final double? freightValue;
+  final double? deliveredRate;
+  final double? billtyRate;
 }
 
 /// Line snapshot for per-kg / per-bag / per-tin broker commission (header).
@@ -135,6 +144,35 @@ StrictDecimal lineMoneyDecimal(TradeCalcLine li) {
 }
 
 double lineMoney(TradeCalcLine li) => lineMoneyDecimal(li).toDouble();
+
+/// Per-line freight + delivered + billty (matches backend `line_item_freight_charges`).
+StrictDecimal lineItemFreightChargesDecimal(TradeCalcLine li) {
+  final ft = (li.freightType ?? '').trim().toLowerCase();
+  final fv = li.freightValue;
+  final freightDec = (fv != null && ft == 'separate')
+      ? _dec(fv)
+      : StrictDecimal.zero();
+  final delivered =
+      li.deliveredRate != null ? _dec(li.deliveredRate) : StrictDecimal.zero();
+  final billty =
+      li.billtyRate != null ? _dec(li.billtyRate) : StrictDecimal.zero();
+  return freightDec + delivered + billty;
+}
+
+double lineItemFreightCharges(TradeCalcLine li) =>
+    lineItemFreightChargesDecimal(li).toDouble();
+
+/// True when backend skips stacking header freight / header billty / delivered.
+bool tradeCalcLinesHaveItemLevelCharges(Iterable<TradeCalcLine> lines) {
+  for (final li in lines) {
+    if (li.freightValue != null ||
+        li.deliveredRate != null ||
+        li.billtyRate != null) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /// Physical mass in kg for one line (display + rolled totals; not money).
 ///
@@ -312,9 +350,10 @@ StrictDecimal headerCommissionAddOnDecimal({
 TradeCalcTotals computeTradeTotals(TradeCalcRequest req) {
   var qtySum = StrictDecimal.zero();
   var amtSum = StrictDecimal.zero();
+  final hasLineCharges = tradeCalcLinesHaveItemLevelCharges(req.lines);
   for (final li in req.lines) {
     qtySum += _dec(li.qty);
-    amtSum += lineMoneyDecimal(li);
+    amtSum += lineMoneyDecimal(li) + lineItemFreightChargesDecimal(li);
   }
 
   final headerDisc =
@@ -331,7 +370,9 @@ TradeCalcTotals computeTradeTotals(TradeCalcRequest req) {
   if (req.freightType == 'included') {
     freight = StrictDecimal.zero();
   }
-  amtSum += freight;
+  if (!hasLineCharges) {
+    amtSum += freight;
+  }
 
   amtSum += headerCommissionAddOnDecimal(
     commissionMode: req.commissionMode,
@@ -343,10 +384,12 @@ TradeCalcTotals computeTradeTotals(TradeCalcRequest req) {
     basisLines: req.commissionBasisLines,
   );
 
-  final billty = req.billtyRate != null ? _dec(req.billtyRate) : StrictDecimal.zero();
-  final delivered =
-      req.deliveredRate != null ? _dec(req.deliveredRate) : StrictDecimal.zero();
-  amtSum += billty + delivered;
+  if (!hasLineCharges) {
+    final billty = req.billtyRate != null ? _dec(req.billtyRate) : StrictDecimal.zero();
+    final delivered =
+        req.deliveredRate != null ? _dec(req.deliveredRate) : StrictDecimal.zero();
+    amtSum += billty + delivered;
+  }
 
   return TradeCalcTotals(
     qtySum: qtySum.toScale(3).toDouble(),

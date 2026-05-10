@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, Uuid, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -74,6 +74,9 @@ class TradePurchase(Base):
 
 class TradePurchaseLine(Base):
     __tablename__ = "trade_purchase_lines"
+    __table_args__ = (
+        Index("ix_trade_purchase_lines_tp_id_item_name", "trade_purchase_id", "item_name"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     trade_purchase_id: Mapped[uuid.UUID] = mapped_column(

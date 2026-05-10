@@ -39,7 +39,9 @@ from app.services.line_totals_service import (
     line_total_weight as _line_total_weight,
 )
 from app.services.purchase_status import compute_status
+from app.services.rate_display_context import build_rate_context, validate_rate_label_consistency
 from app.services.trade_query import trade_purchase_status_in_reports
+from app.services.unit_resolution_service import resolve_from_text
 
 
 class TradePurchaseValidationError(Exception):
@@ -1300,6 +1302,8 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
             if isinstance(raw_ut, str) and raw_ut.strip()
             else derive_trade_unit_type(li.unit)
         )
+        urd = resolve_from_text(li.item_name or "").as_dict()
+        rctx = build_rate_context(li_in, resolved_labels=urd)
         lines.append(
             TradePurchaseLineOut(
                 id=li.id,
@@ -1341,6 +1345,7 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
                 line_landing_gross=lg,
                 line_selling_gross=sg,
                 line_profit=lp,
+                rate_context=rctx,
             )
         )
     total_dec = _dec(tp.total_amount)

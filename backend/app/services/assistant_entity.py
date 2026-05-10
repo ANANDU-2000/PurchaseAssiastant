@@ -18,6 +18,7 @@ from app.services.fuzzy_catalog import (
     fuzzy_find_similar_supplier_name,
     fuzzy_find_similar_variant_name_for_item,
 )
+from app.services.unit_resolution_service import merge_unit_resolution_into_catalog_row, resolve_for_catalog_item
 
 EntityKind = Literal[
     "supplier",
@@ -532,6 +533,16 @@ async def commit_entity(
         )
         db.add(it)
         await db.flush()
+        parts_nm = item_name.split()
+        bd_guess = len(parts_nm) >= 2 and parts_nm[0].isalpha() and len(parts_nm[0]) >= 2
+        ur_ai = resolve_for_catalog_item(
+            it,
+            item_name=it.name,
+            category_name=cat.name,
+            brand_detected=bd_guess,
+        )
+        merge_unit_resolution_into_catalog_row(it, ur_ai)
+        await db.flush()
         return {
             "category_id": str(cat.id),
             "item_id": str(it.id),
@@ -595,6 +606,16 @@ async def commit_entity(
             default_kg_per_bag=kgpb,
         )
         db.add(it)
+        await db.flush()
+        parts_nm2 = item_name.split()
+        bd_guess2 = len(parts_nm2) >= 2 and parts_nm2[0].isalpha() and len(parts_nm2[0]) >= 2
+        ur_ai2 = resolve_for_catalog_item(
+            it,
+            item_name=it.name,
+            category_name=cat.name,
+            brand_detected=bd_guess2,
+        )
+        merge_unit_resolution_into_catalog_row(it, ur_ai2)
         await db.flush()
         return {"id": str(it.id), "entity": "catalog_item"}
 

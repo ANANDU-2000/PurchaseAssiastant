@@ -139,10 +139,14 @@ class _PurchaseItemsStepState extends ConsumerState<PurchaseItemsStep> {
       landingCostPerKg: it.landingCostPerKg,
       taxPercent: it.taxPercent,
       discountPercent: it.lineDiscountPercent,
+      freightType: it.freightType,
+      freightValue: it.freightValue,
+      deliveredRate: it.deliveredRate,
+      billtyRate: it.billtyRate,
     );
     final snap = ref.watch(tradePurchasePreviewProvider);
     final pt = tradePreviewLineTotal(snap, i);
-    final total = pt ?? lineMoney(line);
+    final total = pt ?? (lineMoney(line) + lineItemFreightCharges(line));
     final kpu = it.kgPerUnit;
     final lck = it.landingCostPerKg;
     final rateUnit = (kpu != null && lck != null && kpu > 0 && lck > 0)

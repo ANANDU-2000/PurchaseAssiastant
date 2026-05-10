@@ -6,8 +6,12 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/strict_decimal.dart';
 import '../../../../core/theme/hexa_colors.dart';
+import '../../../../core/units/dynamic_unit_label_engine.dart' as unit_lbl;
+import '../../../../core/utils/trade_purchase_rate_display.dart';
 import '../../domain/purchase_draft.dart';
+import '../../mapping/purchase_line_display_adapter.dart';
 import '../../state/purchase_draft_provider.dart';
+import '../../state/purchase_trade_preview_provider.dart';
 
 String _inr0(num n) =>
     NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
@@ -91,27 +95,19 @@ class _PurchaseFastItemsStepState extends ConsumerState<PurchaseFastItemsStep> {
     return '$q $u';
   }
 
-  String _pRateQuick(PurchaseLineDraft l) {
-    if (l.landingCostPerKg != null &&
-        l.landingCostPerKg! > 0 &&
-        l.kgPerUnit != null &&
-        l.kgPerUnit! > 0) {
-      return 'P ₹${l.landingCostPerKg!.toStringAsFixed(1)}/kg';
-    }
-    return 'P ₹${l.landingCost.toStringAsFixed(0)}';
+  String _pRateQuick(PurchaseLineDraft l, Map<String, dynamic>? rateContext) {
+    final tl = tradeLineForDisplay(l, rateContext: rateContext);
+    final r = tradePurchaseLineDisplayPurchaseRate(tl);
+    final d = unit_lbl.purchaseRateSuffix(tl);
+    return 'P ₹${r.toStringAsFixed(1)}/$d';
   }
 
-  String _sRateQuick(PurchaseLineDraft l) {
-    final sp = l.sellingPrice;
-    if (sp == null || sp <= 0) return 'S —';
-    if (l.landingCostPerKg != null &&
-        l.landingCostPerKg! > 0 &&
-        l.kgPerUnit != null &&
-        l.kgPerUnit! > 0) {
-      final perKg = sp / l.kgPerUnit!;
-      return 'S ₹${perKg.toStringAsFixed(1)}/kg';
-    }
-    return 'S ₹${sp.toStringAsFixed(0)}';
+  String _sRateQuick(PurchaseLineDraft l, Map<String, dynamic>? rateContext) {
+    final tl = tradeLineForDisplay(l, rateContext: rateContext);
+    final r = tradePurchaseLineDisplaySellingRate(tl);
+    if (r == null || r <= 0) return 'S —';
+    final d = unit_lbl.sellingRateSuffix(tl);
+    return 'S ₹${r.toStringAsFixed(1)}/$d';
   }
 
   Future<void> _editAdvanced(int i) async {
@@ -126,6 +122,7 @@ class _PurchaseFastItemsStepState extends ConsumerState<PurchaseFastItemsStep> {
     final supplierId =
         ref.watch(purchaseDraftProvider.select((d) => d.supplierId));
     final blocked = supplierId == null || supplierId.isEmpty;
+    final preview = ref.watch(tradePurchasePreviewProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -241,6 +238,7 @@ class _PurchaseFastItemsStepState extends ConsumerState<PurchaseFastItemsStep> {
             itemCount: lines.length,
             itemBuilder: (ctx, i) {
               final ln = lines[i];
+              final rc = tradePreviewLineRateContext(preview, i);
               final buy = _approxLinePurchase(ln);
               return Padding(
                 padding: const EdgeInsets.only(bottom: 12),
@@ -297,7 +295,7 @@ class _PurchaseFastItemsStepState extends ConsumerState<PurchaseFastItemsStep> {
                                     Chip(
                                       visualDensity: VisualDensity.compact,
                                       label: Text(
-                                        _pRateQuick(ln),
+                                        _pRateQuick(ln, rc),
                                         style: const TextStyle(
                                           fontSize: 12,
                                           fontWeight: FontWeight.w800,
@@ -313,7 +311,7 @@ class _PurchaseFastItemsStepState extends ConsumerState<PurchaseFastItemsStep> {
                                     Chip(
                                       visualDensity: VisualDensity.compact,
                                       label: Text(
-                                        _sRateQuick(ln),
+                                        _sRateQuick(ln, rc),
                                         style: const TextStyle(
                                           fontSize: 12,
                                           fontWeight: FontWeight.w800,

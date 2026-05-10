@@ -69,6 +69,27 @@ class TradePurchasePreviewNotifier
   }
 }
 
+/// Parsed `lines[i].rate_context` from preview, or null.
+Map<String, dynamic>? tradePreviewLineRateContext(
+  AsyncValue<Map<String, dynamic>?> snap,
+  int lineIndex,
+) {
+  final map = snap.asData?.value;
+  if (map == null) return null;
+  final rawLines = map['lines'];
+  if (rawLines is! List || lineIndex < 0 || lineIndex >= rawLines.length) {
+    return null;
+  }
+  final row = rawLines[lineIndex];
+  if (row is! Map) return null;
+  final rc = row['rate_context'];
+  if (rc is Map<String, dynamic>) return Map<String, dynamic>.from(rc);
+  if (rc is Map) {
+    return rc.map((k, v) => MapEntry(k.toString(), v));
+  }
+  return null;
+}
+
 /// Parsed `lines[i].line_total` from [tradePurchasePreviewProvider], or null.
 double? tradePreviewLineTotal(AsyncValue<Map<String, dynamic>?> snap, int lineIndex) {
   final map = snap.asData?.value;

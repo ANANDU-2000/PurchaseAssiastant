@@ -8,7 +8,7 @@ import 'package:hexa_purchase_assistant/shared/widgets/trade_intel_cards.dart';
 
 void main() {
   test('kPurchaseOrderPdfTitle constant', () {
-    expect(kPurchaseOrderPdfTitle, 'PURCHASE ORDER');
+    expect(kPurchaseOrderPdfTitle, 'New Harisree Agency Purchase Order');
   });
 
   test('tradeIntelSearchCatalogSubtitle uses only confirmed purchase fields', () {

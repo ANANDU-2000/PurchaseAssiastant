@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import re
@@ -161,6 +162,29 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Harisree Purchases API", lifespan=lifespan)
 
 
+def _http_measurement_payload(
+    *,
+    request: Request,
+    response,
+    duration_ms: int,
+    business_id: str,
+    request_id: str,
+    slow: bool,
+    read_budget_exceeded: bool,
+) -> dict[str, Any]:
+    return {
+        "event": "http_request",
+        "method": request.method,
+        "path": request.url.path,
+        "status_code": response.status_code,
+        "duration_ms": duration_ms,
+        "business_id": business_id or None,
+        "request_id": request_id or None,
+        "slow": slow,
+        "read_budget_exceeded": read_budget_exceeded,
+    }
+
+
 @app.middleware("http")
 async def harisree_request_monitor_middleware(request: Request, call_next):
     cfg = get_settings()
@@ -185,6 +209,51 @@ async def harisree_request_monitor_middleware(request: Request, call_next):
         response.headers["X-Process-Time-Ms"] = str(ms)
 
     slow_ms = getattr(cfg, "http_slow_request_warning_ms", None) or 0
+    is_slow = slow_ms > 0 and ms >= slow_ms
+    budget_ms = int(max(0.0, float(cfg.api_read_budget_seconds)) * 1000)
+    path = request.url.path
+    heavy_read = (
+        budget_ms > 0
+        and ms >= budget_ms
+        and request.method == "GET"
+        and (
+            "/reports/" in path
+            or path.rstrip("/").endswith("/catalog-items")
+            or path.rstrip("/").endswith("/item-categories")
+        )
+    )
+    log_json = (
+        path.startswith("/v1/businesses")
+        or is_slow
+        or heavy_read
+        or response.status_code >= 400
+    )
+    if log_json:
+        logger.info(
+            "HTTP_JSON %s",
+            json.dumps(
+                _http_measurement_payload(
+                    request=request,
+                    response=response,
+                    duration_ms=ms,
+                    business_id=bid,
+                    request_id=rid,
+                    slow=is_slow,
+                    read_budget_exceeded=heavy_read,
+                ),
+                default=str,
+            ),
+        )
+    if heavy_read:
+        logger.warning(
+            "READ_BUDGET_EXCEEDED %sms | budget_ms=%s | %s %s business_id=%s request_id=%s",
+            ms,
+            budget_ms,
+            request.method,
+            path,
+            bid or "-",
+            rid or "-",
+        )
     if slow_ms > 0 and ms >= slow_ms:
         logger.warning(
             "SLOW_HTTP %sms | %s %s status=%s business_id=%s request_id=%s",

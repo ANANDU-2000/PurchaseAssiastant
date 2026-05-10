@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "description": "Optional offline master profiles for catalog / OCR hints (merge with DB export via generate_master_item_profiles.py).",
+  "profiles": []
+}

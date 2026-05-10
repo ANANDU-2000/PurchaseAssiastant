@@ -22,6 +22,15 @@ double? _decNullableDouble(Object? value) {
   }
 }
 
+Map<String, dynamic>? _mapFromDynamic(Object? value) {
+  if (value == null) return null;
+  if (value is Map<String, dynamic>) return Map<String, dynamic>.from(value);
+  if (value is Map) {
+    return value.map((k, v) => MapEntry(k.toString(), v));
+  }
+  return null;
+}
+
 /// Mirrors backend lifecycle + [parsePurchaseStatus].
 enum PurchaseStatus {
   draft,
@@ -129,6 +138,7 @@ class TradePurchaseLine {
     this.weightPerItem,
     this.kgPerBox,
     this.weightPerTin,
+    this.rateContext,
   });
 
   final String id;
@@ -168,6 +178,8 @@ class TradePurchaseLine {
   final double? weightPerItem;
   final double? kgPerBox;
   final double? weightPerTin;
+  /// Server `rate_context` for labels (₹/bag vs ₹/kg); optional on older payloads.
+  final Map<String, dynamic>? rateContext;
 
   factory TradePurchaseLine.fromJson(Map<String, dynamic> j) {
     return TradePurchaseLine(
@@ -204,6 +216,7 @@ class TradePurchaseLine {
       weightPerItem: _decNullableDouble(j['weight_per_item']),
       kgPerBox: _decNullableDouble(j['kg_per_box']),
       weightPerTin: _decNullableDouble(j['weight_per_tin']),
+      rateContext: _mapFromDynamic(j['rate_context']),
     );
   }
 

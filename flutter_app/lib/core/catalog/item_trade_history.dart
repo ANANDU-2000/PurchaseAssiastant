@@ -1,5 +1,7 @@
 import '../calc_engine.dart';
 import '../models/trade_purchase_models.dart';
+import '../utils/trade_purchase_rate_display.dart';
+import '../units/dynamic_unit_label_engine.dart' as unit_lbl;
 
 /// Purchase rows that are not meaningful for catalog / trade intel.
 bool purchaseCountsForCatalogIntel(TradePurchase p) {
@@ -15,6 +17,10 @@ TradeCalcLine tradeLineToCalc(TradePurchaseLine ln) {
     landingCostPerKg: ln.landingCostPerKg,
     taxPercent: ln.taxPercent,
     discountPercent: ln.discount,
+    freightType: ln.freightType,
+    freightValue: ln.freightValue,
+    deliveredRate: ln.deliveredRate,
+    billtyRate: ln.billtyRate,
   );
 }
 
@@ -43,14 +49,11 @@ class ItemTradeHistoryRow {
   double get lineTotal =>
       line.lineTotal ?? lineMoney(tradeLineToCalc(line));
 
-  /// Display rate: ₹/kg when weight line, else ₹ per line unit.
+  /// Display purchase rate using server [rate_context] when present.
   String rateLabel() {
-    final kpu = line.kgPerUnit;
-    final lcpk = line.landingCostPerKg;
-    if (kpu != null && lcpk != null && kpu > 0 && lcpk > 0) {
-      return '₹${_fmtNum(lcpk)}/kg';
-    }
-    return '₹${_fmtNum(line.landingCost)}/${line.unit}';
+    final tl = line;
+    final r = tradePurchaseLineDisplayPurchaseRate(tl);
+    return '₹${_fmtNum(r)}/${unit_lbl.purchaseRateSuffix(tl)}';
   }
 }
 
@@ -148,7 +151,7 @@ class ItemSupplierIntel {
 
   String avgLabel() {
     if (hasWeightSamples && avgPerKg != null) {
-      return '₹${_fmtNum(avgPerKg!)}/kg avg';
+      return '₹${_fmtNum(avgPerKg!)}/kg wtd avg';
     }
     if (avgPerUnit != null) {
       return '₹${_fmtNum(avgPerUnit!)} avg / unit';

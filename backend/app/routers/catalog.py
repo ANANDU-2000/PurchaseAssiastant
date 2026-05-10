@@ -30,7 +30,11 @@ from app.models.catalog import CatalogItemDefaultBroker, CatalogItemDefaultSuppl
 from app.models.contacts import Broker, Supplier
 from app.models.supplier_item_default import SupplierItemDefault
 from app.services import trade_query as tq
-from app.services.unit_resolution_service import resolve_for_catalog_item, resolve_from_text
+from app.services.unit_resolution_service import (
+    merge_unit_resolution_into_catalog_row,
+    resolve_for_catalog_item,
+    resolve_from_text,
+)
 
 router = APIRouter(prefix="/v1/businesses/{business_id}", tags=["catalog"])
 
@@ -1335,6 +1339,23 @@ async def create_catalog_item(
     )
     db.add(i)
     await db.flush()
+    crn0 = await db.execute(
+        select(ItemCategory.name).where(
+            ItemCategory.id == i.category_id,
+            ItemCategory.business_id == business_id,
+        )
+    )
+    cat_n0 = crn0.scalar_one_or_none()
+    parts0 = (i.name or "").split()
+    brand_guess = len(parts0) >= 2 and parts0[0].isalpha() and len(parts0[0]) >= 2
+    ur0 = resolve_for_catalog_item(
+        i,
+        item_name=i.name,
+        category_name=str(cat_n0) if cat_n0 else None,
+        brand_detected=brand_guess,
+    )
+    merge_unit_resolution_into_catalog_row(i, ur0)
+    await db.flush()
     await _replace_default_supplier_rows(db, business_id, i.id, supplier_ids)
     await _replace_default_broker_rows(db, business_id, i.id, broker_ids)
     await _seed_supplier_item_defaults(db, business_id, i.id, supplier_ids)
@@ -1997,6 +2018,31 @@ async def update_catalog_item(
     )
     if unit_touched:
         _validate_item_unit_constraints(i)
+    profile_keys = (
+        "name",
+        "category_id",
+        "default_unit",
+        "default_kg_per_bag",
+        "default_items_per_box",
+        "default_weight_per_tin",
+    )
+    if any(k in data for k in profile_keys):
+        crnx = await db.execute(
+            select(ItemCategory.name).where(
+                ItemCategory.id == i.category_id,
+                ItemCategory.business_id == business_id,
+            )
+        )
+        cnx = crnx.scalar_one_or_none()
+        partsx = (i.name or "").split()
+        bg = len(partsx) >= 2 and partsx[0].isalpha() and len(partsx[0]) >= 2
+        urx = resolve_for_catalog_item(
+            i,
+            item_name=i.name,
+            category_name=str(cnx) if cnx else None,
+            brand_detected=bg,
+        )
+        merge_unit_resolution_into_catalog_row(i, urx)
     if "default_supplier_ids" in data and data["default_supplier_ids"] is not None:
         sids = _dedupe_preserve_order(data["default_supplier_ids"])
         if not sids:

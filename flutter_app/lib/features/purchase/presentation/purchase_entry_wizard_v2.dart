@@ -1364,13 +1364,21 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
       return 'Purchase did not pass server validation.';
     }
     final parts = <String>[];
-    for (final e in errs.take(5)) {
+    for (final e in errs.take(8)) {
       if (e is Map) {
+        final loc = e['loc'];
+        String? lineHint;
+        if (loc is List &&
+            loc.length >= 3 &&
+            (loc[2] is int || loc[2] is num)) {
+          final idx = (loc[2] is int) ? loc[2] as int : (loc[2] as num).toInt();
+          lineHint = 'Line ${idx + 1}: ';
+        }
         final m = e['message']?.toString() ??
             e['detail']?.toString() ??
             e['msg']?.toString();
         if (m != null && m.trim().isNotEmpty) {
-          parts.add(m.trim());
+          parts.add('${lineHint ?? ''}${m.trim()}');
         }
       } else if (e != null && e.toString().trim().isNotEmpty) {
         parts.add(e.toString().trim());

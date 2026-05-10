@@ -19,6 +19,7 @@ from app.services.line_totals_service import (
     line_profit,
     line_total_weight,
 )
+from app.services.rate_display_context import build_rate_context, validate_rate_label_consistency
 from app.services.unit_resolution_service import resolve_from_text
 
 # Wire-time placeholder only (preview/validate never persist). Avoids forcing a
@@ -47,6 +48,8 @@ def build_trade_purchase_preview(body: TradePurchaseCreateRequest) -> TradePurch
     lines_out: list[TradePurchasePreviewLineOut] = []
     for i, li in enumerate(norm_lines):
         ur = resolve_from_text(li.item_name or "")
+        urd = ur.as_dict()
+        rc = build_rate_context(li, resolved_labels=urd)
         body_for_line = body.model_copy(update={"lines": norm_lines})
         lines_out.append(
             TradePurchasePreviewLineOut(
@@ -55,7 +58,8 @@ def build_trade_purchase_preview(body: TradePurchaseCreateRequest) -> TradePurch
                 line_landing_gross=line_gross_base(li),
                 line_profit=line_profit(li, body_for_line),
                 line_total_weight_kg=line_total_weight(li),
-                resolved_labels=ur.as_dict(),
+                resolved_labels=urd,
+                rate_context=rc,
             )
         )
 
@@ -74,4 +78,25 @@ def build_trade_purchase_preview(body: TradePurchaseCreateRequest) -> TradePurch
 def build_trade_purchase_validate(body: TradePurchaseCreateRequest) -> TradePurchaseValidateOut:
     """Structured validation result for UI (non-mutating); same rules as create."""
     errs = tps.collect_trade_purchase_validation_errors(body)
-    return TradePurchaseValidateOut(ok=len(errs) == 0, errors=errs, warnings=[])
+    warns: list[dict[str, Any]] = []
+    blocker_errors: list[dict[str, Any]] = []
+    norm_lines = [tps.normalize_trade_line_for_preview(li) for li in body.lines]
+    for i, li in enumerate(norm_lines):
+        urd = resolve_from_text(li.item_name or "").as_dict()
+        rc = build_rate_context(li, resolved_labels=urd)
+        for w in validate_rate_label_consistency(li, rc):
+            w2 = dict(w)
+            w2["line_index"] = i
+            sev = (w2.get("severity") or "").strip().lower()
+            if sev in ("blocker", "block"):
+                blocker_errors.append(
+                    {
+                        "loc": ["body", "lines", i, "rate_context"],
+                        "msg": str(w2.get("message") or "Rate display mismatch"),
+                        "code": w2.get("code"),
+                    }
+                )
+            else:
+                warns.append(w2)
+    all_errs = list(errs) + blocker_errors
+    return TradePurchaseValidateOut(ok=len(all_errs) == 0, errors=all_errs, warnings=warns)
