@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/json_coerce.dart';
 import '../../../core/providers/home_breakdown_tab_providers.dart';
+import '../../../core/providers/home_dashboard_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/theme/theme_context_ext.dart';
 import '../../../core/utils/line_display.dart';
@@ -79,7 +80,10 @@ class _ItemAnalyticsDetailPageState
   Widget build(BuildContext context) {
     final async = ref.watch(_pipProvider(widget.itemName));
     final shellRow = _shellItemRowForName(ref, widget.itemName);
-    final hq = homeDateRangeForRef(ref);
+    final hq = homeDateRangeForWatch(
+      ref.watch(homePeriodProvider),
+      ref.watch(homeCustomDateRangeProvider),
+    );
     final df = DateFormat('d MMM yyyy');
     final periodLabel =
         '${df.format(DateTime.parse(hq.from))} → ${df.format(DateTime.parse(hq.to))}';

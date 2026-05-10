@@ -29,16 +29,25 @@ extension HomeBreakdownTabX on HomeBreakdownTab {
 final homeBreakdownTabProvider =
     StateProvider<HomeBreakdownTab>((ref) => HomeBreakdownTab.category);
 
-/// `from` / `to` query strings (inclusive `to` day) for Home period — same window as
-/// [homeDashboardDataProvider].
-({String from, String to}) homeDateRangeForRef(Ref ref) {
-  final period = ref.watch(homePeriodProvider);
-  final custom = ref.watch(homeCustomDateRangeProvider);
+/// Same date window as [homeDashboardDataProvider], from already-watched state.
+({String from, String to}) homeDateRangeForWatch(
+  HomePeriod period,
+  ({DateTime start, DateTime endInclusive})? custom,
+) {
   final range = homePeriodRange(period, now: DateTime.now(), custom: custom);
   final lastInclusive = range.end.subtract(const Duration(milliseconds: 1));
   return (
     from: _apiDate(range.start),
     to: _apiDate(lastInclusive),
+  );
+}
+
+/// `from` / `to` query strings (inclusive `to` day) for Home period — same window as
+/// [homeDashboardDataProvider].
+({String from, String to}) homeDateRangeForRef(Ref ref) {
+  return homeDateRangeForWatch(
+    ref.watch(homePeriodProvider),
+    ref.watch(homeCustomDateRangeProvider),
   );
 }
 
