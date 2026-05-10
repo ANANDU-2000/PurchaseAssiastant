@@ -585,7 +585,11 @@ Future<HomeDashboardPayload> _homeDashboardPullFresh({
         try {
           await api.health();
           return;
-        } catch (_) {
+        } catch (e) {
+          if (e is DioException &&
+              e.type == DioExceptionType.connectionError) {
+            return;
+          }
           if (kDebugMode && attempt < 2) {
             debugPrint('homeDashboard: health preflight retry ${attempt + 1}/2');
           }

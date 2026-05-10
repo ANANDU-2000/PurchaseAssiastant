@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show VoidCallback;
 
 import 'hexa_api.dart';
@@ -11,22 +12,31 @@ class ApiWarmupService {
   static Timer? _keepAlive;
 
   /// Call before authenticated traffic: probes `/health/ready` (DB) then `/health`.
-  /// Extra attempts / timeouts help sleepy PaaS cold starts (e.g. free-tier spin-up).
+  /// Retries help sleepy PaaS cold starts; **stops immediately** on connection refused
+  /// (nothing listening) so local dev does not hammer `/health` hundreds of times.
   static Future<void> pingHealth(HexaApi api, {VoidCallback? onSlow}) async {
     final slow = Timer(const Duration(seconds: 3), () => onSlow?.call());
     const attempts = 5;
-    const timeout = Duration(seconds: 12);
+    const timeout = Duration(seconds: 10);
     for (var attempt = 0; attempt < attempts; attempt++) {
       try {
         await api.healthReady().timeout(timeout);
         slow.cancel();
         return;
-      } catch (_) {
+      } catch (e) {
+        if (_isUnreachableHost(e)) {
+          slow.cancel();
+          return;
+        }
         try {
           await api.health().timeout(timeout);
           slow.cancel();
           return;
-        } catch (_) {
+        } catch (e2) {
+          if (_isUnreachableHost(e2)) {
+            slow.cancel();
+            return;
+          }
           if (attempt < attempts - 1) {
             await Future<void>.delayed(Duration(seconds: attempt + 1));
           }
@@ -34,6 +44,13 @@ class ApiWarmupService {
       }
     }
     slow.cancel();
+  }
+
+  static bool _isUnreachableHost(Object e) {
+    if (e is DioException) {
+      return e.type == DioExceptionType.connectionError;
+    }
+    return false;
   }
 
   /// Keeps sleepy hosts warmer during a session (battery/network tradeoff).
