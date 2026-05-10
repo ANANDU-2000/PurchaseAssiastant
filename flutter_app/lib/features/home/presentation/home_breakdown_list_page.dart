@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/json_coerce.dart';
+import '../../../core/navigation/open_trade_item_from_report.dart';
 import '../../../core/providers/home_breakdown_tab_providers.dart';
 import '../../../core/providers/home_dashboard_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
@@ -517,8 +520,7 @@ class _HomeBreakdownListPageState extends ConsumerState<HomeBreakdownListPage> {
       amount: amt,
       boldLine2: bold,
       onTap: () {
-        final enc = Uri.encodeComponent(name);
-        context.push('/item-analytics/$enc');
+        unawaited(openTradeItemFromReportRow(context, ref, r));
       },
     );
   }

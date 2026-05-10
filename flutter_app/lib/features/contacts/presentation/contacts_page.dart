@@ -12,6 +12,7 @@ import '../../../core/widgets/friendly_load_error.dart';
 import '../../../core/widgets/focused_search_chrome.dart';
 import '../../../core/widgets/list_skeleton.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/navigation/open_trade_item_from_report.dart';
 import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
@@ -978,8 +979,13 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                 ),
                 subtitle: const Text('Item analytics'),
                 trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () =>
-                    context.push('/item-analytics/${Uri.encodeComponent(n)}'),
+                onTap: () => unawaited(
+                  openTradeItemFromReportRow(
+                    context,
+                    ref,
+                    {'item_name': n},
+                  ),
+                ),
               ),
             );
           },

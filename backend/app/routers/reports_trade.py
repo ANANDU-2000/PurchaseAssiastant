@@ -233,6 +233,7 @@ async def _fetch_trade_items_breakdown_rows(
     q = (
         select(
             TradePurchaseLine.item_name,
+            func.max(TradePurchaseLine.catalog_item_id).label("catalog_item_id"),
             func.coalesce(func.sum(amt), 0).label("total_purchase"),
             func.coalesce(func.sum(TradePurchaseLine.qty), 0).label("total_qty"),
             func.count(TradePurchaseLine.id).label("line_count"),
@@ -263,9 +264,11 @@ async def _fetch_trade_items_breakdown_rows(
         tland = float(r["total_landing_gross"] or 0)
         tsl = float(r["total_selling_gross"] or 0)
         tprof = tsl - tland if tsl > 1e-12 or tland > 1e-12 else 0.0
+        cid = r.get("catalog_item_id")
         out.append(
             {
                 "item_name": (r["item_name"] or "Unknown").strip() or "Unknown",
+                "catalog_item_id": str(cid) if cid is not None else None,
                 "total_qty": qty,
                 "unit": (r["unit"] or "").strip() or "—",
                 "total_purchase": tp,
@@ -320,7 +323,10 @@ async def _fetch_trade_types_breakdown_rows(
         )
         .select_from(TradePurchaseLine)
         .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
-        .outerjoin(CatalogItem, CatalogItem.id == TradePurchaseLine.catalog_item_id)
+        .outerjoin(
+            CatalogItem,
+            and_(CatalogItem.id == TradePurchaseLine.catalog_item_id, CatalogItem.deleted_at.is_(None)),
+        )
         .outerjoin(ItemCategory, ItemCategory.id == CatalogItem.category_id)
         .outerjoin(CategoryType, CategoryType.id == CatalogItem.type_id)
         .where(bf)
@@ -395,7 +401,10 @@ async def _compute_trade_dashboard_snapshot_payload(
         )
         .select_from(TradePurchaseLine)
         .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
-        .outerjoin(CatalogItem, CatalogItem.id == TradePurchaseLine.catalog_item_id)
+        .outerjoin(
+            CatalogItem,
+            and_(CatalogItem.id == TradePurchaseLine.catalog_item_id, CatalogItem.deleted_at.is_(None)),
+        )
         .outerjoin(ItemCategory, ItemCategory.id == CatalogItem.category_id)
         .where(bf)
         .group_by(cat_id_key, cn, TradePurchaseLine.item_name)
@@ -780,7 +789,10 @@ async def trade_categories_breakdown(
         )
         .select_from(TradePurchaseLine)
         .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
-        .outerjoin(CatalogItem, CatalogItem.id == TradePurchaseLine.catalog_item_id)
+        .outerjoin(
+            CatalogItem,
+            and_(CatalogItem.id == TradePurchaseLine.catalog_item_id, CatalogItem.deleted_at.is_(None)),
+        )
         .outerjoin(ItemCategory, ItemCategory.id == CatalogItem.category_id)
         .where(bf)
         .group_by(cat_key)

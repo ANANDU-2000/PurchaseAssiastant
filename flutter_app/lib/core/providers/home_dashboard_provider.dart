@@ -405,12 +405,16 @@ Future<List<TradePurchase>> _fetchTradePurchasesForHomeRange({
   const limit = 500;
   final out = <TradePurchase>[];
   final seen = <String>{};
+  final purchaseFrom = _apiDate(from);
+  final purchaseTo = _apiDate(toInclusive);
   for (var offset = 0; offset < 50000; offset += limit) {
     final raw = await api.listTradePurchases(
       businessId: businessId,
       limit: limit,
       offset: offset,
       status: 'all',
+      purchaseFrom: purchaseFrom,
+      purchaseTo: purchaseTo,
     );
     if (raw.isEmpty) break;
     for (final e in raw) {

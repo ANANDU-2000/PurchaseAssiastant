@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/config/app_config.dart';
+import '../../../core/navigation/open_trade_item_from_report.dart';
 import '../../../core/providers/analytics_breakdown_providers.dart';
 import '../../../core/providers/analytics_kpi_provider.dart'
     show analyticsDateRangeProvider, analyticsKpiProvider;
@@ -1056,10 +1057,9 @@ class _ItemsTabState extends ConsumerState<_ItemsTab> {
                     : LayoutBuilder(
                         builder: (context, constraints) {
                           void openItem(Map<String, dynamic> r) {
-                            final name = r['item_name']?.toString() ?? '';
-                            if (name.isEmpty) return;
-                            context.push(
-                                '/item-analytics/${Uri.encodeComponent(name)}');
+                            unawaited(
+                              openTradeItemFromReportRow(context, ref, r),
+                            );
                           }
 
                           DataCell itemCell(Map<String, dynamic> r, Widget child) {

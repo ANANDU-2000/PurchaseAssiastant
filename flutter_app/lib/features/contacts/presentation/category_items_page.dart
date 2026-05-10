@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/navigation/open_trade_item_from_report.dart';
 import '../../../core/providers/contacts_hub_provider.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 
@@ -72,8 +75,9 @@ class CategoryItemsPage extends ConsumerWidget {
                   subtitle: Text(
                       'Lines: $lines · Qty: ${qty.toStringAsFixed(2)} · Profit: ${profit.toStringAsFixed(0)}'),
                   trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => context
-                      .push('/item-analytics/${Uri.encodeComponent(name)}'),
+                  onTap: () => unawaited(
+                    openTradeItemFromReportRow(context, ref, row),
+                  ),
                 ),
               );
             },

@@ -73,7 +73,7 @@ def test_trade_items_suppliers_categories_endpoints():
                 "item_name": "RTItem",
                 "qty": 10,
                 "unit": "bag",
-                "landing_cost": "50",
+                "landing_cost": "2000",
                 "kg_per_unit": 50,
                 "landing_cost_per_kg": "40",
                 "tax_percent": 0,
@@ -90,6 +90,7 @@ def test_trade_items_suppliers_categories_endpoints():
     assert len(items) >= 1
     row = next(x for x in items if x.get("item_name") == "RTItem")
     assert row["total_qty"] == 10.0
+    assert row.get("catalog_item_id") == iid
     # Weight-priced line: qty * kg_per_unit * landing_cost_per_kg
     assert abs(float(row["total_purchase"]) - 20000.0) < 0.01
 

@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/json_coerce.dart';
+import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/home_breakdown_tab_providers.dart';
 import '../../../core/providers/home_dashboard_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
@@ -40,6 +41,32 @@ Map<String, dynamic>? _shellItemRowForName(WidgetRef ref, String itemName) {
   for (final m in bundle.items) {
     final n = m['item_name']?.toString().trim().toLowerCase() ?? '';
     if (n == want) return m;
+  }
+  return null;
+}
+
+/// Prefer catalog UUID so user can open full ledger (`ItemHistoryPage`).
+String? _catalogItemIdForHomeItemName(WidgetRef ref, String itemName) {
+  final want = itemName.trim().toLowerCase();
+  if (want.isEmpty) return null;
+  final dash = ref.watch(homeDashboardDataProvider).snapshot.data;
+  for (final s in dash.itemSlices) {
+    if (s.name.trim().toLowerCase() != want) continue;
+    final id = s.catalogItemId?.trim();
+    if (id != null && id.isNotEmpty) return id;
+  }
+  final shell = _shellItemRowForName(ref, itemName);
+  final raw = shell?['catalog_item_id'];
+  final sid = raw?.toString().trim();
+  if (sid != null && sid.isNotEmpty) return sid;
+  final catalogList = ref.watch(catalogItemsListProvider).valueOrNull;
+  if (catalogList != null) {
+    for (final m in catalogList) {
+      final n = (m['name'] ?? '').toString().trim().toLowerCase();
+      if (n != want) continue;
+      final id = m['id']?.toString().trim();
+      if (id != null && id.isNotEmpty) return id;
+    }
   }
   return null;
 }
@@ -89,6 +116,7 @@ class _ItemAnalyticsDetailPageState
         '${df.format(DateTime.parse(hq.from))} → ${df.format(DateTime.parse(hq.to))}';
     final tt = Theme.of(context).textTheme;
     final onSurf = Theme.of(context).colorScheme.onSurface;
+    final ledgerCatalogId = _catalogItemIdForHomeItemName(ref, widget.itemName);
 
     return Scaffold(
       backgroundColor: context.adaptiveScaffold,
@@ -109,6 +137,15 @@ class _ItemAnalyticsDetailPageState
             letterSpacing: -0.3,
           ),
         ),
+        actions: [
+          if (ledgerCatalogId != null)
+            IconButton(
+              tooltip: 'Bills, ledger, search & PDF',
+              icon: const Icon(Icons.receipt_long_outlined),
+              onPressed: () =>
+                  context.push('/catalog/item/$ledgerCatalogId/ledger'),
+            ),
+        ],
       ),
       body: async.when(
         skipLoadingOnReload: true,
@@ -212,6 +249,53 @@ class _ItemAnalyticsDetailPageState
                   itemName: widget.itemName,
                   inr: _inr,
                 ),
+                if (ledgerCatalogId != null) ...[
+                  const SizedBox(height: 12),
+                  Card(
+                    color: Theme.of(context).colorScheme.surface,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(
+                        color: Theme.of(context).colorScheme.outlineVariant,
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            'Bills, ledger & PDF',
+                            style: tt.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Per-bill lines: suppliers, brokers, qty, bags/kg, totals, search, PDF export, and edit purchase — same as Catalog → item → Ledger.',
+                            style: tt.bodySmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                              height: 1.35,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          FilledButton.icon(
+                            onPressed: () => context.push(
+                              '/catalog/item/$ledgerCatalogId/ledger',
+                            ),
+                            icon: const Icon(Icons.receipt_long_outlined),
+                            label: const Text('Open purchase ledger'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 _DecisionCard(
                   itemName: widget.itemName,

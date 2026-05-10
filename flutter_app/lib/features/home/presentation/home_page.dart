@@ -25,6 +25,7 @@ import '../../../core/json_coerce.dart';
 import '../../../core/providers/home_breakdown_tab_providers.dart';
 import '../../../core/providers/home_dashboard_provider.dart';
 import '../../../core/providers/maintenance_payment_provider.dart';
+import '../../../core/navigation/open_trade_item_from_report.dart';
 import '../../../widgets/spend_ring_chart.dart';
 import 'maintenance_home_card.dart';
 import 'home_spend_ring_diameter.dart';
@@ -79,8 +80,7 @@ class _HomePageState extends ConsumerState<HomePage>
     WidgetsBinding.instance.addObserver(this);
     _poll = Timer.periodic(const Duration(minutes: 10), (_) {
       if (!mounted) return;
-      // Lightweight: purchase row status (due/overdue) drift. Full dashboard +
-      // breakdown shell are heavier — user pulls to refresh or app resumes.
+      if (_resumeRefreshDebounce?.isActive == true) return;
       invalidateTradePurchaseCaches(ref);
     });
   }
@@ -922,7 +922,7 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
     }
 
     final bundle = _bundle(tab, shell, peekShell);
-    final slice = _topSlice(data, tab, bundle, _homeRingPreviewCap);
+    final slice = _topSlice(data, tab, bundle, _homeRingPreviewCap, ref);
     final amts =
         List<double>.generate(slice.length, (i) => slice[i].ringAmount);
     final anySeg =
@@ -956,7 +956,7 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
           centerLine4: rc[3],
           onSectionTap: (i) {
             if (i < 0 || i >= slice.length) return;
-            slice[i].onTap(context);
+            slice[i].onTap(context, ref);
           },
         ),
       ),
@@ -1091,6 +1091,7 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
                   tab,
                   bundle,
                   10000,
+                  ref,
                 );
 
                 if (full.isEmpty) {
@@ -1153,7 +1154,7 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
                               bro: row.bro,
                               dotColor: widget.categoryColors[
                                   i % widget.categoryColors.length],
-                              onTap: () => row.onTap(context),
+                              onTap: () => row.onTap(context, ref),
                             ),
                           );
                         },
@@ -1449,7 +1450,7 @@ class _BreakdownRowSlice {
   final String line2;
   final String sup;
   final String bro;
-  final void Function(BuildContext context) onTap;
+  final void Function(BuildContext context, WidgetRef ref) onTap;
 }
 
 List<_BreakdownRowSlice> _topSlice(
@@ -1457,6 +1458,7 @@ List<_BreakdownRowSlice> _topSlice(
   HomeBreakdownTab tab,
   HomeShellReportsBundle? bundle,
   int maxN,
+  WidgetRef ref,
 ) {
   switch (tab) {
     case HomeBreakdownTab.category:
@@ -1476,7 +1478,7 @@ List<_BreakdownRowSlice> _topSlice(
             bro: c.subtitleBroker?.trim().isNotEmpty == true
                 ? c.subtitleBroker!
                 : '—',
-            onTap: (ctx) {
+            onTap: (ctx, _) {
               if (c.categoryId == '_uncat') {
                 ctx.go('/catalog');
               } else {
@@ -1505,7 +1507,7 @@ List<_BreakdownRowSlice> _topSlice(
             line2: _itemUpperQtyLine(r),
             sup: '—',
             bro: '—',
-            onTap: (ctx) => ctx.go('/catalog'),
+            onTap: (ctx, _) => ctx.go('/catalog'),
           ),
       ];
     case HomeBreakdownTab.supplier:
@@ -1524,7 +1526,7 @@ List<_BreakdownRowSlice> _topSlice(
             line2: _itemUpperQtyLine(r),
             sup: '—',
             bro: '—',
-            onTap: (ctx) {
+            onTap: (ctx, _) {
               final sid = r['supplier_id']?.toString() ?? '';
               if (sid.isNotEmpty) {
                 ctx.push('/supplier/$sid');
@@ -1548,10 +1550,8 @@ List<_BreakdownRowSlice> _topSlice(
             line2: _itemUpperQtyLine(r),
             sup: '—',
             bro: '—',
-            onTap: (ctx) {
-              final name = r['item_name']?.toString() ?? '';
-              if (name.isEmpty) return;
-              ctx.push('/item-analytics/${Uri.encodeComponent(name)}');
+            onTap: (ctx, ref) {
+              unawaited(openTradeItemFromReportRow(ctx, ref, r));
             },
           ),
       ];
