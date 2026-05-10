@@ -43,6 +43,25 @@ _trade_summary_last_good: OrderedDict[tuple[Any, ...], dict[str, Any]] = Ordered
 _trade_summary_last_good_max = 256
 
 
+def _normalize_optional_uuid_str(value: Any) -> str | None:
+    """Hyphenated UUID for API JSON; SQLite max(cast(uuid, String)) can return 32-char hex."""
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    try:
+        return str(uuid.UUID(s))
+    except ValueError:
+        pass
+    if len(s) == 32 and "-" not in s:
+        try:
+            return str(uuid.UUID(hex=s))
+        except ValueError:
+            return s
+    return s
+
+
 def _strip_degraded_snapshot_fields(payload: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in payload.items() if k not in _DEGRADED_META}
 
@@ -233,7 +252,7 @@ async def _fetch_trade_items_breakdown_rows(
     q = (
         select(
             TradePurchaseLine.item_name,
-            func.max(TradePurchaseLine.catalog_item_id).label("catalog_item_id"),
+            func.max(cast(TradePurchaseLine.catalog_item_id, String)).label("catalog_item_id"),
             func.coalesce(func.sum(amt), 0).label("total_purchase"),
             func.coalesce(func.sum(TradePurchaseLine.qty), 0).label("total_qty"),
             func.count(TradePurchaseLine.id).label("line_count"),
@@ -264,11 +283,11 @@ async def _fetch_trade_items_breakdown_rows(
         tland = float(r["total_landing_gross"] or 0)
         tsl = float(r["total_selling_gross"] or 0)
         tprof = tsl - tland if tsl > 1e-12 or tland > 1e-12 else 0.0
-        cid = r.get("catalog_item_id")
+        cid = _normalize_optional_uuid_str(r.get("catalog_item_id"))
         out.append(
             {
                 "item_name": (r["item_name"] or "Unknown").strip() or "Unknown",
-                "catalog_item_id": str(cid) if cid is not None else None,
+                "catalog_item_id": cid,
                 "total_qty": qty,
                 "unit": (r["unit"] or "").strip() or "—",
                 "total_purchase": tp,
@@ -459,14 +478,14 @@ async def _compute_trade_dashboard_snapshot_payload(
             cat_map[cid]["units"]["boxes"] += qv
         if ut_cat == "tin" or (not ut_cat and "TIN" in uu):
             cat_map[cid]["units"]["tins"] += qv
-        ci = r["catalog_item_id"]
+        ci = _normalize_optional_uuid_str(r["catalog_item_id"])
         cat_map[cid]["items"].append(
             {
                 "name": (r["item_name"] or "—").strip() or "—",
                 "qty": qv,
                 "unit": unit,
                 "amount": am,
-                "catalog_item_id": str(ci) if ci is not None else None,
+                "catalog_item_id": ci,
             }
         )
     for c in cat_map.values():
@@ -474,10 +493,10 @@ async def _compute_trade_dashboard_snapshot_payload(
 
     by_cid: dict[str, list[dict[str, Any]]] = {}
     for drow in detail:
-        iid = drow.get("catalog_item_id")
+        iid = _normalize_optional_uuid_str(drow.get("catalog_item_id"))
         if not iid:
             continue
-        sid = str(iid)
+        sid = iid
         if sid not in by_cid:
             by_cid[sid] = []
         by_cid[sid].append(drow)
