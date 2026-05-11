@@ -230,6 +230,24 @@ List<TradePurchase> purchaseHistoryVisibleSortedForRef(
   return out;
 }
 
+bool _showQuickDeliverIcon(TradePurchase p) {
+  final st = p.statusEnum;
+  if (st == PurchaseStatus.deleted || st == PurchaseStatus.cancelled) {
+    return false;
+  }
+  return !p.isDelivered;
+}
+
+bool _showQuickPaidIcon(TradePurchase p) {
+  final st = p.statusEnum;
+  if (st == PurchaseStatus.deleted ||
+      st == PurchaseStatus.cancelled ||
+      st == PurchaseStatus.draft) {
+    return false;
+  }
+  return st != PurchaseStatus.paid;
+}
+
 /// Purchase History — filters, search, swipe actions, multi-select.
 class PurchaseHomePage extends ConsumerStatefulWidget {
   const PurchaseHomePage({super.key});
@@ -576,6 +594,39 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
       } catch (_) {}
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Marked paid')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              e is DioException
+                  ? friendlyApiError(e)
+                  : 'Something went wrong. Please try again.',
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _markDeliveredQuick(TradePurchase p) async {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    try {
+      await ref.read(hexaApiProvider).markPurchaseDelivered(
+            businessId: session.primaryBusiness.id,
+            purchaseId: p.id,
+            isDelivered: true,
+          );
+      invalidatePurchaseWorkspace(ref);
+      try {
+        await ref.read(tradePurchasesListProvider.future);
+      } catch (_) {}
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Marked delivered')),
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -1084,6 +1135,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                   onEdit: () =>
                                       context.push('/purchase/edit/${p.id}'),
                                   onMarkPaid: () => _markPaidQuick(p),
+                                  onMarkDelivered: () => _markDeliveredQuick(p),
                                   onDelete: () => _confirmDelete(context, p),
                                   onShare: () async {
                                     try {
@@ -1577,6 +1629,38 @@ class _PurchaseHistoryFullscreenSearchPageState
     }
   }
 
+  Future<void> _markDelivered(BuildContext ctx, TradePurchase p) async {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    try {
+      await ref.read(hexaApiProvider).markPurchaseDelivered(
+            businessId: session.primaryBusiness.id,
+            purchaseId: p.id,
+            isDelivered: true,
+          );
+      invalidatePurchaseWorkspace(ref);
+      try {
+        await ref.read(tradePurchasesListProvider.future);
+      } catch (_) {}
+      if (ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          const SnackBar(content: Text('Marked delivered')),
+        );
+      }
+    } catch (e) {
+      if (!ctx.mounted) return;
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        SnackBar(
+          content: Text(
+            e is DioException
+                ? friendlyApiError(e)
+                : 'Something went wrong. Please try again.',
+          ),
+        ),
+      );
+    }
+  }
+
   Future<void> _confirmDelete(BuildContext ctx, TradePurchase p) async {
     final ok = await showDialog<bool>(
       context: ctx,
@@ -1701,6 +1785,7 @@ class _PurchaseHistoryFullscreenSearchPageState
                 onTap: () => context.push('/purchase/detail/${p.id}'),
                 onEdit: () => context.push('/purchase/edit/${p.id}'),
                 onMarkPaid: () => _markPaid(ctx, p),
+                onMarkDelivered: () => _markDelivered(ctx, p),
                 onDelete: () => _confirmDelete(ctx, p),
                 onShare: () async {
                   try {
@@ -1728,6 +1813,7 @@ class _PurchaseRow extends StatelessWidget {
     required this.onTap,
     required this.onEdit,
     required this.onMarkPaid,
+    required this.onMarkDelivered,
     required this.onDelete,
     required this.onShare,
   });
@@ -1740,6 +1826,7 @@ class _PurchaseRow extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onEdit;
   final VoidCallback onMarkPaid;
+  final VoidCallback onMarkDelivered;
   final VoidCallback onDelete;
   final VoidCallback onShare;
 
@@ -1846,6 +1933,53 @@ class _PurchaseRow extends StatelessWidget {
                       height: 1.1,
                     ),
                   ),
+                  if (!selectMode &&
+                      (_showQuickDeliverIcon(p) || _showQuickPaidIcon(p))) ...[
+                    const SizedBox(height: 2),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_showQuickDeliverIcon(p))
+                          IconButton(
+                            tooltip: 'Mark delivered',
+                            padding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                            constraints: const BoxConstraints(
+                              minWidth: 30,
+                              minHeight: 30,
+                            ),
+                            style: IconButton.styleFrom(
+                              foregroundColor: Colors.orange.shade800,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            icon: const Icon(
+                              Icons.local_shipping_outlined,
+                              size: 18,
+                            ),
+                            onPressed: onMarkDelivered,
+                          ),
+                        if (_showQuickPaidIcon(p))
+                          IconButton(
+                            tooltip: 'Mark paid',
+                            padding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                            constraints: const BoxConstraints(
+                              minWidth: 30,
+                              minHeight: 30,
+                            ),
+                            style: IconButton.styleFrom(
+                              foregroundColor: HexaColors.brandAccent,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            icon: const Icon(
+                              Icons.payments_outlined,
+                              size: 18,
+                            ),
+                            onPressed: onMarkPaid,
+                          ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 1),
                   if (!p.isDelivered &&
                       p.statusEnum != PurchaseStatus.deleted &&
