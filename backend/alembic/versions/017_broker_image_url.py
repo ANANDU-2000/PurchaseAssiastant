@@ -14,14 +14,20 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _has_column(table: str, column: str) -> bool:
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    return any(c["name"] == column for c in insp.get_columns(table))
+
+
 def upgrade() -> None:
-    # IF NOT EXISTS: safe after a manual Supabase patch or a re-run of upgrade.
-    op.execute(
-        text(
-            "ALTER TABLE brokers ADD COLUMN IF NOT EXISTS "
-            "image_url VARCHAR(1024)"
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        op.execute(
+            text("ALTER TABLE brokers ADD COLUMN IF NOT EXISTS image_url VARCHAR(1024)"),
         )
-    )
+    elif not _has_column("brokers", "image_url"):
+        op.add_column("brokers", sa.Column("image_url", sa.String(length=1024), nullable=True))
 
 
 def downgrade() -> None:

@@ -18,6 +18,12 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _has_column(table: str, column: str) -> bool:
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    return any(c["name"] == column for c in insp.get_columns(table))
+
+
 def upgrade() -> None:
     # Revision IDs for this chain exceed VARCHAR(32); widen before Alembic writes version_num.
     bind = op.get_bind()
@@ -25,14 +31,16 @@ def upgrade() -> None:
         op.execute(
             sa.text("ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(128)")
         )
-    op.add_column(
-        "trade_purchases",
-        sa.Column("commission_mode", sa.String(length=24), nullable=True),
-    )
-    op.add_column(
-        "trade_purchases",
-        sa.Column("commission_money", sa.Numeric(precision=14, scale=4), nullable=True),
-    )
+    if not _has_column("trade_purchases", "commission_mode"):
+        op.add_column(
+            "trade_purchases",
+            sa.Column("commission_mode", sa.String(length=24), nullable=True),
+        )
+    if not _has_column("trade_purchases", "commission_money"):
+        op.add_column(
+            "trade_purchases",
+            sa.Column("commission_money", sa.Numeric(precision=14, scale=4), nullable=True),
+        )
 
 
 def downgrade() -> None:

@@ -18,27 +18,23 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _has_column(table: str, column: str) -> bool:
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    return any(c["name"] == column for c in insp.get_columns(table))
+
+
 def upgrade() -> None:
-    op.add_column(
-        "brokers",
-        sa.Column("default_payment_days", sa.Integer(), nullable=True),
-    )
-    op.add_column(
-        "brokers",
-        sa.Column("default_discount", sa.Numeric(5, 2), nullable=True),
-    )
-    op.add_column(
-        "brokers",
-        sa.Column("default_delivered_rate", sa.Numeric(12, 2), nullable=True),
-    )
-    op.add_column(
-        "brokers",
-        sa.Column("default_billty_rate", sa.Numeric(12, 2), nullable=True),
-    )
-    op.add_column(
-        "brokers",
-        sa.Column("freight_type", sa.String(16), nullable=True),
-    )
+    if not _has_column("brokers", "default_payment_days"):
+        op.add_column("brokers", sa.Column("default_payment_days", sa.Integer(), nullable=True))
+    if not _has_column("brokers", "default_discount"):
+        op.add_column("brokers", sa.Column("default_discount", sa.Numeric(5, 2), nullable=True))
+    if not _has_column("brokers", "default_delivered_rate"):
+        op.add_column("brokers", sa.Column("default_delivered_rate", sa.Numeric(12, 2), nullable=True))
+    if not _has_column("brokers", "default_billty_rate"):
+        op.add_column("brokers", sa.Column("default_billty_rate", sa.Numeric(12, 2), nullable=True))
+    if not _has_column("brokers", "freight_type"):
+        op.add_column("brokers", sa.Column("freight_type", sa.String(16), nullable=True))
 
 
 def downgrade() -> None:

@@ -37,13 +37,44 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["business_id"], ["businesses.id"]),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"]),
         sa.PrimaryKeyConstraint("id"),
+        if_not_exists=True,
     )
-    op.create_index(op.f("ix_purchase_scan_traces_business_id"), "purchase_scan_traces", ["business_id"])
-    op.create_index(op.f("ix_purchase_scan_traces_user_id"), "purchase_scan_traces", ["user_id"])
-    op.create_index(op.f("ix_purchase_scan_traces_scan_token"), "purchase_scan_traces", ["scan_token"])
-    op.create_index(op.f("ix_purchase_scan_traces_provider"), "purchase_scan_traces", ["provider"])
-    op.create_index(op.f("ix_purchase_scan_traces_stage"), "purchase_scan_traces", ["stage"])
-    op.create_index(op.f("ix_purchase_scan_traces_created_at"), "purchase_scan_traces", ["created_at"])
+    op.create_index(
+        op.f("ix_purchase_scan_traces_business_id"),
+        "purchase_scan_traces",
+        ["business_id"],
+        if_not_exists=True,
+    )
+    op.create_index(
+        op.f("ix_purchase_scan_traces_user_id"),
+        "purchase_scan_traces",
+        ["user_id"],
+        if_not_exists=True,
+    )
+    op.create_index(
+        op.f("ix_purchase_scan_traces_scan_token"),
+        "purchase_scan_traces",
+        ["scan_token"],
+        if_not_exists=True,
+    )
+    op.create_index(
+        op.f("ix_purchase_scan_traces_provider"),
+        "purchase_scan_traces",
+        ["provider"],
+        if_not_exists=True,
+    )
+    op.create_index(
+        op.f("ix_purchase_scan_traces_stage"),
+        "purchase_scan_traces",
+        ["stage"],
+        if_not_exists=True,
+    )
+    op.create_index(
+        op.f("ix_purchase_scan_traces_created_at"),
+        "purchase_scan_traces",
+        ["created_at"],
+        if_not_exists=True,
+    )
 
 
 def downgrade() -> None:

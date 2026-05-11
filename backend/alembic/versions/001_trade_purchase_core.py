@@ -1,4 +1,4 @@
-"""Trade purchase core tables (idempotent no-op; dev uses SQLAlchemy create_all).
+"""Bootstrap full ORM schema for Alembic-first runs (CI SQLite, fresh DB).
 
 Revision ID: 001_trade_purchase_core
 Revises:
@@ -10,6 +10,9 @@ from typing import Sequence, Union
 
 from alembic import op
 
+import app.models as _registered_models  # noqa: F401 — attach all tables to Base.metadata
+from app.models.base import Base
+
 revision: str = "001_trade_purchase_core"
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
@@ -17,10 +20,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Tables are created by API `Base.metadata.create_all` for local/SQLite.
-    # For strict Alembic-only deploys, replace this with explicit op.create_table(...)
-    # matching `app.models.trade_purchase` and run `alembic upgrade head`.
-    pass
+    # Local dev often relies on API `Base.metadata.create_all`. CI and fresh SQLite
+    # runs `alembic upgrade head` first, so we must materialize schema here; later
+    # revisions use defensive checks (e.g. `_has_column`) when models already include
+    # the same columns.
+    bind = op.get_bind()
+    Base.metadata.create_all(bind=bind)
 
 
 def downgrade() -> None:

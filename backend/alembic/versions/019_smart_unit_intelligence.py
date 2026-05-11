@@ -19,6 +19,18 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _add_column_compat(table: str, column: sa.Column) -> None:
+    """Postgres: IF NOT EXISTS. SQLite <3.35: skip duplicate via inspector (no IF NOT EXISTS on ADD COLUMN)."""
+    bind = op.get_bind()
+    if bind.dialect.name == "sqlite":
+        insp = sa.inspect(bind)
+        if any(c["name"] == column.name for c in insp.get_columns(table)):
+            return
+        op.add_column(table, column)
+        return
+    op.add_column(table, column, if_not_exists=True)
+
+
 def upgrade() -> None:
     # Idempotent on Postgres when objects already exist (e.g. manual Supabase SQL
     # applied before `alembic_version` was bumped). Avoids deploy exit 3 on re-run.
@@ -50,111 +62,30 @@ def upgrade() -> None:
         if_not_exists=True,
     )
 
-    op.add_column(
-        "catalog_items",
-        sa.Column("normalized_name", sa.String(length=512), nullable=True),
-        if_not_exists=True,
-    )
-    op.add_column(
-        "catalog_items",
-        sa.Column("selling_unit", sa.String(length=32), nullable=True),
-        if_not_exists=True,
-    )
-    op.add_column(
-        "catalog_items",
-        sa.Column("stock_unit", sa.String(length=32), nullable=True),
-        if_not_exists=True,
-    )
-    op.add_column(
-        "catalog_items",
-        sa.Column("display_unit", sa.String(length=32), nullable=True),
-        if_not_exists=True,
-    )
-    op.add_column(
-        "catalog_items",
-        sa.Column("package_type", sa.String(length=32), nullable=True),
-        if_not_exists=True,
-    )
-    op.add_column(
-        "catalog_items",
-        sa.Column("package_size", sa.Numeric(14, 4), nullable=True),
-        if_not_exists=True,
-    )
-    op.add_column(
-        "catalog_items",
-        sa.Column("package_measurement", sa.String(length=16), nullable=True),
-        if_not_exists=True,
-    )
-    op.add_column(
-        "catalog_items",
-        sa.Column("package_volume", sa.Numeric(14, 4), nullable=True),
-        if_not_exists=True,
-    )
-    op.add_column(
-        "catalog_items",
-        sa.Column("package_weight", sa.Numeric(14, 4), nullable=True),
-        if_not_exists=True,
-    )
-    op.add_column(
-        "catalog_items",
-        sa.Column("conversion_factor", sa.Numeric(14, 6), nullable=True),
-        if_not_exists=True,
-    )
-    op.add_column(
-        "catalog_items",
-        sa.Column("ai_detected_unit", sa.String(length=32), nullable=True),
-        if_not_exists=True,
-    )
-    op.add_column(
-        "catalog_items",
-        sa.Column("smart_classification", sa.String(length=64), nullable=True),
-        if_not_exists=True,
-    )
-    op.add_column(
-        "catalog_items",
-        sa.Column("unit_confidence", sa.Numeric(5, 2), nullable=True),
-        if_not_exists=True,
-    )
-    op.add_column(
-        "catalog_items",
-        sa.Column("packaging_confidence", sa.Numeric(5, 2), nullable=True),
-        if_not_exists=True,
-    )
-    op.add_column(
-        "catalog_items",
-        sa.Column("is_loose_item", sa.Boolean(), nullable=True),
-        if_not_exists=True,
-    )
-    op.add_column(
-        "catalog_items",
-        sa.Column("is_packaged_item", sa.Boolean(), nullable=True),
-        if_not_exists=True,
-    )
-    op.add_column(
+    _add_column_compat("catalog_items", sa.Column("normalized_name", sa.String(length=512), nullable=True))
+    _add_column_compat("catalog_items", sa.Column("selling_unit", sa.String(length=32), nullable=True))
+    _add_column_compat("catalog_items", sa.Column("stock_unit", sa.String(length=32), nullable=True))
+    _add_column_compat("catalog_items", sa.Column("display_unit", sa.String(length=32), nullable=True))
+    _add_column_compat("catalog_items", sa.Column("package_type", sa.String(length=32), nullable=True))
+    _add_column_compat("catalog_items", sa.Column("package_size", sa.Numeric(14, 4), nullable=True))
+    _add_column_compat("catalog_items", sa.Column("package_measurement", sa.String(length=16), nullable=True))
+    _add_column_compat("catalog_items", sa.Column("package_volume", sa.Numeric(14, 4), nullable=True))
+    _add_column_compat("catalog_items", sa.Column("package_weight", sa.Numeric(14, 4), nullable=True))
+    _add_column_compat("catalog_items", sa.Column("conversion_factor", sa.Numeric(14, 6), nullable=True))
+    _add_column_compat("catalog_items", sa.Column("ai_detected_unit", sa.String(length=32), nullable=True))
+    _add_column_compat("catalog_items", sa.Column("smart_classification", sa.String(length=64), nullable=True))
+    _add_column_compat("catalog_items", sa.Column("unit_confidence", sa.Numeric(5, 2), nullable=True))
+    _add_column_compat("catalog_items", sa.Column("packaging_confidence", sa.Numeric(5, 2), nullable=True))
+    _add_column_compat("catalog_items", sa.Column("is_loose_item", sa.Boolean(), nullable=True))
+    _add_column_compat("catalog_items", sa.Column("is_packaged_item", sa.Boolean(), nullable=True))
+    _add_column_compat(
         "catalog_items",
         sa.Column("auto_detect_enabled", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        if_not_exists=True,
     )
-    op.add_column(
-        "catalog_items",
-        sa.Column("ml_profile", sa.JSON(), nullable=True),
-        if_not_exists=True,
-    )
-    op.add_column(
-        "catalog_items",
-        sa.Column("validation_status", sa.String(length=32), nullable=True),
-        if_not_exists=True,
-    )
-    op.add_column(
-        "catalog_items",
-        sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
-        if_not_exists=True,
-    )
-    op.add_column(
-        "catalog_items",
-        sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True),
-        if_not_exists=True,
-    )
+    _add_column_compat("catalog_items", sa.Column("ml_profile", sa.JSON(), nullable=True))
+    _add_column_compat("catalog_items", sa.Column("validation_status", sa.String(length=32), nullable=True))
+    _add_column_compat("catalog_items", sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True))
+    _add_column_compat("catalog_items", sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True))
     op.create_index(
         op.f("ix_catalog_items_deleted_at"),
         "catalog_items",

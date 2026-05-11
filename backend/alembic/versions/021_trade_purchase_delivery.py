@@ -17,14 +17,29 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _has_column(table: str, column: str) -> bool:
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    return any(c["name"] == column for c in insp.get_columns(table))
+
+
 def upgrade() -> None:
-    op.add_column(
-        "trade_purchases",
-        sa.Column("is_delivered", sa.Boolean(), nullable=False, server_default="false"),
-    )
-    op.add_column("trade_purchases", sa.Column("delivered_at", sa.DateTime(timezone=True), nullable=True))
-    op.add_column("trade_purchases", sa.Column("delivery_notes", sa.Text(), nullable=True))
-    op.alter_column("trade_purchases", "is_delivered", server_default=None)
+    if not _has_column("trade_purchases", "is_delivered"):
+        op.add_column(
+            "trade_purchases",
+            sa.Column("is_delivered", sa.Boolean(), nullable=False, server_default="false"),
+        )
+    if not _has_column("trade_purchases", "delivered_at"):
+        op.add_column(
+            "trade_purchases",
+            sa.Column("delivered_at", sa.DateTime(timezone=True), nullable=True),
+        )
+    if not _has_column("trade_purchases", "delivery_notes"):
+        op.add_column("trade_purchases", sa.Column("delivery_notes", sa.Text(), nullable=True))
+    bind = op.get_bind()
+    # SQLite cannot reliably ALTER COLUMN ... DROP DEFAULT across versions.
+    if bind.dialect.name != "sqlite":
+        op.alter_column("trade_purchases", "is_delivered", server_default=None)
 
 
 def downgrade() -> None:
