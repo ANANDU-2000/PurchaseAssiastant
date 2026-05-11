@@ -4,8 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../providers/catalog_providers.dart';
 
-/// Prefer `/catalog/item/:id/ledger` (bills, search, PDF, edit). Falls back to
-/// `/item-analytics/:name` when no catalog id is known.
+/// Opens `/catalog/item/:id/ledger` (trade ledger: bills, search, PDF).
+/// Falls back to `/item-analytics/:name` when no catalog id is known.
 Future<void> openTradeItemFromReportRow(
   BuildContext context,
   WidgetRef ref,
@@ -17,9 +17,11 @@ Future<void> openTradeItemFromReportRow(
   if (cid.isEmpty) {
     try {
       final list = await ref.read(catalogItemsListProvider.future);
-      final want = name.trim().toLowerCase();
+      String norm(String s) =>
+          s.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+      final want = norm(name);
       for (final m in list) {
-        final n = (m['name'] ?? '').toString().trim().toLowerCase();
+        final n = norm((m['name'] ?? '').toString());
         if (n == want) {
           cid = m['id']?.toString().trim() ?? '';
           break;

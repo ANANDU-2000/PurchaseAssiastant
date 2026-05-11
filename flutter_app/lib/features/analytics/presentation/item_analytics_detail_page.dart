@@ -46,7 +46,7 @@ Map<String, dynamic>? _shellItemRowForName(WidgetRef ref, String itemName) {
   return null;
 }
 
-/// Prefer catalog UUID so user can open full ledger (`ItemHistoryPage`).
+/// Prefer catalog UUID so user can open full trade ledger (`TradeLedgerPage`).
 String? _catalogItemIdForHomeItemName(WidgetRef ref, String itemName) {
   final want = itemName.trim().toLowerCase();
   if (want.isEmpty) return null;

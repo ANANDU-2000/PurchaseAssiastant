@@ -46,9 +46,6 @@ class _ItemHistoryPageState extends ConsumerState<ItemHistoryPage> {
         decimalDigits: n % 1 == 0 ? 0 : 2,
       ).format(n);
 
-  String _qty(num n) =>
-      n % 1 == 0 ? n.toInt().toString() : n.toStringAsFixed(2);
-
   Widget _rowCard(
     BuildContext context,
     LedgerLineRow row,
@@ -228,42 +225,6 @@ class _ItemHistoryPageState extends ConsumerState<ItemHistoryPage> {
     }
   }
 
-  Widget _metrics(BuildContext context, LedgerLinesState s) {
-    final rows = s.filtered();
-    var q = 0.0;
-    var kg = 0.0;
-    var amt = 0.0;
-    for (final r in rows) {
-      q += r.qty;
-      kg += r.kg;
-      amt += r.amountInr;
-    }
-    final avg = q > 0.0001 ? amt / q : 0.0;
-    final tt = Theme.of(context).textTheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Wrap(
-        spacing: 12,
-        runSpacing: 8,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          Text(
-            'Qty Σ ${_qty(q)}',
-            style: tt.labelLarge?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          Text(
-            'Kg Σ ${_qty(kg)}',
-            style: tt.labelLarge?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          Text(
-            'Avg rate ${_inr(avg)}',
-            style: tt.labelLarge?.copyWith(fontWeight: FontWeight.w800),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(itemHistoryLinesProvider(widget.catalogItemId));
@@ -333,7 +294,6 @@ class _ItemHistoryPageState extends ConsumerState<ItemHistoryPage> {
                       },
                       orElse: () => const SizedBox.shrink(),
                     ),
-                    _metrics(context, state),
                   ],
                 ),
               ),

@@ -468,6 +468,27 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
 
   bool get _isSearching => _searchQuery.length >= _searchMinLen;
 
+  static List<Map<String, dynamic>> _itemSearchRows(Map<String, dynamic> d) {
+    final hits = d['item_hits'];
+    if (hits is List && hits.isNotEmpty) {
+      final out = <Map<String, dynamic>>[];
+      for (final h in hits) {
+        if (h is Map) {
+          out.add(Map<String, dynamic>.from(h));
+        }
+      }
+      if (out.isNotEmpty) return out;
+    }
+    final names = (d['item_names'] as List?) ?? const [];
+    return [
+      for (final n in names)
+        <String, dynamic>{
+          'name': n.toString(),
+          'catalog_item_id': null,
+        },
+    ];
+  }
+
   int _searchCountForTab(int i) {
     final d = _searchSnapshot;
     if (d == null) return 0;
@@ -481,7 +502,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
       case 3:
         return ((d['catalog_subcategories'] as List?) ?? []).length;
       case 4:
-        return ((d['item_names'] as List?) ?? []).length;
+        return _itemSearchRows(d).length;
       default:
         return 0;
     }
@@ -851,8 +872,6 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                   borderRadius: BorderRadius.circular(14),
                   side: const BorderSide(color: HexaColors.border)),
               child: ListTile(
-                leading: const Icon(Icons.folder_outlined,
-                    color: HexaColors.primaryMid),
                 title: Text.rich(
                   TextSpan(
                     children: highlightSearchQuery(
@@ -870,7 +889,6 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-                subtitle: const Text('Purchase line category (from history)'),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => context.push(
                     '/contacts/category?name=${Uri.encodeComponent(name)}'),
@@ -904,8 +922,6 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                   borderRadius: BorderRadius.circular(14),
                   side: const BorderSide(color: HexaColors.border)),
               child: ListTile(
-                leading: const Icon(Icons.category_outlined,
-                    color: HexaColors.primaryMid),
                 title: Text.rich(
                   TextSpan(
                     children: highlightSearchQuery(
@@ -937,7 +953,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
           },
         );
       case 4:
-        final items = (d['item_names'] as List?) ?? [];
+        final items = _itemSearchRows(d);
         if (items.isEmpty) {
           return Center(
               child: Text('No item name matches.',
@@ -951,15 +967,15 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
           itemCount: items.length,
           separatorBuilder: (_, __) => const SizedBox(height: 8),
           itemBuilder: (context, i) {
-            final n = items[i].toString();
+            final row = items[i];
+            final n = row['name']?.toString() ?? '';
+            final cid = row['catalog_item_id']?.toString();
             final cs = Theme.of(context).colorScheme;
             return Card(
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                   side: const BorderSide(color: HexaColors.border)),
               child: ListTile(
-                leading: const Icon(Icons.inventory_2_outlined,
-                    color: HexaColors.primaryMid),
                 title: Text.rich(
                   TextSpan(
                     children: highlightSearchQuery(
@@ -977,13 +993,16 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-                subtitle: const Text('Item analytics'),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => unawaited(
                   openTradeItemFromReportRow(
                     context,
                     ref,
-                    {'item_name': n},
+                    {
+                      'item_name': n,
+                      if (cid != null && cid.isNotEmpty)
+                        'catalog_item_id': cid,
+                    },
                   ),
                 ),
               ),
@@ -1180,6 +1199,13 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                 controller: _tabController,
                 isScrollable: true,
                 tabAlignment: TabAlignment.start,
+                onTap: (_) {
+                  final q = _searchCtrl.text.trim();
+                  if (q.length >= _searchMinLen) {
+                    _debounce?.cancel();
+                    _scheduleSearch(q);
+                  }
+                },
                 tabs: [
                   _tabWithBadge('Suppliers', _searchCountForTab(0)),
                   _tabWithBadge('Brokers', _searchCountForTab(1)),

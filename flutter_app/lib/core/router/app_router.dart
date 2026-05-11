@@ -24,6 +24,7 @@ import '../../features/contacts/presentation/broker_detail_page.dart';
 import '../../features/contacts/presentation/broker_wizard_page.dart';
 import '../../features/contacts/presentation/category_items_page.dart';
 import '../../features/contacts/presentation/contacts_page.dart';
+import '../../features/contacts/presentation/trade_ledger_page.dart';
 import '../../features/contacts/presentation/supplier_create_simple.dart';
 import '../../features/contacts/presentation/supplier_detail_page.dart';
 import '../../features/supplier/presentation/supplier_ledger_page.dart';
@@ -234,7 +235,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           final id = state.pathParameters['itemId']!;
           return iosPushPage(
             key: state.pageKey,
-            child: ItemHistoryPage(catalogItemId: id),
+            child: TradeLedgerPage(
+              kind: TradeLedgerKind.catalogItem,
+              entityId: id,
+            ),
           );
         },
       ),

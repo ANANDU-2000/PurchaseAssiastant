@@ -946,10 +946,18 @@ class CatalogSubcategoryRow(BaseModel):
     category_name: str
 
 
+class ItemSearchHitOut(BaseModel):
+    """Item name plus catalog id when the row matches a catalog item."""
+
+    name: str
+    catalog_item_id: uuid.UUID | None = None
+
+
 class SearchOut(BaseModel):
     suppliers: list[SupplierOut]
     brokers: list[BrokerOut]
     item_names: list[str]
+    item_hits: list[ItemSearchHitOut] = Field(default_factory=list)
     categories: list[str]
     catalog_subcategories: list[CatalogSubcategoryRow] = Field(default_factory=list)
 
@@ -980,6 +988,7 @@ async def contacts_search(
             suppliers=[],
             brokers=[],
             item_names=[],
+            item_hits=[],
             categories=[],
             catalog_subcategories=[],
         )
@@ -1027,6 +1036,7 @@ async def contacts_search(
         brokers = [BrokerOut.model_validate(b) for b in brows]
 
     item_names: list[str] = []
+    item_hits: list[ItemSearchHitOut] = []
     if bucket("items"):
         ri = await db.execute(
             select(EntryLineItem.item_name)
@@ -1039,9 +1049,17 @@ async def contacts_search(
             )
             .limit(limit * 2)
         )
-        name_set = {str(row[0]).strip() for row in ri.all() if row[0] and str(row[0]).strip()}
+        line_by_norm: dict[str, str] = {}
+        for row in ri.all():
+            raw = str(row[0]).strip() if row[0] else ""
+            if not raw:
+                continue
+            k = _norm_name(raw)
+            if k not in line_by_norm:
+                line_by_norm[k] = raw
+
         ric = await db.execute(
-            select(CatalogItem.name)
+            select(CatalogItem.id, CatalogItem.name)
             .where(
                 CatalogItem.business_id == business_id,
                 func.lower(CatalogItem.name).like(like_contains),
@@ -1049,17 +1067,38 @@ async def contacts_search(
             .distinct()
             .limit(limit * 2)
         )
+        cat_by_norm: dict[str, tuple[uuid.UUID, str]] = {}
         for row in ric.all():
-            if row[0] and str(row[0]).strip():
-                name_set.add(str(row[0]).strip())
-        raw_names = sorted(
-            name_set,
-            key=lambda n: (
-                not str(n).strip().lower().startswith(term_l),
-                str(n).strip().lower(),
+            cid, raw_nm = row[0], str(row[1]).strip() if row[1] else ""
+            if not raw_nm:
+                continue
+            k = _norm_name(raw_nm)
+            if k not in cat_by_norm:
+                cat_by_norm[k] = (cid, raw_nm)
+
+        merged: dict[str, tuple[str, uuid.UUID | None]] = {}
+        for k, display in line_by_norm.items():
+            if k in cat_by_norm:
+                cid, cname = cat_by_norm[k]
+                merged[k] = (cname, cid)
+            else:
+                merged[k] = (display, None)
+        for k, (cid, cname) in cat_by_norm.items():
+            if k not in merged:
+                merged[k] = (cname, cid)
+
+        hits_sorted = sorted(
+            merged.items(),
+            key=lambda kv: (
+                not kv[1][0].strip().lower().startswith(term_l),
+                kv[1][0].strip().lower(),
             ),
-        )
-        item_names = raw_names[:limit]
+        )[:limit]
+        item_hits = [
+            ItemSearchHitOut(name=pair[0], catalog_item_id=pair[1])
+            for _, pair in hits_sorted
+        ]
+        item_names = [h.name for h in item_hits]
 
     categories: list[str] = []
     if bucket("categories"):
@@ -1134,6 +1173,7 @@ async def contacts_search(
         suppliers=suppliers,
         brokers=brokers,
         item_names=item_names,
+        item_hits=item_hits,
         categories=categories,
         catalog_subcategories=catalog_subcategories,
     )
