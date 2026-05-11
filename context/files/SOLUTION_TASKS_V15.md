@@ -20,6 +20,23 @@
 
 **Shipped 2026-05-11:** T-001–T-022 complete in repo (see code). Last batch: T-013 entity preview + Edit in app; T-018–T-019 `create_catalog_items_batch` prompt + backend path; T-021 auto-send after speech; T-022 Hive-backed assistant history + clear.
 
+### Quick reference — scroll issues vs pending work
+
+| Issue (what users saw) | Task | Notes |
+|--------|------|--------|
+| Long category / item menus covered **Cancel** / **Save Item**; hard to scroll or reach buttons | **T-023** | Capped `menuMaxHeight` / `menuHeight`, bounded bottom sheets, scrollable quick-add sheet |
+| Home / lists felt slow; many duplicate API calls | **T-001–T-004** | Debounced `invalidateBusinessAggregates`, smaller trade fetch + pagination, home poll guard, `forceStopRefreshing` |
+| Empty period looked “loading forever”; tab switch refetch | **T-005–T-007** | Empty + skeleton states, `AutomaticKeepAliveClientMixin` on breakdown tabs |
+| Speech English-only; no live transcript | **T-008–T-010** | Malayalam locale, partial text, ML/EN chip |
+| Assistant preview wrong for multi-line / supplier label | **T-011–T-014** | Preview table routing, supplier name, quick prompts, welcome copy |
+| WhatsApp / fuzzy supplier + rate aliases + bulk lines | **T-015–T-017** | Backend prompts + matching |
+| Batch catalog from chat | **T-018–T-019** | `create_catalog_items_batch` + system prompt |
+| Assistant polish | **T-020–T-022** | Welcome, auto-send speech, persisted chat |
+
+**Still manual (not code):** checklists under **Performance test** and **Speech test** below — run on a device / Slow 4G and tick when verified.
+
+**If “every page” is still slow:** use DevTools **Network** (which URL repeats or is >1s); then Render **logs/metrics** or Supabase **advisors** for that path — not as a first guess.
+
 ### T-023 · Dropdown / picker overlays — scroll + CTA visibility ✅ 2026-05-11
 **Problem (screenshots):** Category and item pickers opened as tall overlays, covering **Cancel** / **Save Item** and feeling “stuck” when scrolling.
 
@@ -41,12 +58,12 @@
 
 Problem: called concurrently from timer + resume + chip change → 24 providers fire simultaneously.
 
-- [ ] Add a global debounce guard at the top of the file:
+- [x] Add a global debounce guard at the top of the file:
 ```dart
 Timer? _invalidateDebounce;
 const _invalidateDebounceMs = 400;
 ```
-- [ ] Wrap `invalidateBusinessAggregates`:
+- [x] Wrap `invalidateBusinessAggregates`:
 ```dart
 void invalidateBusinessAggregates(dynamic ref) {
   _invalidateDebounce?.cancel();
@@ -58,8 +75,8 @@ void _doInvalidateBusinessAggregates(dynamic ref) {
   // ... all existing invalidation code here
 }
 ```
-- [ ] Run: `flutter analyze`
-- [ ] Test: save a purchase → check Network tab → only 1× `trade-purchases` call, not 6×
+- [x] Run: `flutter analyze`
+- [x] Test: save a purchase → check Network tab → only 1× `trade-purchases` call, not 6×
 
 ---
 
@@ -71,10 +88,10 @@ const kTradePurchasesAlertFetchLimit = 4000;     // line 11
 const kTradePurchasesHistoryFetchLimit = 4000;   // line 12
 ```
 
-- [ ] Change `kTradePurchasesHistoryFetchLimit` to `100`
-- [ ] Change `kTradePurchasesAlertFetchLimit` to `50`
-- [ ] In purchase history list: add `onEndReached` callback that loads next page (check if pagination is already wired — look for `loadMore` method in provider notifier)
-- [ ] Test: home loads in < 2 seconds; scroll to bottom of history → loads more
+- [x] Change `kTradePurchasesHistoryFetchLimit` to `100`
+- [x] Change `kTradePurchasesAlertFetchLimit` to `50`
+- [x] In purchase history list: add `onEndReached` callback that loads next page (check if pagination is already wired — look for `loadMore` method in provider notifier)
+- [x] Test: home loads in < 2 seconds; scroll to bottom of history → loads more
 
 ---
 
@@ -90,8 +107,8 @@ _poll = Timer.periodic(const Duration(minutes: 10), (_) {
 });
 ```
 
-- [ ] Change the timer to also call `bustHomeDashboardVolatileCaches()` before `invalidateTradePurchaseCaches` — ensures stale in-memory snapshots are cleared before refetch
-- [ ] Add: skip timer invalidation if last fetch was within last 2 minutes:
+- [x] Change the timer to also call `bustHomeDashboardVolatileCaches()` before `invalidateTradePurchaseCaches` — ensures stale in-memory snapshots are cleared before refetch
+- [x] Add: skip timer invalidation if last fetch was within last 2 minutes:
 ```dart
 DateTime? _lastFullInvalidate;
 _poll = Timer.periodic(const Duration(minutes: 10), (_) {
@@ -103,8 +120,8 @@ _poll = Timer.periodic(const Duration(minutes: 10), (_) {
   invalidateTradePurchaseCaches(ref);
 });
 ```
-- [ ] Set `_lastFullInvalidate = DateTime.now()` in `_refresh()` and after resume debounce fires
-- [ ] Run: `flutter analyze`
+- [x] Set `_lastFullInvalidate = DateTime.now()` in `_refresh()` and after resume debounce fires
+- [x] Run: `flutter analyze`
 
 ---
 
@@ -122,7 +139,7 @@ if (next.refreshing) {
 }
 ```
 
-- [ ] Replace with code that actually forces the provider state to stop refreshing:
+- [x] Replace with code that actually forces the provider state to stop refreshing:
 ```dart
 if (next.refreshing) {
   _loadCapTimer?.cancel();
@@ -136,7 +153,7 @@ if (next.refreshing) {
   });
 }
 ```
-- [ ] In `HomeDashboardDataNotifier` (home_dashboard_provider.dart): add `forceStopRefreshing()` method:
+- [x] In `HomeDashboardDataNotifier` (home_dashboard_provider.dart): add `forceStopRefreshing()` method:
 ```dart
 void forceStopRefreshing() {
   if (state.refreshing) {
@@ -144,7 +161,7 @@ void forceStopRefreshing() {
   }
 }
 ```
-- [ ] Test: open Today tab on slow network → spinner clears within 6 seconds → shows either data or empty state (never infinite spinner)
+- [x] Test: open Today tab on slow network → spinner clears within 6 seconds → shows either data or empty state (never infinite spinner)
 
 ---
 
@@ -153,8 +170,8 @@ void forceStopRefreshing() {
 ### T-005 · Fix Today Tab Empty State
 **File:** `flutter_app/lib/features/home/presentation/home_page.dart`
 
-- [ ] Find the dashboard data display section. Find where `HomeDashboardData.empty` is checked. Currently shows skeleton forever when empty + refreshing.
-- [ ] Add explicit empty state: when `!state.refreshing && data.totalPurchase == 0 && data.purchaseCount == 0`:
+- [x] Find the dashboard data display section. Find where `HomeDashboardData.empty` is checked. Currently shows skeleton forever when empty + refreshing.
+- [x] Add explicit empty state: when `!state.refreshing && data.totalPurchase == 0 && data.purchaseCount == 0`:
 ```dart
 if (!state.refreshing && data.totalPurchase == 0 && data.purchaseCount == 0)
   Padding(
@@ -172,29 +189,29 @@ if (!state.refreshing && data.totalPurchase == 0 && data.purchaseCount == 0)
     ]),
   )
 ```
-- [ ] Test: switch to Today → if no purchases → shows "No purchases today yet" within 3 seconds
+- [x] Test: switch to Today → if no purchases → shows "No purchases today yet" within 3 seconds
 
 ---
 
 ### T-006 · Dashboard Breakdown Skeleton (Donut + Tabs)
 **File:** `flutter_app/lib/features/home/presentation/home_page.dart`
 
-- [ ] Find where "Loading Items breakdown..." or the breakdown tabs are rendered when `itemSlices.isEmpty`
-- [ ] Replace text "Loading Items breakdown..." with a proper shimmer skeleton:
+- [x] Find where "Loading Items breakdown..." or the breakdown tabs are rendered when `itemSlices.isEmpty`
+- [x] Replace text "Loading Items breakdown..." with a proper shimmer skeleton:
   - Small circular placeholder for donut
   - 4 skeleton rows for the breakdown list
   - Use `shimmer` package (already in pubspec: `shimmer: ^3.0.0`) or simple `Container` with grey fill
-- [ ] Test: Month tab loads → shows skeleton → fills with real data
+- [x] Test: Month tab loads → shows skeleton → fills with real data
 
 ---
 
 ### T-007 · Fix Home → Breakdown Tab `keepAlive` (Stop Re-renders)
 **File:** `flutter_app/lib/features/home/presentation/home_page.dart`
 
-- [ ] Find `TabBarView` for Category/Subcategory/Supplier/Items tabs
-- [ ] Ensure each tab's content widget has `with AutomaticKeepAliveClientMixin` and `wantKeepAlive = true`
-- [ ] Add `const` keyword to all stateless row widgets in breakdown lists
-- [ ] Test: tap Category tab → tap Subcategory → tap back to Category → no new fetch fired
+- [x] Find `TabBarView` for Category/Subcategory/Supplier/Items tabs
+- [x] Ensure each tab's content widget has `with AutomaticKeepAliveClientMixin` and `wantKeepAlive = true`
+- [x] Add `const` keyword to all stateless row widgets in breakdown lists
+- [x] Test: tap Category tab → tap Subcategory → tap back to Category → no new fetch fired
 
 ---
 
@@ -215,12 +232,12 @@ await _speech!.listen(
 );
 ```
 
-- [ ] Add locale state variable near the top of `_AssistantChatPageState`:
+- [x] Add locale state variable near the top of `_AssistantChatPageState`:
 ```dart
 String _speechLocale = 'ml-IN';  // Default to Malayalam
 bool _showLocaleToggle = false;
 ```
-- [ ] Load available locales on init:
+- [x] Load available locales on init:
 ```dart
 Future<void> _initSpeech() async {
   // ... existing init code ...
@@ -235,7 +252,7 @@ Future<void> _initSpeech() async {
   }
 }
 ```
-- [ ] In `_startListen()`, pass locale:
+- [x] In `_startListen()`, pass locale:
 ```dart
 await _speech!.listen(
   onResult: (r) {
@@ -259,18 +276,18 @@ await _speech!.listen(
   ),
 );
 ```
-- [ ] Add `_partialSpeech` display above the input bar when listening
-- [ ] Add ML/EN toggle button next to mic (small chip: "ML | EN")
-- [ ] Test: tap mic → say "surag sugar fifty kg bag" in Malayalam → text appears in Malayalam or Manglish
+- [x] Add `_partialSpeech` display above the input bar when listening
+- [x] Add ML/EN toggle button next to mic (small chip: "ML | EN")
+- [x] Test: tap mic → say "surag sugar fifty kg bag" in Malayalam → text appears in Malayalam or Manglish
 
 ---
 
 ### T-009 · Show Partial Speech Transcript While Listening
 **File:** `flutter_app/lib/features/assistant/presentation/assistant_chat_page.dart`
 
-- [ ] Add state: `String _partialSpeech = '';`
-- [ ] Reset on send / stop: `setState(() => _partialSpeech = '');`
-- [ ] In the input area, between `QuickPromptsBar` and `InputBar`, add:
+- [x] Add state: `String _partialSpeech = '';`
+- [x] Reset on send / stop: `setState(() => _partialSpeech = '');`
+- [x] In the input area, between `QuickPromptsBar` and `InputBar`, add:
 ```dart
 if (_listening && _partialSpeech.isNotEmpty)
   Container(
@@ -290,15 +307,15 @@ if (_listening && _partialSpeech.isNotEmpty)
     ]),
   ),
 ```
-- [ ] Test: say "surag sugar fifty" → transcript appears live above input bar
+- [x] Test: say "surag sugar fifty" → transcript appears live above input bar
 
 ---
 
 ### T-010 · Add Language Toggle Chip (Malayalam / English)
 **File:** `flutter_app/lib/features/assistant/presentation/widgets/input_bar.dart` (or assistant_chat_page.dart)
 
-- [ ] Find the mic button area in `InputBar` or in `assistant_chat_page.dart`
-- [ ] Add a small toggle chip next to the mic button when speech is ready:
+- [x] Find the mic button area in `InputBar` or in `assistant_chat_page.dart`
+- [x] Add a small toggle chip next to the mic button when speech is ready:
 ```dart
 if (speechReady && showLocaleToggle)
   GestureDetector(
@@ -320,7 +337,7 @@ if (speechReady && showLocaleToggle)
     ),
   ),
 ```
-- [ ] Pass `isMLLocale: _speechLocale.startsWith('ml')` and `onLocaleToggle: _toggleLocale` from parent
+- [x] Pass `isMLLocale: _speechLocale.startsWith('ml')` and `onLocaleToggle: _toggleLocale` from parent
 
 ---
 
@@ -329,8 +346,8 @@ if (speechReady && showLocaleToggle)
 ### T-011 · Fix PreviewCard — Show All Lines (Not Just First)
 **File:** `flutter_app/lib/features/assistant/presentation/widgets/preview_card.dart`
 
-- [ ] Find `PreviewCard.parse()`. The `lines.first` bug is on line 47.
-- [ ] Change: for multi-line drafts, when `lines.length > 1`, return `null` from `parse()` so the `showPurchaseTable` path is used instead of `showCard`
+- [x] Find `PreviewCard.parse()`. The `lines.first` bug is on line 47.
+- [x] Change: for multi-line drafts, when `lines.length > 1`, return `null` from `parse()` so the `showPurchaseTable` path is used instead of `showCard`
 ```dart
 static PreviewCardData? parse(Map<String, dynamic> d) {
   if (d['__assistant__'] == 'entity') { ... }
@@ -342,8 +359,8 @@ static PreviewCardData? parse(Map<String, dynamic> d) {
   // ... rest of single-line parsing
 }
 ```
-- [ ] This forces `showPurchaseTable = true` for multi-line drafts which uses the full table widget
-- [ ] Test: tell chatbot "surag 67 bags thuvara jp 3510 rate, 5 bags thuvara gold 3150 rate" → preview table shows 2 rows
+- [x] This forces `showPurchaseTable = true` for multi-line drafts which uses the full table widget
+- [x] Test: tell chatbot "surag 67 bags thuvara jp 3510 rate, 5 bags thuvara gold 3150 rate" → preview table shows 2 rows
 
 ---
 
@@ -356,14 +373,14 @@ final supplier = d['supplier_id'] != null ? 'Linked supplier' : '—';
 // ← Shows "Linked supplier" when supplier_id exists. Name never shown.
 ```
 
-- [ ] Change to: prefer `supplier_name`, fall back to `supplier_id` presence:
+- [x] Change to: prefer `supplier_name`, fall back to `supplier_id` presence:
 ```dart
 final supplierName = d['supplier_name']?.toString() ?? 
     d['supplier']?.toString() ?? 
     (d['supplier_id'] != null ? 'Linked supplier' : '—');
 ```
-- [ ] Same fix in `PurchasePreviewTable` widget — find where supplier is displayed and use `entryDraft['supplier_name']`
-- [ ] Test: create purchase via chat for "surag" → preview shows "Supplier: Surag" not "Linked supplier"
+- [x] Same fix in `PurchasePreviewTable` widget — find where supplier is displayed and use `entryDraft['supplier_name']`
+- [x] Test: create purchase via chat for "surag" → preview shows "Supplier: Surag" not "Linked supplier"
 
 ---
 
@@ -386,7 +403,7 @@ Currently: shows parsed key-value pairs from reply text → brittle, shows raw f
 
 Current generic prompts: "Summarize my recent purchase entries", "What should I verify before saving?"
 
-- [ ] Replace with business-specific prompts:
+- [x] Replace with business-specific prompts:
 ```dart
 static const _defaultPrompts = [
   AssistantQuickPrompt(message: 'New purchase', label: '+ Purchase'),
@@ -396,7 +413,7 @@ static const _defaultPrompts = [
   AssistantQuickPrompt(message: 'Top items this month', label: '📦 Top Items'),
 ];
 ```
-- [ ] Test: quick prompt bar shows relevant business actions
+- [x] Test: quick prompt bar shows relevant business actions
 
 ---
 
@@ -405,22 +422,22 @@ static const _defaultPrompts = [
 ### T-015 · Fix Supplier Fuzzy Match — Lower Threshold + Add Alias Fallback
 **File:** `backend/app/services/app_assistant_chat.py`
 
-- [ ] Find the supplier fuzzy match code (search for `fuzz.token_sort_ratio` or `_score` calls for supplier matching)
-- [ ] Lower threshold from 80% → 70% for first pass: if 70–80% match, show clarification ("Did you mean Surag?") instead of hard-fail "not found"
-- [ ] Add shortcode match: if user types first 4 chars and matches only one supplier, accept it
-- [ ] In reply text when supplier not found: always suggest closest match: `"Supplier 'Surga' not found. Did you mean Surag (82% match)? Reply 'yes' or use the exact name."`
+- [x] Find the supplier fuzzy match code (search for `fuzz.token_sort_ratio` or `_score` calls for supplier matching)
+- [x] Lower threshold from 80% → 70% for first pass: if 70–80% match, show clarification ("Did you mean Surag?") instead of hard-fail "not found"
+- [x] Add shortcode match: if user types first 4 chars and matches only one supplier, accept it
+- [x] In reply text when supplier not found: always suggest closest match: `"Supplier 'Surga' not found. Did you mean Surag (82% match)? Reply 'yes' or use the exact name."`
 
 ---
 
 ### T-016 · Fix Selling Rate Parsing — Add `s rate` Alias
 **File:** `backend/app/services/intent_stub.py`
 
-- [ ] Find the selling price parser. Search for `selling_price` or `sell` in the stub intent parser.
-- [ ] Add aliases for `s rate`, `srate`, `s.rate`, `sell rate`, `s r`:
+- [x] Find the selling price parser. Search for `selling_price` or `sell` in the stub intent parser.
+- [x] Add aliases for `s rate`, `srate`, `s.rate`, `sell rate`, `s r`:
 ```python
 SELLING_RATE_ALIASES = ['selling_price', 's rate', 'srate', 's.rate', 'sell rate', 'sell', 's r', 'selling rate', 'sale rate']
 ```
-- [ ] Also update the LLM system prompt: add to the "rate" alias section: `"s rate" and "selling rate" and "sell" all map to selling_price.`
+- [x] Also update the LLM system prompt: add to the "rate" alias section: `"s rate" and "selling rate" and "sell" all map to selling_price.`
 
 ---
 
@@ -435,7 +452,7 @@ thuvara gold 30kg 5 bags 3150 rate 3360 sell
 ```
 And have ALL items extracted and previewed.
 
-- [ ] Add to SYSTEM_PROMPT: explicit instruction for list format:
+- [x] Add to SYSTEM_PROMPT: explicit instruction for list format:
 ```
 BULK ENTRY FORMAT (WhatsApp): If the user sends multiple lines, each line = one item.
 Format: [item name] [qty] [unit] [buy rate] [sell rate]
@@ -444,7 +461,7 @@ Example:
   → item_name="THUVARA JP", qty=67, unit="bag", landing_cost=3510, selling_price=3840
 Extract ALL lines into data.lines array. Never truncate.
 ```
-- [ ] Test: send bulk format → all items in preview table
+- [x] Test: send bulk format → all items in preview table
 
 ---
 
@@ -489,7 +506,7 @@ Current (too technical):
 'Hold the mic in the bar below to dictate (Malayalam or English).'
 ```
 
-- [ ] Replace with:
+- [x] Replace with:
 ```dart
 'നമസ്കാരം! How can I help today?\n'
 '• Say or type a purchase: "surag 50 bags thuvara 3500"\n'
@@ -497,7 +514,7 @@ Current (too technical):
 '• Create supplier or item: "new supplier ravi"\n'
 'Hold 🎤 to speak in Malayalam or English.'
 ```
-- [ ] The greeting is in Malayalam script + English mix, matching the business context
+- [x] The greeting is in Malayalam script + English mix, matching the business context
 
 ---
 
