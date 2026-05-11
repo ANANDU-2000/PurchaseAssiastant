@@ -21,6 +21,26 @@
 
 **v14 one-shot spec alignment (2026-05-11):** T-007 type rows use `matchingItemIds` + `(category_name ?? type_name)` vs type name per master prompt; T-012 delivery prompt runs via `_scheduleDeliveryPrompt` (post-frame callback, then await). `flutter analyze` + `flutter test` clean; no `print(` in `lib/`.
 
+### CURSOR MASTER ONE-SHOT (Phases 0–4) — task → tracker
+
+| Prompt task | Tracker | Status |
+|-------------|---------|--------|
+| 0-A Today / 4s `refreshing` cap | T-001 | ✅ |
+| 0-B Donut + breakdown `ListSkeleton` | T-002 | ✅ |
+| 0-C Breakdown tabs keep-alive + `ListView.builder` | T-003 | ✅ |
+| 1-A Draft filter + WIP banner guard | T-004 | ✅ |
+| 1-B Search last purchase date + days ago | T-006 | ✅ |
+| 1-C Type row bags/kg totals (client) | T-007 | ✅ |
+| 1-D `PurchasePreviewTable` + `entryDraft` route | T-008, T-019 | ✅ |
+| 2-A–E Delivery model, API, prompt, list, detail | T-011–T-014 (+ backend T-009–T-010) | ✅ |
+| 2-B `markPurchaseDelivered` | `hexa_api.dart` | ✅ |
+| 3-A Quick add sheet + home mini-FAB | T-016 | ✅ |
+| 4-A `FeatureFlags` + maintenance gate; shell uses flag | T-024 | ✅ |
+
+**Final steps (re-verified):** `flutter analyze` — no issues · `flutter test` — 107 passed · `lib/**/*.dart` — no `print(`.
+
+**Note:** Phase 4 Voice tab is not rendered in `shell_screen` (four tabs only); `FeatureFlags.showVoiceTab` is referenced so enabling it later requires a new shell branch + route. Quick add uses category + type + `createCatalogItem(..., categoryId: …)` (API requires `category_id`, not type-only).
+
 ---
 
 ## PHASE 0 — CRITICAL BUGS (Fix First)
