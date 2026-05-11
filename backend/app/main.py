@@ -74,13 +74,14 @@ async def lifespan(app: FastAPI):
 
     logger.info(
         "Observability: log_level=%s slow_http_warning_ms=%s request_id_echo=%s "
-        "sentry=%s db_slow_query_ms=%s api_read_budget_s=%s",
+        "sentry=%s db_slow_query_ms=%s api_read_budget_s=%s http_access_log_all=%s",
         settings.log_level,
         settings.http_slow_request_warning_ms,
         settings.http_propagate_request_id,
         bool(settings.sentry_dsn),
         settings.database_slow_query_log_ms,
         settings.api_read_budget_seconds,
+        getattr(settings, "http_access_log_all", False),
     )
 
     async with engine.begin() as conn:
@@ -224,7 +225,8 @@ async def harisree_request_monitor_middleware(request: Request, call_next):
         )
     )
     log_json = (
-        path.startswith("/v1/businesses")
+        cfg.http_access_log_all
+        or path.startswith("/v1/businesses")
         or is_slow
         or heavy_read
         or response.status_code >= 400

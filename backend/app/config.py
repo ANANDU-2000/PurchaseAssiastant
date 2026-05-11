@@ -109,6 +109,11 @@ class Settings(BaseSettings):
     http_slow_request_warning_ms: int = 500
     # Echo X-Request-Id through responses (reuse client-supplied UUID or allocate one).
     http_propagate_request_id: bool = True
+    # If true, emit structured HTTP_JSON for every route (not only /v1/businesses/*). Use on Render when debugging traffic.
+    http_access_log_all: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("HTTP_ACCESS_LOG_ALL", "LOG_ALL_HTTP"),
+    )
 
     redis_url: str | None = "redis://localhost:6379/0"
 
