@@ -18,6 +18,9 @@ import '../../../core/providers/reports_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart'
     show invalidateTradePurchaseCaches;
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/feature_flags.dart';
+import '../../../core/widgets/list_skeleton.dart';
+import '../../catalog/presentation/quick_add_item_sheet.dart';
 import '../../../shared/widgets/shell_quick_ref_actions.dart';
 import '../../purchase/presentation/widgets/purchase_saved_sheet.dart';
 import '../../purchase/presentation/widgets/resume_purchase_draft_banner.dart';
@@ -449,18 +452,43 @@ class _HomePageState extends ConsumerState<HomePage>
                 },
               ),
             ),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 4, 16, 0),
-              child: MaintenanceHomeCard(),
-            ),
+            if (FeatureFlags.showMaintenanceFeeCard)
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 4, 16, 0),
+                child: MaintenanceHomeCard(),
+              ),
             Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                child: _HomeFixedHeaderBody(
-                  data: effectiveData,
-                  categoryColors: _donutColors,
-                  paintShellSkeleton: shellSkeleton,
-                ),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                    child: _HomeFixedHeaderBody(
+                      data: effectiveData,
+                      categoryColors: _donutColors,
+                      paintShellSkeleton: shellSkeleton,
+                      dashboardRefreshing: async.refreshing,
+                    ),
+                  ),
+                  Positioned(
+                    right: 8,
+                    bottom: 8,
+                    child: FloatingActionButton.small(
+                      heroTag: 'home_add_item',
+                      tooltip: 'Add Item',
+                      onPressed: () => showModalBottomSheet<void>(
+                        context: context,
+                        isScrollControlled: true,
+                        shape: const RoundedRectangleBorder(
+                          borderRadius:
+                              BorderRadius.vertical(top: Radius.circular(20)),
+                        ),
+                        builder: (_) => const QuickAddItemSheet(),
+                      ),
+                      child: const Icon(Icons.inventory_2_outlined),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -807,16 +835,27 @@ const _chartSkeletonCenterInner = Column(
 
 bool _portfolioEmpty(HomeDashboardData d) => d.purchaseCount == 0;
 
+HomeShellReportsBundle? _breakdownShellBundle(
+  HomeBreakdownTab tab,
+  AsyncValue<HomeShellReportsBundle> shell,
+  HomeShellReportsBundle? peekShell,
+) {
+  if (tab == HomeBreakdownTab.category) return null;
+  return shell.valueOrNull ?? peekShell;
+}
+
 class _HomeFixedHeaderBody extends ConsumerStatefulWidget {
   const _HomeFixedHeaderBody({
     required this.data,
     required this.categoryColors,
     this.paintShellSkeleton = false,
+    this.dashboardRefreshing = false,
   });
 
   final HomeDashboardData data;
   final List<Color> categoryColors;
   final bool paintShellSkeleton;
+  final bool dashboardRefreshing;
 
   @override
   ConsumerState<_HomeFixedHeaderBody> createState() =>
@@ -824,16 +863,6 @@ class _HomeFixedHeaderBody extends ConsumerStatefulWidget {
 }
 
 class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
-
-  HomeShellReportsBundle? _bundle(
-    HomeBreakdownTab tab,
-    AsyncValue<HomeShellReportsBundle> shell,
-    HomeShellReportsBundle? peekShell,
-  ) {
-    if (tab == HomeBreakdownTab.category) return null;
-    return shell.valueOrNull ?? peekShell;
-  }
-
   Widget _ring(
     BuildContext context,
     HomeBreakdownTab tab,
@@ -921,12 +950,34 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
       );
     }
 
-    final bundle = _bundle(tab, shell, peekShell);
+    final bundle = _breakdownShellBundle(tab, shell, peekShell);
     final slice = _topSlice(data, tab, bundle, _homeRingPreviewCap, ref);
     final amts =
         List<double>.generate(slice.length, (i) => slice[i].ringAmount);
     final anySeg =
         slice.isNotEmpty && amts.isNotEmpty && amts.any((x) => x > 1e-12);
+
+    if (!_portfolioEmpty(data) &&
+        !anySeg &&
+        (widget.dashboardRefreshing || data.itemSlices.isEmpty)) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 180,
+              height: 180,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.grey.shade200,
+              ),
+            ),
+            const SizedBox(height: 16),
+            const ListSkeleton(rowCount: 4),
+          ],
+        ),
+      );
+    }
 
     if (!anySeg) {
       return RepaintBoundary(
@@ -1009,170 +1060,18 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
         Expanded(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                if (tab != HomeBreakdownTab.category) {
-                  if (shell.isLoading &&
-                      shell.valueOrNull == null &&
-                      peekShell == null) {
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const LinearProgressIndicator(minHeight: 2),
-                        Expanded(
-                          child: Center(
-                            child: Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 24),
-                              child: Text(
-                                'Loading ${tab.label} breakdown…',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.grey.shade700,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  }
-                  if (shell.hasError &&
-                      shell.valueOrNull == null &&
-                      peekShell == null) {
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: TextButton.icon(
-                          onPressed: () =>
-                              ref.invalidate(homeShellReportsProvider),
-                          icon: const Icon(Icons.refresh_rounded),
-                          label:
-                              const Text('Could not load breakdown — Retry'),
-                        ),
-                      ),
-                    );
-                  }
-                } else if (widget.data.categories.isEmpty) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text(
-                            'No purchases in this period',
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Color(0xFF64748B),
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          FilledButton.icon(
-                            onPressed: () => context.go('/purchase/new'),
-                            icon: const Icon(Icons.add_rounded, size: 18),
-                            label: const Text('Add a purchase'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }
-
-                final bundle = _bundle(tab, shell, peekShell);
-                final full = _topSlice(
-                  widget.data,
-                  tab,
-                  bundle,
-                  10000,
-                  ref,
-                );
-
-                if (full.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text(
-                          'No rows for this tab',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Color(0xFF64748B),
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () => context.go('/purchase/new'),
-                          child: const Text('Add Purchase'),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-
-                var maxSlots = math.max(
-                  1,
-                  (constraints.maxHeight / _homeBreakdownRowExtent).floor(),
-                );
-                const reserveFooter = 48.0;
-                maxSlots = math.max(
-                  1,
-                  ((constraints.maxHeight - reserveFooter) /
-                          _homeBreakdownRowExtent)
-                      .floor(),
-                );
-
-                final cap = math.min(maxSlots, full.length);
-                final needsMore = full.length > maxSlots;
-
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(
-                      child: ListView.builder(
-                        padding: EdgeInsets.zero,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: cap,
-                        itemBuilder: (ctx, i) {
-                          final row = full[i];
-                          return SizedBox(
-                            height: _homeBreakdownRowExtent,
-                            child: _HomeBreakdownDataRow(
-                              title: row.title,
-                              amount: row.ringAmount,
-                              boldLine2: row.line2,
-                              sup: row.sup,
-                              bro: row.bro,
-                              dotColor: widget.categoryColors[
-                                  i % widget.categoryColors.length],
-                              onTap: () => row.onTap(context, ref),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    if (needsMore)
-                      Align(
-                        alignment: Alignment.center,
-                        child: TextButton(
-                          onPressed: () => context.push(
-                            '/home/breakdown-more?tab=${tab.name}',
-                          ),
-                          child: const Text('View more'),
-                        ),
-                      ),
-                  ],
-                );
-              },
+            child: IndexedStack(
+              index: tab.index,
+              sizing: StackFit.expand,
+              children: [
+                for (final t in HomeBreakdownTab.values)
+                  _HomeBreakdownListKeepAlive(
+                    key: ValueKey<String>('home_bd_${t.name}'),
+                    panelTab: t,
+                    data: widget.data,
+                    categoryColors: widget.categoryColors,
+                  ),
+              ],
             ),
           ),
         ),
@@ -1555,6 +1454,187 @@ List<_BreakdownRowSlice> _topSlice(
             },
           ),
       ];
+  }
+}
+
+class _HomeBreakdownListKeepAlive extends ConsumerStatefulWidget {
+  const _HomeBreakdownListKeepAlive({
+    super.key,
+    required this.panelTab,
+    required this.data,
+    required this.categoryColors,
+  });
+
+  final HomeBreakdownTab panelTab;
+  final HomeDashboardData data;
+  final List<Color> categoryColors;
+
+  @override
+  ConsumerState<_HomeBreakdownListKeepAlive> createState() =>
+      _HomeBreakdownListKeepAliveState();
+}
+
+class _HomeBreakdownListKeepAliveState
+    extends ConsumerState<_HomeBreakdownListKeepAlive>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    final tab = widget.panelTab;
+    final shell = ref.watch(homeShellReportsProvider);
+    final peekShell = ref.watch(homeShellReportsSyncCacheProvider);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (tab != HomeBreakdownTab.category) {
+          if (shell.isLoading &&
+              shell.valueOrNull == null &&
+              peekShell == null) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const LinearProgressIndicator(minHeight: 2),
+                const Expanded(
+                  child: ListSkeleton(rowCount: 5),
+                ),
+              ],
+            );
+          }
+          if (shell.hasError &&
+              shell.valueOrNull == null &&
+              peekShell == null) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: TextButton.icon(
+                  onPressed: () => ref.invalidate(homeShellReportsProvider),
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Could not load breakdown — Retry'),
+                ),
+              ),
+            );
+          }
+        } else if (widget.data.categories.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'No purchases in this period',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFF64748B),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: () => context.go('/purchase/new'),
+                    icon: const Icon(Icons.add_rounded, size: 18),
+                    label: const Text('Add a purchase'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        final bundle = _breakdownShellBundle(tab, shell, peekShell);
+        final full = _topSlice(
+          widget.data,
+          tab,
+          bundle,
+          10000,
+          ref,
+        );
+
+        if (full.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'No rows for this tab',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => context.go('/purchase/new'),
+                  child: const Text('Add Purchase'),
+                ),
+              ],
+            ),
+          );
+        }
+
+        var maxSlots = math.max(
+          1,
+          (constraints.maxHeight / _homeBreakdownRowExtent).floor(),
+        );
+        const reserveFooter = 48.0;
+        maxSlots = math.max(
+          1,
+          ((constraints.maxHeight - reserveFooter) / _homeBreakdownRowExtent)
+              .floor(),
+        );
+
+        final cap = math.min(maxSlots, full.length);
+        final needsMore = full.length > maxSlots;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: ListView.builder(
+                padding: EdgeInsets.zero,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: cap,
+                itemBuilder: (ctx, i) {
+                  final row = full[i];
+                  return SizedBox(
+                    height: _homeBreakdownRowExtent,
+                    child: _HomeBreakdownDataRow(
+                      title: row.title,
+                      amount: row.ringAmount,
+                      boldLine2: row.line2,
+                      sup: row.sup,
+                      bro: row.bro,
+                      dotColor: widget.categoryColors[
+                          i % widget.categoryColors.length],
+                      onTap: () => row.onTap(context, ref),
+                    ),
+                  );
+                },
+              ),
+            ),
+            if (needsMore)
+              Align(
+                alignment: Alignment.center,
+                child: TextButton(
+                  onPressed: () => context.push(
+                    '/home/breakdown-more?tab=${tab.name}',
+                  ),
+                  child: const Text('View more'),
+                ),
+              ),
+          ],
+        );
+      },
+    );
   }
 }
 

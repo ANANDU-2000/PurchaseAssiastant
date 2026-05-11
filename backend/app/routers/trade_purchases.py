@@ -23,6 +23,7 @@ from app.schemas.trade_purchases import (
     TradeNextHumanIdOut,
     TradePurchaseCreateRequest,
     TradePurchaseOut,
+    TradePurchaseDeliveryPatch,
     TradePurchasePaymentPatch,
     TradePurchasePreviewOut,
     TradePurchaseUpdateRequest,
@@ -260,6 +261,22 @@ async def patch_trade_purchase_payment(
         out = await tps.patch_trade_purchase_payment(db, business_id, purchase_id, body)
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    if not out:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Purchase not found")
+    return out
+
+
+@router.patch("/{purchase_id}/delivery", response_model=TradePurchaseOut)
+async def patch_trade_purchase_delivery(
+    business_id: uuid.UUID,
+    purchase_id: uuid.UUID,
+    body: TradePurchaseDeliveryPatch,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+):
+    del user
+    out = await tps.patch_trade_purchase_delivery(db, business_id, purchase_id, body)
     if not out:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Purchase not found")
     return out

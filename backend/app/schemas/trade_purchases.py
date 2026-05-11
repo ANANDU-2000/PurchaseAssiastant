@@ -317,6 +317,15 @@ class TradePurchaseOut(DecimalModel):
     header_discount: Decimal | None = None
     freight_value: Decimal | None = None
     has_missing_details: bool = False
+    is_delivered: bool = False
+    delivered_at: datetime | None = None
+    delivery_notes: str | None = None
+
+
+class TradePurchaseDeliveryPatch(DecimalModel):
+    is_delivered: bool
+    delivered_at: datetime | None = None
+    delivery_notes: str | None = Field(None, max_length=2000)
 
 
 class TradePurchaseUpdateRequest(TradePurchaseCreateRequest):

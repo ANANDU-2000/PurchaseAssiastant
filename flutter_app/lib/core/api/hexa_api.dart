@@ -948,6 +948,29 @@ class HexaApi {
     return Map<String, dynamic>.from(res.data ?? {});
   }
 
+  /// Marks/unmarks a purchase as delivered (received at warehouse).
+  Future<Map<String, dynamic>> markPurchaseDelivered({
+    required String businessId,
+    required String purchaseId,
+    required bool isDelivered,
+    String? deliveryNotes,
+  }) async {
+    final path =
+        '/v1/businesses/$businessId/trade-purchases/$purchaseId/delivery';
+    final resp = await _dio.patch<dynamic>(
+      path,
+      data: {
+        'is_delivered': isDelivered,
+        if (deliveryNotes != null && deliveryNotes.isNotEmpty)
+          'delivery_notes': deliveryNotes,
+        if (isDelivered) 'delivered_at': DateTime.now().toIso8601String(),
+      },
+    );
+    final d = resp.data;
+    if (d is Map) return Map<String, dynamic>.from(d);
+    return {};
+  }
+
   Future<Map<String, dynamic>> markPurchasePaid({
     required String businessId,
     required String purchaseId,

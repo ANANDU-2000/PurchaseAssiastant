@@ -21,3 +21,10 @@ const bool kDeprecateLegacyEntryApi = bool.fromEnvironment(
   'DEPRECATE_LEGACY_ENTRY_API',
   defaultValue: false,
 );
+
+/// UI feature toggles for client-specific builds.
+class FeatureFlags {
+  static const bool showVoiceTab = false;
+  static const bool showMaintenanceFeeCard = false;
+  static const bool showAnalyticsTab = true;
+}

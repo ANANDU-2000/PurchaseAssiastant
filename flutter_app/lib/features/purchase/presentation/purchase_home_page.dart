@@ -45,7 +45,14 @@ String _compactInrLakh(num n) {
 }
 
 /// [GoRouterState] `filter=` values that map to primary chips (`all` canonical).
-const _routePrimaryPurchaseFilters = {'all', 'draft', 'due', 'paid', 'due_soon'};
+const _routePrimaryPurchaseFilters = {
+  'all',
+  'draft',
+  'due',
+  'paid',
+  'due_soon',
+  'pending_delivery',
+};
 
 String _purchaseSearchHaystack(TradePurchase p) {
   final df = DateFormat('dd MMM yyyy');
@@ -160,6 +167,19 @@ List<TradePurchase> purchaseHistoryVisibleSortedForRef(
   final primary = ref.read(purchaseHistoryPrimaryFilterProvider);
   if (primary == 'due') {
     v = v.where(_purchaseHistoryMatchesDuePrimary).toList();
+  }
+  if (primary == 'draft') {
+    v = v.where((p) => p.statusEnum == PurchaseStatus.draft).toList();
+  }
+  if (primary == 'pending_delivery') {
+    v = v
+        .where(
+          (p) =>
+              !p.isDelivered &&
+              p.statusEnum != PurchaseStatus.deleted &&
+              p.statusEnum != PurchaseStatus.cancelled,
+        )
+        .toList();
   }
   final s = ref.read(purchaseHistorySecondaryFilterProvider);
   if (s != null) {
@@ -736,7 +756,9 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
               ),
               data: (List<TradePurchase> items) {
                 final visible = _buildVisibleSorted(items, searchQ);
-                final showLocalWipRow = localWip != null && !_selectMode;
+                final showLocalWipRow = localWip != null &&
+                    !_selectMode &&
+                    (primary == 'draft' || primary == 'all');
                 final searchActive = _searchFocus.hasFocus ||
                     _searchCtrl.text.trim().isNotEmpty;
                 return Column(
@@ -897,6 +919,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                             ('due', 'Due'),
                             ('paid', 'Paid'),
                             ('draft', 'Draft'),
+                            ('pending_delivery', '🚚 Awaiting'),
                           ])
                             Padding(
                               padding: const EdgeInsets.only(right: 6),
@@ -1809,6 +1832,48 @@ class _PurchaseRow extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 1),
+                  if (!p.isDelivered &&
+                      p.statusEnum != PurchaseStatus.deleted &&
+                      p.statusEnum != PurchaseStatus.cancelled)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Colors.orange.shade200),
+                      ),
+                      child: Text(
+                        '🚚 Pending',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.orange.shade800,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    )
+                  else if (p.isDelivered)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade50,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        '✅ Received',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.green.shade800,
+                        ),
+                      ),
+                    ),
                   _MiniBadge(st),
                 ],
               ),

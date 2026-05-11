@@ -376,6 +376,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   rd == true || '$rd'.toLowerCase() == 'true';
               final d = m['initialDraft'];
               if (d is PurchaseDraft) seed = d;
+              final ed = m['entryDraft'];
+              if (seed == null && ed is Map) {
+                try {
+                  seed = purchaseDraftFromAssistantEntryMap(
+                    Map<String, dynamic>.from(ed),
+                  );
+                } catch (_) {}
+              }
               final ai = m['aiScan'];
               if (ai is Map) {
                 final tok = ai['token']?.toString().trim();

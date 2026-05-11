@@ -28,6 +28,8 @@ String? _tradeListApiStatus(String primaryRaw, String? secondaryRaw) {
   if (p == 'paid') return 'paid';
   if (p == 'draft') return 'draft';
   if (p == 'due_soon') return 'due_soon';
+  // `pending_delivery`: client-only filter (same full list as `due`).
+  if (p == 'pending_delivery') return null;
   // `all`, `due`, and anything else → full list (client filters for `due`).
   return null;
 }

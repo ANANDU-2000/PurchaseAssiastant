@@ -311,6 +311,9 @@ class TradePurchase {
     this.totalSellingSubtotal,
     this.totalLineProfit,
     this.hasMissingDetails = false,
+    this.isDelivered = false,
+    this.deliveredAt,
+    this.deliveryNotes,
   });
 
   final String id;
@@ -352,6 +355,9 @@ class TradePurchase {
   final double? totalSellingSubtotal;
   final double? totalLineProfit;
   final bool hasMissingDetails;
+  final bool isDelivered;
+  final DateTime? deliveredAt;
+  final String? deliveryNotes;
 
   PurchaseStatus get statusEnum => parsePurchaseStatus(derivedStatus);
 
@@ -426,6 +432,11 @@ class TradePurchase {
       updatedAt: parseD('updated_at'),
       hasMissingDetails: j['has_missing_details'] == true ||
           j['has_missing_details']?.toString().toLowerCase() == 'true',
+      isDelivered: (j['is_delivered'] as bool?) ?? false,
+      deliveredAt: j['delivered_at'] != null
+          ? DateTime.tryParse(j['delivered_at'].toString())
+          : null,
+      deliveryNotes: j['delivery_notes']?.toString(),
     );
   }
 }

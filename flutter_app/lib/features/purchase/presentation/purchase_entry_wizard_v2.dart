@@ -1272,6 +1272,72 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
         detail['code']?.toString() == 'DUPLICATE_PURCHASE_DETECTED';
   }
 
+  Future<void> _showDeliveryPrompt(String purchaseId) async {
+    if (!mounted) return;
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    final bid = session.primaryBusiness.id;
+
+    final delivered = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Icon(
+              Icons.local_shipping_outlined,
+              size: 40,
+              color: Colors.orange,
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Has this shipment arrived at your warehouse?',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => ctx.pop(false),
+                    child: const Text('Not Yet'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    icon: const Icon(Icons.check_circle_outline, size: 18),
+                    label: const Text('Yes, Received'),
+                    onPressed: () => ctx.pop(true),
+                    style: FilledButton.styleFrom(backgroundColor: Colors.green),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (delivered == true && mounted) {
+      try {
+        await ref.read(hexaApiProvider).markPurchaseDelivered(
+              businessId: bid,
+              purchaseId: purchaseId,
+              isDelivered: true,
+            );
+        invalidatePurchaseWorkspace(ref);
+      } catch (_) {}
+    }
+  }
+
   Future<void> _validateAndSave() async {
     if (_isSaving) return;
     setState(() {
@@ -1550,6 +1616,10 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
             backgroundColor: Colors.green[700],
           ),
         );
+        if (!isEdit && pid.isNotEmpty) {
+          await _showDeliveryPrompt(pid);
+        }
+        if (!mounted) return;
         if (context.canPop()) context.pop();
       } else {
         final where = await showPurchaseSavedSheet(
@@ -1558,6 +1628,10 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
           savedJson: saved,
           wasEdit: isEdit,
         );
+        if (!mounted) return;
+        if (!isEdit && pid.isNotEmpty) {
+          await _showDeliveryPrompt(pid);
+        }
         if (!mounted) return;
         if (where == 'edit_missing') {
           final id = saved['id']?.toString();

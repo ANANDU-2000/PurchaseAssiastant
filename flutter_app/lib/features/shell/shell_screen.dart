@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/design_system/hexa_ds_tokens.dart';
+import '../../core/feature_flags.dart';
 import '../../core/providers/connectivity_provider.dart';
 import '../../core/theme/hexa_colors.dart';
 
@@ -151,6 +152,7 @@ class _BottomBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BottomAppBar(
+      key: ValueKey<bool>(FeatureFlags.showVoiceTab),
       color: cs.surface,
       elevation: 8,
       shadowColor: Colors.black.withValues(alpha: 0.10),

@@ -381,6 +381,36 @@ class _PurchaseDetailBody extends ConsumerStatefulWidget {
 }
 
 class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
+  Future<void> _toggleDelivery(
+    BuildContext context,
+    WidgetRef ref,
+    TradePurchase p,
+  ) async {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    try {
+      await ref.read(hexaApiProvider).markPurchaseDelivered(
+            businessId: session.primaryBusiness.id,
+            purchaseId: p.id,
+            isDelivered: !p.isDelivered,
+          );
+      invalidatePurchaseWorkspace(ref);
+      ref.invalidate(tradePurchaseDetailProvider(p.id));
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              e is DioException
+                  ? friendlyApiError(e)
+                  : 'Could not update delivery status. Try again.',
+            ),
+          ),
+        );
+      }
+    }
+  }
+
   Widget _buildSummaryStrip(BuildContext context, _Agg agg, ColorScheme cs) {
     final profit = agg.sumProfit;
     final profitColor =
@@ -488,6 +518,41 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
                     _compactMeta(context, p, st, paidPending, cs),
                     const SizedBox(height: 18),
                     _buildSummaryStrip(context, agg, cs),
+                    Card(
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: 0,
+                        vertical: 4,
+                      ),
+                      child: ListTile(
+                        leading: Icon(
+                          p.isDelivered
+                              ? Icons.check_circle
+                              : Icons.local_shipping,
+                          color: p.isDelivered ? Colors.green : Colors.orange,
+                        ),
+                        title: Text(
+                          p.isDelivered
+                              ? 'Received at warehouse'
+                              : 'Pending delivery',
+                        ),
+                        subtitle: p.deliveredAt != null
+                            ? Text(
+                                'Received on ${DateFormat('MMM d, y').format(p.deliveredAt!)}',
+                              )
+                            : const Text(
+                                'Not yet confirmed as received',
+                              ),
+                        trailing: TextButton(
+                          onPressed: () =>
+                              _toggleDelivery(context, ref, p),
+                          child: Text(
+                            p.isDelivered
+                                ? 'Mark Pending'
+                                : 'Mark Received',
+                          ),
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: 18),
                     Text(
                       'Items',

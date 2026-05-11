@@ -328,6 +328,30 @@ class TradeIntelCatalogSearchTile extends StatelessWidget {
                       ),
                     ),
                   ],
+                  if (!fuzzyNameMatch && item['last_purchase_date'] != null) ...[
+                    const SizedBox(height: 2),
+                    Builder(
+                      builder: (ctx) {
+                        final rawDate =
+                            item['last_purchase_date']?.toString() ?? '';
+                        final parsed = DateTime.tryParse(rawDate);
+                        if (parsed == null) return const SizedBox.shrink();
+                        final days =
+                            DateTime.now().difference(parsed).inDays;
+                        final label = days == 0
+                            ? 'today'
+                            : days == 1
+                                ? 'yesterday'
+                                : '$days days ago';
+                        return Text(
+                          '${DateFormat('MMM d').format(parsed)} · $label',
+                          style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                              ),
+                        );
+                      },
+                    ),
+                  ],
                   if (srcLine.isNotEmpty) ...[
                     const SizedBox(height: 2),
                     Text(

@@ -570,6 +570,34 @@ String? purchaseLineSaveBlockReason(PurchaseLineDraft l) {
 bool purchaseLineIsValidForSave(PurchaseLineDraft l) =>
     purchaseLineSaveBlockReason(l) == null;
 
+/// Seeds the wizard from AI assistant `entry_draft` / chat preview JSON.
+PurchaseDraft purchaseDraftFromAssistantEntryMap(Map<String, dynamic> d) {
+  final linesRaw = d['lines'];
+  final lines = <PurchaseLineDraft>[];
+  if (linesRaw is List) {
+    for (final e in linesRaw) {
+      if (e is Map) {
+        lines.add(PurchaseLineDraft.fromLineMap(Map<String, dynamic>.from(e)));
+      }
+    }
+  }
+  DateTime? pd;
+  final pds = d['purchase_date']?.toString();
+  if (pds != null && pds.isNotEmpty) {
+    pd = DateTime.tryParse(pds);
+  }
+  return PurchaseDraft(
+    supplierId: d['supplier_id']?.toString(),
+    supplierName: d['supplier_name']?.toString(),
+    brokerId: d['broker_id']?.toString(),
+    brokerName: d['broker_name']?.toString(),
+    purchaseDate: pd,
+    invoiceNumber: d['invoice_number']?.toString(),
+    paymentDays: int.tryParse(d['payment_days']?.toString() ?? ''),
+    lines: lines,
+  );
+}
+
 /// Strict footer / invoice-style row breakdown (mirrors prior wizard `\_strictFooterBreakdown`).
 @immutable
 class PurchaseStrictBreakdown {

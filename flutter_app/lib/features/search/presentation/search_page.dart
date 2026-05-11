@@ -263,9 +263,11 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
                 final lastLineByItemId = <String, Map<String, dynamic>>{};
                 final lastDateKeyByItemId = <String, int>{};
+                final lastDateStringByItemId = <String, String>{};
                 final lastBillHidByItemId = <String, String>{};
                 for (final p in bills) {
                   final dtK = ymdKey(p['purchase_date']);
+                  final dtStr = p['purchase_date']?.toString() ?? '';
                   final hid = p['human_id']?.toString() ?? '';
                   final lines = (p['lines'] is List) ? (p['lines'] as List) : const [];
                   for (final raw in lines) {
@@ -277,6 +279,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                     if (dtK >= prevK) {
                       lastDateKeyByItemId[cid] = dtK;
                       lastLineByItemId[cid] = ln;
+                      if (dtStr.length >= 10) {
+                        lastDateStringByItemId[cid] = dtStr.substring(0, 10);
+                      }
                       if (hid.isNotEmpty) lastBillHidByItemId[cid] = hid;
                     }
                   }
@@ -304,6 +309,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                   if (bh != null && bh.isNotEmpty) {
                     next['last_purchase_human_id'] = bh;
                   }
+                  final dateStr = lastDateStringByItemId[id];
+                  if (dateStr != null) next['last_purchase_date'] = dateStr;
                   return next;
                 }).toList();
                 final contactHits = suppliers.length + brokers.length;
@@ -417,16 +424,49 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                           final cid = m['category_id']?.toString() ?? '';
                           final tname = m['name']?.toString() ?? '—';
                           final cname = m['category_name']?.toString() ?? '';
+                          final typeNameLower = tname.toLowerCase();
+                          var typeTotalBags = 0.0;
+                          var typeTotalKg = 0.0;
+                          for (final it in items) {
+                            final itType = (it['type_name'] ?? '')
+                                .toString()
+                                .toLowerCase();
+                            if (itType != typeNameLower) continue;
+                            final iid = it['id']?.toString() ?? '';
+                            if (iid.isEmpty) continue;
+                            final ln = lastLineByItemId[iid];
+                            if (ln == null) continue;
+                            final qty = _toD(ln['qty']) ?? 0;
+                            final unit =
+                                ln['unit']?.toString().toLowerCase() ?? '';
+                            if (unit == 'bag' || unit == 'sack') {
+                              typeTotalBags += qty;
+                            }
+                            if (unit == 'kg') typeTotalKg += qty;
+                          }
+                          final parts = <String>[];
+                          if (typeTotalBags > 0) {
+                            parts.add('${_fmtQty(typeTotalBags)} bags');
+                          }
+                          if (typeTotalKg > 0) {
+                            parts.add('${_fmtQty(typeTotalKg)} kg');
+                          }
+                          final summaryText =
+                              parts.isEmpty ? null : parts.join(' · ');
                           final sub = cname.isEmpty
                               ? 'Catalog type'
                               : 'Under $cname';
+                          final subBody = summaryText != null
+                              ? '$sub\n$summaryText'
+                              : sub;
                           return ListTile(
                             contentPadding: EdgeInsets.zero,
+                            isThreeLine: summaryText != null,
                             leading: Icon(Icons.category_outlined,
                                 color: cs.primary),
                             title: Text(tname),
                             subtitle: Text(
-                              sub,
+                              subBody,
                               style: tt.bodySmall?.copyWith(
                                 color: cs.onSurfaceVariant,
                               ),

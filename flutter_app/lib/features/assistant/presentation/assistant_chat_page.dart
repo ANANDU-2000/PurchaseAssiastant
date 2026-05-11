@@ -18,6 +18,7 @@ import 'widgets/chat_bubble.dart';
 import 'widgets/input_bar.dart';
 import 'widgets/entity_preview_card.dart';
 import 'widgets/preview_card.dart';
+import 'widgets/purchase_preview_table.dart';
 import 'widgets/quick_prompts_bar.dart';
 import 'widgets/typing_indicator.dart';
 
@@ -441,10 +442,19 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
                           onSave: () => unawaited(_confirmPreviewThenYes()),
                         )
                       else if (showCard && parsedPurchase != null)
-                        PreviewCard(
+                        PurchasePreviewTable(
                           entryDraft: m.draftSnapshot!,
                           onCancel: () => unawaited(_sendWithText('NO')),
                           onSave: () => unawaited(_confirmPreviewThenYes()),
+                          onEdit: () {
+                            final draft = m.draftSnapshot;
+                            if (draft != null) {
+                              context.push(
+                                '/purchase/new',
+                                extra: {'entryDraft': draft},
+                              );
+                            }
+                          },
                         )
                       else if (m.showPreviewActions && !showCard)
                         Padding(

@@ -833,6 +833,17 @@ class HomeDashboardDataNotifier extends AutoDisposeNotifier<HomeDashboardDashSta
     // render yet. If memory or Hive already has this range, refresh in the
     // background without flashing loaders on every provider rebuild.
     final hasRenderableCache = hydrated != null;
+    if (!hasRenderableCache) {
+      Future<void>.delayed(const Duration(seconds: 4), () {
+        if (_dead) return;
+        if (state.refreshing) {
+          state = HomeDashboardDashState(
+            snapshot: state.snapshot,
+            refreshing: false,
+          );
+        }
+      });
+    }
     return HomeDashboardDashState(
       snapshot: seed,
       refreshing: !hasRenderableCache,

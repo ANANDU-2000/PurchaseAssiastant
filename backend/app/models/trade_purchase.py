@@ -64,6 +64,9 @@ class TradePurchase(Base):
     total_selling_subtotal: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     total_line_profit: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     status: Mapped[str] = mapped_column(String(24), default="confirmed")
+    is_delivered: Mapped[bool] = mapped_column(default=False)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivery_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

@@ -25,6 +25,7 @@ from app.schemas.trade_purchases import (
     TradePurchaseLineIn,
     TradePurchaseLineOut,
     TradePurchaseOut,
+    TradePurchaseDeliveryPatch,
     TradePurchasePaymentPatch,
     TradePurchaseUpdateRequest,
 )
@@ -1077,6 +1078,40 @@ async def patch_trade_purchase_payment(
     return await get_trade_purchase(db, business_id, purchase_id)
 
 
+async def patch_trade_purchase_delivery(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    purchase_id: uuid.UUID,
+    body: TradePurchaseDeliveryPatch,
+) -> TradePurchaseOut | None:
+    res = await db.execute(
+        select(TradePurchase)
+        .where(
+            TradePurchase.business_id == business_id,
+            TradePurchase.id == purchase_id,
+        )
+        .options(*_trade_purchase_load_opts())
+    )
+    tp = res.scalar_one_or_none()
+    if not tp:
+        return None
+    st = (tp.status or "").lower()
+    if st == "deleted":
+        return None
+    tp.is_delivered = body.is_delivered
+    if body.is_delivered:
+        tp.delivered_at = body.delivered_at or utcnow()
+    else:
+        tp.delivered_at = None
+    if body.delivery_notes is not None:
+        notes = body.delivery_notes.strip()
+        tp.delivery_notes = notes or None
+    tp.updated_at = utcnow()
+    await db.commit()
+    bump_trade_read_caches_for_business(business_id)
+    return await get_trade_purchase(db, business_id, purchase_id)
+
+
 async def mark_trade_purchase_paid(
     db: AsyncSession,
     business_id: uuid.UUID,
@@ -1434,6 +1469,9 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
         header_discount=dp.percent(tp.discount) if tp.discount is not None else None,
         freight_value=dp.money(tp.freight_amount) if tp.freight_amount is not None else None,
         has_missing_details=_purchase_has_missing_optional_details(tp),
+        is_delivered=bool(getattr(tp, "is_delivered", False)),
+        delivered_at=getattr(tp, "delivered_at", None),
+        delivery_notes=getattr(tp, "delivery_notes", None),
     )
 
 

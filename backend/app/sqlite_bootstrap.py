@@ -55,6 +55,7 @@ def apply_sqlite_bootstrap(sync_conn) -> None:
     _ensure_trade_purchases_freight_type(sync_conn)
     _ensure_trade_purchases_lifecycle_columns(sync_conn)
     _ensure_trade_purchases_commission_mode_columns(sync_conn)
+    _ensure_trade_purchases_delivery_columns(sync_conn)
     _ensure_trade_purchase_line_columns(sync_conn)
     _ensure_catalog_items_smart_unit_columns(sync_conn)
     logger.info("SQLite bootstrap: create_all + legacy column patches complete")
@@ -407,6 +408,35 @@ def _ensure_trade_purchases_commission_mode_columns(sync_conn):
         try:
             sync_conn.exec_driver_sql(
                 "ALTER TABLE trade_purchases ADD COLUMN commission_money NUMERIC(14,4) NULL"
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _ensure_trade_purchases_delivery_columns(sync_conn):
+    insp = inspect(sync_conn)
+    if not insp.has_table("trade_purchases"):
+        return
+    cols = {c["name"] for c in insp.get_columns("trade_purchases")}
+    if "is_delivered" not in cols:
+        try:
+            sync_conn.exec_driver_sql(
+                "ALTER TABLE trade_purchases ADD COLUMN is_delivered BOOLEAN NOT NULL DEFAULT 0"
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        cols = {c["name"] for c in insp.get_columns("trade_purchases")}
+    if "delivered_at" not in cols:
+        try:
+            sync_conn.exec_driver_sql(
+                "ALTER TABLE trade_purchases ADD COLUMN delivered_at DATETIME NULL"
+            )
+        except Exception:  # noqa: BLE001
+            pass
+    if "delivery_notes" not in cols:
+        try:
+            sync_conn.exec_driver_sql(
+                "ALTER TABLE trade_purchases ADD COLUMN delivery_notes TEXT NULL"
             )
         except Exception:  # noqa: BLE001
             pass
