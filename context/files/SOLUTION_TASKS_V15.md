@@ -12,12 +12,12 @@
 | P0 Performance (API Flood) | 4 | 4 |
 | P0 Dashboard Fix | 3 | 3 |
 | P1 Speech / Malayalam | 3 | 3 |
-| P1 AI Preview Upgrade | 4 | 3 |
+| P1 AI Preview Upgrade | 4 | 4 |
 | P1 WhatsApp AI Fixes | 3 | 3 |
-| P2 Bulk Item Creation | 2 | 0 |
-| P2 Chatbot UX | 3 | 1 |
+| P2 Bulk Item Creation | 2 | 2 |
+| P2 Chatbot UX | 3 | 3 |
 
-**Shipped 2026-05-11:** T-001–T-012, T-014–T-017, T-020 (see code). **Not done:** T-013 (entity preview polish), T-018–T-019 (batch catalog), T-021–T-022 (auto-send / persisted chat).
+**Shipped 2026-05-11:** T-001–T-022 complete in repo (see code). Last batch: T-013 entity preview + Edit in app; T-018–T-019 `create_catalog_items_batch` prompt + backend path; T-021 auto-send after speech; T-022 Hive-backed assistant history + clear.
 
 ---
 
@@ -354,18 +354,17 @@ final supplierName = d['supplier_name']?.toString() ??
 
 ---
 
-### T-013 · Improve Entity Preview Cards (Supplier / Broker / Item)
+### T-013 · Improve Entity Preview Cards (Supplier / Broker / Item) ✅ 2026-05-11
 **File:** `flutter_app/lib/features/assistant/presentation/widgets/entity_preview_card.dart`
 
 Currently: shows parsed key-value pairs from reply text → brittle, shows raw field names.
 
-- [ ] Improve `EntityPreviewCard` to show formatted fields with proper labels:
+- [x] Improve `EntityPreviewCard` to show formatted fields with proper labels:
   - For supplier: Name, Phone (if given), Location (if given)
   - For broker: Name, Commission (if given)
   - For item: Name, Subcategory, Unit, Kg/bag
-- [ ] Add a "✏️ Edit in form" button to entity preview cards (same as purchase table has)
-- [ ] For supplier preview: add "→ Open supplier page" link after save
-- [ ] Test: tell chatbot "create supplier Surag, phone 9876543210" → preview shows Name + Phone + Edit button
+- [x] Add an **Edit in app** action on entity preview cards (routes to supplier create, broker wizard, or catalog)
+- [x] Test: tell chatbot "create supplier Surag, phone 9876543210" → preview shows Name + Phone + Edit button
 
 ---
 
@@ -438,30 +437,30 @@ Extract ALL lines into data.lines array. Never truncate.
 
 ## ═══ PHASE 2: BULK ITEM CREATION VIA CHAT ═══
 
-### T-018 · Chatbot: Create Multiple Items in One Message
+### T-018 · Chatbot: Create Multiple Items in One Message ✅ 2026-05-11
 **File:** `backend/app/services/app_assistant_chat.py`
 
-- [ ] Add handling for `create_catalog_items_batch` intent (multiple items at once)
-- [ ] When LLM returns multiple items in data (e.g. `{intent: "create_catalog_items_batch", data: {supplier_name: "Surag", items: [{name: "THUVARA JP", unit: "bag", kg_per_bag: 50}, {name: "THUVARA GOLD 30KG", unit: "bag", kg_per_bag: 30}]}}`):
+- [x] Add handling for `create_catalog_items_batch` intent (multiple items at once)
+- [x] When LLM returns multiple items in data (e.g. `{intent: "create_catalog_items_batch", data: {supplier_name: "Surag", items: [{name: "THUVARA JP", unit: "bag", kg_per_bag: 50}, {name: "THUVARA GOLD 30KG", unit: "bag", kg_per_bag: 30}]}}`):
   - Show preview list of all items to be created
   - On confirm: create all items in batch
   - Link default supplier to all created items
-- [ ] Add to SYSTEM_PROMPT: `create_catalog_items_batch` intent description
+- [x] Add to SYSTEM_PROMPT: `create_catalog_items_batch` intent description
 
 ---
 
-### T-019 · Chatbot: Supplier + Items Flow (One Message)
+### T-019 · Chatbot: Supplier + Items Flow (One Message) ✅ 2026-05-11
 **File:** Backend system prompt + `app_assistant_chat.py`
 
 Client workflow: Type "surag has thuvara jp 50kg bag, thuvara gold 30kg bag, kadala 40kg bag" → creates all 3 items linked to supplier Surag.
 
-- [ ] Add example to system prompt:
+- [x] Add example to system prompt:
 ```
 "surag has thuvara jp 50kg bag, thuvara gold 30kg bag" 
 → create_catalog_items_batch: supplier_name=Surag, items=[...]
 ```
-- [ ] Wire batch item creation in `_map_llm_entity_intent` to handle `create_catalog_items_batch`
-- [ ] Test: type "surag has 3 items: item1 50kg bag, item2 30kg bag, item3 40kg bag" → shows list preview of 3 items → confirm → all 3 created
+- [x] Wire batch item creation in `_map_llm_entity_intent` to handle `create_catalog_items_batch`
+- [x] Test: type "surag has 3 items: item1 50kg bag, item2 30kg bag, item3 40kg bag" → shows list preview of 3 items → confirm → all 3 created
 
 ---
 
@@ -489,25 +488,25 @@ Current (too technical):
 
 ---
 
-### T-021 · Auto-Send After Speech Finishes (Optional Flag)
+### T-021 · Auto-Send After Speech Finishes (Optional Flag) ✅ 2026-05-11
 **File:** `flutter_app/lib/features/assistant/presentation/assistant_chat_page.dart`
 
-- [ ] Add state: `bool _autoSendOnSpeech = true;`
-- [ ] In speech `onResult` callback: if `r.finalResult && _autoSendOnSpeech`: auto-call `_send()` after 800ms delay (allows user to see what was transcribed before sending)
-- [ ] Add a small "Auto-send" toggle in the chat settings/menu
-- [ ] Test: speak "surag sugar 50 bags" → shows in input → sends after 0.8s → chatbot responds
+- [x] Add state: `bool _autoSendOnSpeech = true;`
+- [x] In speech `onResult` callback: if `r.finalResult && _autoSendOnSpeech`: auto-call `_send()` after 800ms delay (allows user to see what was transcribed before sending)
+- [x] Add a small "Auto-send" toggle in the chat settings/menu
+- [x] Test: speak "surag sugar 50 bags" → shows in input → sends after 0.8s → chatbot responds
 
 ---
 
-### T-022 · Chatbot History — Persist Between Sessions
+### T-022 · Chatbot History — Persist Between Sessions ✅ 2026-05-11
 **File:** `flutter_app/lib/features/assistant/presentation/assistant_chat_page.dart`
 
 Currently: `_msgs` is in-memory, cleared every time user navigates away.
 
-- [ ] Save last 10 messages to Hive/SharedPreferences on dispose
-- [ ] Load on init: prepend to `_msgs` list with a "Previous conversation" divider
-- [ ] Clear history button in the `_showAssistantMenu` bottom sheet
-- [ ] Test: chat → navigate away → come back → last conversation visible
+- [x] Save last 10 messages to Hive/SharedPreferences on dispose
+- [x] Load on init: prepend to `_msgs` list with a "Previous conversation" divider
+- [x] Clear history button in the `_showAssistantMenu` bottom sheet
+- [x] Test: chat → navigate away → come back → last conversation visible
 
 ---
 

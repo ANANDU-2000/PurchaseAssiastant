@@ -28,6 +28,7 @@ EntityKind = Literal[
     "category_item",
     "catalog_item",
     "variant",
+    "catalog_items_batch",
 ]
 
 _PREVIEW: dict[str, dict[str, Any]] = {}
@@ -619,6 +620,52 @@ async def commit_entity(
         await db.flush()
         return {"id": str(it.id), "entity": "catalog_item"}
 
+    if kind == "catalog_items_batch":
+        items_raw = payload.get("items")
+        if not isinstance(items_raw, list) or not items_raw:
+            raise ValueError("Batch has no items — include an items array with name and category per row.")
+        supplier_hint = str(payload.get("supplier_name") or "").strip()
+        created: list[str] = []
+        errors: list[str] = []
+        for i, raw in enumerate(items_raw):
+            if not isinstance(raw, dict):
+                errors.append(f"Row {i + 1}: invalid item")
+                continue
+            name = raw.get("item_name") or raw.get("name")
+            cat = raw.get("category_name") or raw.get("category")
+            if not name or not str(name).strip():
+                errors.append(f"Row {i + 1}: missing item name")
+                continue
+            if not cat or not str(cat).strip():
+                errors.append(f"Row {i + 1}: missing category for “{name}”")
+                continue
+            sub_payload: dict[str, Any] = {
+                "name": str(name).strip(),
+                "category_name": str(cat).strip(),
+                "type_name": one.get("type_name") or one.get("catalog_type"),
+                "default_unit": one.get("default_unit") or one.get("unit"),
+                "default_kg_per_bag": one.get("default_kg_per_bag") or one.get("kg_per_bag"),
+            }
+            if supplier_hint and not sub_payload.get("supplier_name"):
+                sub_payload["supplier_name"] = supplier_hint
+            try:
+                await commit_entity(db, business_id, "catalog_item", sub_payload)
+                created.append(str(name).strip())
+            except ValueError as ve:
+                errors.append(f"{name}: {ve!s}")
+        if not created:
+            raise ValueError(
+                "Could not create any catalog items. " + ("; ".join(errors[:6]) if errors else "Unknown error")
+            )
+        msg = f"Created {len(created)} catalog item(s): {', '.join(created[:12])}"
+        if errors:
+            msg += f"\nSkipped ({len(errors)}): " + "; ".join(errors[:4])
+        return {
+            "entity": "catalog_items_batch",
+            "created_count": len(created),
+            "message": msg,
+        }
+
     if kind == "variant":
         vname = str(payload["variant_name"]).strip()
         item_name = str(payload["item_name"]).strip()
@@ -671,6 +718,8 @@ async def preview_fuzzy_entity_block(
     If a very similar name already exists, return a short clarify message (before showing preview).
     Caller may set payload['force_create']=True after user says CREATE NEW.
     """
+    if kind == "catalog_items_batch":
+        return None
     if _force_create(payload):
         return None
     if kind == "supplier":
@@ -884,5 +933,24 @@ def preview_lines_for(kind: EntityKind, payload: dict[str, Any]) -> str:
         return lines
     if kind == "variant":
         return f"Variant: {payload['variant_name']}\nUnder item: {payload['item_name']}"
+    if kind == "catalog_items_batch":
+        lines: list[str] = ["Type: Catalog batch"]
+        sn = str(payload.get("supplier_name") or "").strip()
+        if sn:
+            lines.append(f"Supplier: {sn}")
+        items = payload.get("items") or []
+        if isinstance(items, list):
+            for i, raw in enumerate(items[:30]):
+                if not isinstance(raw, dict):
+                    continue
+                nm = raw.get("item_name") or raw.get("name") or "—"
+                cat = raw.get("category_name") or raw.get("category") or "—"
+                unit = raw.get("default_unit") or raw.get("unit") or ""
+                kg = raw.get("default_kg_per_bag") or raw.get("kg_per_bag")
+                tail = f" · {unit}" if unit else ""
+                if kg is not None:
+                    tail += f" · kg/bag {kg}"
+                lines.append(f"{i + 1}. {nm} — category: {cat}{tail}")
+        return "\n".join(lines)
     return str(payload)
 

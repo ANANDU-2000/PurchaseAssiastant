@@ -9,6 +9,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/services/offline_store.dart';
 import '../../../core/providers/health_provider.dart';
 import 'assistant_chat_theme.dart';
 import 'models/chat_message.dart';
@@ -54,25 +55,30 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
 
   static const _maxHistoryMessages = 22;
 
+  bool _autoSendOnSpeech = true;
+
+  static ChatMessage _welcomeMessage() {
+    return ChatMessage(
+      id: 'welcome',
+      text: 'നമസ്കാരം! How can I help today?\n'
+          '• Say or type a purchase: "surag 50 bags thuvara 3500"\n'
+          '• Ask about profit: "this month profit"\n'
+          '• Create supplier: "new supplier ravi 9876543210"\n'
+          'Hold the mic in the bar below to speak in Malayalam or English.',
+      isUser: false,
+      at: DateTime.now(),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
-    _msgs.add(
-      ChatMessage(
-        id: 'welcome',
-        text: 'നമസ്കാരം! How can I help today?\n'
-            '• Say or type a purchase: "surag 50 bags thuvara 3500"\n'
-            '• Ask about profit: "this month profit"\n'
-            '• Create supplier: "new supplier ravi 9876543210"\n'
-            'Hold the mic in the bar below to speak in Malayalam or English.',
-        isUser: false,
-        at: DateTime.now(),
-      ),
-    );
+    _msgs.add(_welcomeMessage());
     if (!kIsWeb) {
       _speech = stt.SpeechToText();
       _initSpeech();
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _restoreAssistantHistory());
   }
 
   Future<void> _initSpeech() async {
@@ -133,10 +139,94 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
 
   @override
   void dispose() {
+    _persistAssistantHistory();
     _ctrl.dispose();
     _inputFocus.dispose();
     _scroll.dispose();
     super.dispose();
+  }
+
+  void _restoreAssistantHistory() {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    final rows = OfflineStore.getAssistantChatMessages(session.primaryBusiness.id);
+    if (rows == null || rows.isEmpty) return;
+    final restored = <ChatMessage>[];
+    for (final r in rows) {
+      try {
+        restored.add(_chatMessageFromRow(r));
+      } catch (_) {
+        /* skip malformed row */
+      }
+    }
+    if (restored.isEmpty || !mounted) return;
+    setState(() {
+      _msgs.insertAll(1, [
+        ChatMessage(
+          id: 'prev-div',
+          text: '— Previous conversation —',
+          isUser: false,
+          at: DateTime.fromMillisecondsSinceEpoch(0),
+        ),
+        ...restored,
+      ]);
+    });
+  }
+
+  void _persistAssistantHistory() {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    final msgs = _msgs
+        .where((m) => m.id != 'welcome' && m.id != 'prev-div')
+        .toList();
+    final tail = msgs.length > 10 ? msgs.sublist(msgs.length - 10) : msgs;
+    final rows = [for (final m in tail) _rowFromChatMessage(m)];
+    unawaited(OfflineStore.putAssistantChatMessages(session.primaryBusiness.id, rows));
+  }
+
+  static Map<String, dynamic> _rowFromChatMessage(ChatMessage m) {
+    return {
+      'id': m.id,
+      'text': m.text,
+      'isUser': m.isUser,
+      'at': m.at.toIso8601String(),
+      'showPreviewActions': m.showPreviewActions,
+      if (m.draftSnapshot != null) 'draftSnapshot': m.draftSnapshot,
+      if (m.intent != null) 'intent': m.intent,
+      if (m.missingItems != null) 'missingItems': m.missingItems,
+    };
+  }
+
+  static ChatMessage _chatMessageFromRow(Map<String, dynamic> r) {
+    final miss = r['missingItems'];
+    return ChatMessage(
+      id: r['id']?.toString() ?? 'restored',
+      text: r['text']?.toString() ?? '',
+      isUser: r['isUser'] == true,
+      at: DateTime.tryParse(r['at']?.toString() ?? '') ?? DateTime.now(),
+      showPreviewActions: r['showPreviewActions'] == true,
+      draftSnapshot: r['draftSnapshot'] is Map
+          ? Map<String, dynamic>.from(r['draftSnapshot'] as Map)
+          : null,
+      intent: r['intent']?.toString(),
+      missingItems: miss is List
+          ? [
+              for (final e in miss)
+                if (e is Map) Map<String, dynamic>.from(e),
+            ]
+          : null,
+    );
+  }
+
+  void _openEntityEditInApp(EntityPreviewParse parse) {
+    final t = parse.rawTypeLower;
+    if (t.contains('supplier')) {
+      context.push('/contacts/supplier/new');
+    } else if (t.contains('broker')) {
+      context.push('/brokers/quick-create');
+    } else {
+      context.push('/catalog');
+    }
   }
 
   void _scrollEnd() {
@@ -156,10 +246,11 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
         : _msgs;
     return [
       for (final b in slice)
-        {
-          'role': b.isUser ? 'user' : 'assistant',
-          'content': b.text,
-        },
+        if (b.id != 'prev-div')
+          {
+            'role': b.isUser ? 'user' : 'assistant',
+            'content': b.text,
+          },
     ];
   }
 
@@ -355,6 +446,13 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
               _ctrl.selection = TextSelection.collapsed(offset: t.length);
               _partialSpeech = '';
             });
+            if (_autoSendOnSpeech) {
+              unawaited(Future<void>.delayed(const Duration(milliseconds: 800), () async {
+                if (!mounted || _loading) return;
+                if (_ctrl.text.trim() != t) return;
+                await _send();
+              }));
+            }
           } else {
             setState(() => _partialSpeech = '');
           }
@@ -530,6 +628,7 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
                           parse: parsedEntity,
                           onCancel: () => unawaited(_sendWithText('NO')),
                           onSave: () => unawaited(_confirmPreviewThenYes()),
+                          onEditInForm: () => _openEntityEditInApp(parsedEntity),
                         )
                       else if (showPurchaseTable)
                         PurchasePreviewTable(
@@ -693,6 +792,32 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
                 onTap: () {
                   ctx.pop();
                   context.go('/home');
+                },
+              ),
+              SwitchListTile.adaptive(
+                secondary: const Icon(Icons.send_rounded),
+                title: const Text('Auto-send after speech'),
+                subtitle: const Text('Sends ~0.8s after dictation finishes'),
+                value: _autoSendOnSpeech,
+                onChanged: (v) {
+                  setState(() => _autoSendOnSpeech = v);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.delete_sweep_outlined, color: Colors.red.shade700),
+                title: Text('Clear saved chat', style: TextStyle(color: Colors.red.shade800)),
+                onTap: () async {
+                  ctx.pop();
+                  final s = ref.read(sessionProvider);
+                  if (s != null) {
+                    await OfflineStore.clearAssistantChatMessages(s.primaryBusiness.id);
+                  }
+                  if (!mounted) return;
+                  setState(() {
+                    _msgs
+                      ..clear()
+                      ..add(_welcomeMessage());
+                  });
                 },
               ),
             ],

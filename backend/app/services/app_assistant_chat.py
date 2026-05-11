@@ -933,8 +933,11 @@ async def run_app_assistant_turn(
                 await db.commit()
                 consume_entity_preview(preview_token)
                 await clear_chat_draft(settings, user_id, business_id)
+                reply_saved = saved.get("message") if isinstance(saved.get("message"), str) else None
+                if not reply_saved:
+                    reply_saved = f"Saved ({saved.get('entity', 'ok')})."
                 return {
-                    "reply": f"Saved ({saved.get('entity', 'ok')}).",
+                    "reply": reply_saved,
                     "intent": "entity_saved",
                     "preview_token": None,
                     "entry_draft": None,
@@ -1215,6 +1218,58 @@ async def run_app_assistant_turn(
                 "intent": "clarify",
                 "preview_token": None,
                 "entry_draft": None,
+                "saved_entry": None,
+                "missing_fields": [],
+                **intent_lm,
+            }
+
+        if intent == "create_catalog_items_batch":
+            items_raw = data.get("items")
+            if not isinstance(items_raw, list) or not items_raw:
+                return {
+                    "reply": reply_text
+                    or (
+                        "Need data.items: a list of objects with item_name (or name) and "
+                        "category_name (or category) for each row."
+                    ),
+                    "intent": "clarify",
+                    "preview_token": None,
+                    "entry_draft": None,
+                    "saved_entry": None,
+                    "missing_fields": ["items"],
+                    **intent_lm,
+                }
+            norm: list[dict[str, Any]] = []
+            for raw in items_raw:
+                if isinstance(raw, dict):
+                    norm.append({str(k): v for k, v in raw.items()})
+            if not norm:
+                return {
+                    "reply": "Items list is empty or invalid.",
+                    "intent": "clarify",
+                    "preview_token": None,
+                    "entry_draft": None,
+                    "saved_entry": None,
+                    "missing_fields": ["items"],
+                    **intent_lm,
+                }
+            sup = str(data.get("supplier_name") or data.get("supplier") or "").strip()
+            payload_batch: dict[str, Any] = {"supplier_name": sup, "items": norm}
+            if data.get("force_create") is True:
+                payload_batch["force_create"] = True
+            tok_b = issue_entity_preview(
+                user_id=user_id,
+                business_id=business_id,
+                kind="catalog_items_batch",
+                payload=payload_batch,
+            )
+            prev_b = preview_lines_for("catalog_items_batch", payload_batch)
+            await save_chat_draft(settings, user_id, business_id, {})
+            return {
+                "reply": f"Preview (not saved):\n{prev_b}\n\nReply YES to create all items, NO to cancel.",
+                "intent": "entity_preview",
+                "preview_token": tok_b,
+                "entry_draft": {"__assistant__": "entity"},
                 "saved_entry": None,
                 "missing_fields": [],
                 **intent_lm,

@@ -22,6 +22,10 @@ OUTPUT: Return ONE JSON object only (no markdown fences). Exactly these keys:
   - "create_category" — new top-level category (category_name or name)
   - "create_category_item" — category + first line, e.g. Rice > Biriyani (category_name and item_name)
   - "create_catalog_item" — new item under category (item_name or name, category_name)
+  - "create_catalog_items_batch" — multiple catalog items for one supplier in one go.
+    Use data: { "supplier_name": "Surag", "items": [ { "item_name" or "name", "category_name" (optional),
+    "default_unit" or "unit", "default_kg_per_bag" or "kg_per_bag" (optional) }, … ] }.
+    Every item row the user listed must appear in "items". Never truncate the list.
   - "create_variant" — variant under an item (variant_name, item_name)
   - "update_entry", "delete_entry", "query_summary"
   - "search_before_create" — optional; server resolves duplicates. Include "resolved_intent" (same as create_* ) and the same data keys.
@@ -36,6 +40,8 @@ Examples:
 - "100 kg rice from surag 700" → create_entry: item rice, qty 100, unit kg, supplier surag, buy_price 700
 - "create supplier ravi" → create_supplier
 - "rice > biriyani" → create_category_item
+- "surag has thuvara jp 50kg bag, thuvara gold 30kg bag, kadala 40kg bag" → create_catalog_items_batch:
+  supplier_name Surag, items array with one object per item (cleaned names, units, kg/bag when stated).
 - "profit this month", "best supplier for vaani?" → query_summary
 
 Rules: Never invent prices or quantities. Prefer create_category_item for "X > Y" category lines. Nothing is saved until the user confirms in the app.
