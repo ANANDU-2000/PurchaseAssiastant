@@ -78,6 +78,7 @@ def _empty_snapshot_for_dates(ds_from: str, ds_to: str) -> dict[str, Any]:
             "total_profit": 0.0,
             "profit_percent": None,
             "total_qty": 0.0,
+            "pending_delivery_count": 0,
         },
         "unit_totals": {
             "total_kg": 0.0,
@@ -531,6 +532,19 @@ async def _compute_trade_dashboard_snapshot_payload(
             scores.append(sc)
     portfolio_consistency = sum(scores) / len(scores) if scores else None
 
+    pend_q = (
+        select(func.count())
+        .select_from(TradePurchase)
+        .where(
+            TradePurchase.business_id == business_id,
+            TradePurchase.is_delivered.is_(False),
+            TradePurchase.status.notin_(("deleted", "cancelled")),
+        )
+    )
+    pending_delivery_count = int(
+        (await execute_with_retry(lambda: db.execute(pend_q))).scalar() or 0
+    )
+
     return {
         "from": date_from.isoformat(),
         "to": date_to.isoformat(),
@@ -542,6 +556,7 @@ async def _compute_trade_dashboard_snapshot_payload(
             "total_profit": total_profit,
             "profit_percent": round(profit_percent, 2) if profit_percent is not None else None,
             "total_qty": total_qty,
+            "pending_delivery_count": pending_delivery_count,
         },
         "unit_totals": {
             "total_kg": float(roll_row["total_kg"] or 0),

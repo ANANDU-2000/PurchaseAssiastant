@@ -11,13 +11,13 @@
 |-------|-------|------|-----------|
 | P0 Critical Bugs | 3 | 3 | 0 |
 | P1 High Bugs | 5 | 4 | 1 (T-005) |
-| P1 Delivery Feature | 7 | 6 | 1 (T-015) |
+| P1 Delivery Feature | 7 | 7 | 0 |
 | P2 Search Enhancements | 4 | 2 | 2 (backend totals T-007; T-005) |
 | P2 Item Create Fast | 3 | 1 | 2 (T-017, T-018) |
 | P2 AI Chatbot Upgrade | 4 | 1 | 3 (T-020–T-022) |
 | P3 Backup + Others | 3 | 1 | 2 (T-023, T-025) |
 
-**v14 agent batch (2026-05-11):** T-001 ✅ · T-002 ✅ · T-003 ✅ · T-004 ✅ · T-006 ✅ · T-007 ✅ (client-side) · T-008 ✅ · T-009 ✅ · T-010 ✅ · T-011 ✅ · T-012 ✅ · T-013 ✅ · T-014 ✅ · T-016 ✅ · T-019 ✅ · T-024 ✅
+**v14 agent batch (2026-05-11):** T-001 ✅ · T-002 ✅ · T-003 ✅ · T-004 ✅ · T-006 ✅ · T-007 ✅ (client-side) · T-008 ✅ · T-009 ✅ · T-010 ✅ · T-011 ✅ · T-012 ✅ · T-013 ✅ · T-014 ✅ · T-015 ✅ · T-016 ✅ · T-019 ✅ · T-024 ✅
 
 **v14 one-shot spec alignment (2026-05-11):** T-007 type rows use `matchingItemIds` + `(category_name ?? type_name)` vs type name per master prompt; T-012 delivery prompt runs via `_scheduleDeliveryPrompt` (post-frame callback, then await). `flutter analyze` + `flutter test` clean; no `print(` in `lib/`.
 
@@ -49,7 +49,7 @@ These are **out of scope** for the pasted one-shot; do **not** implement them wh
 |----|------|
 | **T-005** | Unified search: ensure user-created catalog types/subcategories are returned (`search.py` + verify client). |
 | **T-007 (server)** | Optional: type-row `total_bags` / `total_kg` / amount from SQL (30-day) instead of client-only. |
-| **T-015** | Home: `pending_delivery_count` from `reportsHomeOverview` + orange “shipments pending” card → `/purchase?filter=pending_delivery`. |
+| ~~**T-015**~~ | ~~Home pending-delivery card~~ — **✅ Done** (see T-015 section). |
 | **T-017** | Batch item creation UI from supplier detail. |
 | **T-018** | `POST …/catalog-items/batch` backend. |
 | **T-020** | AI system prompt / `entry_draft` schema hardening. |
@@ -285,7 +285,7 @@ Apply migration. Update RLS if applicable.
 
 ### T-010 · Backend — Delivery Endpoints
 
-**✅ Done 2026-05-11** — `PATCH .../delivery`, schemas + service (`pending_delivery_count` in home overview still T-015).
+**✅ Done 2026-05-11** — `PATCH .../delivery`, schemas + service. Home overview `pending_delivery_count`: **T-015 ✅** (same filter as Flutter: not delivered, status not deleted/cancelled; drafts included).
 
 **File:** `backend/app/routers/trade_purchases.py` (or create `delivery.py`)
 
@@ -294,7 +294,7 @@ Apply migration. Update RLS if applicable.
   - Auth: must own the business
   - Response: updated purchase object
 - [ ] Add `is_delivered` + `delivered_at` + `delivery_notes` to all `listTradePurchases` and `getTradePurchase` response schemas
-- [ ] Add `pending_delivery_count` to `reportsHomeOverview` response: `SELECT COUNT(*) FROM trade_purchases WHERE business_id = $1 AND is_delivered = false AND status NOT IN ('deleted','cancelled','draft')`
+- [x] Add `pending_delivery_count` to trade dashboard / home-overview `summary` (T-015): undelivered, `status NOT IN ('deleted','cancelled')` (drafts included — matches Purchase history filter).
 
 ---
 
@@ -406,26 +406,9 @@ ListTile(
 
 ### T-015 · Flutter — Pending Deliveries Dashboard Alert
 
-**File:** `flutter_app/lib/features/home/presentation/home_page.dart`
+**✅ Done 2026-05-11** — Backend `summary.pending_delivery_count` (undelivered, excluding deleted/cancelled); `HomeDashboardData.pendingDeliveryCount`; orange tap card on home → `context.go('/purchase?filter=pending_delivery')` (route filter already wired on `PurchaseHomePage`). Phase-2 local aggregate preserves count from compact overview.
 
-- [ ] Add to `reportsHomeOverview` data parse: extract `pending_delivery_count`
-- [ ] Add a new `HomeDashboardData` field: `pendingDeliveryCount`
-- [ ] In home page, after the unit summary row: add a warning card when count > 0:
-```dart
-if (data.pendingDeliveryCount > 0)
-  InkWell(
-    onTap: () => context.go('/purchase?filter=pending_delivery'),
-    child: Card(
-      color: Colors.orange.shade50,
-      child: ListTile(
-        leading: Icon(Icons.local_shipping, color: Colors.orange),
-        title: Text('${data.pendingDeliveryCount} shipments pending arrival'),
-        subtitle: Text('Tap to view and confirm delivery'),
-        trailing: Icon(Icons.chevron_right),
-      ),
-    ),
-  )
-```
+**Files:** `backend/app/routers/reports_trade.py`, `flutter_app/lib/core/providers/home_dashboard_provider.dart`, `flutter_app/lib/features/home/presentation/home_page.dart`, `backend/tests/test_reports_trade_breakdowns.py`.
 
 ---
 

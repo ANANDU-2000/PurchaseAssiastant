@@ -179,6 +179,7 @@ class HomeDashboardData {
     this.totalSelling = 0,
     this.totalProfit = 0,
     this.profitPercent,
+    this.pendingDeliveryCount = 0,
   });
 
   final HomePeriod period;
@@ -198,6 +199,8 @@ class HomeDashboardData {
   final List<CategoryStat> categories;
   final List<SubcategoryStat> subcategories;
   final List<ItemSliceStat> itemSlices;
+  /// Purchases not marked delivered (excludes deleted/cancelled); from API summary.
+  final int pendingDeliveryCount;
 
   bool get isEmpty => purchaseCount == 0;
 
@@ -217,6 +220,7 @@ class HomeDashboardData {
     categories: [],
     subcategories: [],
     itemSlices: [],
+    pendingDeliveryCount: 0,
   );
 }
 
@@ -246,6 +250,8 @@ HomeDashboardData homeDashboardDataFromApiSnapshot(
   final totalProfit = (summary['total_profit'] as num?)?.toDouble() ??
       (totalSelling - totalLanding);
   final profitPercent = (summary['profit_percent'] as num?)?.toDouble();
+  final pendingDeliveryCount =
+      (summary['pending_delivery_count'] as num?)?.toInt() ?? 0;
   final totalQtyAllLines = (summary['total_qty'] as num?)?.toDouble() ?? 0.0;
   final totalKg = (unitTotals['total_kg'] as num?)?.toDouble() ?? 0.0;
   final totalBags = (unitTotals['total_bags'] as num?)?.toDouble() ?? 0.0;
@@ -356,6 +362,7 @@ HomeDashboardData homeDashboardDataFromApiSnapshot(
     categories: categories,
     subcategories: subcategories,
     itemSlices: itemSlices,
+    pendingDeliveryCount: pendingDeliveryCount,
   );
 }
 
@@ -698,6 +705,7 @@ Future<HomeDashboardPayload> _homeDashboardPullFresh({
         categories: categories,
         now: DateTime.now(),
         custom: custom,
+        pendingDeliveryCount: fromSnapshot.pendingDeliveryCount,
       ),
       readDegradedBanner: readDegradedBanner,
       readDegraded: readDegraded,
@@ -857,6 +865,7 @@ HomeDashboardData aggregateHomeDashboard({
   required List<Map<String, dynamic>> categories,
   DateTime? now,
   ({DateTime start, DateTime endInclusive})? custom,
+  int pendingDeliveryCount = 0,
 }) {
   final range = homePeriodRange(period, now: now, custom: custom);
   return _aggregate(
@@ -866,6 +875,7 @@ HomeDashboardData aggregateHomeDashboard({
     categories: categories,
     rangeStart: range.start,
     rangeEnd: range.end,
+    pendingDeliveryCount: pendingDeliveryCount,
   );
 }
 
@@ -902,6 +912,7 @@ HomeDashboardData _aggregate({
   required List<Map<String, dynamic>> categories,
   required DateTime rangeStart,
   required DateTime rangeEnd,
+  int pendingDeliveryCount = 0,
 }) {
   final itemById = <String, Map<String, dynamic>>{
     for (final m in items)
@@ -1103,6 +1114,7 @@ HomeDashboardData _aggregate({
     categories: cats,
     subcategories: subRows,
     itemSlices: itemRows,
+    pendingDeliveryCount: pendingDeliveryCount,
   );
 }
 

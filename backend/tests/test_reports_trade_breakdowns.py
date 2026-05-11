@@ -146,6 +146,8 @@ def test_trade_items_suppliers_categories_endpoints():
     assert float(hod["summary"]["total_purchase"]) == float(
         sd["summary"]["total_purchase"]
     )
+    assert int(hod["summary"].get("pending_delivery_count", -1)) >= 0
+    assert int(sd["summary"].get("pending_delivery_count", -1)) >= 0
 
     ho_compact = client.get(
         f"/v1/businesses/{bid}/reports/home-overview?{q}&compact=true",

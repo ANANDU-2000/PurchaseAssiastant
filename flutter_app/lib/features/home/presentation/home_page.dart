@@ -457,6 +457,61 @@ class _HomePageState extends ConsumerState<HomePage>
                 padding: EdgeInsets.fromLTRB(16, 4, 16, 0),
                 child: MaintenanceHomeCard(),
               ),
+            if (effectiveData.pendingDeliveryCount > 0)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                child: Material(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () =>
+                        context.go('/purchase?filter=pending_delivery'),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.local_shipping_outlined,
+                            color: Colors.orange.shade800,
+                            size: 22,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  effectiveData.pendingDeliveryCount == 1
+                                      ? '1 shipment awaiting delivery'
+                                      : '${effectiveData.pendingDeliveryCount} shipments awaiting delivery',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13,
+                                    color: Colors.orange.shade900,
+                                  ),
+                                ),
+                                Text(
+                                  'Tap to open Purchase history',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.orange.shade800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(
+                            Icons.chevron_right,
+                            color: Colors.orange.shade800,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             Expanded(
               child: Stack(
                 clipBehavior: Clip.none,
