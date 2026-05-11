@@ -424,17 +424,24 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                           final cid = m['category_id']?.toString() ?? '';
                           final tname = m['name']?.toString() ?? '—';
                           final cname = m['category_name']?.toString() ?? '';
-                          final typeNameLower = tname.toLowerCase();
+                          final typeName = tname.toLowerCase();
+                          final matchingItemIds = items
+                              .where(
+                                (it) =>
+                                    (it['category_name'] ??
+                                            it['type_name'] ??
+                                            '')
+                                        .toString()
+                                        .toLowerCase() ==
+                                    typeName,
+                              )
+                              .map((it) => it['id']?.toString() ?? '')
+                              .where((id) => id.isNotEmpty)
+                              .toSet();
                           var typeTotalBags = 0.0;
                           var typeTotalKg = 0.0;
-                          for (final it in items) {
-                            final itType = (it['type_name'] ?? '')
-                                .toString()
-                                .toLowerCase();
-                            if (itType != typeNameLower) continue;
-                            final iid = it['id']?.toString() ?? '';
-                            if (iid.isEmpty) continue;
-                            final ln = lastLineByItemId[iid];
+                          for (final id in matchingItemIds) {
+                            final ln = lastLineByItemId[id];
                             if (ln == null) continue;
                             final qty = _toD(ln['qty']) ?? 0;
                             final unit =

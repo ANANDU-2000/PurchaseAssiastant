@@ -1272,6 +1272,21 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
         detail['code']?.toString() == 'DUPLICATE_PURCHASE_DETECTED';
   }
 
+  /// Shows delivery prompt on the next frame (avoids scheduling modals mid-build).
+  Future<void> _scheduleDeliveryPrompt(String purchaseId) async {
+    if (purchaseId.isEmpty) return;
+    final done = Completer<void>();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        if (!done.isCompleted) done.complete();
+        return;
+      }
+      await _showDeliveryPrompt(purchaseId);
+      if (!done.isCompleted) done.complete();
+    });
+    await done.future;
+  }
+
   Future<void> _showDeliveryPrompt(String purchaseId) async {
     if (!mounted) return;
     final session = ref.read(sessionProvider);
@@ -1617,7 +1632,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
           ),
         );
         if (!isEdit && pid.isNotEmpty) {
-          await _showDeliveryPrompt(pid);
+          await _scheduleDeliveryPrompt(pid);
         }
         if (!mounted) return;
         if (context.canPop()) context.pop();
@@ -1630,7 +1645,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
         );
         if (!mounted) return;
         if (!isEdit && pid.isNotEmpty) {
-          await _showDeliveryPrompt(pid);
+          await _scheduleDeliveryPrompt(pid);
         }
         if (!mounted) return;
         if (where == 'edit_missing') {

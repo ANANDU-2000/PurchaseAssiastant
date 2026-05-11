@@ -19,6 +19,8 @@
 
 **v14 agent batch (2026-05-11):** T-001 ✅ · T-002 ✅ · T-003 ✅ · T-004 ✅ · T-006 ✅ · T-007 ✅ (client-side) · T-008 ✅ · T-009 ✅ · T-010 ✅ · T-011 ✅ · T-012 ✅ · T-013 ✅ · T-014 ✅ · T-016 ✅ · T-019 ✅ · T-024 ✅
 
+**v14 one-shot spec alignment (2026-05-11):** T-007 type rows use `matchingItemIds` + `(category_name ?? type_name)` vs type name per master prompt; T-012 delivery prompt runs via `_scheduleDeliveryPrompt` (post-frame callback, then await). `flutter analyze` + `flutter test` clean; no `print(` in `lib/`.
+
 ---
 
 ## PHASE 0 — CRITICAL BUGS (Fix First)
@@ -168,7 +170,7 @@ if (m['last_purchase_date'] != null) {
 
 ### T-007 · Add Unit Totals to Search Category/Type Rows
 
-**✅ Done 2026-05-11 (Flutter client-side)** — type rows sum bags/kg from `lastLineByItemId` + matching `type_name`. Backend aggregation in doc still optional.
+**✅ Done 2026-05-11 (Flutter client-side)** — type rows: `matchingItemIds` from items where `(category_name ?? type_name)` lowercases to catalog type name; sum bags/kg from `lastLineByItemId`. Backend aggregation in doc still optional.
 
 **Files:** Backend `search.py` + Flutter `search_page.dart`
 
@@ -281,7 +283,7 @@ deliveryNotes: j['delivery_notes']?.toString(),
 
 ### T-012 · Flutter — Delivery Prompt After Purchase Save
 
-**✅ Done 2026-05-11** — `_showDeliveryPrompt` after quick save / saved sheet (`purchase_entry_wizard_v2.dart`).
+**✅ Done 2026-05-11** — `_scheduleDeliveryPrompt` → post-frame + `_showDeliveryPrompt` after quick save / saved sheet (`purchase_entry_wizard_v2.dart`).
 
 **File:** `flutter_app/lib/features/purchase/presentation/purchase_entry_wizard_v2.dart`
 
