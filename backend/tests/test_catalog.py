@@ -44,6 +44,15 @@ def test_category_and_item_crud():
     assert types[0]["name"] == "General"
     general_tid = types[0]["id"]
 
+    r = client.get(f"/v1/businesses/{bid}/category-types-index", headers=h)
+    assert r.status_code == 200, r.text
+    idx = r.json()
+    assert len(idx) == 1
+    assert idx[0]["name"] == "General"
+    assert idx[0]["category_id"] == cid
+    assert idx[0]["category_name"] == "Pulses"
+    assert idx[0]["id"] == general_tid
+
     r = client.get(f"/v1/businesses/{bid}/item-categories", headers=h)
     assert r.status_code == 200
     assert len(r.json()) == 1

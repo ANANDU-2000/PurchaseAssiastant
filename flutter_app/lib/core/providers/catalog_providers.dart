@@ -45,6 +45,17 @@ final categoryTypesListProvider = FutureProvider.autoDispose
       );
 });
 
+/// Flat index: every type with `category_id` + `category_name` (quick-add, search).
+final categoryTypesIndexProvider =
+    FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  ref.keepAlive();
+  final session = ref.watch(sessionProvider);
+  if (session == null) return [];
+  return ref.read(hexaApiProvider).listCategoryTypesIndex(
+        businessId: session.primaryBusiness.id,
+      );
+});
+
 /// Params: `itemId|from|to` for stable family identity.
 final catalogItemInsightsProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, key) async {

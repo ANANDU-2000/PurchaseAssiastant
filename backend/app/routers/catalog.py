@@ -78,6 +78,15 @@ class CategoryTypeOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class CategoryTypeIndexOut(BaseModel):
+    """Flat list of category types with parent category name (quick-add / search UIs)."""
+
+    id: uuid.UUID
+    category_id: uuid.UUID
+    category_name: str
+    name: str
+
+
 _UNIT_PATTERN = "^(kg|box|piece|bag|tin)$"
 
 
@@ -872,6 +881,36 @@ async def list_item_categories(
     )
     rows = r.scalars().all()
     return [ItemCategoryOut(id=c.id, name=c.name) for c in rows]
+
+
+@router.get("/category-types-index", response_model=list[CategoryTypeIndexOut])
+async def list_category_types_index(
+    business_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """All subcategory (type) rows for the business with category name for disambiguation."""
+    del _m
+    r = await db.execute(
+        select(
+            CategoryType.id,
+            CategoryType.category_id,
+            ItemCategory.name,
+            CategoryType.name,
+        )
+        .join(ItemCategory, ItemCategory.id == CategoryType.category_id)
+        .where(ItemCategory.business_id == business_id)
+        .order_by(func.lower(ItemCategory.name), func.lower(CategoryType.name))
+    )
+    return [
+        CategoryTypeIndexOut(
+            id=row[0],
+            category_id=row[1],
+            category_name=row[2],
+            name=row[3],
+        )
+        for row in r.all()
+    ]
 
 
 @router.post("/item-categories", response_model=ItemCategoryOut, status_code=status.HTTP_201_CREATED)

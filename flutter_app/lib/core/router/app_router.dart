@@ -14,6 +14,7 @@ import '../../features/catalog/presentation/catalog_category_detail_page.dart';
 import '../../features/catalog/presentation/catalog_item_detail_page.dart';
 import '../../features/catalog/presentation/catalog_page.dart';
 import '../../features/catalog/presentation/catalog_type_items_page.dart';
+import '../../features/catalog/presentation/quick_add_catalog_item_page.dart';
 import '../../features/catalog/presentation/batch_item_create_page.dart';
 import '../../features/assistant/presentation/assistant_chat_page.dart';
 import '../../features/auth/presentation/forgot_password_page.dart';
@@ -179,6 +180,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
           child: const CatalogPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/catalog/quick-add',
+        name: 'catalog_quick_add',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const QuickAddCatalogItemPage(),
         ),
       ),
       GoRoute(

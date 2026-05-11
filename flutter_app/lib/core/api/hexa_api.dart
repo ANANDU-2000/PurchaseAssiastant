@@ -1478,6 +1478,18 @@ class HexaApi {
     return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 
+  /// All category types with parent category name (single round-trip).
+  Future<List<Map<String, dynamic>>> listCategoryTypesIndex({
+    required String businessId,
+  }) async {
+    final res = await _dio.get<dynamic>(
+      '/v1/businesses/$businessId/category-types-index',
+    );
+    final data = res.data;
+    if (data is! List) return [];
+    return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
   Future<Map<String, dynamic>> createCategoryType({
     required String businessId,
     required String categoryId,

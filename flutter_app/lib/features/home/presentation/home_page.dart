@@ -20,7 +20,6 @@ import '../../../core/providers/trade_purchases_provider.dart'
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/feature_flags.dart';
 import '../../../core/widgets/list_skeleton.dart';
-import '../../catalog/presentation/quick_add_item_sheet.dart';
 import '../../../shared/widgets/shell_quick_ref_actions.dart';
 import '../../purchase/presentation/widgets/purchase_saved_sheet.dart';
 import '../../purchase/presentation/widgets/resume_purchase_draft_banner.dart';
@@ -552,15 +551,8 @@ class _HomePageState extends ConsumerState<HomePage>
                     child: FloatingActionButton.small(
                       heroTag: 'home_add_item',
                       tooltip: 'Add Item',
-                      onPressed: () => showModalBottomSheet<void>(
-                        context: context,
-                        isScrollControlled: true,
-                        shape: const RoundedRectangleBorder(
-                          borderRadius:
-                              BorderRadius.vertical(top: Radius.circular(20)),
-                        ),
-                        builder: (_) => const QuickAddItemSheet(),
-                      ),
+                      onPressed: () =>
+                          context.pushNamed('catalog_quick_add'),
                       child: const Icon(Icons.inventory_2_outlined),
                     ),
                   ),
@@ -616,6 +608,16 @@ class _HomePageState extends ConsumerState<HomePage>
       scrolledUnderElevation: 0,
       title: const SizedBox.shrink(),
       actions: [
+        IconButton(
+          tooltip: 'New supplier',
+          icon: const Icon(Icons.storefront_outlined),
+          onPressed: () => context.pushNamed('supplier_quick_create'),
+        ),
+        IconButton(
+          tooltip: 'New broker',
+          icon: const Icon(Icons.handshake_outlined),
+          onPressed: () => context.pushNamed('broker_quick_create'),
+        ),
         IconButton(
           tooltip: 'Scan bill',
           icon: const Icon(Icons.document_scanner_outlined),

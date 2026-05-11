@@ -1557,15 +1557,8 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
           _errSelling = null;
         }
       }
-      final taxV = _parseD(_taxCtrl.text);
-      final uLow = unit.toLowerCase();
-      final needHsn = (taxV != null && taxV > 0) ||
-          uLow == 'bag' ||
-          clf.type == UnitType.weightBag;
-      final hsn = _hsnCode?.trim() ?? '';
-      _errHsn = (needHsn && hsn.isEmpty)
-          ? 'HSN is required (from catalog) for taxed or bag lines'
-          : null;
+      // HSN is optional on purchase lines (backend accepts null); do not block save.
+      _errHsn = null;
     });
 
     if (_errItem != null) {
@@ -1592,11 +1585,6 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       _scrollToKey(_sellingKey);
       return null;
     }
-    if (_errHsn != null) {
-      _scrollToKey(_taxKey);
-      return null;
-    }
-
     final disc = _parseD(_discCtrl.text);
     final tax = _parseD(_taxCtrl.text);
     final sellSt = _sellingCtrl.text.trim();
