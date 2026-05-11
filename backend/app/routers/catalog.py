@@ -145,6 +145,47 @@ class CatalogItemCreate(BaseModel):
         return self
 
 
+class CatalogBatchItemIn(BaseModel):
+    """One row for POST /catalog-items/batch (category inferred from type_id)."""
+
+    name: str = Field(min_length=1, max_length=512)
+    type_id: uuid.UUID
+    default_unit: str = Field(pattern=_UNIT_PATTERN)
+    default_kg_per_bag: float | None = Field(default=None, gt=0)
+    default_items_per_box: float | None = Field(default=None, gt=0)
+    default_weight_per_tin: float | None = Field(default=None, gt=0)
+    default_supplier_ids: list[uuid.UUID] = Field(min_length=1)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _strip_batch_name(cls, v: object) -> object:
+        if isinstance(v, str):
+            return v.strip()
+        return v
+
+    @field_validator("name")
+    @classmethod
+    def _name_nonempty_batch(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("name must not be empty or whitespace")
+        return " ".join(v.split())
+
+    @model_validator(mode="after")
+    def _unit_conditional_batch(self) -> "CatalogBatchItemIn":
+        u = self.default_unit
+        if u == "bag":
+            if self.default_kg_per_bag is None:
+                raise ValueError("default_kg_per_bag is required when default_unit is bag")
+        elif u == "box":
+            if self.default_items_per_box is None:
+                raise ValueError("default_items_per_box is required when default_unit is box")
+        return self
+
+
+class CatalogBatchCreate(BaseModel):
+    items: list[CatalogBatchItemIn] = Field(min_length=1, max_length=80)
+
+
 class CatalogItemUpdate(BaseModel):
     category_id: uuid.UUID | None = None
     type_id: uuid.UUID | None = None
@@ -212,12 +253,22 @@ class CatalogItemOut(BaseModel):
     last_broker_name: str | None = None
     default_supplier_ids: list[uuid.UUID] = Field(default_factory=list)
     default_broker_ids: list[uuid.UUID] = Field(default_factory=list)
+    last_purchase_date: date | None = Field(
+        default=None,
+        description="Latest trade purchase date for this item (non-deleted/cancelled), if any.",
+    )
     unit_resolution: dict[str, Any] | None = Field(
         default=None,
         description="Read-only smart-unit / package labels from unit_resolution_service (no DB writes).",
     )
 
     model_config = {"from_attributes": True}
+
+
+class CatalogBatchOut(BaseModel):
+    created: int
+    skipped: int
+    items: list[CatalogItemOut]
 
 
 class SupplierPurchaseDefaultsOut(BaseModel):
@@ -347,6 +398,25 @@ def _trade_purchase_date_filter(business_id: uuid.UUID, from_date: date, to_date
     return tq.trade_purchase_date_filter(business_id, from_date, to_date)
 
 
+async def _max_purchase_date_for_catalog_item(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    catalog_item_id: uuid.UUID,
+) -> date | None:
+    """Latest purchase_date for this catalog item from report-eligible trade purchases."""
+    r = await db.execute(
+        select(func.max(TradePurchase.purchase_date))
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .where(
+            TradePurchase.business_id == business_id,
+            TradePurchaseLine.catalog_item_id == catalog_item_id,
+            tq.trade_purchase_status_in_reports(),
+        )
+    )
+    return r.scalar_one_or_none()
+
+
 async def _category_dup(
     db: AsyncSession, business_id: uuid.UUID, name: str, exclude_id: uuid.UUID | None = None
 ) -> bool:
@@ -473,6 +543,7 @@ def _catalog_item_out(
     last_supplier_name: str | None = None,
     last_broker_name: str | None = None,
     category_name: str | None = None,
+    last_purchase_date: date | None = None,
 ) -> CatalogItemOut:
     tid = i.type_id if type_id is _UNSET else type_id
     dipb = getattr(i, "default_items_per_box", None)
@@ -517,6 +588,7 @@ def _catalog_item_out(
         last_broker_name=last_broker_name,
         default_supplier_ids=list(default_supplier_ids or ()),
         default_broker_ids=list(default_broker_ids or ()),
+        last_purchase_date=last_purchase_date,
         unit_resolution=unit_res,
     )
 
@@ -1373,6 +1445,7 @@ async def create_catalog_item(
         )
     )
     cat_n = crn.scalar_one_or_none()
+    lp = await _max_purchase_date_for_catalog_item(db, business_id, i.id)
     return _catalog_item_out(
         i,
         tn,
@@ -1381,7 +1454,130 @@ async def create_catalog_item(
         last_supplier_name=lsn.get(i.last_supplier_id) if i.last_supplier_id else None,
         last_broker_name=lbn.get(i.last_broker_id) if i.last_broker_id else None,
         category_name=str(cat_n) if cat_n else None,
+        last_purchase_date=lp,
     )
+
+
+@router.post("/catalog-items/batch", response_model=CatalogBatchOut)
+async def batch_create_catalog_items(
+    business_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    body: CatalogBatchCreate,
+):
+    del _m
+    has_type_col = await catalog_items_has_type_id_column(db)
+    created_rows: list[CatalogItem] = []
+    skipped = 0
+    for line in body.items:
+        tr = await db.execute(
+            select(CategoryType.id, CategoryType.category_id)
+            .join(ItemCategory, ItemCategory.id == CategoryType.category_id)
+            .where(
+                CategoryType.id == line.type_id,
+                ItemCategory.business_id == business_id,
+            )
+        )
+        row = tr.first()
+        if row is None:
+            skipped += 1
+            continue
+        type_uuid, category_id = row[0], row[1]
+        try:
+            await _verify_type_in_category(db, business_id, category_id, type_uuid)
+        except HTTPException:
+            skipped += 1
+            continue
+        if await _item_dup(
+            db, business_id, category_id, type_uuid, line.name, has_type_col=has_type_col
+        ):
+            skipped += 1
+            continue
+        u = line.default_unit
+        dkg = line.default_kg_per_bag if u == "bag" else None
+        dbox = line.default_items_per_box if u == "box" else None
+        dwt = line.default_weight_per_tin if u == "tin" else None
+        purchase_u = line.default_unit
+        supplier_ids = _dedupe_preserve_order(line.default_supplier_ids)
+        broker_ids: list[uuid.UUID] = []
+        try:
+            await _assert_supplier_ids_in_business(db, business_id, supplier_ids)
+            await _assert_broker_ids_in_business(db, business_id, broker_ids)
+        except HTTPException:
+            skipped += 1
+            continue
+        i = CatalogItem(
+            business_id=business_id,
+            category_id=category_id,
+            type_id=type_uuid,
+            name=line.name.strip(),
+            default_unit=line.default_unit,
+            default_kg_per_bag=dkg,
+            default_items_per_box=dbox,
+            default_weight_per_tin=dwt,
+            default_purchase_unit=purchase_u,
+            default_sale_unit=None,
+            hsn_code=None,
+            item_code=None,
+            tax_percent=None,
+            default_landing_cost=None,
+            default_selling_cost=None,
+        )
+        db.add(i)
+        await db.flush()
+        crn0 = await db.execute(
+            select(ItemCategory.name).where(
+                ItemCategory.id == i.category_id,
+                ItemCategory.business_id == business_id,
+            )
+        )
+        cat_n0 = crn0.scalar_one_or_none()
+        parts0 = (i.name or "").split()
+        brand_guess = len(parts0) >= 2 and parts0[0].isalpha() and len(parts0[0]) >= 2
+        ur0 = resolve_for_catalog_item(
+            i,
+            item_name=i.name,
+            category_name=str(cat_n0) if cat_n0 else None,
+            brand_detected=brand_guess,
+        )
+        merge_unit_resolution_into_catalog_row(i, ur0)
+        await db.flush()
+        await _replace_default_supplier_rows(db, business_id, i.id, supplier_ids)
+        await _replace_default_broker_rows(db, business_id, i.id, broker_ids)
+        await _seed_supplier_item_defaults(db, business_id, i.id, supplier_ids)
+        created_rows.append(i)
+
+    await db.commit()
+    outs: list[CatalogItemOut] = []
+    for i in created_rows:
+        await db.refresh(i)
+        tn = None
+        if i.type_id is not None:
+            tr = await db.execute(select(CategoryType.name).where(CategoryType.id == i.type_id))
+            tn = tr.scalar_one_or_none()
+        sup_m, br_m = await _default_supplier_broker_ids_for_items(db, business_id, [i.id])
+        lsn, lbn = await _last_party_names_for_catalog_items(db, business_id, [i])
+        crn = await db.execute(
+            select(ItemCategory.name).where(
+                ItemCategory.id == i.category_id,
+                ItemCategory.business_id == business_id,
+            )
+        )
+        cat_n = crn.scalar_one_or_none()
+        lp = await _max_purchase_date_for_catalog_item(db, business_id, i.id)
+        outs.append(
+            _catalog_item_out(
+                i,
+                tn,
+                default_supplier_ids=sup_m.get(i.id, []),
+                default_broker_ids=br_m.get(i.id, []),
+                last_supplier_name=lsn.get(i.last_supplier_id) if i.last_supplier_id else None,
+                last_broker_name=lbn.get(i.last_broker_id) if i.last_broker_id else None,
+                category_name=str(cat_n) if cat_n else None,
+                last_purchase_date=lp,
+            )
+        )
+    return CatalogBatchOut(created=len(outs), skipped=skipped, items=outs)
 
 
 @router.get("/catalog-items/{item_id}", response_model=CatalogItemOut)
@@ -1410,6 +1606,7 @@ async def get_catalog_item(
             i, tn, cat_n = row
             sup_m, br_m = await _default_supplier_broker_ids_for_items(db, business_id, [i.id])
             lsn, lbn = await _last_party_names_for_catalog_items(db, business_id, [i])
+            lp = await _max_purchase_date_for_catalog_item(db, business_id, i.id)
             return _catalog_item_out(
                 i,
                 tn,
@@ -1418,6 +1615,7 @@ async def get_catalog_item(
                 last_supplier_name=lsn.get(i.last_supplier_id) if i.last_supplier_id else None,
                 last_broker_name=lbn.get(i.last_broker_id) if i.last_broker_id else None,
                 category_name=str(cat_n) if cat_n else None,
+                last_purchase_date=lp,
             )
 
         r = await db.execute(
@@ -1440,6 +1638,7 @@ async def get_catalog_item(
         cat_n = crn.scalar_one_or_none()
         sup_m, br_m = await _default_supplier_broker_ids_for_items(db, business_id, [i.id])
         lsn, lbn = await _last_party_names_for_catalog_items(db, business_id, [i])
+        lp = await _max_purchase_date_for_catalog_item(db, business_id, i.id)
         return _catalog_item_out(
             i,
             None,
@@ -1449,6 +1648,7 @@ async def get_catalog_item(
             last_supplier_name=lsn.get(i.last_supplier_id) if i.last_supplier_id else None,
             last_broker_name=lbn.get(i.last_broker_id) if i.last_broker_id else None,
             category_name=str(cat_n) if cat_n else None,
+            last_purchase_date=lp,
         )
     except SQLAlchemyError:
         logger.exception("get_catalog_item failed business_id=%s item_id=%s", business_id, item_id)

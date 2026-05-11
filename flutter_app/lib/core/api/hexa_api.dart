@@ -2,6 +2,8 @@ import 'dart:math' show min;
 
 import 'dart:math' show Random;
 
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:http_parser/http_parser.dart';
@@ -1573,6 +1575,36 @@ class HexaApi {
       },
     );
     return res.data ?? {};
+  }
+
+  /// Batch-create catalog items (same shape as `CatalogBatchItemIn`).
+  Future<Map<String, dynamic>> createCatalogItemsBatch({
+    required String businessId,
+    required List<Map<String, dynamic>> items,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/catalog-items/batch',
+      data: {'items': items},
+    );
+    return res.data ?? {};
+  }
+
+  /// ZIP of `purchases.csv` + README for the selected preset (month / quarter / all).
+  Future<Uint8List> downloadBusinessBackup({
+    required String businessId,
+    String rangePreset = 'month',
+  }) async {
+    final res = await _dio.post<List<int>>(
+      '/v1/businesses/$businessId/exports/backup',
+      data: {'range_preset': rangePreset},
+      options: Options(
+        responseType: ResponseType.bytes,
+        receiveTimeout: const Duration(seconds: 120),
+      ),
+    );
+    final raw = res.data;
+    if (raw == null) return Uint8List(0);
+    return Uint8List.fromList(raw);
   }
 
   Future<Map<String, dynamic>> supplierPurchaseDefaults({

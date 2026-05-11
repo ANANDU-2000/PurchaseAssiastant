@@ -428,9 +428,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                           final matchingItemIds = items
                               .where(
                                 (it) =>
-                                    (it['category_name'] ??
-                                            it['type_name'] ??
-                                            '')
+                                    (it['type_name'] ?? '')
                                         .toString()
                                         .toLowerCase() ==
                                     typeName,

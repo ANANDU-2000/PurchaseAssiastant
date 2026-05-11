@@ -35,6 +35,7 @@ from app.routers import (
     contacts,
     dashboard,
     entries,
+    exports,
     health,
     me,
     media,
@@ -362,6 +363,7 @@ app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(me.router)
 app.include_router(entries.router)
+app.include_router(exports.router)
 app.include_router(trade_purchases.router)
 app.include_router(reports_trade.router)
 app.include_router(whatsapp_reports.router)

@@ -216,10 +216,21 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
             '$reply\n\n[debug: reply_source=$src · llm_provider=$prov · llm_failover_used=$fo]';
       }
       final intent = data['intent'] as String? ?? '';
-      final previewUi = intent == 'add_purchase_preview' || intent == 'entity_preview';
+      final previewUi = intent == 'add_purchase_preview' ||
+          intent == 'entity_preview' ||
+          (intent == 'clarify_items' && data['entry_draft'] is Map);
       Map<String, dynamic>? snap;
       if (previewUi && data['entry_draft'] is Map) {
         snap = Map<String, dynamic>.from(data['entry_draft'] as Map);
+      }
+      List<Map<String, dynamic>>? missItems;
+      final rawMiss = data['missing_items'];
+      if (rawMiss is List) {
+        missItems = [
+          for (final e in rawMiss)
+            if (e is Map) Map<String, dynamic>.from(e),
+        ];
+        if (missItems.isEmpty) missItems = null;
       }
 
       final aid = '${DateTime.now().microsecondsSinceEpoch}a';
@@ -233,6 +244,8 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
             at: DateTime.now(),
             showPreviewActions: previewUi,
             draftSnapshot: snap,
+            intent: intent.isEmpty ? null : intent,
+            missingItems: missItems,
           ),
         );
         if (intent == 'add_purchase_preview' || intent == 'entity_preview') {
@@ -240,6 +253,9 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
           final draft = data['entry_draft'];
           _pendingEntryDraft =
               draft is Map ? Map<String, dynamic>.from(draft) : null;
+        } else if (intent == 'clarify_items') {
+          _pendingPreviewToken = null;
+          _pendingEntryDraft = null;
         } else if (intent == 'confirm_saved' ||
             intent == 'entity_saved' ||
             intent == 'cancelled' ||
@@ -401,14 +417,26 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
                   final tightGroupTop = prev != null && prev.isUser == m.isUser;
                   final showMeta = next == null || next.isUser != m.isUser;
                   final isEntityDraft = m.draftSnapshot?['__assistant__'] == 'entity';
+                  final linesRaw = m.draftSnapshot?['lines'];
+                  final hasPurchaseLines =
+                      linesRaw is List && linesRaw.isNotEmpty;
+                  final clarifyItems = m.intent == 'clarify_items';
                   final parsedPurchase = m.draftSnapshot != null && !isEntityDraft
                       ? PreviewCard.parse(m.draftSnapshot!)
                       : null;
                   final parsedEntity =
                       isEntityDraft ? parseEntityPreviewFromReply(m.text) : null;
+                  final showPurchaseTable = m.showPreviewActions &&
+                      m.draftSnapshot != null &&
+                      !isEntityDraft &&
+                      (parsedPurchase != null || hasPurchaseLines || clarifyItems);
                   final showCard = m.showPreviewActions &&
                       m.draftSnapshot != null &&
-                      (parsedPurchase != null || parsedEntity != null);
+                      (parsedEntity != null ||
+                          (!isEntityDraft &&
+                              parsedPurchase != null &&
+                              !hasPurchaseLines &&
+                              !clarifyItems));
                   return Column(
                     crossAxisAlignment:
                         m.isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
@@ -441,7 +469,7 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
                           onCancel: () => unawaited(_sendWithText('NO')),
                           onSave: () => unawaited(_confirmPreviewThenYes()),
                         )
-                      else if (showCard && parsedPurchase != null)
+                      else if (showPurchaseTable)
                         PurchasePreviewTable(
                           entryDraft: m.draftSnapshot!,
                           onCancel: () => unawaited(_sendWithText('NO')),
@@ -455,8 +483,15 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
                               );
                             }
                           },
+                          clarifyMode: clarifyItems,
+                          missingItems: m.missingItems,
+                          duplicateRisk: m.draftSnapshot!['duplicate_risk'] is Map
+                              ? Map<String, dynamic>.from(
+                                  m.draftSnapshot!['duplicate_risk'] as Map,
+                                )
+                              : null,
                         )
-                      else if (m.showPreviewActions && !showCard)
+                      else if (m.showPreviewActions && !showCard && !showPurchaseTable)
                         Padding(
                           padding: const EdgeInsets.only(left: 4, right: 48, bottom: 8),
                           child: Row(

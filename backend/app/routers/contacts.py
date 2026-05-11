@@ -37,6 +37,32 @@ def _norm_name(s: str) -> str:
     return s.strip().lower()
 
 
+async def _last_trade_purchase_date_for_supplier(
+    db: AsyncSession, business_id: uuid.UUID, supplier_id: uuid.UUID
+) -> date | None:
+    r = await db.execute(
+        select(func.max(TradePurchase.purchase_date)).where(
+            TradePurchase.business_id == business_id,
+            TradePurchase.supplier_id == supplier_id,
+            TradePurchase.status.notin_(("deleted", "cancelled")),
+        )
+    )
+    return r.scalar_one_or_none()
+
+
+async def _last_trade_purchase_date_for_broker(
+    db: AsyncSession, business_id: uuid.UUID, broker_id: uuid.UUID
+) -> date | None:
+    r = await db.execute(
+        select(func.max(TradePurchase.purchase_date)).where(
+            TradePurchase.business_id == business_id,
+            TradePurchase.broker_id == broker_id,
+            TradePurchase.status.notin_(("deleted", "cancelled")),
+        )
+    )
+    return r.scalar_one_or_none()
+
+
 class SupplierPrefsIn(BaseModel):
     """Preferred categories, subcategory (type) ids, and catalog item ids for search / AI."""
 
@@ -137,6 +163,7 @@ class SupplierOut(BaseModel):
     freight_type: str | None = None
     ai_memory_enabled: bool = False
     preferences_json: str | None = None
+    last_purchase_date: date | None = None
 
     model_config = {"from_attributes": True}
 
@@ -235,6 +262,9 @@ async def _supplier_out(db: AsyncSession, s: Supplier) -> SupplierOut:
         select(BrokerSupplierLink.broker_id).where(BrokerSupplierLink.supplier_id == s.id)
     )
     base["broker_ids"] = list(rb.scalars().all())
+    base["last_purchase_date"] = await _last_trade_purchase_date_for_supplier(
+        db, s.business_id, s.id
+    )
     return SupplierOut.model_validate(base)
 
 
@@ -486,6 +516,7 @@ class BrokerOut(BaseModel):
     image_url: str | None = None
     supplier_ids: list[uuid.UUID] = Field(default_factory=list)
     preferences_json: str | None = None
+    last_purchase_date: date | None = None
 
     model_config = {"from_attributes": True}
 
@@ -527,6 +558,9 @@ async def _broker_out(db: AsyncSession, b: Broker) -> BrokerOut:
         select(BrokerSupplierLink.supplier_id).where(BrokerSupplierLink.broker_id == b.id)
     )
     base["supplier_ids"] = list(rs.scalars().all())
+    base["last_purchase_date"] = await _last_trade_purchase_date_for_broker(
+        db, b.business_id, b.id
+    )
     return BrokerOut.model_validate(base)
 
 

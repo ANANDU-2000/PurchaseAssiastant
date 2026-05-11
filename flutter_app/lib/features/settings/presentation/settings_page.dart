@@ -901,6 +901,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ),
                 const Divider(height: 1),
                 ListTile(
+                  leading: Icon(Icons.folder_zip_outlined, color: cs.primary),
+                  title: const Text('Backup'),
+                  subtitle: const Text(
+                      'Download purchases CSV (ZIP) for your records.',
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => context.push('/settings/backup'),
+                ),
+                const Divider(height: 1),
+                ListTile(
                   leading: Icon(Icons.straighten_rounded, color: cs.primary),
                   title: const Text('Units'),
                   subtitle:

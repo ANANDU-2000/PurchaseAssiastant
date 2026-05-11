@@ -275,6 +275,97 @@ def _entry_preview_text(lines: list[dict[str, Any]]) -> str:
     return "\n".join(rendered)
 
 
+def _lines_missing_catalog_ids(draft: dict[str, Any]) -> list[dict[str, Any]]:
+    """Lines that need catalog resolution before a trade entry can be saved."""
+    out: list[dict[str, Any]] = []
+    lines = draft.get("lines")
+    if not isinstance(lines, list):
+        return out
+    for i, raw in enumerate(lines):
+        if not isinstance(raw, dict):
+            continue
+        cid = raw.get("catalog_item_id")
+        if cid is None or str(cid).strip() == "":
+            nm = str(raw.get("item_name") or raw.get("item") or "").strip()
+            out.append({"line_index": i, "item_name": nm or f"Line {i + 1}"})
+    return out
+
+
+async def _duplicate_risk_trade_preview(
+    db: AsyncSession, business_id: uuid.UUID, entry_dict: dict[str, Any]
+) -> dict[str, Any]:
+    """Invoice / same-day supplier overlap against trade_purchases (non-deleted)."""
+    out: dict[str, Any] = {"level": "none", "reason": ""}
+    raw_sid = entry_dict.get("supplier_id")
+    suid: uuid.UUID | None
+    if raw_sid:
+        try:
+            suid = uuid.UUID(str(raw_sid))
+        except ValueError:
+            suid = None
+    else:
+        suid = None
+    inv_raw = entry_dict.get("invoice_no") or entry_dict.get("invoice_number") or ""
+    inv = str(inv_raw).strip()
+    ed = entry_dict.get("entry_date")
+    day: date | None = None
+    if isinstance(ed, str) and len(ed) >= 10:
+        try:
+            day = date.fromisoformat(ed[:10])
+        except ValueError:
+            day = None
+    elif hasattr(ed, "year"):
+        day = ed  # type: ignore[assignment]
+
+    if suid and inv:
+        ir = await db.execute(
+            select(TradePurchase.id).where(
+                TradePurchase.business_id == business_id,
+                TradePurchase.supplier_id == suid,
+                TradePurchase.invoice_number == inv,
+                TradePurchase.status.notin_(("deleted", "cancelled")),
+            ).limit(1)
+        )
+        if ir.scalar_one_or_none() is not None:
+            return {
+                "level": "high",
+                "reason": f"Invoice {inv} is already recorded for this supplier.",
+            }
+
+    if suid and day is not None:
+        cr = await db.execute(
+            select(func.count())
+            .select_from(TradePurchase)
+            .where(
+                TradePurchase.business_id == business_id,
+                TradePurchase.supplier_id == suid,
+                TradePurchase.purchase_date == day,
+                TradePurchase.status.notin_(("deleted", "cancelled")),
+            )
+        )
+        if int(cr.scalar() or 0) > 0:
+            return {
+                "level": "medium",
+                "reason": "A purchase from this supplier on this date already exists — confirm this is a different bill.",
+            }
+    return out
+
+
+async def _prepare_trade_entry_preview_response(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    draft: dict[str, Any],
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Attach duplicate_risk; return (draft, missing_items). missing_items non-empty → clarify_items."""
+    missing = _lines_missing_catalog_ids(draft)
+    if missing:
+        return draft, missing
+    risk = await _duplicate_risk_trade_preview(db, business_id, draft)
+    merged = dict(draft)
+    merged["duplicate_risk"] = risk
+    return merged, []
+
+
 def _single_missing_prompt(missing_fields: list[str] | None) -> str:
     m = [x for x in (missing_fields or []) if x]
     if not m:
@@ -713,6 +804,28 @@ async def run_app_assistant_turn(
                 )
                 token_r = content_r.get("preview_token")
                 draft_r = normalized_r.model_dump(mode="json")
+                draft_r, miss_items = await _prepare_trade_entry_preview_response(
+                    db, business_id, draft_r
+                )
+                if miss_items:
+                    await save_chat_draft(settings, user_id, business_id, draft_r)
+                    names = ", ".join(
+                        str(m.get("item_name") or "") for m in miss_items[:5] if m.get("item_name")
+                    )
+                    return {
+                        "reply": (
+                            "These lines need a catalog match before save"
+                            + (f": {names}." if names else ".")
+                            + " Open Edit in wizard to assign subcategories / items."
+                        ),
+                        "intent": "clarify_items",
+                        "preview_token": None,
+                        "entry_draft": draft_r,
+                        "saved_entry": None,
+                        "missing_fields": [],
+                        "missing_items": miss_items,
+                        **_lm(),
+                    }
                 lines_r = content_r.get("lines") or []
                 prev_r = _entry_preview_text(lines_r)
                 await save_chat_draft(settings, user_id, business_id, draft_r)
@@ -723,6 +836,7 @@ async def run_app_assistant_turn(
                     "entry_draft": draft_r,
                     "saved_entry": None,
                     "missing_fields": [],
+                    "missing_items": None,
                     **_lm(),
                 }
 
@@ -1115,6 +1229,26 @@ async def run_app_assistant_turn(
         content, normalized = await prepare_create_entry_preview(db, business_id, user_id, req)
         token = content.get("preview_token")
         draft = normalized.model_dump(mode="json")
+        draft, miss_items = await _prepare_trade_entry_preview_response(db, business_id, draft)
+        if miss_items:
+            await save_chat_draft(settings, user_id, business_id, draft)
+            names = ", ".join(
+                str(m.get("item_name") or "") for m in miss_items[:5] if m.get("item_name")
+            )
+            return {
+                "reply": (
+                    "These lines need a catalog match before save"
+                    + (f": {names}." if names else ".")
+                    + " Open Edit in wizard to assign subcategories / items."
+                ),
+                "intent": "clarify_items",
+                "preview_token": None,
+                "entry_draft": draft,
+                "saved_entry": None,
+                "missing_fields": [],
+                "missing_items": miss_items,
+                **intent_lm,
+            }
         lines = content.get("lines") or []
         prev_lines = _entry_preview_text(lines)
         reply = (
@@ -1129,6 +1263,7 @@ async def run_app_assistant_turn(
             "entry_draft": draft,
             "saved_entry": None,
             "missing_fields": [],
+            "missing_items": None,
             **intent_lm,
         }
 
@@ -1162,6 +1297,26 @@ async def run_app_assistant_turn(
     content, normalized = await prepare_create_entry_preview(db, business_id, user_id, req)
     token = content.get("preview_token")
     draft = normalized.model_dump(mode="json")
+    draft, miss_items = await _prepare_trade_entry_preview_response(db, business_id, draft)
+    if miss_items:
+        await save_chat_draft(settings, user_id, business_id, draft)
+        names = ", ".join(
+            str(m.get("item_name") or "") for m in miss_items[:5] if m.get("item_name")
+        )
+        return {
+            "reply": (
+                "These lines need a catalog match before save"
+                + (f": {names}." if names else ".")
+                + " Open Edit in wizard to assign subcategories / items."
+            ),
+            "intent": "clarify_items",
+            "preview_token": None,
+            "entry_draft": draft,
+            "saved_entry": None,
+            "missing_fields": [],
+            "missing_items": miss_items,
+            **intent_lm,
+        }
     lines = content.get("lines") or []
     prev_lines = _entry_preview_text(lines)
     reply = f"Preview (not saved):\n{prev_lines}\n\nReply YES to save, or NO to cancel."
@@ -1173,5 +1328,6 @@ async def run_app_assistant_turn(
         "entry_draft": draft,
         "saved_entry": None,
         "missing_fields": [],
+        "missing_items": None,
         **intent_lm,
     }

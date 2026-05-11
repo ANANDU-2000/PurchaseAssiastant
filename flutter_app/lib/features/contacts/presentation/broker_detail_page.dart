@@ -376,6 +376,31 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
                   backgroundColor:
                       HexaColors.primaryLight.withValues(alpha: 0.65),
                 ),
+                Builder(builder: (ctx) {
+                  final raw = b['last_purchase_date']?.toString() ?? '';
+                  if (raw.length < 10) return const SizedBox(height: 8);
+                  final parsed = DateTime.tryParse(raw.substring(0, 10));
+                  if (parsed == null) return const SizedBox(height: 8);
+                  final days = DateTime.now().difference(parsed).inDays;
+                  final ago = days == 0
+                      ? 'today'
+                      : days == 1
+                          ? 'yesterday'
+                          : '$days days ago';
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Chip(
+                      avatar: Icon(Icons.history, size: 16, color: cs.primary),
+                      label: Text(
+                        'Last buy ${DateFormat('MMM d').format(parsed)} · $ago',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  );
+                }),
                 const SizedBox(height: 16),
                 if (_loading)
                   const Center(

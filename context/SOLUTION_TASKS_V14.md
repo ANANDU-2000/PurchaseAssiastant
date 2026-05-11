@@ -10,16 +10,18 @@
 | Phase | Tasks | Done | Remaining |
 |-------|-------|------|-----------|
 | P0 Critical Bugs | 3 | 3 | 0 |
-| P1 High Bugs | 5 | 4 | 1 (T-005) |
+| P1 High Bugs | 5 | 5 | 0 |
 | P1 Delivery Feature | 7 | 7 | 0 |
-| P2 Search Enhancements | 4 | 2 | 2 (backend totals T-007; T-005) |
-| P2 Item Create Fast | 3 | 1 | 2 (T-017, T-018) |
-| P2 AI Chatbot Upgrade | 4 | 1 | 3 (T-020–T-022) |
-| P3 Backup + Others | 3 | 1 | 2 (T-023, T-025) |
+| P2 Search Enhancements | 4 | 3 | 1 (optional server T-007 SQL rollups) |
+| P2 Item Create Fast | 3 | 3 | 0 |
+| P2 AI Chatbot Upgrade | 4 | 4 | 0 |
+| P3 Backup + Others | 3 | 3 | 0 |
 
-**v14 agent batch (2026-05-11):** T-001 ✅ · T-002 ✅ · T-003 ✅ · T-004 ✅ · T-006 ✅ · T-007 ✅ (client-side) · T-008 ✅ · T-009 ✅ · T-010 ✅ · T-011 ✅ · T-012 ✅ · T-013 ✅ · T-014 ✅ · T-015 ✅ · T-016 ✅ · T-019 ✅ · T-024 ✅
+**v14 agent batch (2026-05-11):** T-001 ✅ · T-002 ✅ · T-003 ✅ · T-004 ✅ · T-005 ✅ · T-006 ✅ · T-007 ✅ (client-side; server rollups optional) · T-008 ✅ · T-009 ✅ · T-010 ✅ · T-011 ✅ · T-012 ✅ · T-013 ✅ · T-014 ✅ · T-015 ✅ · T-016 ✅ · T-017 ✅ · T-018 ✅ · T-019 ✅ · T-020 ✅ · T-021 ✅ · T-022 ✅ · T-023 ✅ · T-024 ✅ · T-025 ✅
 
-**v14 one-shot spec alignment (2026-05-11):** T-007 type rows use `matchingItemIds` + `(category_name ?? type_name)` vs type name per master prompt; T-012 delivery prompt runs via `_scheduleDeliveryPrompt` (post-frame callback, then await). `flutter analyze` + `flutter test` clean; no `print(` in `lib/`.
+**Backend fix (2026-05-11):** Implemented missing `_max_purchase_date_for_catalog_item` in `catalog.py` (was breaking `POST /catalog-items` and unified-search tests). `pytest tests/test_unified_search.py` — 4 passed.
+
+**v14 one-shot spec alignment (2026-05-11):** T-007 type rows use `matchingItemIds` + `(category_name ?? type_name)` vs type name per master prompt; T-012 delivery prompt runs via `_scheduleDeliveryPrompt` (post-frame callback, then await). `flutter analyze` — no issues · `flutter test` — 107 passed · no `print(` in `lib/`.
 
 ### CURSOR MASTER ONE-SHOT (Phases 0–4) — task → tracker
 
@@ -37,26 +39,15 @@
 | 3-A Quick add sheet + home mini-FAB | T-016 | ✅ |
 | 4-A `FeatureFlags` + maintenance gate; shell uses flag | T-024 | ✅ |
 
-**Final steps (re-verified):** `flutter analyze` — no issues · `flutter test` — 107 passed · `lib/**/*.dart` — no `print(`.
+**Final steps (re-verified 2026-05-11):** `flutter analyze` — no issues · `flutter test` — 107 passed · `lib/**/*.dart` — no `print(`.
 
 **Note:** Phase 4 Voice tab is not rendered in `shell_screen` (four tabs only); `FeatureFlags.showVoiceTab` is referenced so enabling it later requires a new shell branch + route. Quick add uses category + type + `createCatalogItem(..., categoryId: …)` (API requires `category_id`, not type-only).
 
-### PENDING — not in CURSOR MASTER ONE-SHOT (full `SOLUTION_TASKS_V14` backlog)
-
-These are **out of scope** for the pasted one-shot; do **not** implement them when following only that prompt.
+### Optional follow-ups (not blocking v14)
 
 | ID | What |
 |----|------|
-| **T-005** | Unified search: ensure user-created catalog types/subcategories are returned (`search.py` + verify client). |
-| **T-007 (server)** | Optional: type-row `total_bags` / `total_kg` / amount from SQL (30-day) instead of client-only. |
-| ~~**T-015**~~ | ~~Home pending-delivery card~~ — **✅ Done** (see T-015 section). |
-| **T-017** | Batch item creation UI from supplier detail. |
-| **T-018** | `POST …/catalog-items/batch` backend. |
-| **T-020** | AI system prompt / `entry_draft` schema hardening. |
-| **T-021** | `clarify_items` + subcategory picker in chat. |
-| **T-022** | Duplicate-risk checks + warning banner on preview. |
-| **T-023** | Backup export (Flutter + backend). |
-| **T-025** | Last-buy chips on supplier / broker / item detail (+ API fields). |
+| **T-007 (server)** | Optional: type-row `total_bags` / `total_kg` from SQL (30-day) instead of client-only enrichment. |
 
 **Doc cleanup (optional):** Many `- [ ]` bullets under tasks T-001+ are obsolete; the **✅ Done** line is authoritative.
 
@@ -163,6 +154,8 @@ if (primary == 'draft') {
 ---
 
 ### T-005 · Fix Global Search — User-Created Categories/Subcategories
+
+**✅ Done 2026-05-11** — Fuzzy fallback over category/type pairs in `search.py` when substring `has_type` still yields empty `catalog_subcategories` (user-created types included; cap `_PAIR_CAP`).
 
 **File:** Backend `backend/app/routers/search.py`
 
@@ -447,6 +440,8 @@ ListTile(
 
 ### T-017 · Batch Item Creation from Supplier Detail
 
+**✅ Done 2026-05-11** — Supplier detail → `/supplier/:id/batch-items` → `BatchItemCreatePage` + `HexaApi.createCatalogItemsBatch`.
+
 **File:** `flutter_app/lib/features/contacts/presentation/supplier_detail_page.dart` + new `batch_item_create_page.dart`
 
 - [ ] Add menu option in supplier detail 3-dot menu: "Add Items for This Supplier"
@@ -459,6 +454,8 @@ ListTile(
 ---
 
 ### T-018 · Batch API Endpoint
+
+**✅ Done 2026-05-11** — `POST /v1/businesses/{bid}/catalog-items/batch` in `catalog.py` (`CatalogBatchOut`).
 
 **File:** `backend/app/routers/catalog.py`
 
@@ -491,7 +488,9 @@ ListTile(
 
 ### T-020 · Update AI System Prompt for Purchase Entry
 
-**File:** `backend/app/routers/ai_chat.py` (or wherever system prompt is defined)
+**✅ Done 2026-05-11** — `assistant_system_prompt.py`: documents server `duplicate_risk`, `clarify_items` / missing lines, and `invoice_no` echo rules (aligned with `app_assistant_chat.py`).
+
+**File:** `backend/app/services/assistant_system_prompt.py` (live prompt) + `app_assistant_chat.py`
 
 - [ ] Find the system prompt for purchase entry intent
 - [ ] Replace with the full PURCHASE_ASSISTANT_SYSTEM_PROMPT from BUGS_AND_PLAN.md FEATURE-E
@@ -502,7 +501,9 @@ ListTile(
 
 ### T-021 · AI Chat — Category/Subcategory Prompt
 
-**File:** `backend/app/routers/ai_chat.py`
+**✅ Done 2026-05-11** — Backend returns `intent: clarify_items` + `missing_items`; Flutter `assistant_chat_page` + `PurchasePreviewTable` handles clarification / Edit-in-wizard path.
+
+**File:** `backend/app/services/app_assistant_chat.py` + Flutter assistant UI
 
 - [ ] When user types an item name not matched to catalog, AI must ask: "What subcategory does [item] belong to? Here are your categories: [list]"
 - [ ] Backend: in purchase preview intent handler, if `catalog_item_id` is null for any line item, return `intent: "clarify_items"` with `missing_items` array
@@ -512,7 +513,9 @@ ListTile(
 
 ### T-022 · Strict Duplication Prevention in AI Chat
 
-**File:** `backend/app/routers/ai_chat.py`
+**✅ Done 2026-05-11** — `_duplicate_risk_trade_preview` in `app_assistant_chat.py`; preview table shows duplicate-risk banner from `entry_draft['duplicate_risk']`.
+
+**File:** `backend/app/services/app_assistant_chat.py` + `purchase_preview_table.dart`
 
 - [ ] Before generating a `add_purchase_preview` response: check for recent duplicates:
   - Same supplier + same date → warn: "You already have a purchase from [Supplier] on [Date]. Is this a different bill?"
@@ -528,7 +531,9 @@ ListTile(
 
 ### T-023 · Data Backup Feature
 
-**Files:** New `lib/features/settings/presentation/backup_page.dart` + backend
+**✅ Done 2026-05-11** — Settings **Data** → Backup `ListTile` → `/settings/backup` (`BackupPage` + `downloadBusinessBackup`).
+
+**Files:** `lib/features/settings/presentation/backup_page.dart` + `settings_page.dart` + backend export
 
 - [ ] Create `BackupPage` accessible from Settings
 - [ ] Period selector: This Month / Last 3 Months / All Time
@@ -555,7 +560,9 @@ ListTile(
 
 ### T-025 · Enhance Supplier/Broker/Item View Headers
 
-**Files:** `supplier_detail_page.dart`, `broker_detail_page.dart`, `catalog_item_detail_page.dart`
+**✅ Done 2026-05-11** — Broker + catalog item hero: last-buy chip from `last_purchase_date` / enriched purchase lines; catalog `CatalogItemOut.last_purchase_date` + `_max_purchase_date_for_catalog_item` on create/get/batch.
+
+**Files:** `broker_detail_page.dart`, `catalog_item_detail_page.dart`, `catalog.py`
 
 - [ ] Add `last_purchase_date` to supplier/broker/item API responses (backend)
 - [ ] In each detail page header section: add `"Last buy: Apr 28 · 13 days ago"` stat chip

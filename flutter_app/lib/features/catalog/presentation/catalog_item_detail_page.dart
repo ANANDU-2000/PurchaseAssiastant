@@ -484,6 +484,12 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                     }
                     if (last != null) {
                       final ln = last;
+                      if (lastAt != null) {
+                        hero['last_purchase_date'] =
+                            '${lastAt.year.toString().padLeft(4, '0')}-'
+                            '${lastAt.month.toString().padLeft(2, '0')}-'
+                            '${lastAt.day.toString().padLeft(2, '0')}';
+                      }
                       hero['last_line_qty'] = ln.qty;
                       hero['last_line_unit'] = ln.unit;
                       final tw = ln.totalWeight;
@@ -913,7 +919,23 @@ class _ItemTradeHeroCard extends StatelessWidget {
     final qty = tradeIntelQtySummaryLine(item);
     final rates = tradeIntelRatePairLine(item);
     final src = tradeIntelSourceLine(item);
-    if (qty.isEmpty && rates.isEmpty && src.isEmpty) {
+    final rawPd = item['last_purchase_date']?.toString() ?? '';
+    DateTime? parsedPd;
+    if (rawPd.length >= 10) {
+      parsedPd = DateTime.tryParse(rawPd.substring(0, 10));
+    }
+    var dateLine = '';
+    if (parsedPd != null) {
+      final pd = parsedPd;
+      final days = DateTime.now().difference(pd).inDays;
+      final ago = days == 0
+          ? 'today'
+          : days == 1
+              ? 'yesterday'
+              : '$days days ago';
+      dateLine = 'Last buy ${DateFormat('MMM d').format(pd)} · $ago';
+    }
+    if (qty.isEmpty && rates.isEmpty && src.isEmpty && dateLine.isEmpty) {
       return const SizedBox.shrink();
     }
     return Material(
@@ -924,6 +946,17 @@ class _ItemTradeHeroCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (dateLine.isNotEmpty) ...[
+              Text(
+                dateLine,
+                style: tt.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: cs.primary,
+                ),
+              ),
+              if (qty.isNotEmpty || rates.isNotEmpty || src.isNotEmpty)
+                const SizedBox(height: 8),
+            ],
             if (qty.isNotEmpty)
               Text(
                 qty,

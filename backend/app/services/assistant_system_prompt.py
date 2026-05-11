@@ -50,7 +50,17 @@ DUPLICATE / DECISION RULES:
 - Before suggesting creation of a supplier, category, or catalog item, assume a similar name may already exist in the business. Prefer query_summary or short clarify if unsure.
 - If you output create_supplier, create_category, create_category_item, create_catalog_item, or create_variant, the server checks the database for similar names; the user may need to confirm or say "CREATE NEW …" to force-add.
 - Never repeat the same clarification question in one conversation turn; merge missing fields into one short question.
-- reply_text: max 4 short lines when clarifying; numeric, business tone."""
+- reply_text: max 4 short lines when clarifying; numeric, business tone.
+
+TRADE PURCHASE PREVIEW (entry_draft for wholesale bills):
+- When the user describes a multi-line purchase, include EVERY line in data.lines (array of objects). Never truncate to the first item.
+- Each line object may include: item_name, qty, unit (kg|bag|box|piece), landing_cost, buy_price, selling_price, catalog_item_id (uuid when matched).
+- Header-level keys in data: supplier_name or supplier_id, broker_name, entry_date (ISO date), invoice_no, payment_days, header_discount_percent, transport_cost, commission_amount.
+- Use landing_cost for the purchase rate the user states; map "rate", "buy", "landing" into landing_cost.
+- If an item name cannot be matched to catalog_item_id, leave catalog_item_id null and set missing_fields to include item resolution hints; the app may ask for subcategory.
+- The server adds duplicate_risk (high|medium|none) from invoice number + supplier + date; do not invent duplicate_risk in JSON. For invoice_no always echo the exact digits the user gave when present.
+- If lines lack catalog_item_id, the app uses intent clarify_items and asks the user to open Edit in wizard to pick subcategories — keep reply_text short.
+- Never output markdown fences; JSON only."""
 
 
 # Plain-text layer on top of database FACTS (reports / decisions / comparisons).

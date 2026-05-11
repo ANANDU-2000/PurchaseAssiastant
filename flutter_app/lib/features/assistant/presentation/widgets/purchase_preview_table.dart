@@ -9,12 +9,19 @@ class PurchasePreviewTable extends StatelessWidget {
     required this.onCancel,
     required this.onSave,
     required this.onEdit,
+    this.clarifyMode = false,
+    this.missingItems,
+    this.duplicateRisk,
   });
 
   final Map<String, dynamic> entryDraft;
   final VoidCallback onCancel;
   final VoidCallback onSave;
   final VoidCallback onEdit;
+  /// When true, primary action should open the wizard (catalog lines unresolved).
+  final bool clarifyMode;
+  final List<Map<String, dynamic>>? missingItems;
+  final Map<String, dynamic>? duplicateRisk;
 
   static final _inr = NumberFormat.currency(
     locale: 'en_IN',
@@ -32,6 +39,9 @@ class PurchasePreviewTable extends StatelessWidget {
         '—';
     final broker = entryDraft['broker_name']?.toString() ?? '';
     final payDays = entryDraft['payment_days']?.toString() ?? '';
+    final risk = duplicateRisk ?? _asStringKeyedMap(entryDraft['duplicate_risk']);
+    final riskLevel = (risk?['level'] ?? 'none').toString().toLowerCase();
+    final riskReason = risk?['reason']?.toString() ?? '';
 
     var grand = 0.0;
     for (final raw in lines) {
@@ -67,6 +77,73 @@ class PurchasePreviewTable extends StatelessWidget {
                 ),
               ],
             ),
+            if (clarifyMode && (missingItems != null && missingItems!.isNotEmpty)) ...[
+              Material(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.warning_amber_rounded,
+                          color: Colors.orange.shade800, size: 22),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'These lines need a catalog item before you can save: '
+                          '${missingItems!.map((m) => m['item_name']?.toString() ?? '').where((s) => s.isNotEmpty).join(', ')}.',
+                          style: tt.bodySmall?.copyWith(
+                            color: Colors.orange.shade900,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+            if (!clarifyMode &&
+                riskLevel != 'none' &&
+                riskLevel != '' &&
+                riskReason.isNotEmpty) ...[
+              Material(
+                color: riskLevel == 'high'
+                    ? Colors.red.shade50
+                    : Colors.amber.shade50,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.info_outline_rounded,
+                        color: riskLevel == 'high'
+                            ? Colors.red.shade800
+                            : Colors.amber.shade900,
+                        size: 22,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          riskReason,
+                          style: tt.bodySmall?.copyWith(
+                            color: riskLevel == 'high'
+                                ? Colors.red.shade900
+                                : Colors.amber.shade900,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
             Text(
               '$supplier${broker.isNotEmpty ? "  ·  Broker: $broker" : ""}',
               style: tt.bodyMedium,
@@ -115,11 +192,17 @@ class PurchasePreviewTable extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: FilledButton.icon(
-                    icon: const Icon(Icons.check, size: 16),
-                    label: const Text('Save Purchase'),
-                    onPressed: onSave,
-                  ),
+                  child: clarifyMode
+                      ? FilledButton.icon(
+                          icon: const Icon(Icons.edit_outlined, size: 16),
+                          label: const Text('Assign in wizard'),
+                          onPressed: onEdit,
+                        )
+                      : FilledButton.icon(
+                          icon: const Icon(Icons.check, size: 16),
+                          label: const Text('Save Purchase'),
+                          onPressed: onSave,
+                        ),
                 ),
               ],
             ),
@@ -127,6 +210,11 @@ class PurchasePreviewTable extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  static Map<String, dynamic>? _asStringKeyedMap(Object? raw) {
+    if (raw is! Map) return null;
+    return Map<String, dynamic>.from(raw);
   }
 
   Widget _buildLineRow(Map<String, dynamic> raw) {

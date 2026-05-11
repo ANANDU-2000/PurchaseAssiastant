@@ -55,6 +55,7 @@ class ChatResponse(BaseModel):
     entry_draft: dict[str, Any] | None = None
     saved_entry: dict[str, Any] | None = None
     missing_fields: list[str] = Field(default_factory=list)
+    missing_items: list[dict[str, Any]] | None = None
     # Assistant LLM observability (no secrets)
     reply_source: str = "rules"
     llm_provider: str | None = None
@@ -348,6 +349,7 @@ async def ai_chat(
         entry_draft=out.get("entry_draft"),
         saved_entry=out.get("saved_entry"),
         missing_fields=out.get("missing_fields") or [],
+        missing_items=out.get("missing_items"),
         reply_source=str(out.get("reply_source") or "rules"),
         llm_provider=out.get("llm_provider"),
         llm_failover_used=bool(out.get("llm_failover_used")),

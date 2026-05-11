@@ -744,12 +744,101 @@ async def unified_search(
                 )
             )
             for row in rsub.all():
+                cname = row[3]
                 catalog_subcategories_out.append(
                     {
                         "id": str(row[0]),
                         "name": row[1],
                         "category_id": str(row[2]),
-                        "category_name": row[3],
+                        "category_name": cname,
+                        "parent_name": cname,
+                    }
+                )
+            # Types linked to catalog hits (user-created types match items even if the
+            # standalone type substring query missed a row).
+            if catalog_rows:
+                ci_ids = [row[0] for row in catalog_rows[: _CATALOG_FETCH_LIMIT]]
+                if ci_ids:
+                    r_types = await execute_with_retry(
+                        lambda: db.execute(
+                            select(
+                                CategoryType.id,
+                                CategoryType.name,
+                                ItemCategory.id,
+                                ItemCategory.name,
+                            )
+                            .select_from(CatalogItem)
+                            .join(
+                                CategoryType,
+                                and_(
+                                    CategoryType.id == CatalogItem.type_id,
+                                ),
+                            )
+                            .join(ItemCategory, ItemCategory.id == CategoryType.category_id)
+                            .where(
+                                CatalogItem.id.in_(ci_ids),
+                                CatalogItem.business_id == business_id,
+                                CatalogItem.deleted_at.is_(None),
+                                ItemCategory.business_id == business_id,
+                            )
+                            .distinct()
+                        )
+                    )
+                    seen_type = {d["id"] for d in catalog_subcategories_out}
+                    for trow in r_types.all():
+                        tid = str(trow[0])
+                        if tid in seen_type:
+                            continue
+                        seen_type.add(tid)
+                        pname = trow[3]
+                        catalog_subcategories_out.append(
+                            {
+                                "id": tid,
+                                "name": trow[1],
+                                "category_id": str(trow[2]),
+                                "category_name": pname,
+                                "parent_name": pname,
+                            }
+                        )
+
+        # User-created types + typos: substring ILIKE can miss rows; fuzzy ranks
+        # all (type, parent) pairs for the business (same cap as catalog fuzzy).
+        if has_type and not catalog_subcategories_out:
+            pairs_r = await execute_with_retry(
+                lambda: db.execute(
+                    select(
+                        CategoryType.id,
+                        CategoryType.name,
+                        ItemCategory.id,
+                        ItemCategory.name,
+                    )
+                    .join(ItemCategory, ItemCategory.id == CategoryType.category_id)
+                    .where(ItemCategory.business_id == business_id)
+                    .limit(_PAIR_CAP)
+                )
+            )
+            type_pairs: list[tuple[uuid.UUID, str]] = []
+            type_meta: dict[uuid.UUID, tuple[str, uuid.UUID, str]] = {}
+            for row in pairs_r.all():
+                tid, tname, cid, cname = row[0], row[1], row[2], row[3]
+                hay = f"{tname} {cname}".strip()
+                if not hay:
+                    continue
+                type_pairs.append((tid, hay))
+                type_meta[tid] = (tname, cid, cname)
+            fuzzy_sub_cut = 40 if len(needle) < 2 else 52
+            ranked_sub = rank_ids_by_token_sort(
+                needle, type_pairs, limit=20, score_cutoff=fuzzy_sub_cut
+            )
+            for uid, _sc in ranked_sub:
+                tname, cid, cname = type_meta[uid]
+                catalog_subcategories_out.append(
+                    {
+                        "id": str(uid),
+                        "name": tname,
+                        "category_id": str(cid),
+                        "category_name": cname,
+                        "parent_name": cname,
                     }
                 )
 

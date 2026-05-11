@@ -262,6 +262,21 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
           orElse: () => const Text('Supplier'),
         ),
         actions: [
+          PopupMenuButton<String>(
+            tooltip: 'More',
+            icon: const Icon(Icons.more_vert_rounded),
+            onSelected: (v) {
+              if (v == 'batch') {
+                context.push('/supplier/${widget.supplierId}/batch-items');
+              }
+            },
+            itemBuilder: (ctx) => const [
+              PopupMenuItem(
+                value: 'batch',
+                child: Text('Batch add items'),
+              ),
+            ],
+          ),
           async.maybeWhen(
             data: (_) => IconButton(
               tooltip: 'Edit supplier',
@@ -454,6 +469,36 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                                   ),
                                 ),
                               ),
+                            Builder(builder: (ctx) {
+                              final raw =
+                                  s['last_purchase_date']?.toString() ?? '';
+                              if (raw.length < 10) {
+                                return const SizedBox.shrink();
+                              }
+                              final parsed =
+                                  DateTime.tryParse(raw.substring(0, 10));
+                              if (parsed == null) {
+                                return const SizedBox.shrink();
+                              }
+                              final days =
+                                  DateTime.now().difference(parsed).inDays;
+                              final ago = days == 0
+                                  ? 'today'
+                                  : days == 1
+                                      ? 'yesterday'
+                                      : '$days days ago';
+                              return Chip(
+                                avatar: Icon(Icons.history,
+                                    size: 16, color: cs.primary),
+                                label: Text(
+                                  'Last buy ${DateFormat('MMM d').format(parsed)} · $ago',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              );
+                            }),
                           ],
                         ),
                         if (gst.isNotEmpty) ...[

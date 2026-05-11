@@ -14,6 +14,7 @@ import '../../features/catalog/presentation/catalog_category_detail_page.dart';
 import '../../features/catalog/presentation/catalog_item_detail_page.dart';
 import '../../features/catalog/presentation/catalog_page.dart';
 import '../../features/catalog/presentation/catalog_type_items_page.dart';
+import '../../features/catalog/presentation/batch_item_create_page.dart';
 import '../../features/assistant/presentation/assistant_chat_page.dart';
 import '../../features/auth/presentation/forgot_password_page.dart';
 import '../../features/auth/presentation/login_page.dart';
@@ -42,6 +43,7 @@ import '../../features/notifications/presentation/notifications_page.dart';
 import '../../features/settings/presentation/business_profile_page.dart';
 import '../../features/settings/presentation/maintenance_history_page.dart';
 import '../../features/settings/presentation/settings_page.dart';
+import '../../features/settings/presentation/backup_page.dart';
 import '../../features/search/presentation/search_page.dart';
 import '../../features/shell/shell_screen.dart';
 import '../../features/splash/presentation/splash_page.dart';
@@ -278,6 +280,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         },
       ),
       GoRoute(
+        path: '/supplier/:supplierId/batch-items',
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['supplierId']!;
+          return iosPushPage(
+            key: state.pageKey,
+            child: BatchItemCreatePage(supplierId: id),
+          );
+        },
+      ),
+      GoRoute(
         path: '/broker/:brokerId',
         pageBuilder: (context, state) {
           final id = state.pathParameters['brokerId']!;
@@ -332,6 +344,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
           child: const BusinessProfilePage(),
+        ),
+      ),
+      GoRoute(
+        path: '/settings/backup',
+        name: 'settings_backup',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const BackupPage(),
         ),
       ),
       GoRoute(
