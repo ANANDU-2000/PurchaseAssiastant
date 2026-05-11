@@ -171,10 +171,11 @@ class _InputBarState extends State<InputBar> {
                           );
                         },
                         child: _TrailingAction(
-                          key: ValueKey('${_hasText}_${widget.listening}'),
+                          key: ValueKey('${_hasText}_${widget.listening}_${widget.speechReady}'),
                           hasText: _hasText,
                           loading: widget.loading,
-                          speechReady: widget.speechReady && !kIsWeb,
+                          voiceUiEnabled: !kIsWeb,
+                          speechReady: widget.speechReady,
                           listening: widget.listening,
                           onMicDown: widget.onMicDown,
                           onMicUp: widget.onMicUp,
@@ -201,6 +202,7 @@ class _TrailingAction extends StatelessWidget {
     super.key,
     required this.hasText,
     required this.loading,
+    required this.voiceUiEnabled,
     required this.speechReady,
     required this.listening,
     this.onMicDown,
@@ -213,6 +215,9 @@ class _TrailingAction extends StatelessWidget {
 
   final bool hasText;
   final bool loading;
+  /// Show mic row on iOS/Android (false on web build).
+  final bool voiceUiEnabled;
+  /// Speech engine initialized and permission OK.
   final bool speechReady;
   final bool listening;
   final VoidCallback? onMicDown;
@@ -224,10 +229,7 @@ class _TrailingAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (hasText) {
-      return Padding(
-        padding: const EdgeInsets.only(right: 4, bottom: 2),
-        child: FilledButton(
+    Widget sendFab() => FilledButton(
           onPressed: loading ? null : onSend,
           style: FilledButton.styleFrom(
             backgroundColor: AssistantChatTheme.accent,
@@ -244,53 +246,87 @@ class _TrailingAction extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white),
                 )
               : const Icon(Icons.send_rounded, size: 22),
+        );
+
+    if (!voiceUiEnabled) {
+      return Padding(
+        padding: const EdgeInsets.only(right: 4, bottom: 2),
+        child: sendFab(),
+      );
+    }
+
+    void explainVoiceOff() {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Voice is off. Allow Microphone (and Speech recognition) in phone Settings, then return here.',
+          ),
         ),
       );
     }
-    if (speechReady) {
+
+    Widget? localeChip() {
+      if (!showLocaleToggle || onLocaleToggle == null) return null;
+      return GestureDetector(
+        onTap: speechReady ? onLocaleToggle : explainVoiceOff,
+        child: Opacity(
+          opacity: speechReady ? 1 : 0.5,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+            margin: const EdgeInsets.only(right: 4),
+            decoration: BoxDecoration(
+              color: speechLocaleLabel == 'ML'
+                  ? const Color(0xFF075E54)
+                  : const Color(0xFFEEEEEE),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              speechLocaleLabel,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: speechLocaleLabel == 'ML'
+                    ? Colors.white
+                    : Colors.grey.shade700,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final mic = MicButton(
+      listening: listening,
+      enabled: speechReady,
+      onUnavailableTap: explainVoiceOff,
+      onStart: onMicDown ?? () {},
+      onStop: onMicUp ?? () {},
+    );
+
+    final lc = localeChip();
+    if (hasText) {
       return Padding(
         padding: const EdgeInsets.only(right: 4, bottom: 2),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (showLocaleToggle && onLocaleToggle != null)
-              GestureDetector(
-                onTap: onLocaleToggle,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                  margin: const EdgeInsets.only(right: 4),
-                  decoration: BoxDecoration(
-                    color: speechLocaleLabel == 'ML'
-                        ? const Color(0xFF075E54)
-                        : const Color(0xFFEEEEEE),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    speechLocaleLabel,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: speechLocaleLabel == 'ML'
-                          ? Colors.white
-                          : Colors.grey.shade700,
-                    ),
-                  ),
-                ),
-              ),
-            MicButton(
-              listening: listening,
-              onStart: onMicDown ?? () {},
-              onStop: onMicUp ?? () {},
-            ),
+            if (lc != null) lc,
+            mic,
+            const SizedBox(width: 6),
+            sendFab(),
           ],
         ),
       );
     }
+
     return Padding(
       padding: const EdgeInsets.only(right: 4, bottom: 2),
-      child: IconButton(
-        onPressed: loading ? null : onSend,
-        icon: const Icon(Icons.send_rounded, color: AssistantChatTheme.primary),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (lc != null) lc,
+          mic,
+        ],
       ),
     );
   }

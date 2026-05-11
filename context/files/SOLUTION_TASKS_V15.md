@@ -17,14 +17,16 @@
 | P2 Bulk Item Creation | 2 | 2 |
 | P2 Chatbot UX | 3 | 3 |
 | P2 Forms / pickers | 1 | 1 |
+| P2 Assistant chrome | 1 | 1 |
 
-**Shipped 2026-05-11:** T-001–T-022 complete in repo (see code). Last batch: T-013 entity preview + Edit in app; T-018–T-019 `create_catalog_items_batch` prompt + backend path; T-021 auto-send after speech; T-022 Hive-backed assistant history + clear.
+**Shipped 2026-05-11:** T-001–T-022 complete in repo (see code). Last batch: T-013 entity preview + Edit in app; T-018–T-019 `create_catalog_items_batch` prompt + backend path; T-021 auto-send after speech; T-022 Hive-backed assistant history + clear. **T-024 (2026-05-11):** mic always visible on native; in-app **What can you do?** help; welcome copy matches UI.
 
 ### Quick reference — scroll issues vs pending work
 
 | Issue (what users saw) | Task | Notes |
 |--------|------|--------|
 | Long category / item menus covered **Cancel** / **Save Item**; hard to scroll or reach buttons | **T-023** | Capped `menuMaxHeight` / `menuHeight`, bounded bottom sheets, scrollable quick-add sheet |
+| Assistant bar showed **no mic** when speech init failed; welcome said “hold mic” | **T-024** | Native: mic always shown (disabled + tap hint if off); mic + send when typing; menu **What can you do?**; welcome text updated |
 | Home / lists felt slow; many duplicate API calls | **T-001–T-004** | Debounced `invalidateBusinessAggregates`, smaller trade fetch + pagination, home poll guard, `forceStopRefreshing` |
 | Empty period looked “loading forever”; tab switch refetch | **T-005–T-007** | Empty + skeleton states, `AutomaticKeepAliveClientMixin` on breakdown tabs |
 | Speech English-only; no live transcript | **T-008–T-010** | Malayalam locale, partial text, ML/EN chip |
@@ -48,6 +50,13 @@
 - [x] `catalog_add_item_page.dart` — fixed max height + scroll for category/type sheets
 - [x] `purchase_item_entry_sheet.dart` — dynamic unit dropdown `menuMaxHeight`
 - [x] `inline_search_field.dart` — shorter max suggestion height
+
+### T-024 · Assistant: mic always visible + in-app help ✅ 2026-05-11
+**Problem:** When `speech_to_text` was not ready, `InputBar` showed only Send — users saw no mic while copy mentioned voice. No single place for a generic “what can you do?” list.
+
+- [x] `input_bar.dart` — on native, always show **Mic**; **Send** appears when there is text (mic stays); SnackBar / tap hint when voice is off; ML chip tappable with hint when voice off
+- [x] `mic_button.dart` — `enabled` + `onUnavailableTap` for grey mic + short tap feedback
+- [x] `assistant_chat_page.dart` — welcome lines match real UI; menu **What can you do?** inserts local help bubble (`_featureHelpMessageText`)
 
 ---
 

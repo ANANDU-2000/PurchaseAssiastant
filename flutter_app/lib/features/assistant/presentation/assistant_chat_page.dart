@@ -57,14 +57,25 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
 
   bool _autoSendOnSpeech = true;
 
+  static String _featureHelpMessageText() {
+    return 'Harisree assistant — what you can do\n\n'
+        'Purchases: e.g. "surag 50 bags thuvara 3500" (supplier, qty, item, amount).\n'
+        'Supplier: "new supplier ravi 9876543210"\n'
+        'Broker: "broker ramesh commission 2 percent"\n'
+        'Category / catalog: "create category rice biriyani" or new item under a type.\n'
+        'Reports: "profit this month", "top items", "suppliers this month".\n\n'
+        'Voice: round mic on the right — press and hold to dictate. Use the ML/EN chip to switch when shown.\n'
+        'Saves: previews must be confirmed — tap Save on the card when it appears.';
+  }
+
   static ChatMessage _welcomeMessage() {
     return ChatMessage(
       id: 'welcome',
-      text: 'നമസ്കാരം! How can I help today?\n'
-          '• Say or type a purchase: "surag 50 bags thuvara 3500"\n'
-          '• Ask about profit: "this month profit"\n'
-          '• Create supplier: "new supplier ravi 9876543210"\n'
-          'Hold the mic in the bar below to speak in Malayalam or English.',
+      text: 'നമസ്കാരം! Harisree assistant here.\n'
+          '• Type a question below, or tap a quick chip\n'
+          '• Hold the round microphone on the right to speak (മലയാളം or English)\n'
+          '• Open the menu (⋮) → What can you do? for this full list anytime\n'
+          'Money and stock answers use your workspace data after you confirm saves.',
       isUser: false,
       at: DateTime.now(),
     );
@@ -776,6 +787,26 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
                   ctx.pop();
                   _scrollEnd();
                   _inputFocus.requestFocus();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.help_outline_rounded),
+                title: const Text('What can you do?'),
+                subtitle: const Text('Purchases, voice, catalog, reports'),
+                onTap: () {
+                  ctx.pop();
+                  final id = '${DateTime.now().microsecondsSinceEpoch}h';
+                  setState(() {
+                    _msgs.add(
+                      ChatMessage(
+                        id: id,
+                        text: _featureHelpMessageText(),
+                        isUser: false,
+                        at: DateTime.now(),
+                      ),
+                    );
+                  });
+                  _scrollEnd();
                 },
               ),
               ListTile(

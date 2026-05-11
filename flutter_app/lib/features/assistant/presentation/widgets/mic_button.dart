@@ -10,11 +10,17 @@ class MicButton extends StatefulWidget {
     required this.listening,
     required this.onStart,
     required this.onStop,
+    this.enabled = true,
+    this.onUnavailableTap,
   });
 
   final bool listening;
   final VoidCallback onStart;
   final VoidCallback onStop;
+  /// When false (e.g. speech engine failed to init), show mic but do not start listen.
+  final bool enabled;
+  /// Short tap when [enabled] is false (e.g. explain permissions).
+  final VoidCallback? onUnavailableTap;
 
   @override
   State<MicButton> createState() => _MicButtonState();
@@ -56,15 +62,25 @@ class _MicButtonState extends State<MicButton>
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: 'Hold to speak',
+    final tip = widget.enabled
+        ? 'Hold to speak (Malayalam or English)'
+        : 'Voice unavailable — check microphone permission in Settings';
+    final core = Tooltip(
+      message: tip,
       child: GestureDetector(
         onLongPressStart: (_) {
+          if (!widget.enabled) return;
           HapticFeedback.mediumImpact();
           widget.onStart();
         },
-        onLongPressEnd: (_) => widget.onStop(),
-        onLongPressCancel: widget.onStop,
+        onLongPressEnd: (_) {
+          if (!widget.enabled) return;
+          widget.onStop();
+        },
+        onLongPressCancel: () {
+          if (!widget.enabled) return;
+          widget.onStop();
+        },
         child: AnimatedBuilder(
           animation: _pulse,
           builder: (context, child) {
@@ -78,10 +94,12 @@ class _MicButtonState extends State<MicButton>
             height: 48,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: widget.listening
-                  ? const Color(0xFFE53935)
-                  : const Color(0xFFE5E7EB),
-              boxShadow: widget.listening
+              color: !widget.enabled
+                  ? const Color(0xFFE8E8E8)
+                  : widget.listening
+                      ? const Color(0xFFE53935)
+                      : const Color(0xFFE5E7EB),
+              boxShadow: widget.listening && widget.enabled
                   ? [
                       BoxShadow(
                         color: const Color(0xFFE53935).withValues(alpha: 0.45),
@@ -99,12 +117,22 @@ class _MicButtonState extends State<MicButton>
             ),
             child: Icon(
               widget.listening ? Icons.stop_rounded : Icons.mic_rounded,
-              color: widget.listening ? Colors.white : Colors.black54,
+              color: widget.listening
+                  ? Colors.white
+                  : (!widget.enabled ? Colors.black38 : Colors.black54),
               size: 22,
             ),
           ),
         ),
       ),
     );
+    if (!widget.enabled && widget.onUnavailableTap != null) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onUnavailableTap,
+        child: core,
+      );
+    }
+    return core;
   }
 }
