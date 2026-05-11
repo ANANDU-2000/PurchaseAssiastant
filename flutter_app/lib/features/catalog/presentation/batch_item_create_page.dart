@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -162,6 +164,8 @@ class _BatchItemCreatePageState extends ConsumerState<BatchItemCreatePage> {
 
   @override
   Widget build(BuildContext context) {
+    final dropdownMenuMax =
+        math.min(260.0, MediaQuery.sizeOf(context).height * 0.38);
     final catsAsync = ref.watch(itemCategoriesListProvider);
     final tt = Theme.of(context).textTheme;
     return Scaffold(
@@ -220,6 +224,7 @@ class _BatchItemCreatePageState extends ConsumerState<BatchItemCreatePage> {
                         }
                         return DropdownButtonFormField<String>(
                           key: ValueKey('cat_${i}_${line.categoryId}'),
+                          menuMaxHeight: dropdownMenuMax,
                           decoration: const InputDecoration(
                             labelText: 'Category *',
                             border: OutlineInputBorder(),
@@ -258,6 +263,7 @@ class _BatchItemCreatePageState extends ConsumerState<BatchItemCreatePage> {
                         }
                         return DropdownButtonFormField<String>(
                           key: ValueKey('type_${i}_${line.typeId}'),
+                          menuMaxHeight: dropdownMenuMax,
                           decoration: const InputDecoration(
                             labelText: 'Subcategory *',
                             border: OutlineInputBorder(),

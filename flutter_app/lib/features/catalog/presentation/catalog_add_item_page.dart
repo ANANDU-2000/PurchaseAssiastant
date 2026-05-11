@@ -199,15 +199,21 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
         child: SafeArea(
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              for (final c in cl)
-                ListTile(
-                  title: Text(c['name']?.toString() ?? ''),
-                  onTap: () => ctx.pop(c['id']?.toString()),
-                ),
-            ],
+          child: SizedBox(
+            height: math.min(
+              420.0,
+              MediaQuery.sizeOf(ctx).height * 0.55,
+            ),
+            child: ListView(
+              shrinkWrap: false,
+              children: [
+                for (final c in cl)
+                  ListTile(
+                    title: Text(c['name']?.toString() ?? ''),
+                    onTap: () => ctx.pop(c['id']?.toString()),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -223,15 +229,21 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
         child: SafeArea(
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              for (final t in tl)
-                ListTile(
-                  title: Text(t['name']?.toString() ?? ''),
-                  onTap: () => ctx.pop(t['id']?.toString()),
-                ),
-            ],
+          child: SizedBox(
+            height: math.min(
+              420.0,
+              MediaQuery.sizeOf(ctx).height * 0.55,
+            ),
+            child: ListView(
+              shrinkWrap: false,
+              children: [
+                for (final t in tl)
+                  ListTile(
+                    title: Text(t['name']?.toString() ?? ''),
+                    onTap: () => ctx.pop(t['id']?.toString()),
+                  ),
+              ],
+            ),
           ),
         ),
       ),

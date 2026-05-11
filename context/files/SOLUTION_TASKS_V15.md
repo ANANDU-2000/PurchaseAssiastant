@@ -16,8 +16,21 @@
 | P1 WhatsApp AI Fixes | 3 | 3 |
 | P2 Bulk Item Creation | 2 | 2 |
 | P2 Chatbot UX | 3 | 3 |
+| P2 Forms / pickers | 1 | 1 |
 
 **Shipped 2026-05-11:** T-001–T-022 complete in repo (see code). Last batch: T-013 entity preview + Edit in app; T-018–T-019 `create_catalog_items_batch` prompt + backend path; T-021 auto-send after speech; T-022 Hive-backed assistant history + clear.
+
+### T-023 · Dropdown / picker overlays — scroll + CTA visibility ✅ 2026-05-11
+**Problem (screenshots):** Category and item pickers opened as tall overlays, covering **Cancel** / **Save Item** and feeling “stuck” when scrolling.
+
+**Fix:** Cap menu height to ~36–38% of viewport (`menuMaxHeight` / `menuHeight`), scroll the quick-add sheet, bound catalog category/type bottom sheets to ≤55% height, tighten inline-search suggestion panel.
+
+- [x] `quick_add_item_sheet.dart` — `menuMaxHeight` + `SingleChildScrollView`
+- [x] `batch_item_create_page.dart` — `menuMaxHeight` on category/type dropdowns
+- [x] `item_wizard_page.dart` — dynamic `menuHeight` for both `DropdownMenu`s
+- [x] `catalog_add_item_page.dart` — fixed max height + scroll for category/type sheets
+- [x] `purchase_item_entry_sheet.dart` — dynamic unit dropdown `menuMaxHeight`
+- [x] `inline_search_field.dart` — shorter max suggestion height
 
 ---
 

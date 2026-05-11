@@ -651,6 +651,8 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   }
 
   Widget _unitDropdownField({required String? errorText}) {
+    final unitMenuMax =
+        math.min(260.0, MediaQuery.sizeOf(context).height * 0.38);
     final v = _unitDropdownValue();
     final ordered = _suggestedUnitChoices();
     final itemSet = <String>{...ordered, v};
@@ -670,7 +672,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         child: DropdownButtonFormField<String>(
           isExpanded: true,
           initialValue: v,
-          menuMaxHeight: 280,
+          menuMaxHeight: unitMenuMax,
           dropdownColor: HexaColors.surfaceApp,
           borderRadius: BorderRadius.circular(12),
           decoration: _deco('Unit *', errorText: errorText),

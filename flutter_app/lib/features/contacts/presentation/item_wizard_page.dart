@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -322,6 +323,8 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
   }
 
   Widget _stepBasic() {
+    final menuCap =
+        math.min(260.0, MediaQuery.sizeOf(context).height * 0.36);
     final cats = ref.watch(itemCategoriesListProvider);
     final typesAsync = _selectedCategoryId == null
         ? const AsyncData<List<Map<String, dynamic>>>([])
@@ -354,7 +357,7 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
               builder: (context, c) {
                 return DropdownMenu<String>(
                   width: c.maxWidth,
-                  menuHeight: 320,
+                  menuHeight: menuCap,
                   enableFilter: true,
                   enableSearch: true,
                   requestFocusOnTap: true,
@@ -423,7 +426,7 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
               builder: (context, c) {
                 return DropdownMenu<String>(
                   width: c.maxWidth,
-                  menuHeight: 280,
+                  menuHeight: menuCap,
                   enableFilter: true,
                   enableSearch: true,
                   requestFocusOnTap: true,

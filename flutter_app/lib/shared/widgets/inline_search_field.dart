@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -166,9 +165,6 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
     }
     setState(() {});
     try {
-      if (kDebugMode) {
-        debugPrint('[InlineSearch] pick id="${it.id}" label="$label"');
-      }
       widget.onSelected(it);
     } finally {
       _pickInProgress = false;
@@ -188,8 +184,9 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
     final usable = mq.size.height -
         mq.viewInsets.bottom -
         mq.padding.vertical;
-    final v = math.max(120.0, usable * 0.42);
-    return math.min(200.0, v);
+    // Keep overlay short so primary actions (Save / Next) stay reachable.
+    final v = math.max(120.0, usable * 0.34);
+    return math.min(220.0, v);
   }
 
   @override

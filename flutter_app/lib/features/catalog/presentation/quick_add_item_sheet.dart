@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -32,6 +34,8 @@ class _QuickAddItemSheetState extends ConsumerState<QuickAddItemSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final dropdownMenuMax =
+        math.min(260.0, MediaQuery.sizeOf(context).height * 0.38);
     final categoriesAsync = ref.watch(itemCategoriesListProvider);
     final typesAsync = _categoryId == null
         ? const AsyncValue<List<Map<String, dynamic>>>.data([])
@@ -44,7 +48,8 @@ class _QuickAddItemSheetState extends ConsumerState<QuickAddItemSheet> {
         top: 20,
         bottom: MediaQuery.viewInsetsOf(context).bottom + 20,
       ),
-      child: Column(
+      child: SingleChildScrollView(
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -62,6 +67,7 @@ class _QuickAddItemSheetState extends ConsumerState<QuickAddItemSheet> {
               }
               return DropdownButtonFormField<String>(
                 key: ValueKey<String?>('qa_cat_$_categoryId'),
+                menuMaxHeight: dropdownMenuMax,
                 decoration: const InputDecoration(
                   labelText: 'Category *',
                   border: OutlineInputBorder(),
@@ -102,6 +108,7 @@ class _QuickAddItemSheetState extends ConsumerState<QuickAddItemSheet> {
               }
               return DropdownButtonFormField<String>(
                 key: ValueKey<String?>('qa_type_${_categoryId}_$_typeId'),
+                menuMaxHeight: dropdownMenuMax,
                 decoration: const InputDecoration(
                   labelText: 'Subcategory (type) *',
                   border: OutlineInputBorder(),
@@ -198,6 +205,7 @@ class _QuickAddItemSheetState extends ConsumerState<QuickAddItemSheet> {
             ],
           ),
         ],
+        ),
       ),
     );
   }
