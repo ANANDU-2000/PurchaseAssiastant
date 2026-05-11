@@ -21,6 +21,8 @@
 
 **Backend fix (2026-05-11):** Implemented missing `_max_purchase_date_for_catalog_item` in `catalog.py` (was breaking `POST /catalog-items` and unified-search tests). `pytest tests/test_unified_search.py` — 4 passed.
 
+**Supabase (linked project):** `trade_purchases` had **no** `is_delivered` / `delivered_at` / `delivery_notes` until migration **`021_trade_purchase_delivery`** was applied (delivery PATCH/list would fail against prod DB otherwise). Verified + applied via Supabase MCP; `supabase_migrations` lists `20260511080510_021_trade_purchase_delivery`.
+
 **v14 one-shot spec alignment (2026-05-11):** T-007 type rows use `matchingItemIds` + `(category_name ?? type_name)` vs type name per master prompt; T-012 delivery prompt runs via `_scheduleDeliveryPrompt` (post-frame callback, then await). `flutter analyze` — no issues · `flutter test` — 107 passed · no `print(` in `lib/`.
 
 ### CURSOR MASTER ONE-SHOT (Phases 0–4) — task → tracker
