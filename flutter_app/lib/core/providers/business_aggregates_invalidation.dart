@@ -19,6 +19,10 @@ import 'reports_prior_period_provider.dart';
 import 'suppliers_list_provider.dart';
 import 'trade_purchases_provider.dart';
 
+// Debounce guard: prevent stampede when called from multiple sources within 400ms.
+Timer? _invalidateDebounce;
+const _invalidateDebounceMs = 400;
+
 /// KPIs and tables that depend on [analyticsDateRangeProvider] and/or entries.
 /// [ref] is any Riverpod `Ref` / `WidgetRef` with `invalidate`.
 void invalidateAnalyticsData(dynamic ref) {
@@ -50,6 +54,17 @@ void invalidateAnalyticsData(dynamic ref) {
 ///
 /// [ref] is any Riverpod `Ref` / `WidgetRef` with `invalidate`.
 void invalidateBusinessAggregates(dynamic ref) {
+  _invalidateDebounce?.cancel();
+  _invalidateDebounce = Timer(
+    const Duration(milliseconds: _invalidateDebounceMs),
+    () {
+      _invalidateDebounce = null;
+      _doInvalidateBusinessAggregates(ref);
+    },
+  );
+}
+
+void _doInvalidateBusinessAggregates(dynamic ref) {
   bustHomeDashboardVolatileCaches();
   bustHomeShellReportsInflight();
   bustReportsPurchasesInflight();

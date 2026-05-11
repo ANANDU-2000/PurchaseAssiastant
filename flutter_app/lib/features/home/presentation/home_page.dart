@@ -61,7 +61,9 @@ class _HomePageState extends ConsumerState<HomePage>
   /// Debounced: resume must not mass-invalidate [FutureProvider]s while
   /// in-flight requests complete (avoids defunct element / markNeedsBuild).
   Timer? _resumeRefreshDebounce;
+  DateTime? _lastFullInvalidate;
   bool _handlingPurchasePostSave = false;
+  Timer? _dashRefreshGuardTimer;
   Timer? _loadCapTimer;
   bool _loadCapReached = false;
   bool _shownPersistDashboardSnack = false;
@@ -84,6 +86,10 @@ class _HomePageState extends ConsumerState<HomePage>
     _poll = Timer.periodic(const Duration(minutes: 10), (_) {
       if (!mounted) return;
       if (_resumeRefreshDebounce?.isActive == true) return;
+      final last = _lastFullInvalidate;
+      if (last != null && DateTime.now().difference(last).inMinutes < 2) return;
+      _lastFullInvalidate = DateTime.now();
+      bustHomeDashboardVolatileCaches();
       invalidateTradePurchaseCaches(ref);
     });
   }
@@ -92,6 +98,7 @@ class _HomePageState extends ConsumerState<HomePage>
   void dispose() {
     _poll?.cancel();
     _resumeRefreshDebounce?.cancel();
+    _dashRefreshGuardTimer?.cancel();
     _loadCapTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -106,6 +113,7 @@ class _HomePageState extends ConsumerState<HomePage>
     // resume can stampede 10+ refetches and race disposed providers on web.
     _resumeRefreshDebounce = Timer(const Duration(milliseconds: 320), () {
       if (!mounted) return;
+      _lastFullInvalidate = DateTime.now();
       ref.invalidate(homeDashboardDataProvider);
       ref.invalidate(homeShellReportsProvider);
       ref.invalidate(maintenancePaymentControllerProvider);
@@ -114,6 +122,7 @@ class _HomePageState extends ConsumerState<HomePage>
   }
 
   Future<void> _refresh() async {
+    _lastFullInvalidate = DateTime.now();
     ref.invalidate(homeDashboardDataProvider);
     ref.invalidate(homeShellReportsProvider);
     invalidateTradePurchaseCaches(ref);
@@ -167,8 +176,18 @@ class _HomePageState extends ConsumerState<HomePage>
       homeDashboardDataProvider,
       (prev, next) {
         if (next.refreshing) {
+          if (prev?.refreshing != true) {
+            _dashRefreshGuardTimer?.cancel();
+            _dashRefreshGuardTimer = Timer(const Duration(seconds: 6), () {
+              if (!mounted) return;
+              _dashRefreshGuardTimer = null;
+              ref.read(homeDashboardDataProvider.notifier).forceStopRefreshing();
+            });
+          }
           return;
         }
+        _dashRefreshGuardTimer?.cancel();
+        _dashRefreshGuardTimer = null;
         _loadCapTimer?.cancel();
         _loadCapTimer = null;
         if (mounted && _loadCapReached) {
@@ -200,8 +219,9 @@ class _HomePageState extends ConsumerState<HomePage>
         async.refreshing && peek == null && pay.data.isEmpty;
 
     if (shellSkeleton && !_loadCapReached) {
-      _loadCapTimer ??= Timer(const Duration(seconds: 3), () {
+      _loadCapTimer ??= Timer(const Duration(seconds: 6), () {
         if (!mounted) return;
+        ref.read(homeDashboardDataProvider.notifier).forceStopRefreshing();
         setState(() {
           _loadCapReached = true;
           _loadCapTimer?.cancel();
@@ -523,6 +543,7 @@ class _HomePageState extends ConsumerState<HomePage>
                       categoryColors: _donutColors,
                       paintShellSkeleton: shellSkeleton,
                       dashboardRefreshing: async.refreshing,
+                      homePeriod: period,
                     ),
                   ),
                   Positioned(
@@ -890,6 +911,16 @@ const _chartSkeletonCenterInner = Column(
 
 bool _portfolioEmpty(HomeDashboardData d) => d.purchaseCount == 0;
 
+String _homeEmptyPeriodLabel(HomePeriod period) {
+  return switch (period) {
+    HomePeriod.today => 'No purchases today',
+    HomePeriod.week => 'No purchases this week',
+    HomePeriod.month => 'No purchases this month',
+    HomePeriod.year => 'No purchases this year',
+    HomePeriod.custom => 'No purchases in this period',
+  };
+}
+
 HomeShellReportsBundle? _breakdownShellBundle(
   HomeBreakdownTab tab,
   AsyncValue<HomeShellReportsBundle> shell,
@@ -905,12 +936,14 @@ class _HomeFixedHeaderBody extends ConsumerStatefulWidget {
     required this.categoryColors,
     this.paintShellSkeleton = false,
     this.dashboardRefreshing = false,
+    required this.homePeriod,
   });
 
   final HomeDashboardData data;
   final List<Color> categoryColors;
   final bool paintShellSkeleton;
   final bool dashboardRefreshing;
+  final HomePeriod homePeriod;
 
   @override
   ConsumerState<_HomeFixedHeaderBody> createState() =>
@@ -1078,6 +1111,11 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
         _unitTotalsFromHomeShell(shell.valueOrNull ?? peekShell);
     final rc = _ringCenterLines(widget.data, unitsOverride: unitsFromShell);
 
+    final data = widget.data;
+    final emptyPortfolio = !widget.dashboardRefreshing &&
+        data.totalPurchase == 0 &&
+        data.purchaseCount == 0;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1088,6 +1126,52 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
             unitsOverride: unitsFromShell,
           ),
         ),
+        if (emptyPortfolio)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+            child: Column(
+              children: [
+                Icon(Icons.receipt_long_outlined,
+                    size: 52, color: Colors.grey.shade300),
+                const SizedBox(height: 16),
+                Text(
+                  _homeEmptyPeriodLabel(widget.homePeriod),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: Colors.grey.shade500,
+                        fontWeight: FontWeight.w500,
+                      ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Tap + to record your first purchase',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Colors.grey.shade400,
+                      ),
+                ),
+              ],
+            ),
+          )
+        else if (data.itemSlices.isEmpty && widget.dashboardRefreshing)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: Column(
+              children: List.generate(
+                4,
+                (_) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Container(
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        if (!emptyPortfolio) ...[
         const SizedBox(height: 4),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -1130,6 +1214,7 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
             ),
           ),
         ),
+        ],
       ],
     );
   }

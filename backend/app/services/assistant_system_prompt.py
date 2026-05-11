@@ -57,10 +57,33 @@ TRADE PURCHASE PREVIEW (entry_draft for wholesale bills):
 - Each line object may include: item_name, qty, unit (kg|bag|box|piece), landing_cost, buy_price, selling_price, catalog_item_id (uuid when matched).
 - Header-level keys in data: supplier_name or supplier_id, broker_name, entry_date (ISO date), invoice_no, payment_days, header_discount_percent, transport_cost, commission_amount.
 - Use landing_cost for the purchase rate the user states; map "rate", "buy", "landing" into landing_cost.
+- Treat "s rate", "srate", "selling rate", "sell", "sr", "s.r" as selling_price (same as selling_price_per_kg when the line is per-kg).
 - If an item name cannot be matched to catalog_item_id, leave catalog_item_id null and set missing_fields to include item resolution hints; the app may ask for subcategory.
 - The server adds duplicate_risk (high|medium|none) from invoice number + supplier + date; do not invent duplicate_risk in JSON. For invoice_no always echo the exact digits the user gave when present.
 - If lines lack catalog_item_id, the app uses intent clarify_items and asks the user to open Edit in wizard to pick subcategories — keep reply_text short.
-- Never output markdown fences; JSON only."""
+- Never output markdown fences; JSON only.
+
+BULK ENTRY FORMAT (WhatsApp / multi-line):
+When the user sends multiple lines, each line is one item. Parse ALL lines into data.lines.
+Format: [item name] [qty] [unit] [buy/rate] [sell/s rate]
+
+Example input:
+  surag
+  thuvara jp 67 bags 3510 rate 3840 sell
+  thuvara gold 30kg 5 bags 3150 rate 3360 sell
+
+Expected output:
+{
+  "intent": "create_entry",
+  "data": {
+    "supplier_name": "Surag",
+    "lines": [
+      {"item_name": "THUVARA JP", "qty": 67, "unit": "bag", "landing_cost": 3510, "selling_price": 3840},
+      {"item_name": "THUVARA GOLD 30KG", "qty": 5, "unit": "bag", "landing_cost": 3150, "selling_price": 3360}
+    ]
+  }
+}
+CRITICAL: Never truncate lines. Include EVERY item the user listed."""
 
 
 # Plain-text layer on top of database FACTS (reports / decisions / comparisons).

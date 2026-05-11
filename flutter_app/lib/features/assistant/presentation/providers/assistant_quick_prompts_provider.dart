@@ -20,23 +20,24 @@ class AssistantQuickPrompt {
 final assistantQuickPromptsProvider = Provider<List<AssistantQuickPrompt>>((ref) {
   return const [
     AssistantQuickPrompt(
+      label: '+ Purchase',
+      message: 'New purchase',
+    ),
+    AssistantQuickPrompt(
       label: 'Profit',
-      goLocation: '/reports',
-      usePush: true,
+      message: "What's my profit this month?",
     ),
     AssistantQuickPrompt(
-      label: 'New purchase',
-      goLocation: '/purchase/new',
-      usePush: true,
+      label: 'Pending',
+      message: 'Show pending deliveries',
     ),
     AssistantQuickPrompt(
-      label: 'Today',
-      goLocation: '/home',
+      label: 'Top Items',
+      message: 'Top items this month',
     ),
     AssistantQuickPrompt(
       label: 'Suppliers',
-      goLocation: '/search?section=suppliers',
-      usePush: true,
+      message: 'List active suppliers this month',
     ),
   ];
 });

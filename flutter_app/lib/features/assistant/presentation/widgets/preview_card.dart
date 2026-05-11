@@ -50,6 +50,7 @@ class PreviewCard extends StatelessWidget {
     }
     final lines = d['lines'];
     if (lines is! List || lines.isEmpty) return null;
+    if (lines.length > 1) return null;
     final line = lines.first;
     if (line is! Map) return null;
     final m = Map<String, dynamic>.from(line);
@@ -62,7 +63,12 @@ class PreviewCard extends StatelessWidget {
     final buyN = buy is num ? buy.toDouble() : double.tryParse('$buy');
     final landN = land is num ? land.toDouble() : double.tryParse('$land');
     final cur = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 2);
-    final supplier = d['supplier_id'] != null ? 'Linked supplier' : '—';
+    final supplierRaw = d['supplier_name']?.toString().trim() ??
+        d['supplier']?.toString().trim() ??
+        '';
+    final supplier = supplierRaw.isNotEmpty
+        ? supplierRaw
+        : (d['supplier_id'] != null ? 'Linked' : '—');
     final totalN = (landN != null && qtyN > 0) ? qtyN * landN : null;
     return PreviewCardData(
       item: item,

@@ -7,9 +7,11 @@ import '../models/trade_purchase_models.dart';
 import 'analytics_kpi_provider.dart' show analyticsDateRangeProvider;
 import '../utils/line_display.dart';
 
-/// Fetches enough rows for wholesale history + KPI strip (paged in [HexaApi.listTradePurchases]).
-const kTradePurchasesAlertFetchLimit = 4000;
-const kTradePurchasesHistoryFetchLimit = 4000;
+/// Alert strip: small cap — full due counts use server-side reports when needed.
+const kTradePurchasesAlertFetchLimit = 50;
+
+/// History first page; scroll end loads more via [TradePurchasesListNotifier.loadMore].
+const kTradePurchasesHistoryFetchLimit = 100;
 
 String? _purchaseFromApi(DateTime? d) {
   if (d == null) return null;
@@ -95,26 +97,88 @@ final tradePurchasesForAlertsParsedProvider =
       );
 });
 
+/// Paged trade rows for Purchase History (offset grows via [TradePurchasesListNotifier.loadMore]).
+class TradePurchasesListView {
+  const TradePurchasesListView({required this.rows, required this.hasMore});
+
+  final List<Map<String, dynamic>> rows;
+  final bool hasMore;
+}
+
+class TradePurchasesListNotifier extends AutoDisposeAsyncNotifier<TradePurchasesListView> {
+  bool _loadMoreBusy = false;
+
+  @override
+  Future<TradePurchasesListView> build() async {
+    final link = ref.keepAlive();
+    final t = Timer(const Duration(minutes: 5), link.close);
+    ref.onDispose(t.cancel);
+
+    final session = ref.watch(sessionProvider);
+    if (session == null) {
+      return const TradePurchasesListView(rows: [], hasMore: false);
+    }
+    final primary = ref.watch(purchaseHistoryPrimaryFilterProvider);
+    final secondary = ref.watch(purchaseHistorySecondaryFilterProvider);
+    final apiStatus = _tradeListApiStatus(primary, secondary);
+    final purchaseFrom = _purchaseFromApi(ref.watch(purchaseHistoryDateFromProvider));
+    final purchaseTo = _purchaseFromApi(ref.watch(purchaseHistoryDateToProvider));
+
+    final page = await ref.read(hexaApiProvider).listTradePurchases(
+          businessId: session.primaryBusiness.id,
+          limit: kTradePurchasesHistoryFetchLimit,
+          offset: 0,
+          status: apiStatus,
+          purchaseFrom: purchaseFrom,
+          purchaseTo: purchaseTo,
+        );
+    final hasMore = page.length >= kTradePurchasesHistoryFetchLimit;
+    return TradePurchasesListView(rows: page, hasMore: hasMore);
+  }
+
+  /// Appends the next API page when the user scrolls near the end of the list.
+  Future<void> loadMore() async {
+    final cur = state.valueOrNull;
+    if (cur == null || !cur.hasMore || _loadMoreBusy) return;
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    final offset = cur.rows.length;
+    _loadMoreBusy = true;
+    try {
+      final primary = ref.read(purchaseHistoryPrimaryFilterProvider);
+      final secondary = ref.read(purchaseHistorySecondaryFilterProvider);
+      final apiStatus = _tradeListApiStatus(primary, secondary);
+      final purchaseFrom = _purchaseFromApi(ref.read(purchaseHistoryDateFromProvider));
+      final purchaseTo = _purchaseFromApi(ref.read(purchaseHistoryDateToProvider));
+      final page = await ref.read(hexaApiProvider).listTradePurchases(
+            businessId: session.primaryBusiness.id,
+            limit: kTradePurchasesHistoryFetchLimit,
+            offset: offset,
+            status: apiStatus,
+            purchaseFrom: purchaseFrom,
+            purchaseTo: purchaseTo,
+          );
+      final after = state.valueOrNull;
+      if (after == null || after.rows.length != offset) return;
+      if (page.isEmpty) {
+        state = AsyncData(TradePurchasesListView(rows: after.rows, hasMore: false));
+        return;
+      }
+      final hasMore = page.length >= kTradePurchasesHistoryFetchLimit;
+      state = AsyncData(TradePurchasesListView(
+        rows: [...after.rows, ...page],
+        hasMore: hasMore,
+      ));
+    } finally {
+      _loadMoreBusy = false;
+    }
+  }
+}
+
 final tradePurchasesListProvider =
-    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  final link = ref.keepAlive();
-  final t = Timer(const Duration(minutes: 5), link.close);
-  ref.onDispose(t.cancel);
-  final session = ref.watch(sessionProvider);
-  if (session == null) return [];
-  final primary = ref.watch(purchaseHistoryPrimaryFilterProvider);
-  final secondary = ref.watch(purchaseHistorySecondaryFilterProvider);
-  final apiStatus = _tradeListApiStatus(primary, secondary);
-  final purchaseFrom = _purchaseFromApi(ref.watch(purchaseHistoryDateFromProvider));
-  final purchaseTo = _purchaseFromApi(ref.watch(purchaseHistoryDateToProvider));
-  return ref.read(hexaApiProvider).listTradePurchases(
-        businessId: session.primaryBusiness.id,
-        limit: kTradePurchasesHistoryFetchLimit,
-        status: apiStatus,
-        purchaseFrom: purchaseFrom,
-        purchaseTo: purchaseTo,
-      );
-});
+    AsyncNotifierProvider.autoDispose<TradePurchasesListNotifier, TradePurchasesListView>(
+  TradePurchasesListNotifier.new,
+);
 
 /// Parsed rows track [tradePurchasesListProvider] without `await …future`, so
 /// async completion cannot call `markNeedsBuild` on a disposed home/shell
@@ -122,7 +186,7 @@ final tradePurchasesListProvider =
 final tradePurchasesParsedProvider =
     Provider.autoDispose<AsyncValue<List<TradePurchase>>>((ref) {
   return ref.watch(tradePurchasesListProvider).whenData(
-        (maps) => maps
+        (view) => view.rows
             .map((e) => TradePurchase.fromJson(Map<String, dynamic>.from(e)))
             .toList(),
       );

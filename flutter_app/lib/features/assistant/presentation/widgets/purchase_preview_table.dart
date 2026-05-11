@@ -34,9 +34,12 @@ class PurchasePreviewTable extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
     final lines = (entryDraft['lines'] as List?) ?? [];
-    final supplier = entryDraft['supplier_name']?.toString() ??
-        entryDraft['supplier_id']?.toString() ??
-        '—';
+    final supplierRaw = entryDraft['supplier_name']?.toString().trim() ??
+        entryDraft['supplier']?.toString().trim() ??
+        '';
+    final supplier = supplierRaw.isNotEmpty
+        ? supplierRaw
+        : (entryDraft['supplier_id'] != null ? 'Linked' : '—');
     final broker = entryDraft['broker_name']?.toString() ?? '';
     final payDays = entryDraft['payment_days']?.toString() ?? '';
     final risk = duplicateRisk ?? _asStringKeyedMap(entryDraft['duplicate_risk']);

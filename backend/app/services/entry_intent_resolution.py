@@ -6,6 +6,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
+from rapidfuzz import fuzz
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -45,6 +46,59 @@ def _parse_date(v: object) -> date | None:
         return None
 
 
+async def _best_supplier_fuzzy_row(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    needle: str,
+) -> tuple[uuid.UUID | None, float, str | None]:
+    """Best supplier row by token_sort_ratio; score is 0..1."""
+    nlow = needle.strip().lower()
+    if not nlow:
+        return None, 0.0, None
+    r = await db.execute(
+        select(Supplier.id, Supplier.name).where(Supplier.business_id == business_id)
+    )
+    rows = r.all()
+    best_id: uuid.UUID | None = None
+    best_sc = 0.0
+    best_name: str | None = None
+    for sid, sname in rows:
+        nm = (sname or "").strip()
+        if not nm:
+            continue
+        if nm.lower() == nlow:
+            return sid, 1.0, nm
+        sc = float(fuzz.token_sort_ratio(nlow, nm.lower()) / 100.0)
+        if sc > best_sc:
+            best_sc = sc
+            best_id = sid
+            best_name = nm
+    return best_id, best_sc, best_name
+
+
+async def resolve_supplier_clarify_message(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    supplier_name: str | None,
+) -> str | None:
+    """
+    If the name is a weak fuzzy match (65%–75%), return a short clarify reply.
+    Strong matches (>=75%) are resolved in [find_supplier_id_by_name] — no message here.
+    """
+    if not supplier_name or not str(supplier_name).strip():
+        return None
+    needle = str(supplier_name).strip()
+    sid, sc, best_name = await _best_supplier_fuzzy_row(db, business_id, needle)
+    if sid is not None and sc >= 0.75:
+        return None
+    if best_name and 0.65 <= sc < 0.75:
+        return (
+            f"Supplier '{needle}' not found. Did you mean '{best_name}'? "
+            f"Reply 'yes' to use {best_name}, or give the exact supplier name."
+        )
+    return None
+
+
 async def find_supplier_id_by_name(
     db: AsyncSession,
     business_id: uuid.UUID,
@@ -53,14 +107,10 @@ async def find_supplier_id_by_name(
     if not name or not str(name).strip():
         return None
     needle = str(name).strip()
-    r = await db.execute(
-        select(Supplier.id).where(
-            Supplier.business_id == business_id,
-            Supplier.name.ilike(f"%{needle}%"),
-        )
-    )
-    row = r.first()
-    return row[0] if row else None
+    sid, sc, _ = await _best_supplier_fuzzy_row(db, business_id, needle)
+    if sc >= 0.75 and sid is not None:
+        return sid
+    return None
 
 
 async def find_broker_id_by_name(
@@ -96,7 +146,7 @@ def merge_kv_into_create_data(base: dict[str, Any], kv: dict[str, str]) -> dict[
             out["buy_price"] = v
         elif lk in ("land", "landing", "landing_cost", "lc"):
             out["landing_cost"] = v
-        elif lk in ("sell", "selling_price", "selling"):
+        elif lk in ("sell", "selling_price", "selling", "selling_rate", "s_rate", "srate", "sr"):
             out["selling_price"] = v
         elif lk == "supplier":
             out["supplier_name"] = v
@@ -167,7 +217,15 @@ async def build_entry_create_request(
 
     sup_nm = data.get("supplier_name") or raw.get("supplier_name")
     br_nm = data.get("broker_name") or raw.get("broker_name")
-    sup_id = await find_supplier_id_by_name(db, business_id, sup_nm if sup_nm else None)
+    sup_id: uuid.UUID | None = None
+    sup_raw = data.get("supplier_id") or raw.get("supplier_id")
+    if sup_raw:
+        try:
+            sup_id = uuid.UUID(str(sup_raw).strip())
+        except (ValueError, TypeError, AttributeError):
+            sup_id = None
+    if sup_id is None:
+        sup_id = await find_supplier_id_by_name(db, business_id, sup_nm if sup_nm else None)
     br_id = await find_broker_id_by_name(db, business_id, br_nm if br_nm else None)
 
     line = EntryLineInput(

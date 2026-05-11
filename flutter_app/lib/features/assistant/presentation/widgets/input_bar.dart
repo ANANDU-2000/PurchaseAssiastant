@@ -18,6 +18,9 @@ class InputBar extends StatefulWidget {
     this.onMicUp,
     this.replySnippet,
     this.onDismissReply,
+    this.speechLocaleLabel = 'ML',
+    this.showLocaleToggle = false,
+    this.onLocaleToggle,
   });
 
   final TextEditingController controller;
@@ -30,6 +33,9 @@ class InputBar extends StatefulWidget {
   final VoidCallback? onMicUp;
   final String? replySnippet;
   final VoidCallback? onDismissReply;
+  final String speechLocaleLabel;
+  final bool showLocaleToggle;
+  final VoidCallback? onLocaleToggle;
 
   @override
   State<InputBar> createState() => _InputBarState();
@@ -173,6 +179,9 @@ class _InputBarState extends State<InputBar> {
                           onMicDown: widget.onMicDown,
                           onMicUp: widget.onMicUp,
                           onSend: widget.onSend,
+                          speechLocaleLabel: widget.speechLocaleLabel,
+                          showLocaleToggle: widget.showLocaleToggle,
+                          onLocaleToggle: widget.onLocaleToggle,
                         ),
                       ),
                     ],
@@ -197,6 +206,9 @@ class _TrailingAction extends StatelessWidget {
     this.onMicDown,
     this.onMicUp,
     required this.onSend,
+    this.speechLocaleLabel = 'ML',
+    this.showLocaleToggle = false,
+    this.onLocaleToggle,
   });
 
   final bool hasText;
@@ -206,6 +218,9 @@ class _TrailingAction extends StatelessWidget {
   final VoidCallback? onMicDown;
   final VoidCallback? onMicUp;
   final VoidCallback onSend;
+  final String speechLocaleLabel;
+  final bool showLocaleToggle;
+  final VoidCallback? onLocaleToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -235,10 +250,39 @@ class _TrailingAction extends StatelessWidget {
     if (speechReady) {
       return Padding(
         padding: const EdgeInsets.only(right: 4, bottom: 2),
-        child: MicButton(
-          listening: listening,
-          onStart: onMicDown ?? () {},
-          onStop: onMicUp ?? () {},
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (showLocaleToggle && onLocaleToggle != null)
+              GestureDetector(
+                onTap: onLocaleToggle,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  margin: const EdgeInsets.only(right: 4),
+                  decoration: BoxDecoration(
+                    color: speechLocaleLabel == 'ML'
+                        ? const Color(0xFF075E54)
+                        : const Color(0xFFEEEEEE),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    speechLocaleLabel,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: speechLocaleLabel == 'ML'
+                          ? Colors.white
+                          : Colors.grey.shade700,
+                    ),
+                  ),
+                ),
+              ),
+            MicButton(
+              listening: listening,
+              onStart: onMicDown ?? () {},
+              onStop: onMicUp ?? () {},
+            ),
+          ],
         ),
       );
     }

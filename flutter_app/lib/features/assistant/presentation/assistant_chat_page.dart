@@ -1,4 +1,4 @@
-import 'dart:async' show unawaited;
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -43,6 +43,11 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
   stt.SpeechToText? _speech;
   bool _speechOn = false;
   bool _listening = false;
+  String _speechLocale = 'ml-IN';
+  String _mlSpeechLocale = 'ml-IN';
+  String? _enSpeechLocale;
+  bool _showLocaleToggle = false;
+  String _partialSpeech = '';
 
   String? _replySnippet;
   final Set<String> _typewriterActive = {};
@@ -55,9 +60,11 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
     _msgs.add(
       ChatMessage(
         id: 'welcome',
-        text: 'Ask in plain words, e.g. create supplier Ravi, or add a purchase. '
-            'You will see a preview first. Tap Save on the card (a short confirm appears), or type YES / NO in chat.\n'
-            'Hold the mic in the bar below to dictate (Malayalam or English).',
+        text: 'നമസ്കാരം! How can I help today?\n'
+            '• Say or type a purchase: "surag 50 bags thuvara 3500"\n'
+            '• Ask about profit: "this month profit"\n'
+            '• Create supplier: "new supplier ravi 9876543210"\n'
+            'Hold the mic in the bar below to speak in Malayalam or English.',
         isUser: false,
         at: DateTime.now(),
       ),
@@ -83,9 +90,45 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
         },
       );
       if (mounted) setState(() => _speechOn = ok);
+      if (ok) {
+        try {
+          final locales = await s.locales();
+          String? mlId;
+          String? enInId;
+          for (final l in locales) {
+            final id = l.localeId.toLowerCase();
+            if (mlId == null && id.contains('ml')) {
+              mlId = l.localeId;
+            }
+            if (enInId == null &&
+                (id.contains('en-in') || id.contains('en_in'))) {
+              enInId = l.localeId;
+            }
+          }
+          if (mlId != null && mounted) {
+            setState(() {
+              _mlSpeechLocale = mlId!;
+              _speechLocale = mlId;
+              _enSpeechLocale = enInId;
+              _showLocaleToggle = enInId != null;
+            });
+          }
+        } catch (_) {
+          // Locale detection failed — keep default
+        }
+      }
     } catch (_) {
       if (mounted) setState(() => _speechOn = false);
     }
+  }
+
+  void _toggleLocale() {
+    final en = _enSpeechLocale;
+    if (en == null) return;
+    setState(() {
+      final isMl = _speechLocale.toLowerCase().contains('ml');
+      _speechLocale = isMl ? en : _mlSpeechLocale;
+    });
   }
 
   @override
@@ -179,6 +222,7 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
 
     setState(() {
       _loading = true;
+      _partialSpeech = '';
       _msgs.add(ChatMessage(
         id: DateTime.now().microsecondsSinceEpoch.toString(),
         text: text,
@@ -302,14 +346,23 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
     HapticFeedback.mediumImpact();
     await _speech!.listen(
       onResult: (r) {
+        if (!mounted) return;
         if (r.finalResult) {
           final t = r.recognizedWords.trim();
           if (t.isNotEmpty) {
-            _ctrl.text = t;
-            _ctrl.selection = TextSelection.collapsed(offset: t.length);
+            setState(() {
+              _ctrl.text = t;
+              _ctrl.selection = TextSelection.collapsed(offset: t.length);
+              _partialSpeech = '';
+            });
+          } else {
+            setState(() => _partialSpeech = '');
           }
+        } else {
+          setState(() => _partialSpeech = r.recognizedWords.trim());
         }
       },
+      localeId: _speechLocale,
       listenOptions: stt.SpeechListenOptions(
         listenMode: stt.ListenMode.dictation,
         partialResults: true,
@@ -320,7 +373,12 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
   Future<void> _stopListen() async {
     if (_speech == null) return;
     await _speech!.stop();
-    if (mounted) setState(() => _listening = false);
+    if (mounted) {
+      setState(() {
+        _listening = false;
+        _partialSpeech = '';
+      });
+    }
   }
 
   void _onBubbleLongPress(String t, bool isUser) {
@@ -547,6 +605,34 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   QuickPromptsBar(onPrompt: _onQuickPrompt),
+                  if (_listening && _partialSpeech.isNotEmpty)
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF075E54).withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: const Color(0xFF075E54).withValues(alpha: 0.25),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.graphic_eq_rounded,
+                              size: 16, color: Color(0xFF075E54)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _partialSpeech,
+                              style: AssistantChatTheme.inter(13,
+                                  c: const Color(0xFF111B21)),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   InputBar(
                     controller: _ctrl,
                     focusNode: _inputFocus,
@@ -558,6 +644,10 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
                     onMicUp: _stopListen,
                     replySnippet: _replySnippet,
                     onDismissReply: () => setState(() => _replySnippet = null),
+                    speechLocaleLabel:
+                        _speechLocale.toLowerCase().contains('ml') ? 'ML' : 'EN',
+                    showLocaleToggle: _showLocaleToggle,
+                    onLocaleToggle: _toggleLocale,
                   ),
                 ],
               ),

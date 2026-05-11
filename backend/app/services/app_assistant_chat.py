@@ -45,6 +45,7 @@ from app.services.entry_intent_resolution import (
     build_entry_create_request,
     ist_today,
     merge_kv_into_create_data,
+    resolve_supplier_clarify_message,
 )
 
 
@@ -1289,6 +1290,27 @@ async def run_app_assistant_turn(
             }
 
         tx = _intent_data_to_transaction_dict(data)
+        sup_hint = tx.get("supplier_name")
+        if isinstance(sup_hint, str) and sup_hint.strip():
+            clue = await resolve_supplier_clarify_message(
+                db, business_id, sup_hint.strip()
+            )
+            if clue:
+                await save_chat_draft(
+                    settings,
+                    user_id,
+                    business_id,
+                    {"__pending_entry_data__": data},
+                )
+                return {
+                    "reply": clue,
+                    "intent": "clarify",
+                    "preview_token": None,
+                    "entry_draft": {"__pending_entry_data__": data},
+                    "saved_entry": None,
+                    "missing_fields": [],
+                    **intent_lm,
+                }
         req, miss = await build_entry_create_request(db, business_id, tx)
         combine_miss = list(dict.fromkeys((miss or []) + llm_missing))
         if req is None or (miss and len(miss) > 0):

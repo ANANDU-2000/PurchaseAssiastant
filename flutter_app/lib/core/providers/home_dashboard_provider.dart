@@ -910,6 +910,16 @@ class HomeDashboardDataNotifier extends AutoDisposeNotifier<HomeDashboardDashSta
       refreshing: !hasRenderableCache,
     );
   }
+
+  /// Safety valve: force-clear the refreshing flag after a UI timeout.
+  void forceStopRefreshing() {
+    if (_dead) return;
+    if (!state.refreshing) return;
+    state = HomeDashboardDashState(
+      snapshot: state.snapshot,
+      refreshing: false,
+    );
+  }
 }
 HomeDashboardData aggregateHomeDashboard({
   required HomePeriod period,

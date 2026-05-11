@@ -45,9 +45,20 @@ def stub_intent_from_text(text: str) -> tuple[dict[str, Any], list[str]]:
         data["landed_cost_per_bag"] = float(prices[1])
     elif len(prices) == 1:
         data["landed_cost_per_bag"] = float(prices[0])
-    m4 = re.search(r"sell(?:ing)?\s*(?:₹|rs\.?)?\s*(\d+)", t)
-    if m4:
-        data["selling_price_per_kg"] = float(m4.group(1))
+    sell_m = None
+    for pat in (
+        r"\bs(?:\s*)?rate\s+(\d+(?:\.\d+)?)",
+        r"\bsrate\s*(\d+(?:\.\d+)?)",
+        r"\bs\.r\s+(\d+(?:\.\d+)?)",
+        r"\bsell(?:ing)?\s+(?:rate\s+)?(\d+(?:\.\d+)?)",
+        r"\bsell\s+(\d+(?:\.\d+)?)",
+        r"sell(?:ing)?\s*(?:₹|rs\.?)?\s*(\d+(?:\.\d+)?)",
+    ):
+        sell_m = re.search(pat, t)
+        if sell_m:
+            break
+    if sell_m:
+        data["selling_price_per_kg"] = float(sell_m.group(1))
 
     for word in ("rice", "oil", "atta", "dal"):
         if word in t:

@@ -343,6 +343,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
     super.initState();
     _searchCtrl.addListener(_onSearchChanged);
     _searchFocus.addListener(() => setState(() {}));
+    _scroll.addListener(_onHistoryScrollNearEnd);
   }
 
   @override
@@ -376,11 +377,25 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
 
   @override
   void dispose() {
+    _scroll.removeListener(_onHistoryScrollNearEnd);
     _debounce?.cancel();
     _searchCtrl.dispose();
     _searchFocus.dispose();
     _scroll.dispose();
     super.dispose();
+  }
+
+  void _onHistoryScrollNearEnd() {
+    if (!_scroll.hasClients) return;
+    final pos = _scroll.position;
+    if (pos.pixels < pos.maxScrollExtent - 300) return;
+    final async = ref.read(tradePurchasesListProvider);
+    final hasMore = async.maybeWhen(
+      data: (v) => v.hasMore,
+      orElse: () => false,
+    );
+    if (!hasMore) return;
+    unawaited(ref.read(tradePurchasesListProvider.notifier).loadMore());
   }
 
   void _onSearchChanged() {
