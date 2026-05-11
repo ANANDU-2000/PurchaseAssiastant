@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/providers/analytics_kpi_provider.dart';
 import '../../../core/providers/business_profile_provider.dart';
@@ -835,10 +836,13 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
         to: range.to,
         purchases: purchases,
       );
-    } catch (e) {
+    } catch (e, st) {
+      logSilencedApiError(e, st);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('PDF export failed: $e')),
+        SnackBar(
+          content: Text('Could not export PDF. ${userFacingError(e)}'),
+        ),
       );
     } finally {
       if (mounted) setState(() => _exportingPdf = false);

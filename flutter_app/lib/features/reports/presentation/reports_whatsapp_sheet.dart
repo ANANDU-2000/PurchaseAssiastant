@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/models/business_profile.dart';
 import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/reporting/trade_report_aggregate.dart'
@@ -172,10 +173,13 @@ class _ReportsWhatsAppSheetState extends State<ReportsWhatsAppSheet> {
         ],
         text: 'Purchase report (PDF)',
       );
-    } catch (e) {
+    } catch (e, st) {
+      logSilencedApiError(e, st);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('PDF share failed: $e')),
+        SnackBar(
+          content: Text('Could not share PDF. ${userFacingError(e)}'),
+        ),
       );
     } finally {
       if (mounted) setState(() => _sharingPdf = false);

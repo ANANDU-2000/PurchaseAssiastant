@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/router/navigation_ext.dart';
 
@@ -217,7 +218,10 @@ class _BatchItemCreatePageState extends ConsumerState<BatchItemCreatePage> {
                     const SizedBox(height: 8),
                     catsAsync.when(
                       loading: () => const LinearProgressIndicator(),
-                      error: (e, _) => Text('$e'),
+                      error: (e, st) {
+                        logSilencedApiError(e, st);
+                        return Text(userFacingError(e));
+                      },
                       data: (cats) {
                         if (cats.isEmpty) {
                           return const Text('No categories — create in Catalog.');
@@ -253,7 +257,10 @@ class _BatchItemCreatePageState extends ConsumerState<BatchItemCreatePage> {
                       loading: () => line.categoryId == null
                           ? const SizedBox.shrink()
                           : const LinearProgressIndicator(),
-                      error: (e, _) => Text('$e'),
+                      error: (e, st) {
+                        logSilencedApiError(e, st);
+                        return Text(userFacingError(e));
+                      },
                       data: (types) {
                         if (line.categoryId == null) {
                           return const SizedBox.shrink();

@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/reporting/trade_report_aggregate.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
@@ -288,10 +289,11 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
           toDate: _to,
         );
       }
-    } catch (e) {
+    } catch (e, st) {
+      logSilencedApiError(e, st);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('PDF failed: $e')),
+          SnackBar(content: Text('Could not create PDF. ${userFacingError(e)}')),
         );
       }
     }
@@ -312,10 +314,11 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
         fromDate: _from,
         toDate: _to,
       );
-    } catch (e) {
+    } catch (e, st) {
+      logSilencedApiError(e, st);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Share failed: $e')),
+          SnackBar(content: Text('Could not share. ${userFacingError(e)}')),
         );
       }
     }

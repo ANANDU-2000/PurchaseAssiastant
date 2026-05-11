@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../shared/widgets/keyboard_safe_form_viewport.dart';
@@ -383,11 +384,12 @@ class _SupplierCreateSimpleState extends ConsumerState<SupplierCreateSimple> {
         context.pop<Map<String, dynamic>?>(
             sid.isNotEmpty ? {'id': sid, 'name': nm} : null);
       }
-    } catch (e) {
+    } catch (e, st) {
+      logSilencedApiError(e, st);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: $e'),
+            content: Text(userFacingError(e)),
             backgroundColor: Colors.red,
           ),
         );

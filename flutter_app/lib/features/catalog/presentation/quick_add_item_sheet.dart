@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/providers/catalog_providers.dart';
+import '../../../core/providers/suppliers_list_provider.dart';
 
 /// Bottom sheet for quick item creation from home dashboard.
 class QuickAddItemSheet extends ConsumerStatefulWidget {
@@ -21,6 +23,7 @@ class _QuickAddItemSheetState extends ConsumerState<QuickAddItemSheet> {
 
   String? _categoryId;
   String? _typeId;
+  String? _supplierId;
   String _unit = 'kg';
   bool _saving = false;
   String? _error;
@@ -37,6 +40,7 @@ class _QuickAddItemSheetState extends ConsumerState<QuickAddItemSheet> {
     final dropdownMenuMax =
         math.min(260.0, MediaQuery.sizeOf(context).height * 0.38);
     final categoriesAsync = ref.watch(itemCategoriesListProvider);
+    final suppliersAsync = ref.watch(suppliersListProvider);
     final typesAsync = _categoryId == null
         ? const AsyncValue<List<Map<String, dynamic>>>.data([])
         : ref.watch(categoryTypesListProvider(_categoryId!));
@@ -60,7 +64,13 @@ class _QuickAddItemSheetState extends ConsumerState<QuickAddItemSheet> {
           const SizedBox(height: 16),
           categoriesAsync.when(
             loading: () => const LinearProgressIndicator(),
-            error: (e, _) => Text('Could not load categories: $e'),
+            error: (e, st) {
+              logSilencedApiError(e, st);
+              return Text(
+                'Could not load categories. ${userFacingError(e)}',
+                style: const TextStyle(color: Colors.red),
+              );
+            },
             data: (cats) {
               if (cats.isEmpty) {
                 return const Text('No categories yet — create one in Catalog.');
@@ -96,7 +106,13 @@ class _QuickAddItemSheetState extends ConsumerState<QuickAddItemSheet> {
           const SizedBox(height: 12),
           typesAsync.when(
             loading: () => const LinearProgressIndicator(),
-            error: (e, _) => Text('Could not load types: $e'),
+            error: (e, st) {
+              logSilencedApiError(e, st);
+              return Text(
+                'Could not load subcategories. ${userFacingError(e)}',
+                style: const TextStyle(color: Colors.red),
+              );
+            },
             data: (types) {
               if (_categoryId == null) {
                 return const SizedBox.shrink();
@@ -132,6 +148,70 @@ class _QuickAddItemSheetState extends ConsumerState<QuickAddItemSheet> {
             },
           ),
           const SizedBox(height: 12),
+          suppliersAsync.when(
+            loading: () => const LinearProgressIndicator(),
+            error: (e, st) {
+              logSilencedApiError(e, st);
+              return Text(
+                'Could not load suppliers. ${userFacingError(e)}',
+                style: const TextStyle(color: Colors.red),
+              );
+            },
+            data: (sups) {
+              if (sups.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    'Add at least one supplier in Contacts before creating items.',
+                    style: TextStyle(
+                      color: Colors.deepOrange,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                );
+              }
+              if (sups.length == 1) {
+                final n = sups.first['name']?.toString() ?? 'Supplier';
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    'Default supplier: $n',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                );
+              }
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: DropdownButtonFormField<String>(
+                  key: ValueKey<String?>('qa_sup_$_supplierId'),
+                  menuMaxHeight: dropdownMenuMax,
+                  decoration: const InputDecoration(
+                    labelText: 'Default supplier *',
+                    border: OutlineInputBorder(),
+                  ),
+                  initialValue: _supplierId,
+                  hint: const Text('Select supplier'),
+                  items: sups
+                      .map(
+                        (s) => DropdownMenuItem<String>(
+                          value: s['id']?.toString(),
+                          child: Text(
+                            s['name']?.toString() ?? '—',
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                      )
+                      .where((e) => e.value != null && e.value!.isNotEmpty)
+                      .toList(),
+                  onChanged: (id) => setState(() => _supplierId = id),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
           TextField(
             controller: _nameCtrl,
             decoration: const InputDecoration(
@@ -146,7 +226,7 @@ class _QuickAddItemSheetState extends ConsumerState<QuickAddItemSheet> {
             children: [
               const Text('Unit: '),
               const SizedBox(width: 8),
-              for (final u in ['kg', 'bag', 'box', 'tin', 'piece'])
+              for (final u in ['kg', 'bag', 'piece'])
                 Padding(
                   padding: const EdgeInsets.only(right: 6),
                   child: ChoiceChip(
@@ -160,6 +240,15 @@ class _QuickAddItemSheetState extends ConsumerState<QuickAddItemSheet> {
                 ),
             ],
           ),
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              'Box or tin units: use Catalog → Add item.',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+          ),
           if (_unit == 'bag') ...[
             const SizedBox(height: 8),
             TextField(
@@ -167,7 +256,8 @@ class _QuickAddItemSheetState extends ConsumerState<QuickAddItemSheet> {
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(
-                labelText: 'Kg per bag',
+                labelText: 'Weight per bag (kg)',
+                hintText: 'e.g. 50',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -224,6 +314,25 @@ class _QuickAddItemSheetState extends ConsumerState<QuickAddItemSheet> {
       setState(() => _error = 'Select a subcategory (type).');
       return;
     }
+    final sups = ref.read(suppliersListProvider).valueOrNull ?? [];
+    if (sups.isEmpty) {
+      setState(() => _error = 'Add at least one supplier in Contacts before creating an item.');
+      return;
+    }
+    final supplierId = sups.length == 1
+        ? (sups.first['id']?.toString() ?? '')
+        : (_supplierId ?? '');
+    if (supplierId.isEmpty) {
+      setState(() => _error = 'Select a default supplier.');
+      return;
+    }
+    if (_unit == 'bag') {
+      final kg = double.tryParse(_kgCtrl.text.trim());
+      if (kg == null || kg <= 0) {
+        setState(() => _error = 'Please enter weight per bag (kg).');
+        return;
+      }
+    }
     setState(() {
       _saving = true;
       _error = null;
@@ -240,7 +349,7 @@ class _QuickAddItemSheetState extends ConsumerState<QuickAddItemSheet> {
             name: name,
             typeId: _typeId,
             defaultUnit: _unit,
-            defaultSupplierIds: const [],
+            defaultSupplierIds: [supplierId],
             defaultKgPerBag: _unit == 'bag'
                 ? double.tryParse(_kgCtrl.text.trim())
                 : null,
@@ -252,10 +361,11 @@ class _QuickAddItemSheetState extends ConsumerState<QuickAddItemSheet> {
           SnackBar(content: Text('Item "$name" created')),
         );
       }
-    } catch (e) {
+    } catch (e, st) {
+      logSilencedApiError(e, st);
       setState(() {
         _saving = false;
-        _error = 'Could not create item: $e';
+        _error = 'Unable to save item. ${userFacingError(e)}';
       });
     }
   }

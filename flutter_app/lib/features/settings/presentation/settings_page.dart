@@ -15,6 +15,7 @@ import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/router/navigation_ext.dart';
 import '../../../core/models/session.dart';
@@ -252,11 +253,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           backgroundColor: const Color(0xFF1B6B5A),
         ),
       );
-    } catch (e) {
+    } catch (e, st) {
+      logSilencedApiError(e, st);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Save failed: $e'),
+            content: Text(userFacingError(e)),
             backgroundColor: Colors.red,
           ),
         );
@@ -307,10 +309,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           const SnackBar(content: Text('WhatsApp not installed or number invalid')),
         );
       }
-    } catch (e) {
+    } catch (e, st) {
+      logSilencedApiError(e, st);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(userFacingError(e)),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/router/navigation_ext.dart';
 
@@ -91,10 +92,11 @@ class _CatalogItemPurchaseHistoryPageState
         _loading = false;
         _loadingMore = false;
       });
-    } catch (e) {
+    } catch (e, st) {
+      logSilencedApiError(e, st);
       if (!mounted) return;
       setState(() {
-        _error = e.toString();
+        _error = userFacingError(e);
         _loading = false;
         _loadingMore = false;
       });

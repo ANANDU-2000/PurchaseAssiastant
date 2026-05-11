@@ -953,7 +953,8 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                   controller: _kg,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   decoration: InputDecoration(
-                    labelText: 'Kg per bag',
+                    labelText: 'Weight per bag (kg)',
+                    hintText: 'e.g. 50',
                     errorText: _kgErr,
                     contentPadding: _fieldPad,
                     border: _fieldBorder(context),

@@ -12,6 +12,7 @@ import 'package:intl/intl.dart';
 import '../../../core/router/navigation_ext.dart';
 import '../../../core/api/fastapi_error.dart';
 import '../../../core/auth/auth_error_messages.dart';
+import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/json_coerce.dart' show coerceToDoubleNullable;
 import '../../../core/providers/brokers_list_provider.dart';
@@ -750,9 +751,12 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
           builder: (_) => const SupplierCreateSimple(),
         ),
       );
-    } catch (e) {
+    } catch (e, st) {
+      logSilencedApiError(e, st);
       if (!mounted) return;
-      _partyStepSnack('Could not open new supplier: $e');
+      _partyStepSnack(
+        'Could not open the new supplier form. ${userFacingError(e)}',
+      );
       return;
     }
     if (!mounted) return;
@@ -794,9 +798,12 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
               const BrokerWizardPage(selectionReturnOnSave: true),
         ),
       );
-    } catch (e) {
+    } catch (e, st) {
+      logSilencedApiError(e, st);
       if (!mounted) return;
-      _partyStepSnack('Could not open new broker: $e');
+      _partyStepSnack(
+        'Could not open the new broker form. ${userFacingError(e)}',
+      );
       return;
     }
     if (!mounted) return;

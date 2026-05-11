@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/providers/business_profile_provider.dart';
 import '../../../core/services/broker_statement_pdf.dart';
 import '../../../core/router/navigation_ext.dart';
@@ -132,10 +133,11 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
         fromDate: _from,
         toDate: _to,
       );
-    } catch (e) {
+    } catch (e, st) {
+      logSilencedApiError(e, st);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('PDF failed: $e')),
+          SnackBar(content: Text('Could not create PDF. ${userFacingError(e)}')),
         );
       }
     }
