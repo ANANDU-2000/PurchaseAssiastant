@@ -41,6 +41,25 @@
 
 **Note:** Phase 4 Voice tab is not rendered in `shell_screen` (four tabs only); `FeatureFlags.showVoiceTab` is referenced so enabling it later requires a new shell branch + route. Quick add uses category + type + `createCatalogItem(..., categoryId: …)` (API requires `category_id`, not type-only).
 
+### PENDING — not in CURSOR MASTER ONE-SHOT (full `SOLUTION_TASKS_V14` backlog)
+
+These are **out of scope** for the pasted one-shot; do **not** implement them when following only that prompt.
+
+| ID | What |
+|----|------|
+| **T-005** | Unified search: ensure user-created catalog types/subcategories are returned (`search.py` + verify client). |
+| **T-007 (server)** | Optional: type-row `total_bags` / `total_kg` / amount from SQL (30-day) instead of client-only. |
+| **T-015** | Home: `pending_delivery_count` from `reportsHomeOverview` + orange “shipments pending” card → `/purchase?filter=pending_delivery`. |
+| **T-017** | Batch item creation UI from supplier detail. |
+| **T-018** | `POST …/catalog-items/batch` backend. |
+| **T-020** | AI system prompt / `entry_draft` schema hardening. |
+| **T-021** | `clarify_items` + subcategory picker in chat. |
+| **T-022** | Duplicate-risk checks + warning banner on preview. |
+| **T-023** | Backup export (Flutter + backend). |
+| **T-025** | Last-buy chips on supplier / broker / item detail (+ API fields). |
+
+**Doc cleanup (optional):** Many `- [ ]` bullets under tasks T-001+ are obsolete; the **✅ Done** line is authoritative.
+
 ---
 
 ## PHASE 0 — CRITICAL BUGS (Fix First)
