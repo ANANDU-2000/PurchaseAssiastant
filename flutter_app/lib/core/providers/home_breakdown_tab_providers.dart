@@ -76,6 +76,15 @@ class HomeShellReportsBundle {
   );
 }
 
+/// When [reportsHomeOverview] includes `home_shell`, reuse it (same DB work as dashboard).
+HomeShellReportsBundle? homeShellBundleFromOverviewSnap(
+    Map<String, dynamic>? overview) {
+  if (overview == null) return null;
+  final hs = overview['home_shell'];
+  if (hs is! Map) return null;
+  return _homeShellFromHive(Map<String, dynamic>.from(hs));
+}
+
 HomeShellReportsBundle _homeShellFromHive(Map<String, dynamic>? raw) {
   if (raw == null) return HomeShellReportsBundle.empty;
   List<Map<String, dynamic>> lm(String key) {
@@ -171,6 +180,24 @@ final homeShellReportsProvider =
       return _homeShellFromHive(cachedRaw);
     }
     try {
+      await awaitHomeDashboardInflightIfAny(dedupeKey);
+      final fromOverview =
+          homeShellBundleFromOverviewSnap(homeOverviewSnapForKey(dedupeKey));
+      if (fromOverview != null) {
+        if (fromOverview.subcategories.isNotEmpty ||
+            fromOverview.suppliers.isNotEmpty ||
+            fromOverview.items.isNotEmpty) {
+          await OfflineStore.cacheHomeShellReports(
+            bid,
+            q.from,
+            q.to,
+            subcategories: fromOverview.subcategories,
+            suppliers: fromOverview.suppliers,
+            items: fromOverview.items,
+          );
+        }
+        return fromOverview;
+      }
       // Per-endpoint timeout + isolation: one slow/hung API does not block others.
       final typesF = _fetchShellList(
         () => api.tradeReportTypes(

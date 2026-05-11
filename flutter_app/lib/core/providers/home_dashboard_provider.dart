@@ -475,6 +475,20 @@ class _DashboardFailureStats {
 
 final Map<String, Future<HomeDashboardPayload>> _dashInflight = {};
 
+/// Lets [homeShellReportsProvider] wait for the same in-flight overview and reuse `home_shell`.
+Future<void> awaitHomeDashboardInflightIfAny(String dedupeKey) async {
+  final f = _dashInflight[dedupeKey];
+  if (f != null) {
+    try {
+      await f;
+    } catch (_) {}
+  }
+}
+
+/// Raw overview JSON for a date key (includes `home_shell` when requested from API).
+Map<String, dynamic>? homeOverviewSnapForKey(String dedupeKey) =>
+    _homeOverviewSnapMemory[dedupeKey];
+
 int _homeDashBustGeneration = 0;
 
 String _mapDashboardDioBanner(DioException e) {
@@ -517,6 +531,38 @@ void bustHomeDashboardVolatileCaches() {
 /// the notifier will invalidate and schedule a fresh pull.
 class StaleHomeDashboardFetch implements Exception {
   StaleHomeDashboardFetch();
+}
+
+List<Map<String, dynamic>> _coerceJsonMapList(Object? v) {
+  if (v is! List) return const [];
+  return [
+    for (final e in v)
+      if (e is Map<String, dynamic>) e
+      else if (e is Map) Map<String, dynamic>.from(e),
+  ];
+}
+
+Future<void> _persistHomeShellFromOverviewSnap({
+  required String bid,
+  required String from,
+  required String to,
+  required Map<String, dynamic> snap,
+}) async {
+  final raw = snap['home_shell'];
+  if (raw is! Map) return;
+  final m = Map<String, dynamic>.from(raw);
+  final sub = _coerceJsonMapList(m['subcategories']);
+  final sup = _coerceJsonMapList(m['suppliers']);
+  final it = _coerceJsonMapList(m['items']);
+  if (sub.isEmpty && sup.isEmpty && it.isEmpty) return;
+  await OfflineStore.cacheHomeShellReports(
+    bid,
+    from,
+    to,
+    subcategories: sub,
+    suppliers: sup,
+    items: it,
+  );
 }
 
 /// Server snapshot holder + outstanding refresh flag (SWR-friendly).
@@ -633,6 +679,7 @@ Future<HomeDashboardPayload> _homeDashboardPullFresh({
       from: from,
       to: to,
       compact: true,
+      shellBundle: true,
     );
     if (kDebugMode) {
       debugPrint(
@@ -653,6 +700,12 @@ Future<HomeDashboardPayload> _homeDashboardPullFresh({
       Map<String, dynamic>.from(snap),
     );
     _homeOverviewSnapMemory[dedupeKey] = Map<String, dynamic>.from(snap);
+    await _persistHomeShellFromOverviewSnap(
+      bid: bid,
+      from: from,
+      to: to,
+      snap: snap,
+    );
 
     final fromSnapshot = homeDashboardDataFromApiSnapshot(period, snap);
     if (_snapshotHasTradeActivity(fromSnapshot)) {

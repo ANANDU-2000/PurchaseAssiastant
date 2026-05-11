@@ -366,14 +366,43 @@ async def _prepare_trade_entry_preview_response(
     return merged, []
 
 
-def _single_missing_prompt(missing_fields: list[str] | None) -> str:
+def _pending_hints(pending: dict[str, Any] | None) -> str:
+    if not pending or not isinstance(pending, dict):
+        return ""
+    bits: list[str] = []
+    for k, label in (
+        ("item_name", "item"),
+        ("item", "item"),
+        ("qty", "qty"),
+        ("unit", "unit"),
+        ("supplier_name", "supplier"),
+        ("buy_price", "buy"),
+        ("landing_cost", "landing"),
+        ("selling_price", "sell"),
+    ):
+        v = pending.get(k)
+        if v is None or v == "":
+            continue
+        bits.append(f"{label}={v}")
+        if len(bits) >= 5:
+            break
+    if not bits:
+        return ""
+    return " So far: " + "; ".join(bits) + "."
+
+
+def _single_missing_prompt(
+    missing_fields: list[str] | None,
+    *,
+    pending: dict[str, Any] | None = None,
+) -> str:
     m = [x for x in (missing_fields or []) if x]
     if not m:
         return "Need one field: qty. Example: qty 100"
     key = m[0]
     examples = {
-        "item": "item rice",
-        "item_name": "item rice",
+        "item": "rice 100 kg (or: item rice)",
+        "item_name": "rice 100 kg (or: item rice)",
         "qty": "qty 100",
         "buy_price": "buy 700",
         "landing_cost": "landing 720",
@@ -384,12 +413,49 @@ def _single_missing_prompt(missing_fields: list[str] | None) -> str:
         "unit": "unit kg",
     }
     ex = examples.get(key, f"{key} <value>")
-    return f"Need {key}. Example: {ex}"
+    hint = _pending_hints(pending if isinstance(pending, dict) else None)
+    return f"Need {key}.{hint} Example: {ex}"
 
 
 def _extract_inline_kv(text: str) -> dict[str, str]:
     t = text.strip()
     out: dict[str, str] = {}
+    # "<item> <qty> <unit>" e.g. sugar 50 kg, suger 50kg (no "item" prefix)
+    m_compact = re.match(
+        r"(?i)^([A-Za-z][A-Za-z0-9 .'\-]{0,58}?)\s+([0-9]+(?:\.[0-9]+)?)\s*(kg|bag|bags|box|boxes|tin|tins|piece|pcs|pkt)\s*$",
+        t,
+    )
+    if m_compact:
+        name = m_compact.group(1).strip().strip("., ")
+        low = name.lower()
+        if low not in {"qty", "item", "buy", "sell", "supplier", "broker", "date", "unit", "landing", "land"}:
+            out["item"] = name
+            out["qty"] = m_compact.group(2)
+            u = m_compact.group(3).lower()
+            if u in ("bags",):
+                u = "bag"
+            if u in ("boxes",):
+                u = "box"
+            if u in ("tins",):
+                u = "piece"
+            if u in ("pcs", "pkt"):
+                u = "piece"
+            out["unit"] = u if u in ("kg", "bag", "box", "piece") else "kg"
+    # Bare "50 kg" / "100 bag"
+    m_bare = re.match(
+        r"(?i)^([0-9]+(?:\.[0-9]+)?)\s*(kg|bag|bags|box|boxes|piece|pcs)\s*$",
+        t,
+    )
+    if m_bare and "qty" not in out:
+        out["qty"] = m_bare.group(1)
+        u = m_bare.group(2).lower()
+        if u in ("bags",):
+            u = "bag"
+        if u in ("boxes",):
+            u = "box"
+        if u in ("pcs",):
+            u = "piece"
+        out["unit"] = u if u in ("kg", "bag", "box", "piece") else "kg"
     patterns = [
         ("qty", r"(?i)\bqty\s*[:=]?\s*([0-9]+(?:\.[0-9]+)?)"),
         ("buy_price", r"(?i)\b(?:buy|buy_price|purchase)\s*[:=]?\s*([0-9]+(?:\.[0-9]+)?)"),
@@ -754,9 +820,23 @@ async def run_app_assistant_turn(
     Returns dict matching AppAssistantChatResponse fields (flat).
     """
     text = message.strip()
-    entry_eff = entry_draft if entry_draft is not None else await load_chat_draft(
-        settings, user_id, business_id
-    )
+    loaded = await load_chat_draft(settings, user_id, business_id)
+    if entry_draft is not None and isinstance(entry_draft, dict):
+        if isinstance(loaded, dict):
+            pc = entry_draft.get("__pending_entry_data__")
+            pl = loaded.get("__pending_entry_data__")
+            if isinstance(pc, dict) and isinstance(pl, dict):
+                entry_eff = {
+                    **loaded,
+                    **entry_draft,
+                    "__pending_entry_data__": {**pl, **pc},
+                }
+            else:
+                entry_eff = {**loaded, **entry_draft}
+        else:
+            entry_eff = dict(entry_draft)
+    else:
+        entry_eff = loaded
 
     if not preview_token:
         resumed = await _resume_pending_catalog_type_pick(
@@ -791,7 +871,9 @@ async def run_app_assistant_turn(
                         {"__pending_entry_data__": merged_data},
                     )
                     return {
-                        "reply": _single_missing_prompt(miss_resume),
+                        "reply": _single_missing_prompt(
+                            miss_resume, pending=merged_data
+                        ),
                         "intent": "clarify",
                         "preview_token": None,
                         "entry_draft": {"__pending_entry_data__": merged_data},
@@ -1217,7 +1299,8 @@ async def run_app_assistant_turn(
                 {"__pending_entry_data__": data},
             )
             return {
-                "reply": reply_text or _single_missing_prompt(combine_miss),
+                "reply": reply_text
+                or _single_missing_prompt(combine_miss, pending=data),
                 "intent": "clarify",
                 "preview_token": None,
                 "entry_draft": {"__pending_entry_data__": data},
@@ -1285,7 +1368,10 @@ async def run_app_assistant_turn(
             {"__pending_entry_data__": data},
         )
         return {
-            "reply": _single_missing_prompt(list(dict.fromkeys((miss or []) + stub_missing))),
+            "reply": _single_missing_prompt(
+                list(dict.fromkeys((miss or []) + stub_missing)),
+                pending=data,
+            ),
             "intent": "clarify",
             "preview_token": None,
             "entry_draft": {"__pending_entry_data__": data},

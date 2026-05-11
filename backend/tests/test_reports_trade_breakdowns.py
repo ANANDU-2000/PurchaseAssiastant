@@ -159,6 +159,16 @@ def test_trade_items_suppliers_categories_endpoints():
     assert hcompact["recommendations"] == []
     assert hcompact["consistency"]["portfolio_score"] is None
 
+    ho_shell = client.get(
+        f"/v1/businesses/{bid}/reports/home-overview?{q}&compact=true&shell_bundle=true",
+        headers=h,
+    )
+    assert ho_shell.status_code == 200, ho_shell.text
+    hs = ho_shell.json().get("home_shell")
+    assert isinstance(hs, dict), hs
+    assert "subcategories" in hs and "suppliers" in hs and "items" in hs
+    assert isinstance(hs["items"], list)
+
     wider = f"from={(d1 - timedelta(days=40)).isoformat()}&to={d1.isoformat()}"
     too_long = client.get(
         f"/v1/businesses/{bid}/reports/home-overview?{wider}&max_span_days=10",

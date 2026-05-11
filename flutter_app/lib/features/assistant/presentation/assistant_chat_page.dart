@@ -204,7 +204,7 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
         businessId: bid,
         messages: _conversationForApi(),
         previewToken: confirming ? _pendingPreviewToken : null,
-        entryDraft: confirming ? _pendingEntryDraft : null,
+        entryDraft: _pendingEntryDraft,
       );
 
       var reply = data['reply'] as String? ?? '';
@@ -253,18 +253,22 @@ class _AssistantChatPageState extends ConsumerState<AssistantChatPage> {
           final draft = data['entry_draft'];
           _pendingEntryDraft =
               draft is Map ? Map<String, dynamic>.from(draft) : null;
-        } else if (intent == 'clarify_items') {
+        } else if (intent == 'clarify_items' || intent == 'clarify') {
+          _pendingPreviewToken = null;
+          final draft = data['entry_draft'];
+          if (draft is Map) {
+            _pendingEntryDraft = Map<String, dynamic>.from(draft);
+          } else if (intent == 'clarify_items') {
+            _pendingEntryDraft = null;
+          }
+        } else if (intent == 'query' || intent == 'help') {
           _pendingPreviewToken = null;
           _pendingEntryDraft = null;
         } else if (intent == 'confirm_saved' ||
             intent == 'entity_saved' ||
-            intent == 'cancelled' ||
-            intent == 'clarify') {
-          if (intent != 'clarify' ||
-              (_pendingPreviewToken != null && text.toLowerCase() == 'no')) {
-            _pendingPreviewToken = null;
-            _pendingEntryDraft = null;
-          }
+            intent == 'cancelled') {
+          _pendingPreviewToken = null;
+          _pendingEntryDraft = null;
         } else {
           _pendingPreviewToken = null;
           _pendingEntryDraft = null;

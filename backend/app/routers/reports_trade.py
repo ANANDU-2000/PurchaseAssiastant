@@ -212,13 +212,21 @@ async def _trade_suppliers_rows(
     ]
 
 
-def _snapshot_cache_key(business_id: uuid.UUID, date_from: date, date_to: date, *, compact: bool) -> tuple[str, str, str, int, bool]:
+def _snapshot_cache_key(
+    business_id: uuid.UUID,
+    date_from: date,
+    date_to: date,
+    *,
+    compact: bool,
+    shell_bundle: bool = False,
+) -> tuple[str, str, str, int, bool, bool]:
     return (
         str(business_id),
         date_from.isoformat(),
         date_to.isoformat(),
         trade_read_cache_generation(business_id),
         compact,
+        shell_bundle,
     )
 
 
@@ -610,7 +618,7 @@ async def trade_dashboard_snapshot(
 ) -> dict[str, Any]:
     """Single payload matching report definitions: summary, unit rollups, categories with line items, types, top items."""
     del _m
-    cache_key = _snapshot_cache_key(business_id, date_from, date_to, compact=False)
+    cache_key = _snapshot_cache_key(business_id, date_from, date_to, compact=False, shell_bundle=False)
     now_mono = monotonic()
     cached = _trade_dashboard_cache.get(cache_key)
     if cached is not None and now_mono - cached[0] <= _trade_dashboard_ttl_s:
@@ -638,6 +646,10 @@ async def trade_home_overview(
     date_from: date = Query(..., alias="from"),
     date_to: date = Query(..., alias="to"),
     compact: bool = Query(False, description="Omit heavy snapshot arrays when true."),
+    shell_bundle: bool = Query(
+        False,
+        description="When true, attach home_shell (subcategories, suppliers, items) from the same snapshot compute (no extra queries).",
+    ),
     max_span_days: int | None = Query(
         None,
         ge=1,
@@ -653,7 +665,9 @@ async def trade_home_overview(
     if max_span_days is not None and inclusive_days > max_span_days:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="date_range_exceeds_max_span_days")
 
-    cache_key = _snapshot_cache_key(business_id, date_from, date_to, compact=compact)
+    cache_key = _snapshot_cache_key(
+        business_id, date_from, date_to, compact=compact, shell_bundle=shell_bundle
+    )
     now_mono = monotonic()
     cached = _trade_dashboard_cache.get(cache_key)
     if cached is not None and now_mono - cached[0] <= _trade_dashboard_ttl_s:
@@ -661,11 +675,19 @@ async def trade_home_overview(
 
     async def compute() -> dict[str, Any]:
         full = await _compute_trade_dashboard_snapshot_payload(db, business_id, date_from, date_to)
+        out = dict(full)
+        home_shell: dict[str, Any] | None = None
+        if shell_bundle:
+            home_shell = {
+                "subcategories": list(out.get("subcategories") or []),
+                "suppliers": list(out.get("suppliers") or []),
+                "items": list(out.get("item_slices") or []),
+            }
         if compact:
-            out = dict(full)
             _apply_trade_dashboard_compact(out)
-            return out
-        return full
+        if home_shell is not None:
+            out["home_shell"] = home_shell
+        return out
 
     ok, maybe = await run_read_budget_bounded(compute)
     if not ok or maybe is None:

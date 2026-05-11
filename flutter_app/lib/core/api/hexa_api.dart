@@ -1125,12 +1125,14 @@ class HexaApi {
     required String from,
     required String to,
     bool compact = false,
+    bool shellBundle = false,
     int? maxSpanDays,
   }) async {
     final qp = <String, dynamic>{
       'from': from,
       'to': to,
       if (compact) 'compact': true,
+      if (shellBundle) 'shell_bundle': true,
       if (maxSpanDays != null) 'max_span_days': maxSpanDays,
     };
     final res = await _dio.get<Map<String, dynamic>>(
