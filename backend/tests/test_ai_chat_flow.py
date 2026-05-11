@@ -83,6 +83,33 @@ def test_ai_chat_query_today():
 
 def test_ai_chat_stub_purchase_preview():
     h, bid = _register_and_business()
+    # Stub text resolves item "rice"; fuzzy-match requires a catalog row or the API returns clarify_items.
+    cat = client.post(
+        f"/v1/businesses/{bid}/item-categories",
+        json={"name": "Grains"},
+        headers=h,
+    )
+    assert cat.status_code == 201, cat.text
+    cid = cat.json()["id"]
+    sup = client.post(
+        f"/v1/businesses/{bid}/suppliers",
+        json={"name": "Chat stub sup", "phone": "9000000001", "gst_number": "22AAAAA0000A1Z5"},
+        headers=h,
+    )
+    assert sup.status_code == 201, sup.text
+    sid0 = sup.json()["id"]
+    it = client.post(
+        f"/v1/businesses/{bid}/catalog-items",
+        json={
+            "category_id": cid,
+            "name": "RICE",
+            "default_unit": "kg",
+            "default_supplier_ids": [sid0],
+        },
+        headers=h,
+    )
+    assert it.status_code == 201, it.text
+
     r = client.post(
         f"/v1/businesses/{bid}/ai/chat",
         json={

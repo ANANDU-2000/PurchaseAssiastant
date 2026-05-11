@@ -52,31 +52,29 @@ def _setup_cat_and_item():
     return h, bid, cid, iid, sid
 
 
-def _preview_confirm_with_catalog(h, bid, item_id: str, day: str, landing: float, selling: float):
-    line = {
-        "catalog_item_id": item_id,
-        "item_name": "Basmati",
-        "qty": 10,
-        "unit": "kg",
-        "buy_price": landing - 1,
-        "landing_cost": landing,
-        "selling_price": selling,
+def _trade_purchase_with_catalog_line(
+    h, bid, supplier_id: str, item_id: str, day: str, landing: float, selling: float
+):
+    """Insights endpoints aggregate trade_purchase_lines (not legacy entries)."""
+    body = {
+        "purchase_date": day,
+        "payment_days": 30,
+        "supplier_id": supplier_id,
+        "status": "confirmed",
+        "lines": [
+            {
+                "catalog_item_id": item_id,
+                "item_name": "Basmati",
+                "qty": 10,
+                "unit": "kg",
+                "landing_cost": str(landing),
+                "selling_rate": str(selling),
+            }
+        ],
     }
-    pr = client.post(
-        f"/v1/businesses/{bid}/entries",
-        json={"entry_date": day, "confirm": False, "lines": [line]},
-        headers=h,
-    )
-    assert pr.status_code == 200, pr.text
-    pt = pr.json()["preview_token"]
     cr = client.post(
-        f"/v1/businesses/{bid}/entries",
-        json={
-            "entry_date": day,
-            "confirm": True,
-            "preview_token": pt,
-            "lines": [line],
-        },
+        f"/v1/businesses/{bid}/trade-purchases",
+        json=body,
         headers=h,
     )
     assert cr.status_code == 201, cr.text
@@ -84,11 +82,11 @@ def _preview_confirm_with_catalog(h, bid, item_id: str, day: str, landing: float
 
 
 def test_catalog_item_insights_and_lines_and_category_insights():
-    h, bid, cid, iid, _sid = _setup_cat_and_item()
+    h, bid, cid, iid, sid = _setup_cat_and_item()
     d1 = "2026-03-01"
     d2 = "2026-03-15"
-    _preview_confirm_with_catalog(h, bid, iid, d1, 100.0, 120.0)
-    _preview_confirm_with_catalog(h, bid, iid, d2, 110.0, 125.0)
+    _trade_purchase_with_catalog_line(h, bid, sid, iid, d1, 100.0, 120.0)
+    _trade_purchase_with_catalog_line(h, bid, sid, iid, d2, 110.0, 125.0)
 
     q = "from=2026-03-01&to=2026-03-31"
     ir = client.get(

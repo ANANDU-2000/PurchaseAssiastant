@@ -2176,6 +2176,13 @@ async def update_catalog_item(
         i.name = data["name"].strip()
     if "default_unit" in data:
         i.default_unit = data["default_unit"]
+        u = i.default_unit
+        if u != "bag":
+            i.default_kg_per_bag = None
+        if u != "box":
+            i.default_items_per_box = None
+        if u != "tin":
+            i.default_weight_per_tin = None
     if "default_kg_per_bag" in data:
         if i.default_unit == "bag":
             i.default_kg_per_bag = data["default_kg_per_bag"]
@@ -2243,6 +2250,12 @@ async def update_catalog_item(
             brand_detected=bg,
         )
         merge_unit_resolution_into_catalog_row(i, urx)
+        if i.default_unit != "bag":
+            i.default_kg_per_bag = None
+        if i.default_unit != "box":
+            i.default_items_per_box = None
+        if i.default_unit != "tin":
+            i.default_weight_per_tin = None
     if "default_supplier_ids" in data and data["default_supplier_ids"] is not None:
         sids = _dedupe_preserve_order(data["default_supplier_ids"])
         if not sids:

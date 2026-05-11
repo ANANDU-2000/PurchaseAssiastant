@@ -7,6 +7,7 @@ import uuid
 from rapidfuzz import fuzz, process
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from app.models import CatalogItem, CatalogVariant, ItemCategory, Supplier
 
@@ -91,7 +92,9 @@ async def fuzzy_find_catalog_item_for_entry_line(
 ) -> CatalogItem | None:
     """Best catalog_items row by fuzzy name match for auto-linking entry lines (no IDs)."""
     r = await db.execute(
-        select(CatalogItem).where(CatalogItem.business_id == business_id)
+        select(CatalogItem)
+        .options(joinedload(CatalogItem.category))
+        .where(CatalogItem.business_id == business_id)
     )
     items = r.scalars().all()
     if not items:
