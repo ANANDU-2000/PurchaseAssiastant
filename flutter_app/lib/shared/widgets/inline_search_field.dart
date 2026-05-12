@@ -362,9 +362,17 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
                                               overflow: TextOverflow.ellipsis,
                                               style: TextStyle(
                                                 fontSize: 12,
-                                                color: Theme.of(ctx)
-                                                    .colorScheme
-                                                    .onSurfaceVariant,
+                                                fontWeight: FontWeight.w600,
+                                                height: 1.25,
+                                                color: Color.lerp(
+                                                  Theme.of(ctx)
+                                                      .colorScheme
+                                                      .onSurface,
+                                                  Theme.of(ctx)
+                                                      .colorScheme
+                                                      .onSurfaceVariant,
+                                                  0.35,
+                                                ),
                                               ),
                                             ),
                                           ),

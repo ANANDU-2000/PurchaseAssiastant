@@ -3,6 +3,15 @@ import 'package:intl/intl.dart';
 
 import '../../../core/strict_decimal.dart';
 
+/// How purchase/selling rates are interpreted before GST is applied on the wire.
+/// Backend always stores **pre-tax** unit rates; inclusive entry is normalized client-side.
+enum RateTaxBasis {
+  /// Rate excludes GST; tax is added on top (default, matches backend).
+  taxExtra,
+  /// Rate includes GST; client strips to pre-tax before save.
+  includesTax,
+}
+
 double _decimalToDouble(Object? value) {
   if (value == null) return 0;
   try {

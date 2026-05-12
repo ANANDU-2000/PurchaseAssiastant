@@ -106,7 +106,7 @@ String tradeIntelPeriodVolumeLine(Map<String, dynamic> m) {
 String tradeIntelPeriodAmountLine(Map<String, dynamic> m) {
   final a = tradeIntelToDouble(m['period_line_total']);
   if (a == null || a <= 1e-6) return '';
-  return 'Amount: ${tradeIntelFormatInr(a)}';
+  return 'Total amount: ${tradeIntelFormatInr(a)}';
 }
 
 /// Last purchase → last selling (confirmed [last_selling_rate] only — no catalog defaults).
@@ -183,7 +183,7 @@ Widget tradeIntelCatalogSearchFactRichText(
     height: 1.3,
   );
   final qtyStyle = tt.bodySmall?.copyWith(
-    color: cs.primary,
+    color: cs.error,
     fontWeight: FontWeight.w800,
     height: 1.3,
   );
@@ -446,13 +446,18 @@ class TradeIntelCatalogSearchTile extends StatelessWidget {
                           height: 1.3,
                         );
                         final ageStyle = ctxTt.bodySmall?.copyWith(
-                          color: ctxCs.primary,
+                          color: ctxCs.error,
                           fontWeight: FontWeight.w800,
                           height: 1.3,
                         );
-                        final delStyle = ctxTt.bodySmall?.copyWith(
-                          color: ctxCs.onSurfaceVariant,
-                          fontWeight: FontWeight.w600,
+                        final deliveredStyle = ctxTt.bodySmall?.copyWith(
+                          color: ctxCs.primary,
+                          fontWeight: FontWeight.w700,
+                          height: 1.3,
+                        );
+                        final undeliveredStyle = ctxTt.bodySmall?.copyWith(
+                          color: ctxCs.error,
+                          fontWeight: FontWeight.w800,
                           height: 1.3,
                         );
                         return Text.rich(
@@ -466,7 +471,12 @@ class TradeIntelCatalogSearchTile extends StatelessWidget {
                               TextSpan(text: label, style: ageStyle),
                               if (delLabel != null) ...[
                                 TextSpan(text: ' · ', style: muted),
-                                TextSpan(text: delLabel, style: delStyle),
+                                TextSpan(
+                                  text: delLabel,
+                                  style: delRaw == true
+                                      ? deliveredStyle
+                                      : undeliveredStyle,
+                                ),
                               ],
                             ],
                           ),

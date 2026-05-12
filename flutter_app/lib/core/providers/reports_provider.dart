@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -17,8 +18,14 @@ import 'connectivity_provider.dart' show isOfflineResult;
 
 final Map<String, Future<List<TradePurchase>>> _reportsPurchasesInflight = {};
 
+/// Throttle silent `/trade-purchases` refresh when the Reports tab is not active
+/// (avoids a refetch loop when [reportsPurchasesHiveCacheProvider] invalidates).
+const int _reportsSilentRefreshMinIntervalMs = 8000;
+final Map<String, int> _reportsSilentRefreshAt = {};
+
 void bustReportsPurchasesInflight() {
   _reportsPurchasesInflight.clear();
+  _reportsSilentRefreshAt.clear();
 }
 
 bool _isNonRetryableNetworkError(Object e) {
@@ -309,10 +316,27 @@ final reportsPurchasesPayloadProvider =
   final branch = ref.watch(shellCurrentBranchProvider);
   if (session == null) return ReportsPurchasePayload.empty();
 
-  // IndexedStack mounts Reports off-screen; avoid paging `/trade-purchases`
-  // until the user opens this tab (Hive cache still paints summaries if present).
+  // IndexedStack mounts Reports off-screen; still **background-refresh** so Hive
+  // (and merged aggregates) update after writes without forcing the user onto
+  // the Reports tab first. Throttled + shares [_loadReportsPurchases] inflight.
   if (branch != ShellBranch.reports) {
     final hive = ref.watch(reportsPurchasesHiveCacheProvider);
+    final range = ref.read(analyticsDateRangeProvider);
+    final df = DateFormat('yyyy-MM-dd');
+    final fromStr = df.format(range.from);
+    final toStr = df.format(range.to);
+    final key = '${session.primaryBusiness.id}|$fromStr|$toStr';
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final last = _reportsSilentRefreshAt[key] ?? 0;
+    if (now - last >= _reportsSilentRefreshMinIntervalMs) {
+      _reportsSilentRefreshAt[key] = now;
+      unawaited(() async {
+        try {
+          await _loadReportsPurchases(ref);
+          ref.invalidate(reportsPurchasesHiveCacheProvider);
+        } catch (_) {}
+      }());
+    }
     return ReportsPurchasePayload(
       items: hive ?? const [],
       fromLiveFetch: false,

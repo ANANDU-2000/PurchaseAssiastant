@@ -141,7 +141,7 @@ Widget _purchaseLineSummaryRich(BuildContext context, Map<String, dynamic> line)
     fontWeight: FontWeight.w500,
   );
   final qtyStyle = tt.bodySmall?.copyWith(
-    color: cs.primary,
+    color: cs.error,
     height: 1.35,
     fontWeight: FontWeight.w800,
   );
@@ -176,7 +176,15 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   String _debounced = '';
   String _section = 'all';
 
-  static const _sections = {'all', 'types', 'items', 'bills', 'suppliers', 'contacts'};
+  static const _sections = {
+    'all',
+    'types',
+    'items',
+    'bills',
+    'suppliers',
+    'brokers',
+    'contacts',
+  };
 
   @override
   void initState() {
@@ -232,7 +240,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
           SearchBar(
             focusNode: _focus,
             controller: _controller,
-            hintText: 'Item, type, bill, supplier, HSN…',
+            hintText: 'Item, type, bill, supplier, broker, HSN…',
             textInputAction: TextInputAction.search,
             textStyle: const WidgetStatePropertyAll(TextStyle()),
             leading: const Icon(Icons.search_rounded),
@@ -372,6 +380,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                   'items': items.length,
                   'bills': bills.length,
                   'suppliers': suppliers.length,
+                  'brokers': brokers.length,
                   'contacts': contactHits,
                 };
                 final hasAny = types.isNotEmpty ||
@@ -435,6 +444,12 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                           selected: _section == 'suppliers',
                           onSelected: (_) =>
                               setState(() => _section = 'suppliers'),
+                        ),
+                        ChoiceChip(
+                          label: Text('Brokers (${sectionCounts['brokers']})'),
+                          selected: _section == 'brokers',
+                          onSelected: (_) =>
+                              setState(() => _section = 'brokers'),
                         ),
                         ChoiceChip(
                           label: Text('Contacts (${sectionCounts['contacts']})'),
@@ -633,7 +648,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                                         TextSpan(
                                           text: ageLabel,
                                           style: tt.bodySmall?.copyWith(
-                                            color: cs.primary,
+                                            color: cs.error,
                                             fontWeight: FontWeight.w800,
                                           ),
                                         ),
@@ -725,6 +740,39 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                               : () => context.push('/broker/$id'),
                         );
                       }),
+                    ],
+                    if (_section == 'brokers') ...[
+                      Text(
+                        'Brokers',
+                        style: tt.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      if (brokers.isEmpty)
+                        Text(
+                          'No matching brokers.',
+                          style: tt.bodySmall?.copyWith(
+                            color: cs.onSurfaceVariant,
+                          ),
+                        )
+                      else
+                        ...brokers.map((m) {
+                          final id = m['id']?.toString() ?? '';
+                          final name = m['name']?.toString() ?? 'Broker';
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.handshake_outlined,
+                                color: cs.secondary),
+                            title: Text(name),
+                            trailing:
+                                const Icon(Icons.chevron_right_rounded),
+                            onTap: id.isEmpty
+                                ? null
+                                : () => context.push('/broker/$id'),
+                          );
+                        }),
                     ],
                     if (_section == 'contacts') ...[
                       Text(

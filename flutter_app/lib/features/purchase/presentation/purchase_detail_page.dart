@@ -518,6 +518,17 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
                     _compactMeta(context, p, st, paidPending, cs),
                     const SizedBox(height: 18),
                     _buildSummaryStrip(context, agg, cs),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8, bottom: 4),
+                      child: Text(
+                        'Qty · ${purchaseHistoryPackSummary(p)}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              color: cs.onSurface.withValues(alpha: 0.82),
+                              height: 1.25,
+                            ),
+                      ),
+                    ),
                     Card(
                       margin: const EdgeInsets.symmetric(
                         horizontal: 0,

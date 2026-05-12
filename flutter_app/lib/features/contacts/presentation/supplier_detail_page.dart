@@ -521,7 +521,7 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                             ),
                             _SupplierVBar(cs: cs),
                             _QuickStat(
-                              label: 'Purchased',
+                              label: 'Total amount',
                               value: inr.format(spendN.round()),
                             ),
                             _SupplierVBar(cs: cs),
@@ -633,7 +633,7 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                if (filtered && shown.isNotEmpty)
+                if (shown.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: TradeLedgerSummaryStrip(
@@ -643,8 +643,9 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                       bags: cShown.bags,
                       boxes: cShown.boxes,
                       tins: cShown.tins,
-                      subtitle:
-                          '${shown.length} bill${shown.length == 1 ? '' : 's'} match search · ${fmt.format(_from)} – ${fmt.format(_to)}',
+                      subtitle: filtered
+                          ? '${shown.length} bill${shown.length == 1 ? '' : 's'} match search · ${fmt.format(_from)} – ${fmt.format(_to)}'
+                          : '${shown.length} bill${shown.length == 1 ? '' : 's'} · ${fmt.format(_from)} – ${fmt.format(_to)}',
                     ),
                   ),
                 if (_loading)

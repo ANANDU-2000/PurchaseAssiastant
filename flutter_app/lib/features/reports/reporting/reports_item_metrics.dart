@@ -45,7 +45,7 @@ String _fmtRate(num? n) {
 /// Kg-weighted average (explicit basis — not a trade-line `rate_context`).
 String reportKgWeightedRateLabel(num? rate) {
   if (rate == null || rate <= 0) return '—';
-  return '${_fmtRate(rate)}/kg wtd';
+  return '${_fmtRate(rate)}/kg weight avg';
 }
 
 /// Kg-weighted average **₹/kg** purchase and selling rates for the item key.

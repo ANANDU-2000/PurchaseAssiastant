@@ -151,7 +151,7 @@ class ItemSupplierIntel {
 
   String avgLabel() {
     if (hasWeightSamples && avgPerKg != null) {
-      return '₹${_fmtNum(avgPerKg!)}/kg wtd avg';
+      return '₹${_fmtNum(avgPerKg!)}/kg weight avg';
     }
     if (avgPerUnit != null) {
       return '₹${_fmtNum(avgPerUnit!)} avg / unit';

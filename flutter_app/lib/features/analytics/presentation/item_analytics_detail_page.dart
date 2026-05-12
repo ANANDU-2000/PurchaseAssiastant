@@ -380,7 +380,7 @@ class _ItemAnalyticsDetailPageState
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Per-bill averages (₹/kg or unit). Different from “Spend” in trade totals — useful for negotiating.',
+                  'Per-bill averages (₹/kg or unit). Different from total amount in trade totals — useful for negotiating.',
                   style: tt.labelSmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                     height: 1.35,
@@ -657,7 +657,7 @@ class _HomePeriodTradeFactsCard extends StatelessWidget {
               )
             else ...[
               Text(
-                'Spend ${inr(spend)}',
+                'Total amount ${inr(spend)}',
                 style: tt.titleLarge?.copyWith(
                   fontWeight: FontWeight.w800,
                   fontSize: 26,
@@ -695,7 +695,7 @@ class _HomePeriodTradeFactsCard extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               Text(
-                'Below: per-bill landing analytics (separate from spend totals; may be empty if no lines in the look-back).',
+                'Below: per-bill landing analytics (separate from total amount totals; may be empty if no lines in the look-back).',
                 style: tt.labelSmall?.copyWith(
                   color: cs.onSurfaceVariant,
                   height: 1.35,

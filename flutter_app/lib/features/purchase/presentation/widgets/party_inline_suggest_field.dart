@@ -245,6 +245,12 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   /// fire when the user taps a suggestion (overlay is not a descendant of the field).
   final Object _suggestionTapGroup = Object();
 
+  /// Shared with overlay [Scrollbar] + [ListView] so the thumb tracks drags.
+  final ScrollController _overlaySuggestScroll = ScrollController();
+
+  /// Inline panel (non-overlay): same ScrollController pairing as overlay.
+  final ScrollController _inlineSuggestScroll = ScrollController();
+
   @override
   void initState() {
     super.initState();
@@ -274,6 +280,8 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   @override
   void dispose() {
     _removeSuggestionOverlay();
+    _overlaySuggestScroll.dispose();
+    _inlineSuggestScroll.dispose();
     _filterDebounceTimer?.cancel();
     _revealDebounceTimer?.cancel();
     _suggestPanelGraceTimer?.cancel();
@@ -903,8 +911,11 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
                     ),
                     Expanded(
                       child: Scrollbar(
+                        controller: _overlaySuggestScroll,
                         thumbVisibility: true,
+                        interactive: true,
                         child: ListView(
+                        controller: _overlaySuggestScroll,
                         shrinkWrap: false,
                         primary: false,
                         physics: const ClampingScrollPhysics(),
@@ -1178,23 +1189,29 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
                           constraints: BoxConstraints(
                             maxHeight: widget.maxPanelAbs,
                           ),
-                          child: ListView(
-                            shrinkWrap: true,
-                            primary: false,
-                            physics: const ClampingScrollPhysics(),
-                            padding: EdgeInsets.zero,
-                            children: [
-                              for (final it in rows)
-                                _buildSuggestionTile(cs, it),
-                              if (showDivider)
-                                Divider(
-                                  height: 1,
-                                  thickness: 1,
-                                  color: borderColor,
-                                ),
-                              if (showAddFocused && widget.onAddRow != null)
-                                _buildAddRowTile(cs),
-                            ],
+                          child: Scrollbar(
+                            controller: _inlineSuggestScroll,
+                            thumbVisibility: true,
+                            interactive: true,
+                            child: ListView(
+                              controller: _inlineSuggestScroll,
+                              shrinkWrap: true,
+                              primary: false,
+                              physics: const ClampingScrollPhysics(),
+                              padding: EdgeInsets.zero,
+                              children: [
+                                for (final it in rows)
+                                  _buildSuggestionTile(cs, it),
+                                if (showDivider)
+                                  Divider(
+                                    height: 1,
+                                    thickness: 1,
+                                    color: borderColor,
+                                  ),
+                                if (showAddFocused && widget.onAddRow != null)
+                                  _buildAddRowTile(cs),
+                              ],
+                            ),
                           ),
                         ),
                       ],

@@ -135,7 +135,7 @@ class TradeLedgerSummaryStrip extends StatelessWidget {
               runSpacing: 10,
               children: [
                 _ChipStat(label: 'Bills', value: '$bills'),
-                _ChipStat(label: 'Purchased', value: inrSpend),
+                _ChipStat(label: 'Total amount', value: inrSpend),
                 _ChipStat(label: 'Est. kg', value: _fmtKg(kg)),
               ],
             ),
