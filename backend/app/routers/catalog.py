@@ -266,6 +266,10 @@ class CatalogItemOut(BaseModel):
         default=None,
         description="Latest trade purchase date for this item (non-deleted/cancelled), if any.",
     )
+    last_purchase_delivered: bool | None = Field(
+        default=None,
+        description="is_delivered on the snapshot last trade purchase (last_trade_purchase_id), if any.",
+    )
     unit_resolution: dict[str, Any] | None = Field(
         default=None,
         description="Read-only smart-unit / package labels from unit_resolution_service (no DB writes).",
@@ -426,6 +430,58 @@ async def _max_purchase_date_for_catalog_item(
     return r.scalar_one_or_none()
 
 
+async def _max_purchase_dates_for_catalog_items_bulk(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    catalog_item_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, date]:
+    """Latest purchase_date per catalog item (report-eligible trade lines)."""
+    if not catalog_item_ids:
+        return {}
+    r = await db.execute(
+        select(
+            TradePurchaseLine.catalog_item_id,
+            func.max(TradePurchase.purchase_date),
+        )
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .where(
+            TradePurchase.business_id == business_id,
+            TradePurchaseLine.catalog_item_id.in_(catalog_item_ids),
+            tq.trade_purchase_status_in_reports(),
+        )
+        .group_by(TradePurchaseLine.catalog_item_id)
+    )
+    return {row[0]: row[1] for row in r.all() if row[1] is not None}
+
+
+async def _is_delivered_for_trade_purchase_ids(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    purchase_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, bool]:
+    if not purchase_ids:
+        return {}
+    r = await db.execute(
+        select(TradePurchase.id, TradePurchase.is_delivered).where(
+            TradePurchase.business_id == business_id,
+            TradePurchase.id.in_(purchase_ids),
+        )
+    )
+    return {row[0]: bool(row[1]) for row in r.all()}
+
+
+async def _last_purchase_delivered_for_snapshot(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    last_trade_purchase_id: uuid.UUID | None,
+) -> bool | None:
+    if last_trade_purchase_id is None:
+        return None
+    m = await _is_delivered_for_trade_purchase_ids(db, business_id, [last_trade_purchase_id])
+    return m.get(last_trade_purchase_id)
+
+
 async def _category_dup(
     db: AsyncSession, business_id: uuid.UUID, name: str, exclude_id: uuid.UUID | None = None
 ) -> bool:
@@ -553,6 +609,7 @@ def _catalog_item_out(
     last_broker_name: str | None = None,
     category_name: str | None = None,
     last_purchase_date: date | None = None,
+    last_purchase_delivered: bool | None = None,
 ) -> CatalogItemOut:
     tid = i.type_id if type_id is _UNSET else type_id
     dipb = getattr(i, "default_items_per_box", None)
@@ -598,6 +655,7 @@ def _catalog_item_out(
         default_supplier_ids=list(default_supplier_ids or ()),
         default_broker_ids=list(default_broker_ids or ()),
         last_purchase_date=last_purchase_date,
+        last_purchase_delivered=last_purchase_delivered,
         unit_resolution=unit_res,
     )
 
@@ -1315,6 +1373,11 @@ async def list_catalog_items(
             sup_m, br_m = await _default_supplier_broker_ids_for_items(db, business_id, ids)
             items_only = [i for i, _, _ in rows]
             lsn, lbn = await _last_party_names_for_catalog_items(db, business_id, items_only)
+            date_map = await _max_purchase_dates_for_catalog_items_bulk(db, business_id, ids)
+            tp_ids = _dedupe_preserve_order(
+                [x for x in (it.last_trade_purchase_id for it in items_only) if x is not None]
+            )
+            del_map = await _is_delivered_for_trade_purchase_ids(db, business_id, tp_ids)
             return [
                 _catalog_item_out(
                     i,
@@ -1324,6 +1387,10 @@ async def list_catalog_items(
                     last_supplier_name=lsn.get(i.last_supplier_id) if i.last_supplier_id else None,
                     last_broker_name=lbn.get(i.last_broker_id) if i.last_broker_id else None,
                     category_name=str(cat_n) if cat_n else None,
+                    last_purchase_date=date_map.get(i.id),
+                    last_purchase_delivered=del_map.get(i.last_trade_purchase_id)
+                    if i.last_trade_purchase_id
+                    else None,
                 )
                 for i, tn, cat_n in rows
             ]
@@ -1342,6 +1409,11 @@ async def list_catalog_items(
         sup_m, br_m = await _default_supplier_broker_ids_for_items(db, business_id, ids)
         items_only = [i for i, _ in rows]
         lsn, lbn = await _last_party_names_for_catalog_items(db, business_id, items_only)
+        date_map = await _max_purchase_dates_for_catalog_items_bulk(db, business_id, ids)
+        tp_ids = _dedupe_preserve_order(
+            [x for x in (it.last_trade_purchase_id for it in items_only) if x is not None]
+        )
+        del_map = await _is_delivered_for_trade_purchase_ids(db, business_id, tp_ids)
         return [
             _catalog_item_out(
                 i,
@@ -1352,6 +1424,10 @@ async def list_catalog_items(
                 last_supplier_name=lsn.get(i.last_supplier_id) if i.last_supplier_id else None,
                 last_broker_name=lbn.get(i.last_broker_id) if i.last_broker_id else None,
                 category_name=str(cat_n) if cat_n else None,
+                last_purchase_date=date_map.get(i.id),
+                last_purchase_delivered=del_map.get(i.last_trade_purchase_id)
+                if i.last_trade_purchase_id
+                else None,
             )
             for i, cat_n in rows
         ]
@@ -1485,6 +1561,7 @@ async def create_catalog_item(
     )
     cat_n = crn.scalar_one_or_none()
     lp = await _max_purchase_date_for_catalog_item(db, business_id, i.id)
+    ld = await _last_purchase_delivered_for_snapshot(db, business_id, i.last_trade_purchase_id)
     return _catalog_item_out(
         i,
         tn,
@@ -1494,6 +1571,7 @@ async def create_catalog_item(
         last_broker_name=lbn.get(i.last_broker_id) if i.last_broker_id else None,
         category_name=str(cat_n) if cat_n else None,
         last_purchase_date=lp,
+        last_purchase_delivered=ld,
     )
 
 
@@ -1604,6 +1682,7 @@ async def batch_create_catalog_items(
         )
         cat_n = crn.scalar_one_or_none()
         lp = await _max_purchase_date_for_catalog_item(db, business_id, i.id)
+        ld = await _last_purchase_delivered_for_snapshot(db, business_id, i.last_trade_purchase_id)
         outs.append(
             _catalog_item_out(
                 i,
@@ -1614,6 +1693,7 @@ async def batch_create_catalog_items(
                 last_broker_name=lbn.get(i.last_broker_id) if i.last_broker_id else None,
                 category_name=str(cat_n) if cat_n else None,
                 last_purchase_date=lp,
+                last_purchase_delivered=ld,
             )
         )
     return CatalogBatchOut(created=len(outs), skipped=skipped, items=outs)
@@ -1646,6 +1726,7 @@ async def get_catalog_item(
             sup_m, br_m = await _default_supplier_broker_ids_for_items(db, business_id, [i.id])
             lsn, lbn = await _last_party_names_for_catalog_items(db, business_id, [i])
             lp = await _max_purchase_date_for_catalog_item(db, business_id, i.id)
+            ld = await _last_purchase_delivered_for_snapshot(db, business_id, i.last_trade_purchase_id)
             return _catalog_item_out(
                 i,
                 tn,
@@ -1655,6 +1736,7 @@ async def get_catalog_item(
                 last_broker_name=lbn.get(i.last_broker_id) if i.last_broker_id else None,
                 category_name=str(cat_n) if cat_n else None,
                 last_purchase_date=lp,
+                last_purchase_delivered=ld,
             )
 
         r = await db.execute(
@@ -1678,6 +1760,7 @@ async def get_catalog_item(
         sup_m, br_m = await _default_supplier_broker_ids_for_items(db, business_id, [i.id])
         lsn, lbn = await _last_party_names_for_catalog_items(db, business_id, [i])
         lp = await _max_purchase_date_for_catalog_item(db, business_id, i.id)
+        ld = await _last_purchase_delivered_for_snapshot(db, business_id, i.last_trade_purchase_id)
         return _catalog_item_out(
             i,
             None,
@@ -1688,6 +1771,7 @@ async def get_catalog_item(
             last_broker_name=lbn.get(i.last_broker_id) if i.last_broker_id else None,
             category_name=str(cat_n) if cat_n else None,
             last_purchase_date=lp,
+            last_purchase_delivered=ld,
         )
     except SQLAlchemyError:
         logger.exception("get_catalog_item failed business_id=%s item_id=%s", business_id, item_id)
@@ -2326,6 +2410,8 @@ async def update_catalog_item(
             )
         )
         cat_n = crn.scalar_one_or_none()
+        lp = await _max_purchase_date_for_catalog_item(db, business_id, i_out.id)
+        ld = await _last_purchase_delivered_for_snapshot(db, business_id, i_out.last_trade_purchase_id)
         return _catalog_item_out(
             i_out,
             None,
@@ -2335,6 +2421,8 @@ async def update_catalog_item(
             last_supplier_name=lsn.get(i_out.last_supplier_id) if i_out.last_supplier_id else None,
             last_broker_name=lbn.get(i_out.last_broker_id) if i_out.last_broker_id else None,
             category_name=str(cat_n) if cat_n else None,
+            last_purchase_date=lp,
+            last_purchase_delivered=ld,
         )
     await db.refresh(i)
     tn = None
@@ -2350,6 +2438,8 @@ async def update_catalog_item(
         )
     )
     cat_n = crn.scalar_one_or_none()
+    lp = await _max_purchase_date_for_catalog_item(db, business_id, i.id)
+    ld = await _last_purchase_delivered_for_snapshot(db, business_id, i.last_trade_purchase_id)
     return _catalog_item_out(
         i,
         tn,
@@ -2358,6 +2448,8 @@ async def update_catalog_item(
         last_supplier_name=lsn.get(i.last_supplier_id) if i.last_supplier_id else None,
         last_broker_name=lbn.get(i.last_broker_id) if i.last_broker_id else None,
         category_name=str(cat_n) if cat_n else None,
+        last_purchase_date=lp,
+        last_purchase_delivered=ld,
     )
 
 

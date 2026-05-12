@@ -358,7 +358,7 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
                                                 const EdgeInsets.only(top: 2),
                                             child: Text(
                                               it.subtitle!,
-                                              maxLines: 1,
+                                              maxLines: 3,
                                               overflow: TextOverflow.ellipsis,
                                               style: TextStyle(
                                                 fontSize: 12,

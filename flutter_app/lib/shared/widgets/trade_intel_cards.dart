@@ -345,8 +345,16 @@ class TradeIntelCatalogSearchTile extends StatelessWidget {
                             : days == 1
                                 ? 'yesterday'
                                 : '$days days ago';
+                        final delRaw = item['last_purchase_delivered'];
+                        final delLabel = delRaw is bool
+                            ? (delRaw ? 'Delivered' : 'Undelivered')
+                            : null;
+                        final datePart =
+                            '${DateFormat('MMM d').format(parsed)} · $label';
                         return Text(
-                          '${DateFormat('MMM d').format(parsed)} · $label',
+                          delLabel != null
+                              ? '$datePart · $delLabel'
+                              : datePart,
                           style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
                                 color: Theme.of(ctx).colorScheme.onSurfaceVariant,
                               ),

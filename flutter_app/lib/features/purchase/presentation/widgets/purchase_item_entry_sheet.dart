@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/calc_engine.dart';
+import '../../../../core/errors/user_facing_errors.dart';
 import '../../../../core/json_coerce.dart';
 import '../../../../core/models/trade_purchase_models.dart';
 import '../../../../core/strict_decimal.dart';
@@ -1248,11 +1249,12 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         }
       }
       final blob = _catalogSearchBlob(row);
+      final sub = _catalogSearchSuggestionSubtitle(row).trim();
       out.add(
         InlineSearchItem(
           id: row['id']?.toString() ?? '',
           label: row['name']?.toString() ?? '',
-          subtitle: row['default_unit']?.toString(),
+          subtitle: sub.isEmpty ? null : sub,
           searchText: blob.isEmpty ? null : blob,
           sortBoost: boost,
         ),
@@ -1817,6 +1819,121 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     return 'Selling price (₹/$sfx)';
   }
 
+  String _catalogSearchSuggestionSubtitle(Map<String, dynamic> row) {
+    final lines = <String>[];
+    final unit = row['default_unit']?.toString().trim();
+    final lpp = row['last_purchase_price'];
+    double? price;
+    if (lpp is num && lpp > 0) {
+      price = lpp.toDouble();
+    } else if (lpp != null) {
+      price = double.tryParse(lpp.toString());
+    }
+
+    final headParts = <String>[];
+    if (unit != null && unit.isNotEmpty) headParts.add(unit);
+    if (price != null && price > 0) {
+      headParts.add('Last buy ₹${_fmtMoney(price)}');
+    }
+    if (headParts.isNotEmpty) lines.add(headParts.join(' · '));
+
+    final rawDate = row['last_purchase_date']?.toString();
+    DateTime? pd;
+    if (rawDate != null && rawDate.length >= 10) {
+      pd = DateTime.tryParse(rawDate.substring(0, 10));
+    }
+    if (pd != null) {
+      final days = DateTime.now().difference(pd).inDays;
+      final ago = days == 0
+          ? 'today'
+          : days == 1
+              ? 'yesterday'
+              : '$days days ago';
+      lines.add('Last buy ${DateFormat('d MMM yyyy').format(pd)} · $ago');
+    }
+
+    final del = row['last_purchase_delivered'];
+    if (del == true) {
+      lines.add('Delivered');
+    } else if (del == false) {
+      lines.add('Not delivered');
+    }
+
+    if (lines.isEmpty) return unit ?? '';
+    return lines.join('\n');
+  }
+
+  Widget _buildPurchaseSellingRateRow(bool showPerKgFields) {
+    Widget landingField() => KeyedSubtree(
+          key: _landingKey,
+          child: TextField(
+            controller: _landingCtrl,
+            focusNode: _landingFocus,
+            keyboardType:
+                const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [_decimalFormatter(2)],
+            textInputAction: TextInputAction.next,
+            decoration: _deco(
+              _purchaseRateLabel(showPerKgFields),
+              prefixText: '₹ ',
+              errorText: _errLanding,
+            ),
+            onChanged: (_) {
+              _clearFieldErrors();
+              _schedulePreviewRebuild();
+            },
+            onSubmitted: (_) {
+              FocusScope.of(context).requestFocus(_sellingFocus);
+            },
+          ),
+        );
+
+    Widget sellingField() => KeyedSubtree(
+          key: _sellingKey,
+          child: TextField(
+            controller: _sellingCtrl,
+            focusNode: _sellingFocus,
+            keyboardType:
+                const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [_decimalFormatter(2)],
+            textInputAction: TextInputAction.done,
+            decoration: _deco(
+              _sellingRateLabel(showPerKgFields),
+              prefixText: '₹ ',
+              errorText: _errSelling,
+            ),
+            onChanged: (_) {
+              _clearFieldErrors();
+              _schedulePreviewRebuild();
+            },
+          ),
+        );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final narrow = constraints.maxWidth < 400;
+        if (narrow) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              landingField(),
+              const SizedBox(height: 10),
+              sellingField(),
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(flex: 5, child: landingField()),
+            const SizedBox(width: 6),
+            Expanded(flex: 5, child: sellingField()),
+          ],
+        );
+      },
+    );
+  }
+
   /// Picks line unit: when the item has a bag weight but purchase unit is
   /// `kg` in the catalog, prefer the physical [default_unit] (bag) so
   /// per-kg × kg/bag math applies.
@@ -2040,9 +2157,12 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       }
     } catch (e) {
       if (!mounted) return;
+      logSilencedApiError(e, StackTrace.current);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Could not save catalog weight: $e'),
+          content: Text(
+            'Could not save catalog weight. ${userFacingError(e)}',
+          ),
           behavior: SnackBarBehavior.floating,
           backgroundColor: Colors.red.shade800,
         ),
@@ -3036,127 +3156,13 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       if (rateBasisSeg != null) rateBasisSeg,
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            flex: 5,
-                            child: KeyedSubtree(
-                              key: _landingKey,
-                              child: TextField(
-                                controller: _landingCtrl,
-                                focusNode: _landingFocus,
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                        decimal: true),
-                                inputFormatters: [_decimalFormatter(2)],
-                                textInputAction: TextInputAction.next,
-                                decoration: _deco(
-                                  _purchaseRateLabel(showPerKgFields),
-                                  prefixText: '₹ ',
-                                  errorText: _errLanding,
-                                ),
-                                onChanged: (_) {
-                                  _clearFieldErrors();
-                                  _schedulePreviewRebuild();
-                                },
-                                onSubmitted: (_) {
-                                  FocusScope.of(context)
-                                      .requestFocus(_sellingFocus);
-                                },
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            flex: 5,
-                            child: KeyedSubtree(
-                              key: _sellingKey,
-                              child: TextField(
-                                controller: _sellingCtrl,
-                                focusNode: _sellingFocus,
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                        decimal: true),
-                                inputFormatters: [_decimalFormatter(2)],
-                                textInputAction: TextInputAction.done,
-                                decoration: _deco(
-                                  _sellingRateLabel(showPerKgFields),
-                                  prefixText: '₹ ',
-                                  errorText: _errSelling,
-                                ),
-                                onChanged: (_) {
-                                  _clearFieldErrors();
-                                  _schedulePreviewRebuild();
-                                },
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                      _buildPurchaseSellingRateRow(showPerKgFields),
                     ],
                   ),
                 )
               else ...[
                 if (rateBasisSeg != null) rateBasisSeg,
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      flex: 5,
-                      child: KeyedSubtree(
-                        key: _landingKey,
-                        child: TextField(
-                          controller: _landingCtrl,
-                          focusNode: _landingFocus,
-                          keyboardType:
-                              const TextInputType.numberWithOptions(
-                                  decimal: true),
-                          inputFormatters: [_decimalFormatter(2)],
-                          textInputAction: TextInputAction.next,
-                          decoration: _deco(
-                            _purchaseRateLabel(showPerKgFields),
-                            prefixText: '₹ ',
-                            errorText: _errLanding,
-                          ),
-                          onChanged: (_) {
-                            _clearFieldErrors();
-                            _schedulePreviewRebuild();
-                          },
-                          onSubmitted: (_) {
-                            FocusScope.of(context)
-                                .requestFocus(_sellingFocus);
-                          },
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      flex: 5,
-                      child: KeyedSubtree(
-                        key: _sellingKey,
-                        child: TextField(
-                          controller: _sellingCtrl,
-                          focusNode: _sellingFocus,
-                          keyboardType:
-                              const TextInputType.numberWithOptions(
-                                  decimal: true),
-                          inputFormatters: [_decimalFormatter(2)],
-                          textInputAction: TextInputAction.done,
-                          decoration: _deco(
-                            _sellingRateLabel(showPerKgFields),
-                            prefixText: '₹ ',
-                            errorText: _errSelling,
-                          ),
-                          onChanged: (_) {
-                            _clearFieldErrors();
-                            _schedulePreviewRebuild();
-                          },
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                _buildPurchaseSellingRateRow(showPerKgFields),
               ],
               SizedBox(height: widget.fullPage ? gapSection : 2),
               KeyedSubtree(

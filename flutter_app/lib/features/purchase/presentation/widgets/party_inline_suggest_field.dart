@@ -233,6 +233,9 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   Timer? _suggestPanelGraceTimer;
   bool _suggestPanelGrace = false;
 
+  /// Overlay mode: after IME dismiss (focus lost), keep the panel until Close or pick.
+  bool _overlayStayOpenUntilDismiss = false;
+
   final GlobalKey _revealKey = GlobalKey(debugLabel: 'partyInlineSuggest');
   final GlobalKey _fieldMeasureKey = GlobalKey(debugLabel: 'partyInlineField');
   final LayerLink _layerLink = LayerLink();
@@ -363,6 +366,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     final nowFocused = widget.focusNode.hasFocus;
     if (nowFocused) {
       _cancelSuggestPanelGrace();
+      _overlayStayOpenUntilDismiss = false;
       _suppressPanelAfterPick = false;
       _filterDebounceTimer?.cancel();
       _revealDebounceTimer?.cancel();
@@ -373,6 +377,24 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       WidgetsBinding.instance
           .addPostFrameCallback((_) => _maybeRevealAfterFilter());
       _scheduleOverlaySync();
+      return;
+    }
+    // Full-page overlay: keep suggestions open after keyboard dismiss until user
+    // picks, taps Close, or focuses the field again.
+    if (widget.suggestionsAsOverlay) {
+      _flushFilterToLive();
+      final rows = _listRowsForUi(live: true);
+      final canAdd =
+          widget.showAddRow && widget.onAddRow != null;
+      if (rows.isNotEmpty || canAdd) {
+        _overlayStayOpenUntilDismiss = true;
+      }
+      if (mounted) setState(() {});
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || widget.focusNode.hasFocus) return;
+        setState(() {});
+        _scheduleOverlaySync();
+      });
       return;
     }
     _armSuggestPanelGraceIfNeeded();
@@ -544,6 +566,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   void _pick(InlineSearchItem it, {bool keepFocus = true}) {
     if (_consumeIfDuplicatePick(it)) return;
     _cancelSuggestPanelGrace();
+    _overlayStayOpenUntilDismiss = false;
     _filterDebounceTimer?.cancel();
     _revealDebounceTimer?.cancel();
     _suppressPanelAfterPick = true;
@@ -630,11 +653,12 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
                     padding: const EdgeInsets.only(top: 4),
                     child: Text(
                       it.subtitle!.trim(),
-                      maxLines: 1,
+                      maxLines: 3,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 11,
                         color: cs.onSurfaceVariant,
+                        height: 1.2,
                       ),
                     ),
                   ),
@@ -733,8 +757,9 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
         lockLabel.isNotEmpty &&
         !widget.focusNode.hasFocus;
     final rows = _listRowsForUi();
-    final suggestInteractive =
-        widget.focusNode.hasFocus || _suggestPanelGrace;
+    final suggestInteractive = widget.focusNode.hasFocus ||
+        _suggestPanelGrace ||
+        (widget.suggestionsAsOverlay && _overlayStayOpenUntilDismiss);
     final showAddFocused =
         widget.showAddRow && suggestInteractive && widget.onAddRow != null;
     return !locked &&
@@ -766,8 +791,9 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   Widget _buildOverlaySuggestions(BuildContext overlayCtx) {
     final cs = Theme.of(overlayCtx).colorScheme;
     final rows = _listRowsForUi();
-    final suggestInteractive =
-        widget.focusNode.hasFocus || _suggestPanelGrace;
+    final suggestInteractive = widget.focusNode.hasFocus ||
+        _suggestPanelGrace ||
+        (widget.suggestionsAsOverlay && _overlayStayOpenUntilDismiss);
     final showAddFocused =
         widget.showAddRow && suggestInteractive && widget.onAddRow != null;
     final borderColor = widget.idleOutlineColor ?? Colors.grey.shade200;
@@ -781,11 +807,19 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       return const SizedBox.shrink();
     }
     final sz = box.size;
-    final availBelow =
-        media.size.height - media.viewInsets.bottom - media.padding.bottom;
-    final double maxPanelH = math.min(
-      math.min(widget.maxPanelAbs, 280.0),
-      math.max(120.0, availBelow - sz.height - 24),
+    final fieldTop = box.localToGlobal(Offset.zero).dy;
+    final fieldBottom = fieldTop + sz.height;
+    final kbBottom = media.viewInsets.bottom;
+    final safeBottom = media.padding.bottom;
+    final usableBottom = media.size.height - kbBottom - safeBottom;
+    final spaceBelowField = usableBottom - fieldBottom - 12;
+    final capByScreen = media.size.height * 0.35;
+    final double maxPanelH = math.max(
+      120.0,
+      math.min(
+        math.min(widget.maxPanelAbs.toDouble(), capByScreen),
+        math.max(120.0, spaceBelowField),
+      ),
     );
     final showDivider = rows.isNotEmpty &&
         showAddFocused &&
@@ -801,6 +835,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
         groupId: _suggestionTapGroup,
         child: Material(
           elevation: 12,
+          color: cs.surface,
           shadowColor: Colors.black.withValues(alpha: 0.25),
           borderRadius: BorderRadius.circular(12),
           clipBehavior: Clip.antiAlias,
@@ -856,15 +891,20 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
                               color: cs.onSurfaceVariant,
                             ),
                             onPressed: () {
+                              _overlayStayOpenUntilDismiss = false;
                               widget.focusNode.unfocus();
+                              FocusManager.instance.primaryFocus?.unfocus();
                               _removeSuggestionOverlay();
+                              if (mounted) setState(() {});
                             },
                           ),
                         ],
                       ),
                     ),
                     Expanded(
-                      child: ListView(
+                      child: Scrollbar(
+                        thumbVisibility: true,
+                        child: ListView(
                         shrinkWrap: false,
                         primary: false,
                         physics: const ClampingScrollPhysics(),
@@ -877,6 +917,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
                           if (showAddFocused && widget.onAddRow != null)
                             _buildAddRowTile(cs),
                         ],
+                      ),
                       ),
                     ),
                   ],
@@ -1039,11 +1080,15 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
 
     Widget fieldWrapped = innerInput;
     if (widget.suggestionsAsOverlay) {
+      // Full-width target so the overlay matches the padded card, not only the inner input.
       fieldWrapped = CompositedTransformTarget(
         link: _layerLink,
-        child: KeyedSubtree(
-          key: _fieldMeasureKey,
-          child: innerInput,
+        child: SizedBox(
+          width: double.infinity,
+          child: KeyedSubtree(
+            key: _fieldMeasureKey,
+            child: innerInput,
+          ),
         ),
       );
     }

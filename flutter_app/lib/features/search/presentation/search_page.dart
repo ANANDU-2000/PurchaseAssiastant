@@ -265,10 +265,12 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                 final lastDateKeyByItemId = <String, int>{};
                 final lastDateStringByItemId = <String, String>{};
                 final lastBillHidByItemId = <String, String>{};
+                final lastDeliveredByItemId = <String, bool>{};
                 for (final p in bills) {
                   final dtK = ymdKey(p['purchase_date']);
                   final dtStr = p['purchase_date']?.toString() ?? '';
                   final hid = p['human_id']?.toString() ?? '';
+                  final delivered = p['is_delivered'] == true;
                   final lines = (p['lines'] is List) ? (p['lines'] as List) : const [];
                   for (final raw in lines) {
                     if (raw is! Map) continue;
@@ -279,6 +281,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                     if (dtK >= prevK) {
                       lastDateKeyByItemId[cid] = dtK;
                       lastLineByItemId[cid] = ln;
+                      lastDeliveredByItemId[cid] = delivered;
                       if (dtStr.length >= 10) {
                         lastDateStringByItemId[cid] = dtStr.substring(0, 10);
                       }
@@ -311,6 +314,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                   }
                   final dateStr = lastDateStringByItemId[id];
                   if (dateStr != null) next['last_purchase_date'] = dateStr;
+                  final del = lastDeliveredByItemId[id];
+                  if (del != null) next['last_purchase_delivered'] = del;
                   return next;
                 }).toList();
                 final contactHits = suppliers.length + brokers.length;
