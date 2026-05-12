@@ -346,33 +346,37 @@ bool purchaseHistoryMatchesPackKindFilter(TradePurchase p, String filterKey) {
 }
 
 /// One-line pack summary for history cards (mixed invoices join with ` • `).
+///
+/// Bag lines and **loose kg** lines are rolled into **one total kg** next to the
+/// bag count (e.g. `80 bags • 4,095 kg`), so mixed invoices do not show a second
+/// stray `95 KG` segment after the bag subtotal.
 String purchaseHistoryPackSummary(TradePurchase p) {
   final t = _HistoryPackAccumulator();
   for (final ln in p.lines) {
     _accumulateHistoryLine(ln, t);
   }
   final parts = <String>[];
+  final bagPlusLooseKg = t.bagKg + t.looseKg;
   if (t.bags > 1e-6) {
-    if (t.bagKg > 1e-6) {
+    if (bagPlusLooseKg > 1e-6) {
       parts.add(
         formatLineQtyWeight(
           qty: t.bags,
           unit: 'bag',
-          totalWeightKg: t.bagKg,
+          totalWeightKg: bagPlusLooseKg,
         ),
       );
     } else {
       parts.add(formatPackagedQty(unit: 'bag', pieces: t.bags));
     }
+  } else if (t.looseKg > 1e-6) {
+    parts.add(formatPackagedQty(unit: 'kg', pieces: t.looseKg));
   }
   if (t.boxes > 1e-6) {
     parts.add(formatPackagedQty(unit: 'box', pieces: t.boxes));
   }
   if (t.tins > 1e-6) {
     parts.add(formatPackagedQty(unit: 'tin', pieces: t.tins));
-  }
-  if (t.looseKg > 1e-6) {
-    parts.add(formatPackagedQty(unit: 'kg', pieces: t.looseKg));
   }
   if (parts.isEmpty) return '—';
   return parts.join(' • ');

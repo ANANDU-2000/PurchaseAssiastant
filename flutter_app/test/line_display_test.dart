@@ -99,6 +99,41 @@ void main() {
     expect(purchaseHistoryPackSummary(p).toLowerCase().contains('kg'), false);
   });
 
+  test('purchaseHistoryPackSummary: bags + loose kg merge to one total', () {
+    final p = TradePurchase(
+      id: '1',
+      humanId: 'PUR-1',
+      purchaseDate: DateTime(2026, 5, 1),
+      paidAmount: 0,
+      totalAmount: 1,
+      storedStatus: 'confirmed',
+      derivedStatus: 'confirmed',
+      remaining: 1,
+      lines: [
+        TradePurchaseLine(
+          id: 'a',
+          itemName: 'RICE 50KG',
+          qty: 100,
+          unit: 'bag',
+          landingCost: 0,
+          kgPerUnit: 50,
+        ),
+        TradePurchaseLine(
+          id: 'b',
+          itemName: 'LOOSE',
+          qty: 95,
+          unit: 'kg',
+          landingCost: 0,
+        ),
+      ],
+    );
+    final s = purchaseHistoryPackSummary(p);
+    final kgChunks =
+        s.split(' • ').where((e) => e.toUpperCase().contains('KG')).length;
+    expect(kgChunks, 1, reason: 'bag weight + loose kg should be one total');
+    expect(s.contains('5,095') || s.contains('5095'), true);
+  });
+
   test('purchaseHistoryPackSummary: mixed bag + box', () {
     final p = TradePurchase(
       id: '1',

@@ -790,21 +790,9 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     final showDivider = rows.isNotEmpty &&
         showAddFocused &&
         widget.onAddRow != null;
-    const estRow = 56.0;
-    const estAdd = 50.0;
-    const estDiv = 17.0;
     final liveQ = widget.controller.text.trim().toLowerCase();
     final allHits = _allHitsForSheet(liveQ);
     final showSeeAll = allHits.length > rows.length;
-    var estContentH = rows.length * estRow + 40;
-    if (showDivider) estContentH += estDiv;
-    if (showAddFocused && widget.onAddRow != null) {
-      estContentH += estAdd;
-    }
-    final overlayListPhysics = estContentH <= maxPanelH
-        ? const NeverScrollableScrollPhysics()
-        : const ClampingScrollPhysics();
-
     return CompositedTransformFollower(
       link: _layerLink,
       showWhenUnlinked: false,
@@ -858,7 +846,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
                                   _suggestionOverlayEntry?.markNeedsBuild();
                                 }
                               },
-                              child: const Text('See all'),
+                              child: const Text('See more'),
                             ),
                           IconButton(
                             tooltip: 'Close suggestions',
@@ -878,7 +866,8 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
                     Expanded(
                       child: ListView(
                         shrinkWrap: false,
-                        physics: overlayListPhysics,
+                        primary: false,
+                        physics: const ClampingScrollPhysics(),
                         padding: EdgeInsets.zero,
                         clipBehavior: Clip.hardEdge,
                         children: [
@@ -1084,18 +1073,6 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
                 final showDivider = rows.isNotEmpty &&
                     showAddFocused &&
                     widget.onAddRow != null;
-                const estRow = 52.0;
-                const estAdd = 50.0;
-                const estDiv = 17.0;
-                const estHeader = 44.0;
-                var estH = estHeader + rows.length * estRow;
-                if (showDivider) estH += estDiv;
-                if (showAddFocused && widget.onAddRow != null) {
-                  estH += estAdd;
-                }
-                final listPhysics = estH > widget.maxPanelAbs
-                    ? const ClampingScrollPhysics()
-                    : const NeverScrollableScrollPhysics();
                 return DecoratedBox(
                   decoration: BoxDecoration(
                     color: cs.surface,
@@ -1137,7 +1114,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
                                     await _openSeeAllSheet();
                                     if (ctx.mounted) setState(() {});
                                   },
-                                  child: const Text('See all'),
+                                  child: const Text('See more'),
                                 ),
                               IconButton(
                                 tooltip: 'Close suggestions',
@@ -1158,7 +1135,8 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
                           ),
                           child: ListView(
                             shrinkWrap: true,
-                            physics: listPhysics,
+                            primary: false,
+                            physics: const ClampingScrollPhysics(),
                             padding: EdgeInsets.zero,
                             children: [
                               for (final it in rows)
@@ -1189,13 +1167,9 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     } else if (_suggestionOverlayEntry != null) {
       _removeSuggestionOverlay();
     }
+    // Do not dismiss on outside tap — only close icon, sheet barrier, or row pick.
     return TapRegion(
       groupId: _suggestionTapGroup,
-      onTapOutside: (_) {
-        if (_pickInProgress || _suppressPanelAfterPick) return;
-        widget.focusNode.unfocus();
-        _removeSuggestionOverlay();
-      },
       child: subtree,
     );
   }
