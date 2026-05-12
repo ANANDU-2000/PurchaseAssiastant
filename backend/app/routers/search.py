@@ -250,6 +250,8 @@ def _hydrate_catalog_rows(rows: list[tuple[Any, ...]]) -> list[dict[str, Any]]:
                 "last_purchase_human_id": None,
                 "last_supplier_name": None,
                 "last_broker_name": None,
+                "last_supplier_phone": None,
+                "last_broker_phone": None,
             }
         )
     return out
@@ -276,38 +278,58 @@ async def _attach_last_party_names(
             except ValueError:
                 pass
     sm: dict[uuid.UUID, str] = {}
+    sphone: dict[uuid.UUID, str] = {}
     bm: dict[uuid.UUID, str] = {}
+    bphone: dict[uuid.UUID, str] = {}
     if s_ids:
         sr = await execute_with_retry(
             lambda: db.execute(
-                select(Supplier.id, Supplier.name).where(
+                select(Supplier.id, Supplier.name, Supplier.phone).where(
                     Supplier.business_id == business_id,
                     Supplier.id.in_(s_ids),
                 )
             )
         )
-        sm = {row[0]: row[1] for row in sr.all()}
+        for row in sr.all():
+            sm[row[0]] = row[1]
+            p = row[2]
+            if p is not None and str(p).strip():
+                sphone[row[0]] = str(p).strip()
     if b_ids:
         br = await execute_with_retry(
             lambda: db.execute(
-                select(Broker.id, Broker.name).where(
+                select(Broker.id, Broker.name, Broker.phone).where(
                     Broker.business_id == business_id,
                     Broker.id.in_(b_ids),
                 )
             )
         )
-        bm = {row[0]: row[1] for row in br.all()}
+        for row in br.all():
+            bm[row[0]] = row[1]
+            p = row[2]
+            if p is not None and str(p).strip():
+                bphone[row[0]] = str(p).strip()
     for m in items:
         sid = m.get("last_supplier_id")
         if sid:
             try:
-                m["last_supplier_name"] = sm.get(uuid.UUID(str(sid)))
+                uid = uuid.UUID(str(sid))
+                if uid in sm:
+                    m["last_supplier_name"] = sm.get(uid)
+                ph = sphone.get(uid)
+                if ph:
+                    m["last_supplier_phone"] = ph
             except ValueError:
                 pass
         bid = m.get("last_broker_id")
         if bid:
             try:
-                m["last_broker_name"] = bm.get(uuid.UUID(str(bid)))
+                uid = uuid.UUID(str(bid))
+                if uid in bm:
+                    m["last_broker_name"] = bm.get(uid)
+                ph = bphone.get(uid)
+                if ph:
+                    m["last_broker_phone"] = ph
             except ValueError:
                 pass
 

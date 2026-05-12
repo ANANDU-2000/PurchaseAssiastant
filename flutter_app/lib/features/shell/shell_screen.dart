@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -17,10 +18,16 @@ class ShellScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final idx       = navigationShell.currentIndex;
+    final idx = navigationShell.currentIndex;
     final prevBranch = ref.read(shellCurrentBranchProvider);
     if (prevBranch != idx) {
-      ref.read(shellCurrentBranchProvider.notifier).state = idx;
+      // Avoid mutating Riverpod state synchronously during build (can cause
+      // extra rebuilds / flicker for Reports + other branch-gated providers).
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (ref.read(shellCurrentBranchProvider) != idx) {
+          ref.read(shellCurrentBranchProvider.notifier).state = idx;
+        }
+      });
     }
     final routePath = GoRouterState.of(context).uri.path;
     final conn      = ref.watch(connectivityResultsProvider);

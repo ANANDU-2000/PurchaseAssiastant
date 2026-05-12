@@ -21,6 +21,7 @@ import '../../../core/services/item_statement_pdf.dart';
 import '../../../core/services/supplier_statement_pdf.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/utils/line_display.dart';
+import '../../../core/utils/phone_launch.dart';
 import '../../../core/widgets/focused_search_chrome.dart';
 import '../../../core/utils/trade_purchase_commission.dart';
 import '../../../core/utils/trade_purchase_rate_display.dart';
@@ -32,6 +33,57 @@ import '../../purchase/providers/trade_purchase_detail_provider.dart';
 enum TradeLedgerKind { supplier, broker, catalogItem }
 
 DateTime _dOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+Widget _ledgerCatalogPartyBlock({
+  required BuildContext context,
+  required String label,
+  required String? name,
+  required String? phoneRaw,
+}) {
+  final nameT = name?.trim() ?? '';
+  final phone = phoneRaw?.trim() ?? '';
+  if (nameT.isEmpty && phone.isEmpty) return const SizedBox.shrink();
+  final tt = Theme.of(context).textTheme;
+  final cs = Theme.of(context).colorScheme;
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const SizedBox(height: 6),
+      Text(
+        label,
+        style: tt.labelSmall?.copyWith(
+          fontWeight: FontWeight.w800,
+          color: cs.onSurfaceVariant,
+        ),
+      ),
+      const SizedBox(height: 2),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Text(
+              nameT.isEmpty ? '—' : nameT,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: tt.bodySmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: cs.onSurfaceVariant,
+              ),
+            ),
+          ),
+          if (phone.isNotEmpty)
+            IconButton(
+              tooltip: 'Call',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+              icon: const Icon(Icons.call_outlined, size: 20),
+              onPressed: () => dialPhone(phone),
+            ),
+        ],
+      ),
+    ],
+  );
+}
 
 /// PUR ledger for a supplier, broker, or catalog item (trade purchases only).
 class TradeLedgerPage extends ConsumerStatefulWidget {
@@ -383,6 +435,10 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
     }
 
     final firstInAll = _rows.isNotEmpty ? _rows.first : null;
+    final catalogLead =
+        widget.kind == TradeLedgerKind.catalogItem && data.isNotEmpty
+            ? data.first
+            : null;
     final entityTitle = switch (widget.kind) {
       TradeLedgerKind.supplier => (firstInAll?.supplierName
                   ?.trim()
@@ -401,9 +457,12 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
           'Item',
     };
 
-    final phone = widget.kind == TradeLedgerKind.supplier
+    final supplierPhoneStrip = widget.kind == TradeLedgerKind.supplier
         ? (firstInAll?.supplierPhone ?? firstInAll?.supplierWhatsapp)
-        : firstInAll?.brokerPhone;
+        : null;
+    final brokerPhoneStrip = widget.kind == TradeLedgerKind.broker
+        ? firstInAll?.brokerPhone
+        : null;
     final addr = widget.kind == TradeLedgerKind.supplier
         ? firstInAll?.supplierAddress
         : null;
@@ -535,16 +594,72 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
                                   loading: () => const SizedBox.shrink(),
                                   error: (_, __) => const SizedBox.shrink(),
                                 ),
-                              if (phone != null && phone.trim().isNotEmpty) ...[
+                              if (widget.kind == TradeLedgerKind.supplier &&
+                                  supplierPhoneStrip != null &&
+                                  supplierPhoneStrip.trim().isNotEmpty) ...[
                                 const SizedBox(height: 4),
-                                Text(
-                                  phone,
-                                  overflow: TextOverflow.ellipsis,
-                                  maxLines: 1,
-                                  style: tt.bodySmall?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    color: cs.onSurfaceVariant,
+                                InkWell(
+                                  onTap: () => dialPhone(supplierPhoneStrip),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.call_outlined,
+                                          size: 16, color: cs.primary),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          supplierPhoneStrip,
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 1,
+                                          style: tt.bodySmall?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                            color: cs.onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
+                                ),
+                              ],
+                              if (widget.kind == TradeLedgerKind.broker &&
+                                  brokerPhoneStrip != null &&
+                                  brokerPhoneStrip.trim().isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                InkWell(
+                                  onTap: () => dialPhone(brokerPhoneStrip),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.call_outlined,
+                                          size: 16, color: cs.primary),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          brokerPhoneStrip,
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 1,
+                                          style: tt.bodySmall?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                            color: cs.onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                              if (widget.kind == TradeLedgerKind.catalogItem &&
+                                  catalogLead != null) ...[
+                                _ledgerCatalogPartyBlock(
+                                  context: context,
+                                  label: 'Supplier',
+                                  name: catalogLead.supplierName,
+                                  phoneRaw: catalogLead.supplierPhone ??
+                                      catalogLead.supplierWhatsapp,
+                                ),
+                                _ledgerCatalogPartyBlock(
+                                  context: context,
+                                  label: 'Broker',
+                                  name: catalogLead.brokerName,
+                                  phoneRaw: catalogLead.brokerPhone,
                                 ),
                               ],
                               if (addr != null && addr.trim().isNotEmpty) ...[

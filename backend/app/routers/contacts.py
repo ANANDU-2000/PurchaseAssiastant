@@ -499,6 +499,15 @@ async def delete_supplier(
     await db.commit()
 
 
+class LinkedSupplierOut(BaseModel):
+    """Suppliers that appear on confirmed-scope trade purchases with this broker."""
+
+    id: uuid.UUID
+    name: str
+    phone: str | None = None
+    whatsapp_number: str | None = None
+
+
 class BrokerOut(BaseModel):
     id: uuid.UUID
     name: str
@@ -807,6 +816,46 @@ async def get_broker(
     if b is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Broker not found")
     return await _broker_out(db, b)
+
+
+@router.get("/brokers/{broker_id}/linked-suppliers", response_model=list[LinkedSupplierOut])
+async def broker_linked_suppliers(
+    business_id: uuid.UUID,
+    broker_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    del _m
+    br = await db.execute(
+        select(Broker.id).where(Broker.id == broker_id, Broker.business_id == business_id)
+    )
+    if br.scalar_one_or_none() is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Broker not found")
+    supplier_ids_subq = (
+        select(TradePurchase.supplier_id)
+        .where(
+            TradePurchase.business_id == business_id,
+            TradePurchase.broker_id == broker_id,
+            trade_purchase_status_in_reports(),
+        )
+        .distinct()
+    )
+    q = (
+        select(Supplier.id, Supplier.name, Supplier.phone, Supplier.whatsapp_number)
+        .where(Supplier.business_id == business_id, Supplier.id.in_(supplier_ids_subq))
+        .order_by(func.lower(Supplier.name))
+        .limit(200)
+    )
+    r2 = await execute_with_retry(lambda: db.execute(q))
+    return [
+        LinkedSupplierOut(
+            id=row[0],
+            name=row[1],
+            phone=row[2],
+            whatsapp_number=row[3],
+        )
+        for row in r2.all()
+    ]
 
 
 @router.get("/suppliers/{supplier_id}", response_model=SupplierOut)

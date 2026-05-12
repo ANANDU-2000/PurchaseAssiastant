@@ -15,6 +15,7 @@ import '../../../core/trade/trade_line_profit.dart';
 import '../../../core/utils/trade_purchase_commission.dart';
 import '../../../core/providers/purchase_prefill_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/utils/phone_launch.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/trade_purchase_ledger_cards.dart';
 import '../../../shared/widgets/search_picker_sheet.dart';
@@ -24,6 +25,16 @@ final _brokerProvider = FutureProvider.autoDispose
   final session = ref.watch(sessionProvider);
   if (session == null) throw StateError('Not signed in');
   return ref.read(hexaApiProvider).getBroker(
+        businessId: session.primaryBusiness.id,
+        brokerId: brokerId,
+      );
+});
+
+final _brokerLinkedSuppliersProvider = FutureProvider.autoDispose
+    .family<List<Map<String, dynamic>>, String>((ref, brokerId) async {
+  final session = ref.watch(sessionProvider);
+  if (session == null) throw StateError('Not signed in');
+  return ref.read(hexaApiProvider).listBrokerLinkedSuppliers(
         businessId: session.primaryBusiness.id,
         brokerId: brokerId,
       );
@@ -268,6 +279,9 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
         ),
         data: (b) {
           final cs = Theme.of(context).colorScheme;
+          const chipTeal = Color(0xFF17A8A7);
+          final phone = b['phone']?.toString();
+          final wa = b['whatsapp_number']?.toString();
           final viewW = MediaQuery.sizeOf(context).width;
           final compactLedger = viewW < 560;
           final ledgerT = ledgerMoneyKgTotals(_rangeTrades,
@@ -403,6 +417,130 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
                     ),
                   );
                 }),
+                if ((phone != null && phone.isNotEmpty) ||
+                    (wa != null && wa.isNotEmpty)) ...[
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      if (phone != null && phone.isNotEmpty)
+                        InkWell(
+                          onTap: () => dialPhone(phone),
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: chipTeal.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.phone,
+                                    size: 14, color: chipTeal),
+                                const SizedBox(width: 4),
+                                Text(
+                                  phone,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: chipTeal,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      if (wa != null && wa.isNotEmpty)
+                        InkWell(
+                          onTap: () => openWhatsAppContact(wa),
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.message,
+                                    size: 14, color: Colors.green.shade700),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'WhatsApp',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.green.shade700,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+                ref
+                    .watch(_brokerLinkedSuppliersProvider(widget.brokerId))
+                    .when(
+                  skipLoadingOnReload: true,
+                  loading: () => const Padding(
+                    padding: EdgeInsets.only(top: 16),
+                    child: LinearProgressIndicator(),
+                  ),
+                  error: (_, __) => Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: FriendlyLoadError(
+                      message: 'Could not load suppliers on bills',
+                      onRetry: () => ref.invalidate(
+                          _brokerLinkedSuppliersProvider(widget.brokerId)),
+                    ),
+                  ),
+                  data: (rows) {
+                    if (rows.isEmpty) return const SizedBox.shrink();
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 16),
+                        Text(
+                          'Suppliers on your bills',
+                          style: tt.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 6),
+                        ...rows.map((row) {
+                          final sid = row['id']?.toString() ?? '';
+                          final name = row['name']?.toString() ?? '—';
+                          final ph = row['phone']?.toString();
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                            title: Text(
+                              name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            trailing: ph != null && ph.isNotEmpty
+                                ? IconButton(
+                                    tooltip: 'Call',
+                                    icon: const Icon(Icons.call_outlined),
+                                    onPressed: () => dialPhone(ph),
+                                  )
+                                : null,
+                            onTap: sid.isEmpty
+                                ? null
+                                : () => context.push('/supplier/$sid'),
+                          );
+                        }),
+                      ],
+                    );
+                  },
+                ),
                 const SizedBox(height: 16),
                 if (_loading)
                   const Center(

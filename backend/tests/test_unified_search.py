@@ -306,3 +306,100 @@ def test_unified_search_supplier_id_boosts_trade_history():
     ids = [x["id"] for x in sr.json().get("catalog_items", [])]
     assert aid in ids and bid_item in ids
     assert ids.index(aid) < ids.index(bid_item)
+
+
+def test_unified_search_catalog_items_include_last_supplier_and_broker_phones():
+    """`_attach_last_party_names` enriches catalog hits with contact phones when ids are set."""
+    import asyncio
+
+    from sqlalchemy import update
+
+    from app.database import async_session_factory
+    from app.models.catalog import CatalogItem
+
+    u = uuid.uuid4().hex[:10]
+    email = f"uphone{u}@test.hexa.local"
+    r = client.post(
+        "/v1/auth/register",
+        json={"username": f"u{u}", "email": email, "password": "testpass12"},
+    )
+    assert r.status_code == 200, r.text
+    h = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    br = client.get("/v1/me/businesses", headers=h)
+    bid = br.json()[0]["id"]
+    cat = client.post(
+        f"/v1/businesses/{bid}/item-categories",
+        headers=h,
+        json={"name": "PhoneCat"},
+    )
+    assert cat.status_code == 201, cat.text
+    cid = cat.json()["id"]
+    types = client.get(
+        f"/v1/businesses/{bid}/item-categories/{cid}/category-types",
+        headers=h,
+    )
+    tid = types.json()[0]["id"]
+
+    sup = client.post(
+        f"/v1/businesses/{bid}/suppliers",
+        headers=h,
+        json={"name": "Phone Sup", "phone": "9876543210"},
+    )
+    assert sup.status_code == 201, sup.text
+    sid = sup.json()["id"]
+
+    bro = client.post(
+        f"/v1/businesses/{bid}/brokers",
+        headers=h,
+        json={
+            "name": "Phone Bro",
+            "phone": "9123456780",
+            "commission_type": "percent",
+            "commission_value": 1.0,
+        },
+    )
+    assert bro.status_code == 201, bro.text
+    bid_broker = bro.json()["id"]
+
+    item = client.post(
+        f"/v1/businesses/{bid}/catalog-items",
+        headers=h,
+        json={
+            "category_id": cid,
+            "type_id": tid,
+            "name": "PhoneTestItem",
+            "default_unit": "kg",
+            "default_supplier_ids": [sid],
+        },
+    )
+    assert item.status_code == 201, item.text
+    iid = item.json()["id"]
+
+    async def _patch_catalog() -> None:
+        async with async_session_factory() as session:
+            await session.execute(
+                update(CatalogItem)
+                .where(
+                    CatalogItem.id == uuid.UUID(iid),
+                    CatalogItem.business_id == uuid.UUID(bid),
+                )
+                .values(
+                    last_supplier_id=uuid.UUID(sid),
+                    last_broker_id=uuid.UUID(bid_broker),
+                )
+            )
+            await session.commit()
+
+    asyncio.run(_patch_catalog())
+
+    sr = client.get(
+        f"/v1/businesses/{bid}/search",
+        headers=h,
+        params={"q": "PhoneTest"},
+    )
+    assert sr.status_code == 200, sr.text
+    hits = [x for x in sr.json().get("catalog_items", []) if x["id"] == iid]
+    assert len(hits) == 1
+    row = hits[0]
+    assert row.get("last_supplier_phone") == "9876543210"
+    assert row.get("last_broker_phone") == "9123456780"

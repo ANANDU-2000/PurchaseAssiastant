@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/utils/line_display.dart';
+import '../../core/utils/phone_launch.dart';
 
 double? tradeIntelToDouble(dynamic v) {
   if (v == null) return null;
@@ -362,6 +364,8 @@ class TradeIntelCatalogSearchTile extends StatelessWidget {
                       ),
                     ),
                   ],
+                  if (!fuzzyNameMatch)
+                    _TradeIntelCatalogSearchPartyRow(item: item),
                 ],
               ),
             ),
@@ -369,6 +373,103 @@ class TradeIntelCatalogSearchTile extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Supplier / broker quick actions for unified search catalog tiles (call + profile).
+class _TradeIntelCatalogSearchPartyRow extends StatelessWidget {
+  const _TradeIntelCatalogSearchPartyRow({required this.item});
+
+  final Map<String, dynamic> item;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final supName = (item['last_supplier_name'] ?? '').toString().trim();
+    final broName = (item['last_broker_name'] ?? '').toString().trim();
+    final supId = (item['last_supplier_id'] ?? '').toString().trim();
+    final broId = (item['last_broker_id'] ?? '').toString().trim();
+    final supPhone = (item['last_supplier_phone'] ?? '').toString().trim();
+    final broPhone = (item['last_broker_phone'] ?? '').toString().trim();
+    if (supName.isEmpty &&
+        broName.isEmpty &&
+        supPhone.isEmpty &&
+        broPhone.isEmpty &&
+        supId.isEmpty &&
+        broId.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    Widget line({
+      required String title,
+      required String name,
+      required String id,
+      required String phone,
+      required String routePrefix,
+    }) {
+      final hasName = name.isNotEmpty;
+      final hasPhone = phone.isNotEmpty;
+      final hasId = id.isNotEmpty;
+      if (!hasName && !hasPhone && !hasId) return const SizedBox.shrink();
+      final label = hasName ? name : (hasId ? title : '—');
+      return Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: tt.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+            ),
+            if (hasId)
+              IconButton(
+                tooltip: 'Open',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                    minWidth: 36, minHeight: 36),
+                icon: Icon(Icons.open_in_new, size: 18, color: cs.primary),
+                onPressed: () => context.push('$routePrefix$id'),
+              ),
+            if (hasPhone)
+              IconButton(
+                tooltip: 'Call',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                    minWidth: 36, minHeight: 36),
+                icon: const Icon(Icons.call_outlined, size: 20),
+                onPressed: () => dialPhone(phone),
+              ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        line(
+          title: 'Supplier',
+          name: supName,
+          id: supId,
+          phone: supPhone,
+          routePrefix: '/supplier/',
+        ),
+        line(
+          title: 'Broker',
+          name: broName,
+          id: broId,
+          phone: broPhone,
+          routePrefix: '/broker/',
+        ),
+      ],
     );
   }
 }

@@ -1289,6 +1289,18 @@ class HexaApi {
     return {};
   }
 
+  Future<List<Map<String, dynamic>>> listBrokerLinkedSuppliers({
+    required String businessId,
+    required String brokerId,
+  }) async {
+    final res = await _dio.get<dynamic>(
+      '/v1/businesses/$businessId/brokers/$brokerId/linked-suppliers',
+    );
+    final data = res.data;
+    if (data is! List) return [];
+    return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
   Future<Map<String, dynamic>> createBroker({
     required String businessId,
     required String name,

@@ -875,8 +875,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
   Widget build(BuildContext context) {
     final purchasesAsync = ref.watch(reportsPurchasesPayloadProvider);
     final liveErr = purchasesAsync.value?.liveFetchError;
-    final hive = ref.watch(reportsPurchasesHiveCacheProvider);
-    final merged = purchasesAsync.value?.items ?? hive ?? const <TradePurchase>[];
+    final merged = ref.watch(reportsPurchasesMergedProvider);
     final fromLive = purchasesAsync.value?.fromLiveFetch ?? false;
     _armStallBanner(purchasesAsync.isLoading, merged.isNotEmpty);
 
@@ -884,9 +883,11 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
     final rangeFmt =
         '${DateFormat('d MMM').format(range.from)} → ${DateFormat('d MMM').format(range.to)}';
 
-    final aggAll = buildTradeReportAgg(merged);
+    final aggAll = ref.watch(reportsAggregateProvider);
     final kind = _packKind(_packFilter);
-    final aggFiltered = buildTradeReportAgg(merged, onlyKind: kind);
+    final aggFiltered = _packFilter == ReportsPackFilter.all
+        ? aggAll
+        : buildTradeReportAgg(merged, onlyKind: kind);
     final aggList = _aggForList(aggAll, aggFiltered);
 
     final session = ref.watch(sessionProvider);
@@ -895,7 +896,6 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
     final showEmpty = merged.isEmpty && (!purchasesAsync.isLoading || _stallBanner);
 
     Widget emptyCard() {
-      final canRetry = !purchasesAsync.isLoading;
       final msg = (liveErr != null && liveErr.trim().isNotEmpty)
           ? 'Could not refresh live data.\n$liveErr'
           : 'No purchases in this period.';
@@ -920,21 +920,17 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
               ),
               const SizedBox(height: 12),
               FilledButton.tonal(
-                onPressed: canRetry
-                    ? () {
-                        _bumpInvalidate();
-                      }
-                    : null,
+                onPressed: () => _bumpInvalidate(),
                 child: const Text('Retry'),
               ),
               const SizedBox(height: 8),
               OutlinedButton(
-                onPressed: canRetry ? _syncRangeWithHome : null,
+                onPressed: _syncRangeWithHome,
                 child: const Text('Match Home period'),
               ),
               const SizedBox(height: 8),
               OutlinedButton(
-                onPressed: canRetry ? _pickCustomRange : null,
+                onPressed: () => unawaited(_pickCustomRange()),
                 child: const Text('Pick date range'),
               ),
               const SizedBox(height: 8),
@@ -1097,13 +1093,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                                 ),
                               ),
                               TextButton(
-                                onPressed: purchasesAsync.isLoading
-                                    ? null
-                                    : () {
-                                        _bumpInvalidate();
-                                        ref.invalidate(
-                                            reportsPurchasesPayloadProvider);
-                                      },
+                                onPressed: () => _bumpInvalidate(),
                                 child: const Text('Retry'),
                               ),
                             ],
@@ -1275,7 +1265,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                         viewportHeight: MediaQuery.sizeOf(context).height,
                         isLoadingInitial: showSkeleton,
                         isEmpty: showEmpty,
-                        canRetry: !purchasesAsync.isLoading,
+                        canRetry: true,
                         onRetry: () {
                           _bumpInvalidate();
                         },

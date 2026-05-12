@@ -1,21 +1,45 @@
 import 'dart:convert';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../api/hexa_api.dart';
 import '../auth/session_notifier.dart';
+import '../errors/user_facing_errors.dart';
 import '../models/trade_purchase_models.dart';
 import '../reporting/trade_report_aggregate.dart';
 import '../services/offline_store.dart';
 import '../../features/shell/shell_branch_provider.dart';
 import 'analytics_kpi_provider.dart';
+import 'connectivity_provider.dart' show isOfflineResult;
 
 final Map<String, Future<List<TradePurchase>>> _reportsPurchasesInflight = {};
 
 void bustReportsPurchasesInflight() {
   _reportsPurchasesInflight.clear();
+}
+
+bool _isNonRetryableNetworkError(Object e) {
+  if (e is DioException) {
+    return e.type == DioExceptionType.connectionError ||
+        e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.sendTimeout ||
+        e.type == DioExceptionType.receiveTimeout ||
+        e.type == DioExceptionType.cancel;
+  }
+  return false;
+}
+
+String _reportsLiveErrMsg(Object e) {
+  if (e is DioException) {
+    final sc = e.response?.statusCode;
+    if (sc == 401 || sc == 403) {
+      return 'Session expired — sign in again';
+    }
+  }
+  return userFacingError(e);
 }
 
 class ReportsPurchasePayload {
@@ -154,6 +178,16 @@ Future<List<TradePurchase>> _loadReportsPurchases(Ref ref) async {
     Object? lastErr;
     for (var attempt = 0; attempt < 3; attempt++) {
       try {
+        if (attempt == 0) {
+          final conn = await Connectivity().checkConnectivity();
+          if (isOfflineResult(conn)) {
+            throw DioException(
+              requestOptions: RequestOptions(path: '/v1/trade-purchases'),
+              type: DioExceptionType.connectionError,
+              message: 'No internet connection',
+            );
+          }
+        }
         final aggregated = <Map<String, dynamic>>[];
         for (var offset = 0;; offset += 50) {
           // [Bug 5 fix] Hard timeout on each page so a cold/unreachable Render
@@ -215,6 +249,9 @@ Future<List<TradePurchase>> _loadReportsPurchases(Ref ref) async {
         return items;
       } catch (e) {
         lastErr = e;
+        if (_isNonRetryableNetworkError(e)) {
+          break;
+        }
         await Future<void>.delayed(Duration(milliseconds: 280 * (attempt + 1)));
       }
     }
@@ -252,19 +289,13 @@ Future<ReportsPurchasePayload> fetchReportsPurchasesLiveForAnalytics(
       return ReportsPurchasePayload(
         items: cached,
         fromLiveFetch: false,
-        liveFetchError: (e is DioException &&
-                (e.response?.statusCode == 401 || e.response?.statusCode == 403))
-            ? 'Session expired — sign in again'
-            : e.toString(),
+        liveFetchError: _reportsLiveErrMsg(e),
       );
     }
     return ReportsPurchasePayload(
       items: const [],
       fromLiveFetch: false,
-      liveFetchError: (e is DioException &&
-              (e.response?.statusCode == 401 || e.response?.statusCode == 403))
-          ? 'Session expired — sign in again'
-          : e.toString(),
+      liveFetchError: _reportsLiveErrMsg(e),
     );
   }
 }
