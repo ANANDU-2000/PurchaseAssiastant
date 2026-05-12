@@ -6,6 +6,18 @@ All notable changes to this project are documented here. Append new entries unde
 
 ### Added
 
+- `context/tax_rebuild/`: ten markdown specs for Indian trader GST/rate UX (flow, calc rules, PDF/ledger, validation, QA, backup, readiness).
+- `flutter_app/lib/features/purchase/pricing/purchase_line_preview_narrative.dart`: trader-readable purchase line preview strings aligned with `calc_engine`.
+- `flutter_app/lib/features/purchase/pricing/purchase_tax_prefs.dart`: SharedPreferences for last GST Extra / GST Included (global + optional per-supplier purchase, global selling).
+- Purchase PDF line table: GST % and GST ₹ columns; summary line for summed line GST where meaningful.
+- `purchaseBillGstFreightSubtitle` in `line_display.dart` for purchase history rows (GST + freight rollups from parsed lines).
+
+### Changed
+
+- **Flutter purchase add-item:** GST segments relabelled to GST Extra / GST Included; narrative preview card with soft validation banners; full-page sticky preview/footer; wizard passes `gstPrefs` and supplier id for remembered modes; bottom-sheet keyboard inset locals restored; `AddItemEntryPage` forwards `gstPrefs` / `preferredSupplierId`. **Rates & GST** card combines ₹/kg toggle, purchase/selling amounts, and GST mode; **More** holds discount/tax/freight only; reduced scroll min-height; focus scroll + dynamic `scrollPadding` for pinned preview; stacked rate fields on full-page / narrow width. **Edit** affordances: item name (`Icons.edit_outlined`), unit / bags vs kg / qty (`Icons.swap_vert_outlined`).
+
+- **Flutter purchase wizard:** Resume-draft `MaterialBanner` is hidden while the fullscreen add-item sheet is open and re-evaluated after the sheet closes; opening add-item without a supplier shows a clear SnackBar instead of doing nothing.
+
 - `docs/AI_PURCHASE_VALIDATION_AND_SAFETY.md`: strict validation, NEVER/ALWAYS, match engines, financial safety, duplicate detection alignment with server.
 - `docs/SCAN_GUIDE_UX_SPEC.md`: full-screen Scan Guide UX (shortcodes, languages, multi-page, CTA).
 - `docs/AI_PURCHASE_DRAFT_ENGINE.md`: enterprise draft-first architecture (Vision-only, 4-layer matching, wizard steps, DB tables, UX rules).

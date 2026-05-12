@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/calc_engine.dart';
 import '../../../../core/errors/user_facing_errors.dart';
@@ -19,6 +20,8 @@ import '../../../../core/utils/unit_classifier.dart';
 import '../../../../shared/widgets/inline_search_field.dart';
 import '../../../../shared/widgets/keyboard_safe_form_viewport.dart';
 import '../../domain/purchase_draft.dart' show RateTaxBasis;
+import '../../pricing/purchase_line_preview_narrative.dart';
+import '../../pricing/purchase_tax_prefs.dart';
 import 'party_inline_suggest_field.dart';
 
 String _stripKgSuffixForCatalogDisplay(String name) => name
@@ -55,6 +58,8 @@ class PurchaseItemEntrySheet extends StatefulWidget {
     /// When set, user can save missing kg/bag to the server from a blocking sheet.
     this.persistCatalogBagWeight,
     this.preferredSupplierId,
+    /// When set, GST Extra / GST Included defaults are restored for new lines and saved on change.
+    this.gstPrefs,
   });
 
   final List<Map<String, dynamic>> catalog;
@@ -71,6 +76,7 @@ class PurchaseItemEntrySheet extends StatefulWidget {
   final Future<Map<String, dynamic>?> Function()? navigateCatalogQuickAddItem;
   final PersistCatalogBagWeight? persistCatalogBagWeight;
   final String? preferredSupplierId;
+  final SharedPreferences? gstPrefs;
 
   @override
   State<PurchaseItemEntrySheet> createState() => _PurchaseItemEntrySheetState();
@@ -88,6 +94,14 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   final _sellingKey = GlobalKey();
   final _kgPerBagKey = GlobalKey();
   final _taxKey = GlobalKey();
+  /// Purchase/selling amounts + GST basis (scroll target for tax-basis errors).
+  final _ratesGstKey = GlobalKey();
+
+  /// Discount / tax % / freight / notes — expanded when user opens or when save needs Tax %.
+  bool _moreSectionExpanded = false;
+
+  /// Extra bottom inset so fields clear pinned preview + IME when scrolling into view.
+  static const double _kPinnedPreviewReserve = 268;
 
   /// How typed purchase/selling rates relate to GST (normalized to pre-tax before API).
   RateTaxBasis _purchaseRateTaxBasis = RateTaxBasis.taxExtra;
@@ -324,6 +338,21 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       _weightPerTinCtrl.text = _fmtInput(init['weight_per_tin'], 3, trim: true);
       _boxFixedWeight = (init['box_mode']?.toString() != 'items_per_box');
     }
+    if (widget.initial == null && !widget.isEdit && widget.gstPrefs != null) {
+      final p = widget.gstPrefs!;
+      final pb = GstRateBasisPrefs.readPurchase(
+        p,
+        supplierId: widget.preferredSupplierId,
+      );
+      final sb = GstRateBasisPrefs.readSelling(p);
+      if (pb != null) {
+        _purchaseRateTaxBasis = pb;
+      }
+      if (sb != null) {
+        _sellingRateTaxBasis = sb;
+        _sellingGstBasisManual = sb != _purchaseRateTaxBasis;
+      }
+    }
     _syncKgStateFromCatalogRow();
     _lineTotalsListenable = Listenable.merge([
       _qtyCtrl,
@@ -352,6 +381,10 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         FocusScope.of(context).requestFocus(_itemFocus);
       });
     }
+    _qtyFocus.addListener(_onQtyFocusScroll);
+    _landingFocus.addListener(_onLandingFocusScroll);
+    _sellingFocus.addListener(_onSellingFocusScroll);
+    _kgManualFocus.addListener(_onKgManualFocusScroll);
   }
 
   void _syncKgStateFromCatalogRow() {
@@ -373,6 +406,10 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
 
   @override
   void dispose() {
+    _qtyFocus.removeListener(_onQtyFocusScroll);
+    _landingFocus.removeListener(_onLandingFocusScroll);
+    _sellingFocus.removeListener(_onSellingFocusScroll);
+    _kgManualFocus.removeListener(_onKgManualFocusScroll);
     _itemCtrl.removeListener(_onItemTextChanged);
     _kgPerBagCtrl.removeListener(_onKgPerBagChanged);
     _defaultsDebounceTimer?.cancel();
@@ -705,6 +742,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         ),
         child: DropdownButtonFormField<String>(
           isExpanded: true,
+          icon: const Icon(Icons.arrow_drop_down_rounded, size: 28),
           initialValue: v,
           menuMaxHeight: unitMenuMax,
           dropdownColor: HexaColors.surfaceApp,
@@ -1185,9 +1223,6 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     );
   }
 
-  double _lineTotalPreview() =>
-      lineMoney(_currentLine()) + lineItemFreightCharges(_currentLine());
-
   Widget? _rateEntryBasisSegmented(double? kPer, bool showPerKg) {
     if (!showPerKg || kPer == null || kPer <= 0) return null;
     final kgChip = unit_lbl.rupeePerDimChipLabel('kg');
@@ -1212,7 +1247,13 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     );
   }
 
-  Widget _gstRateBasisSegment(String title, RateTaxBasis value, ValueChanged<RateTaxBasis> onChanged) {
+  Widget _gstRateBasisSegment(
+    String title,
+    RateTaxBasis value,
+    ValueChanged<RateTaxBasis> onChanged, {
+    required String helperExtra,
+    required String helperIncluded,
+  }) {
     final cs = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1220,21 +1261,21 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         Text(
           title,
           style: TextStyle(
-            fontSize: 11,
+            fontSize: 12,
             fontWeight: FontWeight.w800,
-            color: cs.onSurface.withValues(alpha: 0.88),
+            color: cs.onSurface.withValues(alpha: 0.9),
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         SegmentedButton<RateTaxBasis>(
           segments: const [
             ButtonSegment(
               value: RateTaxBasis.taxExtra,
-              label: Text('Tax extra'),
+              label: Text('GST Extra'),
             ),
             ButtonSegment(
               value: RateTaxBasis.includesTax,
-              label: Text('Includes GST'),
+              label: Text('GST Included'),
             ),
           ],
           selected: {value},
@@ -1242,6 +1283,18 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
             if (s.isEmpty) return;
             onChanged(s.first);
           },
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+            value == RateTaxBasis.taxExtra ? helperExtra : helperIncluded,
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.3,
+              fontWeight: FontWeight.w600,
+              color: cs.onSurface.withValues(alpha: 0.78),
+            ),
+          ),
         ),
       ],
     );
@@ -1282,6 +1335,19 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       _errHsn = null;
       _errTaxBasis = null;
     });
+  }
+
+  void _persistGstPrefs() {
+    final pr = widget.gstPrefs;
+    if (pr == null) return;
+    unawaited(
+      GstRateBasisPrefs.savePurchase(
+        pr,
+        _purchaseRateTaxBasis,
+        supplierId: widget.preferredSupplierId,
+      ),
+    );
+    unawaited(GstRateBasisPrefs.saveSelling(pr, _sellingRateTaxBasis));
   }
 
   double? _parsedTaxPercent() {
@@ -1357,10 +1423,81 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       Scrollable.ensureVisible(
         ctx,
         alignment: 0.12,
-        duration: Duration.zero,
-        curve: Curves.linear,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
       );
     });
+  }
+
+  EdgeInsets _textFieldScrollPadding() {
+    final ime = MediaQuery.viewInsetsOf(context).bottom;
+    final reserve =
+        widget.fullPage ? _kPinnedPreviewReserve : 140.0;
+    return EdgeInsets.only(bottom: ime + reserve);
+  }
+
+  void _ensureFocusedFieldVisible() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ctx = FocusManager.instance.primaryFocus?.context;
+      if (ctx == null) return;
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: 0.18,
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
+
+  void _onQtyFocusScroll() {
+    if (_qtyFocus.hasFocus) _ensureFocusedFieldVisible();
+  }
+
+  void _onLandingFocusScroll() {
+    if (_landingFocus.hasFocus) _ensureFocusedFieldVisible();
+  }
+
+  void _onSellingFocusScroll() {
+    if (_sellingFocus.hasFocus) _ensureFocusedFieldVisible();
+  }
+
+  void _onKgManualFocusScroll() {
+    if (_kgManualFocus.hasFocus) _ensureFocusedFieldVisible();
+  }
+
+  void _scrollToFirstBlockingError() {
+    if (_errItem != null) {
+      _scrollToKey(_itemKey);
+    } else if (_errQty != null) {
+      _scrollToKey(_qtyKey);
+    } else if (_errUnit != null) {
+      _scrollToKey(_unitKey);
+    } else if (_errKgPerBag != null) {
+      _scrollToKey(_kgPerBagKey);
+    } else if (_errLanding != null) {
+      _scrollToKey(_landingKey);
+    } else if (_errSelling != null) {
+      _scrollToKey(_sellingKey);
+    } else if (_errTaxBasis != null) {
+      _scrollToKey(_ratesGstKey);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _scrollToKey(_taxKey);
+        });
+      });
+    }
+  }
+
+  void _focusItemNameField() {
+    _itemFocus.requestFocus();
+    _scrollToKey(_itemKey);
+  }
+
+  void _focusQtyUnitEntry() {
+    _qtyFocus.requestFocus();
+    _scrollToKey(_qtyKey);
   }
 
   Map<String, String> _snapshotFields() {
@@ -1667,34 +1804,19 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         _errTaxBasis =
             'Enter GST % for tax-inclusive selling, or set selling to “Tax extra”.';
       }
+      if (_errTaxBasis != null) {
+        _moreSectionExpanded = true;
+      }
     });
 
-    if (_errItem != null) {
-      _scrollToKey(_itemKey);
-      return null;
-    }
-    if (_errQty != null) {
-      _scrollToKey(_qtyKey);
-      return null;
-    }
-    if (_errUnit != null) {
-      _scrollToKey(_unitKey);
-      return null;
-    }
-    if (_errKgPerBag != null) {
-      _scrollToKey(_kgPerBagKey);
-      return null;
-    }
-    if (_errLanding != null) {
-      _scrollToKey(_landingKey);
-      return null;
-    }
-    if (_errSelling != null) {
-      _scrollToKey(_sellingKey);
-      return null;
-    }
-    if (_errTaxBasis != null) {
-      _scrollToKey(_taxKey);
+    if (_errItem != null ||
+        _errQty != null ||
+        _errUnit != null ||
+        _errKgPerBag != null ||
+        _errLanding != null ||
+        _errSelling != null ||
+        _errTaxBasis != null) {
+      _scrollToFirstBlockingError();
       return null;
     }
     final disc = _parseD(_discCtrl.text);
@@ -1864,6 +1986,9 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
               behavior: SnackBarBehavior.floating,
             ),
           );
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _scrollToFirstBlockingError();
+          });
         }
       }
       return;
@@ -1953,7 +2078,10 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     return lines.join('\n');
   }
 
-  Widget _buildPurchaseSellingRateRow(bool showPerKgFields) {
+  Widget _buildPurchaseSellingRateRow(
+    bool showPerKgFields, {
+    bool preferVerticalRates = false,
+  }) {
     Widget landingField() => KeyedSubtree(
           key: _landingKey,
           child: TextField(
@@ -1963,6 +2091,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                 const TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [_decimalFormatter(2)],
             textInputAction: TextInputAction.next,
+            scrollPadding: _textFieldScrollPadding(),
             decoration: _deco(
               _purchaseRateLabel(showPerKgFields),
               prefixText: '₹ ',
@@ -1987,6 +2116,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                 const TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [_decimalFormatter(2)],
             textInputAction: TextInputAction.done,
+            scrollPadding: _textFieldScrollPadding(),
             decoration: _deco(
               _sellingRateLabel(showPerKgFields),
               prefixText: '₹ ',
@@ -2003,7 +2133,9 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       builder: (context, constraints) {
         const narrowBreak = 340.0;
         const minPairWidth = 520.0;
-        if (constraints.maxWidth < narrowBreak) {
+        final stackRates = preferVerticalRates ||
+            constraints.maxWidth < minPairWidth;
+        if (stackRates || constraints.maxWidth < narrowBreak) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -2013,7 +2145,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
             ],
           );
         }
-        final pair = Row(
+        return Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(flex: 5, child: landingField()),
@@ -2021,16 +2153,6 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
             Expanded(flex: 5, child: sellingField()),
           ],
         );
-        if (constraints.maxWidth < minPairWidth) {
-          return SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minWidth: minPairWidth),
-              child: pair,
-            ),
-          );
-        }
-        return pair;
       },
     );
   }
@@ -2721,126 +2843,198 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     });
   }
 
-  /// Line preview: qty + unit + total weight, then rates and profit.
+  List<String> _gstSoftWarningMessages() {
+    final out = <String>[];
+    if (!widget.omitLineFreightDeliveredBilltyDiscount) {
+      final fv = _parseD(_freightCtrl.text) ?? 0;
+      if (_freightType == 'included' && fv > 1e-9) {
+        out.add(
+          'Freight is set to Included — the freight value may not add to the line total. Use Separate if you need to add it.',
+        );
+      }
+    }
+    if (_purchaseRateTaxBasis == RateTaxBasis.includesTax) {
+      final tax = _parseD(_taxCtrl.text);
+      final rateIn = _ratesPerKgEconomics
+          ? (_landingParsedAsPerKg() ?? 0)
+          : (_parseD(_landingCtrl.text) ?? 0);
+      if (tax != null && tax >= 5 && rateIn >= 10) {
+        final g = tax / 100.0;
+        final taxRupeeDelta = rateIn * g;
+        final roundRupee =
+            (rateIn - rateIn.roundToDouble()).abs() < 0.015;
+        if (roundRupee && taxRupeeDelta >= 1.0) {
+          out.add(
+            'GST Included treats ${_fmtMoney(rateIn)} as a price that already includes GST. '
+            'Whole-rupee supplier quotes are often before GST — if that applies to you, '
+            'switch to GST Extra so tax is added on top.',
+          );
+        }
+      }
+    }
+    final q = _qtyVal();
+    final sell = _ratesPerKgEconomics
+        ? _sellingParsedAsPerKg()
+        : _parseD(_sellingCtrl.text);
+    if (q > 0 && sell != null && sell > 0) {
+      final profit = _profitPreview();
+      final lm = lineMoney(_currentLine());
+      final threshold = math.max(50.0, lm * 0.01);
+      if (profit < threshold) {
+        out.add(
+          'Profit looks unusually low after GST and charges — check GST mode and rates.',
+        );
+      }
+    }
+    return out;
+  }
+
+  /// Line preview: trader-readable breakdown (matches server line money).
   Widget _liveTotalsCard(ThemeData theme) {
-    final total = _lineTotalPreview();
+    final q = _qtyVal();
+    final u = _unitCtrl.text.trim();
     final sell = _ratesPerKgEconomics
         ? _sellingParsedAsPerKg()
         : _parseD(_sellingCtrl.text);
     final profit = _profitPreview();
-    final k = _kgPer();
-    final q = _qtyVal();
-    final u = _unitCtrl.text.trim();
-
-    final per = _ratesPerKgEconomics
+    final enteredPurchase = _ratesPerKgEconomics
         ? (_landingParsedAsPerKg() ?? 0)
         : (_parseD(_landingCtrl.text) ?? 0);
+    final line = _currentLine();
+    final unitWord = _capitalUnitWord(u.isEmpty ? 'unit' : u);
+    final model = buildPurchaseLinePreviewModel(
+      line: line,
+      unitLabel: unitWord,
+      qty: q,
+      enteredPurchaseDisplay: enteredPurchase,
+      purchaseBasis: _purchaseRateTaxBasis,
+      enteredSellingDisplay: sell,
+      sellBasis: _sellingRateTaxBasis,
+      omitLineFreight: widget.omitLineFreightDeliveredBilltyDiscount,
+      profitPreview: profit,
+      hasSelling: sell != null && sell > 0,
+    );
 
+    TextStyle bodyStyle({double fs = 13.5, FontWeight w = FontWeight.w600}) =>
+        theme.textTheme.bodyMedium!.copyWith(
+          fontSize: fs,
+          fontWeight: w,
+          height: 1.28,
+          color: const Color(0xFF0F172A),
+        );
+
+    final warnings = _gstSoftWarningMessages();
     final lines = <Widget>[
+      for (final w in warnings)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Material(
+            color: const Color(0xFFFFF7ED),
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.warning_amber_rounded,
+                      size: 20, color: Colors.orange.shade800),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      w,
+                      style: bodyStyle(fs: 12.5, w: FontWeight.w600).copyWith(
+                        color: Colors.orange.shade900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       Text(
         _qtyAndUnitWeightSummaryLine(),
-        style: theme.textTheme.bodySmall?.copyWith(
-          fontSize: 12,
-          fontWeight: FontWeight.w800,
-          height: 1.25,
-          color: Colors.blueGrey[900],
-        ),
+        style: bodyStyle(fs: 14, w: FontWeight.w800),
       ),
-      const SizedBox(height: 6),
+      const SizedBox(height: 8),
     ];
 
     if (_showPerKgLandingLabels) {
+      final k = _kgPer();
       if (k != null && k > 0 && q > 0) {
         final totalK = q * k;
         lines.add(Text(
           '${_inQtyWtFmt.format(q)} × ${_fmtQty(k)} kg/bag = ${_inQtyWtFmt.format(totalK)} kg',
-          style: theme.textTheme.bodySmall?.copyWith(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            height: 1.2,
-            color: Colors.blueGrey[800],
-          ),
+          style: bodyStyle(fs: 13, w: FontWeight.w600)
+              .copyWith(color: Colors.blueGrey[800]),
         ));
-        final ln = _draftLineForLabelsOnly();
-        final perDim = unit_lbl.purchaseRateSuffix(ln);
-        final perDisplay = _parseD(_landingCtrl.text) ?? 0;
-        lines.add(Text(
-          '${_inQtyWtFmt.format(totalK)} kg × ₹${perDisplay.toStringAsFixed(2)}/$perDim → ₹${total.toStringAsFixed(2)}',
-          style: theme.textTheme.bodySmall?.copyWith(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            height: 1.2,
-          ),
-        ));
+        lines.add(const SizedBox(height: 6));
       } else if (_activeClassification().type == UnitType.weightBag) {
         lines.add(Text(
           'Enter kg per bag',
-          style: theme.textTheme.bodySmall?.copyWith(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: Colors.blueGrey[700],
-          ),
+          style: bodyStyle(fs: 13).copyWith(color: Colors.blueGrey[700]),
         ));
+        lines.add(const SizedBox(height: 6));
       }
-    }
-    if (!_showPerKgLandingLabels) {
-      lines.add(Text(
-        '${_inQtyWtFmt.format(q)} ${_capitalUnitWord(u.isEmpty ? 'unit' : u)} × ₹${per.toStringAsFixed(2)} = ₹${total.toStringAsFixed(2)}',
-        style: theme.textTheme.bodySmall?.copyWith(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          height: 1.2,
-        ),
-      ));
     }
 
-    lines.add(const SizedBox(height: 4));
-    final taxAmt = lineTaxAmount(_currentLine());
-    if (taxAmt > 1e-9) {
-      lines.add(Text(
-        'Tax on line ₹${taxAmt.toStringAsFixed(2)} (preview)',
-        style: theme.textTheme.bodySmall?.copyWith(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          color: Colors.blueGrey[900],
-        ),
-      ));
-      lines.add(const SizedBox(height: 2));
-    } else if (_purchaseRateTaxBasis == RateTaxBasis.includesTax) {
-      final tp = _parsedTaxPercent();
-      if (tp == null || tp <= 0) {
-        lines.add(Text(
-          'Includes GST: enter Tax % to strip to pre-tax rate.',
-          style: theme.textTheme.bodySmall?.copyWith(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: Colors.blueGrey[700],
-          ),
-        ));
-        lines.add(const SizedBox(height: 2));
-      }
+    lines.addAll([
+      Text(model.enteredPurchaseLine, style: bodyStyle(fs: 14, w: FontWeight.w800)),
+      const SizedBox(height: 4),
+      Text(model.taxableLine, style: bodyStyle()),
+      const SizedBox(height: 2),
+      Text(model.gstLine, style: bodyStyle(w: FontWeight.w700)),
+      const SizedBox(height: 2),
+      Text(model.linePurchaseLine, style: bodyStyle(fs: 14.5, w: FontWeight.w900)),
+    ]);
+    if (model.chargesLine != null) {
+      lines.addAll([
+        const SizedBox(height: 4),
+        Text(model.chargesLine!, style: bodyStyle().copyWith(color: Colors.blueGrey[900])),
+      ]);
     }
-    lines.add(Text(
-      (sell == null || q <= 0) ? 'Profit —' : 'Profit ₹${profit.toStringAsFixed(2)}',
-      style: theme.textTheme.bodySmall?.copyWith(
-        fontSize: 12,
-        fontWeight: FontWeight.w600,
-        color: Colors.blueGrey[900],
+    lines.add(const SizedBox(height: 10));
+    lines.add(
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE0F2FE).withValues(alpha: 0.55),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFF0EA5E9).withValues(alpha: 0.35)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (model.sellingLine != null) ...[
+              Text(model.sellingLine!, style: bodyStyle(fs: 13)),
+              const SizedBox(height: 4),
+            ],
+            Text(
+              model.profitLine ?? 'Profit —',
+              style: bodyStyle(fs: 15, w: FontWeight.w900)
+                  .copyWith(color: const Color(0xFF0F172A)),
+            ),
+          ],
+        ),
       ),
-    ));
+    );
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      padding: EdgeInsets.symmetric(
+        horizontal: widget.fullPage ? 12 : 8,
+        vertical: widget.fullPage ? 12 : 8,
+      ),
       decoration: BoxDecoration(
         color: widget.fullPage
             ? const Color(0xFFF0FDFD)
             : Colors.blueGrey[50],
-        borderRadius: BorderRadius.circular(widget.fullPage ? 12 : 6),
+        borderRadius: BorderRadius.circular(widget.fullPage ? 12 : 8),
         border: Border.all(
           color: widget.fullPage
-              ? const Color(0xFF17A8A7).withValues(alpha: 0.35)
-              : Colors.blueGrey[100]!,
+              ? const Color(0xFF17A8A7).withValues(alpha: 0.45)
+              : Colors.blueGrey[200]!,
+          width: widget.fullPage ? 1.5 : 1,
         ),
       ),
       child: Column(
@@ -2864,9 +3058,60 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
 
     const teal = Color(0xFF17A8A7);
     const ink = Color(0xFF0F172A);
-    final gapField = widget.fullPage ? 16.0 : 6.0;
-    final gapSection = widget.fullPage ? 24.0 : 8.0;
+    final gapField = widget.fullPage ? 12.0 : 6.0;
+    final gapSection = widget.fullPage ? 16.0 : 8.0;
     final rateBasisSeg = _rateEntryBasisSegmented(k, showPerKgFields);
+
+    final ratesAndGstChildren = <Widget>[
+      if (rateBasisSeg != null) rateBasisSeg,
+      _buildPurchaseSellingRateRow(
+        showPerKgFields,
+        preferVerticalRates: widget.fullPage,
+      ),
+      SizedBox(height: widget.fullPage ? 8 : 6),
+      _gstRateBasisSegment(
+        'Purchase rate (GST)',
+        _purchaseRateTaxBasis,
+        (v) => setState(() {
+          _purchaseRateTaxBasis = v;
+          _errTaxBasis = null;
+          if (!_sellingGstBasisManual) {
+            _sellingRateTaxBasis = v;
+          }
+          _persistGstPrefs();
+        }),
+        helperExtra:
+            'You type the rate before GST. Tax % is added on top in the breakdown.',
+        helperIncluded:
+            'You type the rate with GST inside. We split base + tax to match the bill.',
+      ),
+      SizedBox(height: widget.fullPage ? 12 : 8),
+      _gstRateBasisSegment(
+        'Selling rate (GST)',
+        _sellingRateTaxBasis,
+        (v) => setState(() {
+          _sellingRateTaxBasis = v;
+          _errTaxBasis = null;
+          _sellingGstBasisManual = v != _purchaseRateTaxBasis;
+          _persistGstPrefs();
+        }),
+        helperExtra:
+            'Selling before GST — margin uses the same rule as purchase.',
+        helperIncluded:
+            'Selling includes GST — we strip to pre-tax before save, same as purchase.',
+      ),
+      if (_errTaxBasis != null) ...[
+        SizedBox(height: widget.fullPage ? 8 : 6),
+        Text(
+          _errTaxBasis!,
+          style: TextStyle(
+            color: Colors.red[800],
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    ];
 
     final formChildren = <Widget>[
       if (!widget.fullPage) ...[
@@ -2902,44 +3147,57 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       KeyedSubtree(
         key: _itemKey,
         child: _fpShell(
-          PartyInlineSuggestField(
-            controller: _itemCtrl,
-            focusNode: _itemFocus,
-            focusAfterSelection: _qtyFocus,
-            debugLabel: 'catalogItem',
-            hintText: 'Search item (name, code, HSN)…',
-            hintStyle: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF334155),
-            ),
-            idleOutlineColor: const Color(0xFF64748B),
-            fillColor: Colors.white,
-            prefixIcon: const Icon(Icons.inventory_2_outlined),
-            minQueryLength: 1,
-            maxMatches: 8,
-            dense: true,
-            minFieldHeight: widget.fullPage ? 52 : 0,
-            suggestionsAsOverlay: widget.fullPage,
-            items: _catalogSearchItems,
-            textInputAction: TextInputAction.next,
-            onSubmitted: () =>
-                FocusScope.of(context).requestFocus(_qtyFocus),
-            showAddRow: widget.navigateCatalogQuickAddItem != null,
-            addRowLabel: 'New catalog item…',
-            onAddRow: widget.navigateCatalogQuickAddItem == null
-                ? null
-                : () async {
-                    final r = await widget.navigateCatalogQuickAddItem!();
-                    if (r != null && mounted) {
-                      final id = r['id']?.toString() ?? '';
-                      final nm = r['name']?.toString() ?? '';
-                      if (id.isNotEmpty) _onItemSelected(id, nm);
-                    }
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: PartyInlineSuggestField(
+                  controller: _itemCtrl,
+                  focusNode: _itemFocus,
+                  focusAfterSelection: _qtyFocus,
+                  debugLabel: 'catalogItem',
+                  hintText: 'Search item (name, code, HSN)…',
+                  hintStyle: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF334155),
+                  ),
+                  idleOutlineColor: const Color(0xFF64748B),
+                  fillColor: Colors.white,
+                  prefixIcon: const Icon(Icons.inventory_2_outlined),
+                  minQueryLength: 1,
+                  maxMatches: 8,
+                  dense: true,
+                  minFieldHeight: widget.fullPage ? 52 : 0,
+                  suggestionsAsOverlay: widget.fullPage,
+                  items: _catalogSearchItems,
+                  textInputAction: TextInputAction.next,
+                  onSubmitted: () =>
+                      FocusScope.of(context).requestFocus(_qtyFocus),
+                  showAddRow: widget.navigateCatalogQuickAddItem != null,
+                  addRowLabel: 'New catalog item…',
+                  onAddRow: widget.navigateCatalogQuickAddItem == null
+                      ? null
+                      : () async {
+                          final r = await widget.navigateCatalogQuickAddItem!();
+                          if (r != null && mounted) {
+                            final id = r['id']?.toString() ?? '';
+                            final nm = r['name']?.toString() ?? '';
+                            if (id.isNotEmpty) _onItemSelected(id, nm);
+                          }
+                        },
+                  onSelected: (it) {
+                    _onItemSelected(it.id, it.label);
                   },
-            onSelected: (it) {
-              _onItemSelected(it.id, it.label);
-            },
+                ),
+              ),
+              IconButton(
+                tooltip: 'Edit item name',
+                icon: const Icon(Icons.edit_outlined, size: 22),
+                visualDensity: VisualDensity.compact,
+                onPressed: _focusItemNameField,
+              ),
+            ],
           ),
         ),
       ),
@@ -3000,6 +3258,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                                         decimal: true),
                                 inputFormatters: [_decimalFormatter(3)],
                                 textInputAction: TextInputAction.next,
+                                scrollPadding: _textFieldScrollPadding(),
                                 decoration: _deco(_qtyFieldLabel(),
                                     errorText: _errQty),
                                 onChanged: (_) {
@@ -3027,21 +3286,35 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                       const SizedBox(width: 6),
                       Expanded(
                         flex: 5,
-                        child: KeyedSubtree(
-                          key: _unitKey,
-                          child: (showPerKgFields && _hasCatalogKg())
-                              ? InputDecorator(
-                                  decoration:
-                                      _deco('Unit *', errorText: _errUnit),
-                                  child: Text(
-                                    '${_unitCtrl.text.trim()} (${_fmtQty(k ?? 0)} kg)',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                )
-                              : _unitDropdownField(errorText: _errUnit),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: KeyedSubtree(
+                                key: _unitKey,
+                                child: (showPerKgFields && _hasCatalogKg())
+                                    ? InputDecorator(
+                                        decoration:
+                                            _deco('Unit *', errorText: _errUnit),
+                                        child: Text(
+                                          '${_unitCtrl.text.trim()} (${_fmtQty(k ?? 0)} kg)',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      )
+                                    : _unitDropdownField(errorText: _errUnit),
+                              ),
+                            ),
+                            IconButton(
+                              tooltip:
+                                  'Unit, bags vs kg, and quantity — tap to edit',
+                              icon: const Icon(Icons.swap_vert_outlined, size: 22),
+                              visualDensity: VisualDensity.compact,
+                              onPressed: _focusQtyUnitEntry,
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -3068,6 +3341,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                                   decimal: true),
                               inputFormatters: [_decimalFormatter(3)],
                               textInputAction: TextInputAction.next,
+                              scrollPadding: _textFieldScrollPadding(),
                               decoration:
                                   _deco(_qtyFieldLabel(), errorText: _errQty),
                               onChanged: (_) {
@@ -3095,21 +3369,36 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                     const SizedBox(width: 6),
                     Expanded(
                       flex: 5,
-                      child: KeyedSubtree(
-                        key: _unitKey,
-                        child: (showPerKgFields && _hasCatalogKg())
-                            ? InputDecorator(
-                                decoration:
-                                    _deco('Unit *', errorText: _errUnit),
-                                child: Text(
-                                  '${_unitCtrl.text.trim()} (${_fmtQty(k ?? 0)} kg)',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              )
-                            : _unitDropdownField(errorText: _errUnit),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: KeyedSubtree(
+                              key: _unitKey,
+                              child: (showPerKgFields && _hasCatalogKg())
+                                  ? InputDecorator(
+                                      decoration:
+                                          _deco('Unit *', errorText: _errUnit),
+                                      child: Text(
+                                        '${_unitCtrl.text.trim()} (${_fmtQty(k ?? 0)} kg)',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    )
+                                  : _unitDropdownField(errorText: _errUnit),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip:
+                                'Unit, bags vs kg, and quantity — tap to edit',
+                            icon:
+                                const Icon(Icons.swap_vert_outlined, size: 22),
+                            visualDensity: VisualDensity.compact,
+                            onPressed: _focusQtyUnitEntry,
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -3150,6 +3439,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     inputFormatters: [_decimalFormatter(3)],
                     textInputAction: TextInputAction.next,
+                    scrollPadding: _textFieldScrollPadding(),
                     decoration: _deco('Kg per bag *', errorText: _errKgPerBag),
                     onSubmitted: (_) {
                       FocusScope.of(context).requestFocus(_landingFocus);
@@ -3276,202 +3566,219 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                 ),
               ],
               SizedBox(height: gapField),
-              if (widget.fullPage)
-                _fpShell(
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (rateBasisSeg != null) rateBasisSeg,
-                      _buildPurchaseSellingRateRow(showPerKgFields),
-                    ],
-                  ),
-                )
-              else ...[
-                if (rateBasisSeg != null) rateBasisSeg,
-                _buildPurchaseSellingRateRow(showPerKgFields),
-              ],
+              KeyedSubtree(
+                key: _ratesGstKey,
+                child: widget.fullPage
+                    ? _fpShell(
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: ratesAndGstChildren,
+                        ),
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: ratesAndGstChildren,
+                      ),
+              ),
               SizedBox(height: widget.fullPage ? gapSection : 2),
               KeyedSubtree(
                 key: _taxKey,
                 child: _fpShell(
                   Theme(
-                  data: theme.copyWith(dividerColor: Colors.transparent),
-                  child: ExpansionTile(
-                    tilePadding: EdgeInsets.zero,
-                    childrenPadding: const EdgeInsets.fromLTRB(0, 0, 0, 4),
-                    title: Text(
-                      'Advanced',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                      ),
-                    ),
-                    initiallyExpanded: false,
-                    expansionAnimationStyle: const AnimationStyle(
-                      duration: Duration.zero,
-                      curve: Curves.linear,
-                      reverseCurve: Curves.linear,
-                      reverseDuration: Duration.zero,
-                    ),
-                    children: [
-                      _gstRateBasisSegment(
-                        'Purchase rate (GST)',
-                        _purchaseRateTaxBasis,
-                        (v) => setState(() {
-                          _purchaseRateTaxBasis = v;
-                          _errTaxBasis = null;
-                          if (!_sellingGstBasisManual) {
-                            _sellingRateTaxBasis = v;
-                          }
-                        }),
-                      ),
-                      SizedBox(height: widget.fullPage ? 12 : 8),
-                      _gstRateBasisSegment(
-                        'Selling rate (GST)',
-                        _sellingRateTaxBasis,
-                        (v) => setState(() {
-                          _sellingRateTaxBasis = v;
-                          _errTaxBasis = null;
-                          _sellingGstBasisManual =
-                              v != _purchaseRateTaxBasis;
-                        }),
-                      ),
-                      if (_errTaxBasis != null) ...[
-                        SizedBox(height: widget.fullPage ? 8 : 6),
-                        Text(
-                          _errTaxBasis!,
-                          style: TextStyle(
-                            color: Colors.red[800],
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
+                    data: theme.copyWith(dividerColor: Colors.transparent),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        InkWell(
+                          onTap: () => setState(
+                            () => _moreSectionExpanded = !_moreSectionExpanded,
                           ),
-                        ),
-                      ],
-                      SizedBox(height: widget.fullPage ? 10 : 6),
-                      if (widget.omitLineFreightDeliveredBilltyDiscount) ...[
-                        TextField(
-                          controller: _taxCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          inputFormatters: [_decimalFormatter(2)],
-                          scrollPadding: const EdgeInsets.only(bottom: 220),
-                          decoration: _deco('Tax %'),
-                          onChanged: (_) {
-                            _clearFieldErrors();
-                            setState(() {});
-                          },
-                        ),
-                        const SizedBox(height: 6),
-                        TextField(
-                          controller: _lineNotesCtrl,
-                          maxLines: 4,
-                          minLines: 1,
-                          scrollPadding: const EdgeInsets.only(bottom: 220),
-                          decoration: _deco('Notes'),
-                        ),
-                      ] else ...[
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _discCtrl,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                inputFormatters: [_decimalFormatter(2)],
-                                scrollPadding: const EdgeInsets.only(bottom: 220),
-                                decoration: _deco('Discount %'),
-                                onChanged: (_) => setState(() {}),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: TextField(
-                                controller: _taxCtrl,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                inputFormatters: [_decimalFormatter(2)],
-                                scrollPadding: const EdgeInsets.only(bottom: 220),
-                                decoration: _deco('Tax %'),
-                                onChanged: (_) {
-                                  _clearFieldErrors();
-                                  setState(() {});
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _freightCtrl,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                inputFormatters: [_decimalFormatter(2)],
-                                scrollPadding: const EdgeInsets.only(bottom: 220),
-                                decoration: _deco('Freight value'),
-                                onChanged: (_) => setState(() {}),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: InputDecorator(
-                                decoration: _deco('Freight type'),
-                                child: DropdownButtonHideUnderline(
-                                  child: DropdownButton<String>(
-                                    value: _freightType,
-                                    isExpanded: true,
-                                    items: const [
-                                      DropdownMenuItem(value: 'separate', child: Text('Separate')),
-                                      DropdownMenuItem(value: 'included', child: Text('Included')),
-                                    ],
-                                    onChanged: (v) {
-                                      if (v == null) return;
-                                      setState(() => _freightType = v);
-                                    },
+                          borderRadius: BorderRadius.circular(8),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    'More (discount, freight, notes)',
+                                    style: theme.textTheme.labelLarge?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13,
+                                    ),
                                   ),
                                 ),
-                              ),
+                                Icon(
+                                  _moreSectionExpanded
+                                      ? Icons.expand_less
+                                      : Icons.expand_more,
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _deliveredCtrl,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                inputFormatters: [_decimalFormatter(2)],
-                                scrollPadding: const EdgeInsets.only(bottom: 220),
-                                decoration: _deco('Delivered rate'),
-                                onChanged: (_) => setState(() {}),
-                              ),
+                        if (_moreSectionExpanded)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4, top: 4),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                if (widget
+                                    .omitLineFreightDeliveredBilltyDiscount) ...[
+                                  TextField(
+                                    controller: _taxCtrl,
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                            decimal: true),
+                                    inputFormatters: [_decimalFormatter(2)],
+                                    scrollPadding: _textFieldScrollPadding(),
+                                    decoration: _deco('Tax %'),
+                                    onChanged: (_) {
+                                      _clearFieldErrors();
+                                      setState(() {});
+                                    },
+                                  ),
+                                  const SizedBox(height: 6),
+                                  TextField(
+                                    controller: _lineNotesCtrl,
+                                    maxLines: 4,
+                                    minLines: 1,
+                                    scrollPadding: _textFieldScrollPadding(),
+                                    decoration: _deco('Notes'),
+                                  ),
+                                ] else ...[
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextField(
+                                          controller: _discCtrl,
+                                          keyboardType:
+                                              const TextInputType.numberWithOptions(
+                                                  decimal: true),
+                                          inputFormatters:
+                                              [_decimalFormatter(2)],
+                                          scrollPadding:
+                                              _textFieldScrollPadding(),
+                                          decoration: _deco('Discount %'),
+                                          onChanged: (_) => setState(() {}),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: TextField(
+                                          controller: _taxCtrl,
+                                          keyboardType:
+                                              const TextInputType.numberWithOptions(
+                                                  decimal: true),
+                                          inputFormatters:
+                                              [_decimalFormatter(2)],
+                                          scrollPadding:
+                                              _textFieldScrollPadding(),
+                                          decoration: _deco('Tax %'),
+                                          onChanged: (_) {
+                                            _clearFieldErrors();
+                                            setState(() {});
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextField(
+                                          controller: _freightCtrl,
+                                          keyboardType:
+                                              const TextInputType.numberWithOptions(
+                                                  decimal: true),
+                                          inputFormatters:
+                                              [_decimalFormatter(2)],
+                                          scrollPadding:
+                                              _textFieldScrollPadding(),
+                                          decoration: _deco('Freight value'),
+                                          onChanged: (_) => setState(() {}),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: InputDecorator(
+                                          decoration: _deco('Freight type'),
+                                          child: DropdownButtonHideUnderline(
+                                            child: DropdownButton<String>(
+                                              value: _freightType,
+                                              isExpanded: true,
+                                              items: const [
+                                                DropdownMenuItem(
+                                                  value: 'separate',
+                                                  child: Text('Separate'),
+                                                ),
+                                                DropdownMenuItem(
+                                                  value: 'included',
+                                                  child: Text('Included'),
+                                                ),
+                                              ],
+                                              onChanged: (v) {
+                                                if (v == null) return;
+                                                setState(() => _freightType = v);
+                                              },
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextField(
+                                          controller: _deliveredCtrl,
+                                          keyboardType:
+                                              const TextInputType.numberWithOptions(
+                                                  decimal: true),
+                                          inputFormatters:
+                                              [_decimalFormatter(2)],
+                                          scrollPadding:
+                                              _textFieldScrollPadding(),
+                                          decoration: _deco('Delivered rate'),
+                                          onChanged: (_) => setState(() {}),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: TextField(
+                                          controller: _billtyCtrl,
+                                          keyboardType:
+                                              const TextInputType.numberWithOptions(
+                                                  decimal: true),
+                                          inputFormatters:
+                                              [_decimalFormatter(2)],
+                                          scrollPadding:
+                                              _textFieldScrollPadding(),
+                                          decoration: _deco('Billty rate'),
+                                          onChanged: (_) => setState(() {}),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  TextField(
+                                    controller: _lineNotesCtrl,
+                                    maxLines: 4,
+                                    minLines: 1,
+                                    scrollPadding: _textFieldScrollPadding(),
+                                    decoration: _deco('Notes'),
+                                  ),
+                                ],
+                              ],
                             ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: TextField(
-                                controller: _billtyCtrl,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                inputFormatters: [_decimalFormatter(2)],
-                                scrollPadding: const EdgeInsets.only(bottom: 220),
-                                decoration: _deco('Billty rate'),
-                                onChanged: (_) => setState(() {}),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        TextField(
-                          controller: _lineNotesCtrl,
-                          maxLines: 4,
-                          minLines: 1,
-                          scrollPadding: const EdgeInsets.only(bottom: 220),
-                          decoration: _deco('Notes'),
-                        ),
+                          ),
                       ],
-                    ],
+                    ),
                   ),
                 ),
               ),
-            ),
               ListenableBuilder(
                 listenable: _lineTotalsListenable,
                 builder: (cx, _) {
@@ -3515,17 +3822,14 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                   );
                 },
               ),
-              SizedBox(height: widget.fullPage ? gapField : 4),
-              ListenableBuilder(
-                listenable: _lineTotalsListenable,
-                builder: (context, _) => widget.fullPage
-                    ? _fpShell(_liveTotalsCard(theme))
-                    : _liveTotalsCard(theme),
-              ),
+              if (!widget.fullPage) ...[
+                SizedBox(height: gapField),
+                ListenableBuilder(
+                  listenable: _lineTotalsListenable,
+                  builder: (context, _) => _liveTotalsCard(theme),
+                ),
+              ],
             ];
-
-    final keyboardBottom = MediaQuery.viewInsetsOf(context).bottom;
-    final homeBottomInset = MediaQuery.paddingOf(context).bottom;
 
     if (widget.fullPage) {
       final footerPad = const EdgeInsets.fromLTRB(0, 6, 0, 10);
@@ -3620,21 +3924,52 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
             ),
             body: LayoutBuilder(
               builder: (context, c) {
-                final minFields = math.max(200.0, c.maxHeight - 260);
-                return KeyboardSafeFormViewport(
-                  dismissKeyboardOnTap: true,
-                  scrollController: _scrollController,
-                  horizontalPadding: 16,
-                  topPadding: 4,
-                  bottomExtraInset: 32,
-                  minFieldsHeight:
-                      c.hasBoundedHeight ? minFields : 200,
-                  fields: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    mainAxisSize: MainAxisSize.min,
-                    children: formChildren,
+                final previewPinned = Material(
+                  elevation: 8,
+                  color: Colors.white,
+                  shadowColor: Colors.black26,
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      8,
+                      16,
+                      MediaQuery.paddingOf(context).bottom > 0 ? 4 : 8,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ListenableBuilder(
+                          listenable: _lineTotalsListenable,
+                          builder: (context, _) =>
+                              _fpShell(_liveTotalsCard(theme)),
+                        ),
+                        footer,
+                      ],
+                    ),
                   ),
-                  footer: footer,
+                );
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: KeyboardSafeFormViewport(
+                        dismissKeyboardOnTap: true,
+                        scrollController: _scrollController,
+                        horizontalPadding: 16,
+                        topPadding: 4,
+                        bottomExtraInset: 8,
+                        minFieldsHeight: 0,
+                        fields: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          mainAxisSize: MainAxisSize.min,
+                          children: formChildren,
+                        ),
+                        footer: const SizedBox.shrink(),
+                      ),
+                    ),
+                    previewPinned,
+                  ],
                 );
               },
             ),
@@ -3709,14 +4044,15 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
         child: LayoutBuilder(
           builder: (context, c) {
-            final minFields = math.max(200.0, c.maxHeight - 220);
+            final keyboardBottom = MediaQuery.viewInsetsOf(context).bottom;
+            final homeBottomInset = MediaQuery.paddingOf(context).bottom;
             return KeyboardSafeFormViewport(
               dismissKeyboardOnTap: true,
               scrollController: _scrollController,
               horizontalPadding: 10,
               topPadding: 4,
               bottomExtraInset: 12,
-              minFieldsHeight: c.hasBoundedHeight ? minFields : 200,
+              minFieldsHeight: 0,
               fields: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,

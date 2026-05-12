@@ -421,6 +421,11 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     return '${_draftKeyV1}_${s.primaryBusiness.id}';
   }
 
+  void _hideResumeDraftBanner() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
+  }
+
   Future<void> _maybeShowResumeDraftMaterialBanner() async {
     if (!mounted) return;
     if (widget.editingId != null && widget.editingId!.isNotEmpty) return;
@@ -1126,7 +1131,20 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     Map<String, dynamic>? initialOverride,
   }) async {
     final draft = ref.read(purchaseDraftProvider);
-    if (draft.supplierId == null || draft.supplierId!.isEmpty) return;
+    if (draft.supplierId == null || draft.supplierId!.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Select a supplier on the Party step before adding items.',
+            ),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
+    _hideResumeDraftBanner();
     final session = ref.read(sessionProvider);
     final initial = initialOverride ??
         (editIndex != null
@@ -1163,6 +1181,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
           initial: initial,
           isEdit: editIndex != null,
           fullPage: true,
+          gstPrefs: ref.read(sharedPreferencesProvider),
           preferredSupplierId: draft.supplierId?.trim().isNotEmpty == true
               ? draft.supplierId!.trim()
               : null,
@@ -1248,6 +1267,11 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
         ),
       ),
     );
+    if (mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_maybeShowResumeDraftMaterialBanner());
+      });
+    }
     if (mounted && _wizStep == 2) {
       _scrollWizardItemsStepToBottom();
     }
