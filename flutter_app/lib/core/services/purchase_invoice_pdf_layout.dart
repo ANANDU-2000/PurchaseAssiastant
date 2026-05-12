@@ -256,8 +256,10 @@ pw.Widget _supplierBrokerBlock(TradePurchase p) {
                 pw.Text('Phone: ${_empty(p.supplierPhone)}',
                     style: const pw.TextStyle(fontSize: 8, color: PdfColors.black)),
                 if (p.supplierAddress != null && p.supplierAddress!.trim().isNotEmpty)
-                  pw.Text(p.supplierAddress!,
-                      style: const pw.TextStyle(fontSize: 8, color: _muted, height: 1.2)),
+                  pw.Text(
+                    safePdfText(p.supplierAddress!.trim()),
+                    style: const pw.TextStyle(fontSize: 8, color: _muted, height: 1.2),
+                  ),
                 pw.Text('GSTIN: ${_empty(p.supplierGst)}',
                     style: const pw.TextStyle(fontSize: 8, color: PdfColors.black)),
               ],
@@ -277,8 +279,10 @@ pw.Widget _supplierBrokerBlock(TradePurchase p) {
                   pw.Text(commLine,
                       style: const pw.TextStyle(fontSize: 8, color: PdfColors.black)),
                 if (p.brokerLocation != null && p.brokerLocation!.trim().isNotEmpty)
-                  pw.Text(p.brokerLocation!,
-                      style: const pw.TextStyle(fontSize: 8, color: _muted, height: 1.2)),
+                  pw.Text(
+                    safePdfText(p.brokerLocation!.trim()),
+                    style: const pw.TextStyle(fontSize: 8, color: _muted, height: 1.2),
+                  ),
               ],
             ),
           ),

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -1164,10 +1165,13 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                                   ),
                                 ),
                                 selected: _mainTab == tab,
-                                onSelected: (_) => setState(() {
-                                  _mainTab = tab;
-                                  _visibleCap = 40;
-                                }),
+                                onSelected: (_) {
+                                  HapticFeedback.selectionClick();
+                                  setState(() {
+                                    _mainTab = tab;
+                                    _visibleCap = 40;
+                                  });
+                                },
                                 showCheckmark: false,
                                 visualDensity: VisualDensity.compact,
                                 materialTapTargetSize:
@@ -1292,8 +1296,25 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                       else if (showEmpty)
                         emptyCard()
                       else
-                        RepaintBoundary(
-                          child: _listBody(aggList, aggAll, merged),
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 220),
+                          switchInCurve: Curves.easeOut,
+                          switchOutCurve: Curves.easeIn,
+                          layoutBuilder:
+                              (Widget? currentChild, List<Widget> previousChildren) {
+                            return Stack(
+                              fit: StackFit.passthrough,
+                              alignment: Alignment.topCenter,
+                              children: <Widget>[
+                                ...previousChildren,
+                                if (currentChild != null) currentChild,
+                              ],
+                            );
+                          },
+                          child: RepaintBoundary(
+                            key: ValueKey<ReportsMainTab>(_mainTab),
+                            child: _listBody(aggList, aggAll, merged),
+                          ),
                         ),
                     ],
                   ],

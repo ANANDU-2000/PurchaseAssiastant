@@ -129,6 +129,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
   final _freightCtrl = TextEditingController();
   final _invoiceCtrl = TextEditingController();
   final _wizardBodyScrollController = ScrollController();
+  final _itemsStepListScrollController = ScrollController();
 
   void _partyFieldFocusNotify() {
     if (!mounted) return;
@@ -606,6 +607,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     _freightCtrl.dispose();
     _invoiceCtrl.dispose();
     _wizardBodyScrollController.dispose();
+    _itemsStepListScrollController.dispose();
     _partySupplierFocus.dispose();
     _partyBrokerFocus.dispose();
     super.dispose();
@@ -1097,14 +1099,23 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_wizardBodyScrollController.hasClients) return;
-        final pos = _wizardBodyScrollController.position;
-        if (pos.maxScrollExtent <= 0) return;
-        _wizardBodyScrollController.animateTo(
-          pos.maxScrollExtent,
-          duration: const Duration(milliseconds: 350),
-          curve: Curves.easeOut,
-        );
+        if (!mounted) return;
+        void animate(ScrollController c) {
+          if (!c.hasClients) return;
+          final pos = c.position;
+          if (pos.maxScrollExtent <= 0) return;
+          c.animateTo(
+            pos.maxScrollExtent,
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeOut,
+          );
+        }
+
+        if (_wizStep == 2) {
+          animate(_itemsStepListScrollController);
+        } else {
+          animate(_wizardBodyScrollController);
+        }
       });
     });
   }
@@ -1966,6 +1977,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
         break;
       case 2:
         step = PurchaseFastItemsStep(
+          listScrollController: _itemsStepListScrollController,
           onDraftChanged: _onDraftChanged,
           openAdvancedItemEditor: ({editIndex, initialOverride}) =>
               _openItemSheet(
@@ -2088,6 +2100,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     Widget stepContent,
     bool isEdit,
     List<Map<String, dynamic>> catalog,
+    int wizStep,
   ) {
     return MediaQuery.removePadding(
       context: context,
@@ -2095,18 +2108,22 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
       child: LayoutBuilder(
         builder: (ctx, _) {
           final kb = MediaQuery.viewInsetsOf(ctx).bottom;
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: SingleChildScrollView(
+          final stepScroll = wizStep == 2
+              ? Padding(
+                  padding: EdgeInsets.fromLTRB(16, 16, 16, kb > 0 ? 8 : 16),
+                  child: stepContent,
+                )
+              : SingleChildScrollView(
                   controller: _wizardBodyScrollController,
                   keyboardDismissBehavior:
                       ScrollViewKeyboardDismissBehavior.onDrag,
                   padding: EdgeInsets.fromLTRB(16, 16, 16, kb > 0 ? 8 : 16),
                   child: stepContent,
-                ),
-              ),
+                );
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: stepScroll),
               AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
                 curve: Curves.easeOut,
@@ -2296,7 +2313,13 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
                   ),
                 ),
               Expanded(
-                child: _buildWizardBody(bodyContext, step, isEdit, catalog),
+                child: _buildWizardBody(
+                  bodyContext,
+                  step,
+                  isEdit,
+                  catalog,
+                  _wizStep,
+                ),
               ),
             ],
           );

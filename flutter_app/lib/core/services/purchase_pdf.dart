@@ -21,6 +21,25 @@ final _money = NumberFormat('#,##,##0.00', 'en_IN');
 String _inrPdf(num n) => 'Rs. ${_money.format(n)}';
 final _dateFmt = DateFormat('dd MMM yyyy');
 
+/// Share-friendly filename, e.g. `SUMATHI_SPICES_12May2026_PUR20260034.pdf`.
+String buildPurchaseSharePdfFileName(
+  TradePurchase p, {
+  bool fullInvoice = false,
+}) {
+  final raw = (p.supplierName ?? 'Purchase').trim().toUpperCase();
+  final cleaned = raw.isEmpty
+      ? 'PURCHASE'
+      : raw
+            .replaceAll(RegExp(r'[^A-Z0-9]+'), '_')
+            .replaceAll(RegExp(r'_+'), '_')
+            .trim();
+  final short =
+      cleaned.length > 40 ? cleaned.substring(0, 40) : cleaned;
+  final datePart = DateFormat('dMMMyyyy', 'en_IN').format(p.purchaseDate);
+  final hid = p.humanId.replaceAll(RegExp(r'[^\w\-]+'), '_');
+  return '${short}_${datePart}_$hid${fullInvoice ? '_full' : ''}.pdf';
+}
+
 const _muted = PdfColor.fromInt(0xFF475569);
 const _border = PdfColor.fromInt(0xFFD1D5DB);
 
@@ -172,7 +191,10 @@ Future<pw.Document> buildPurchaseDoc(TradePurchase p, BusinessProfile biz) async
 
 Future<void> sharePurchasePdf(TradePurchase p, BusinessProfile biz) async {
   final doc = await buildPurchaseDoc(p, biz);
-  await Printing.sharePdf(bytes: await doc.save(), filename: '${p.humanId}.pdf');
+  await Printing.sharePdf(
+    bytes: await doc.save(),
+    filename: buildPurchaseSharePdfFileName(p),
+  );
 }
 
 Future<void> printPurchasePdf(TradePurchase p, BusinessProfile biz) async {
@@ -190,5 +212,8 @@ Future<void> sharePurchaseFullInvoicePdf(
   BusinessProfile biz,
 ) async {
   final doc = await buildPurchaseDoc(p, biz);
-  await Printing.sharePdf(bytes: await doc.save(), filename: '${p.humanId}_full.pdf');
+  await Printing.sharePdf(
+    bytes: await doc.save(),
+    filename: buildPurchaseSharePdfFileName(p, fullInvoice: true),
+  );
 }

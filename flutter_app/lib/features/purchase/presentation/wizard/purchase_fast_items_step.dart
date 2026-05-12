@@ -22,14 +22,16 @@ typedef OpenAdvancedItemSheet = Future<void> Function({
   Map<String, dynamic>? initialOverride,
 });
 
-/// Items step — list + advanced sheet only (no inline quick-add row).
+/// Items step — expanded list + sticky [+ Add Item] (Part 2).
 class PurchaseFastItemsStep extends ConsumerStatefulWidget {
   const PurchaseFastItemsStep({
     super.key,
+    required this.listScrollController,
     required this.onDraftChanged,
     required this.openAdvancedItemEditor,
   });
 
+  final ScrollController listScrollController;
   final VoidCallback onDraftChanged;
   final OpenAdvancedItemSheet openAdvancedItemEditor;
 
@@ -126,7 +128,6 @@ class _PurchaseFastItemsStepState extends ConsumerState<PurchaseFastItemsStep> {
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
       children: [
         if (blocked)
           Padding(
@@ -219,138 +220,139 @@ class _PurchaseFastItemsStepState extends ConsumerState<PurchaseFastItemsStep> {
           ],
         ),
         const Divider(height: 16),
-        if (lines.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 32),
-            child: Text(
-              blocked
-                  ? 'Supplier required for catalog links.'
-                  : 'No items yet. Tap Add item below.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey[700], fontSize: 14),
-            ),
-          )
-        else
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            padding: EdgeInsets.zero,
-            itemCount: lines.length,
-            itemBuilder: (ctx, i) {
-              final ln = lines[i];
-              final rc = tradePreviewLineRateContext(preview, i);
-              final buy = _approxLinePurchase(ln);
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Material(
-                  color: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    side: BorderSide(color: Colors.grey.shade300),
+        Expanded(
+          child: lines.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Text(
+                      blocked
+                          ? 'Supplier required for catalog links.'
+                          : 'No items yet. Tap + Add Item below.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey[700], fontSize: 14),
+                    ),
                   ),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(10),
-                    onTap: () => _editAdvanced(i),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '${i + 1}.',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w900,
-                              fontSize: 16,
-                              color: Color(0xFF0F172A),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  ln.itemName,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 16,
-                                    color: Color(0xFF0F172A),
-                                  ),
+                )
+              : ListView.separated(
+                  controller: widget.listScrollController,
+                  padding: const EdgeInsets.only(bottom: 8),
+                  itemCount: lines.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  itemBuilder: (ctx, i) {
+                    final ln = lines[i];
+                    final rc = tradePreviewLineRateContext(preview, i);
+                    final buy = _approxLinePurchase(ln);
+                    return Material(
+                      color: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        side: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(10),
+                        onTap: () => _editAdvanced(i),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${i + 1}.',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 16,
+                                  color: Color(0xFF0F172A),
                                 ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  _qtyHuman(ln),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 15,
-                                    color: Color(0xFF0F172A),
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Wrap(
-                                  spacing: 6,
-                                  runSpacing: 4,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Chip(
-                                      visualDensity: VisualDensity.compact,
-                                      label: Text(
-                                        _pRateQuick(ln, rc),
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w800,
-                                        ),
+                                    Text(
+                                      ln.itemName,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 16,
+                                        color: Color(0xFF0F172A),
                                       ),
-                                      backgroundColor:
-                                          const Color(0xFFF1F5F9),
-                                      side: BorderSide.none,
-                                      padding: EdgeInsets.zero,
-                                      materialTapTargetSize:
-                                          MaterialTapTargetSize.shrinkWrap,
                                     ),
-                                    Chip(
-                                      visualDensity: VisualDensity.compact,
-                                      label: Text(
-                                        _sRateQuick(ln, rc),
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w800,
-                                        ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      _qtyHuman(ln),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 15,
+                                        color: Color(0xFF0F172A),
                                       ),
-                                      backgroundColor:
-                                          const Color(0xFFECFDF5),
-                                      side: BorderSide.none,
-                                      padding: EdgeInsets.zero,
-                                      materialTapTargetSize:
-                                          MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Wrap(
+                                      spacing: 6,
+                                      runSpacing: 4,
+                                      children: [
+                                        Chip(
+                                          visualDensity: VisualDensity.compact,
+                                          label: Text(
+                                            _pRateQuick(ln, rc),
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                          backgroundColor:
+                                              const Color(0xFFF1F5F9),
+                                          side: BorderSide.none,
+                                          padding: EdgeInsets.zero,
+                                          materialTapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
+                                        ),
+                                        Chip(
+                                          visualDensity: VisualDensity.compact,
+                                          label: Text(
+                                            _sRateQuick(ln, rc),
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                          backgroundColor:
+                                              const Color(0xFFECFDF5),
+                                          side: BorderSide.none,
+                                          padding: EdgeInsets.zero,
+                                          materialTapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      _inr0(buy),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 18,
+                                        color: Color(0xFF0D9488),
+                                      ),
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  _inr0(buy),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 18,
-                                    color: Color(0xFF0D9488),
-                                  ),
-                                ),
-                              ],
-                            ),
+                              ),
+                              IconButton(
+                                tooltip: 'Remove',
+                                icon: const Icon(Icons.delete_outline_rounded),
+                                onPressed: () => _removeAt(i),
+                              ),
+                            ],
                           ),
-                          IconButton(
-                            tooltip: 'Remove',
-                            icon: const Icon(Icons.delete_outline_rounded),
-                            onPressed: () => _removeAt(i),
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ),
+                    );
+                  },
                 ),
-              );
-            },
-          ),
+        ),
+        const SizedBox(height: 8),
         SizedBox(
           height: 52,
           width: double.infinity,

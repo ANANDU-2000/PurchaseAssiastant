@@ -2,12 +2,12 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../core/theme/hexa_colors.dart';
 import '../../../../shared/widgets/inline_search_field.dart';
+import '../../../../shared/widgets/smart_search_field.dart';
 
 /// True if [qLower] is empty or matches [label] by **whole-label prefix** or
 /// **token prefix** (tokens split on non-alphanumeric).
@@ -213,6 +213,7 @@ class PartyInlineSuggestField extends StatefulWidget {
 class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   static const _filterDebounce = Duration(milliseconds: 300);
   static const _revealDebounce = Duration(milliseconds: 280);
+  static const _maxHitsSheet = 200;
 
   bool _pickInProgress = false;
   bool _suppressPanelAfterPick = false;
@@ -398,10 +399,14 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     });
   }
 
-  List<InlineSearchItem> _filteredFromQuery(String qRaw) {
+  List<InlineSearchItem> _sortedHitsCapped(String qRaw, int cap) {
     final min = widget.minQueryLength.clamp(0, 64);
     if (min == 0 && qRaw.isEmpty) {
-      return widget.items.take(widget.maxMatches).toList();
+      final list = widget.items.toList()
+        ..sort(
+          (a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()),
+        );
+      return list.take(cap).toList();
     }
     if (qRaw.length < min) return [];
     final hits = <InlineSearchItem>[];
@@ -419,13 +424,75 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       if (sb != 0) return sb;
       return a.label.toLowerCase().compareTo(b.label.toLowerCase());
     });
-    return hits.take(widget.maxMatches).toList();
+    return hits.take(cap).toList();
   }
 
   /// [live]: use typed text immediately (pick / enter / blur).
   List<InlineSearchItem> _listRowsForUi({bool live = false}) {
     final q = live ? widget.controller.text.trim().toLowerCase() : _filterQuery;
-    return _filteredFromQuery(q);
+    return _sortedHitsCapped(q, widget.maxMatches);
+  }
+
+  List<InlineSearchItem> _allHitsForSheet(String qRaw) =>
+      _sortedHitsCapped(qRaw, _maxHitsSheet);
+
+  Future<void> _openSeeAllSheet() async {
+    _flushFilterToLive();
+    final q = widget.controller.text.trim().toLowerCase();
+    final all = _allHitsForSheet(q);
+    if (all.isEmpty || !mounted) return;
+    final title = widget.hintText.trim().isEmpty ? 'Matches' : widget.hintText;
+    await showSmartSearchResultsSheet(
+      context: context,
+      title: title,
+      resultCount: all.length,
+      items: all,
+      onPick: (it) => _pick(it, keepFocus: false),
+      buildTile: (c, cs, it, onTap) {
+        return Material(
+          color: cs.surface,
+          child: InkWell(
+            onTap: onTap,
+            child: ConstrainedBox(
+              constraints:
+                  const BoxConstraints(minHeight: 48, minWidth: double.infinity),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      it.label,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                    if (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          it.subtitle!.trim(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   EdgeInsets _scrollPad(BuildContext context) {
@@ -529,60 +596,49 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
 
   Widget _buildSuggestionTile(ColorScheme cs, InlineSearchItem it) {
     void commit() => _pick(it, keepFocus: false);
-    // Use [InkWell] instead of [TextButton]: buttons request focus on press, which
-    // unfocused the [TextField] and removed the list before [onPressed] ran. InkWell
-    // keeps the field focused so taps commit reliably (web + mobile); grace timer
-    // below is still a safety net for other focus edge cases.
-    return Listener(
-      behavior: HitTestBehavior.opaque,
-      onPointerDown: (PointerDownEvent e) {
-        if (e.buttons != 0 && (e.buttons & kPrimaryButton) == 0) return;
-        commit();
-      },
-      child: Material(
-        type: MaterialType.transparency,
-        color: cs.surface,
-        child: InkWell(
-          onTap: commit,
-          hoverColor: cs.primary.withValues(alpha: 0.05),
-          splashColor: cs.primary.withValues(alpha: 0.10),
-          child: ConstrainedBox(
-            constraints:
-                const BoxConstraints(minHeight: 44, minWidth: double.infinity),
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: widget.dense ? 10 : 12,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    it.label,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                      color: cs.onSurface,
-                    ),
+    return Material(
+      type: MaterialType.transparency,
+      color: cs.surface,
+      child: InkWell(
+        onTap: commit,
+        hoverColor: cs.primary.withValues(alpha: 0.05),
+        splashColor: cs.primary.withValues(alpha: 0.10),
+        child: ConstrainedBox(
+          constraints:
+              const BoxConstraints(minHeight: 44, minWidth: double.infinity),
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: widget.dense ? 10 : 12,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  it.label,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: cs.onSurface,
                   ),
-                  if (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        it.subtitle!.trim(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: cs.onSurfaceVariant,
-                        ),
+                ),
+                if (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      it.subtitle!.trim(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: cs.onSurfaceVariant,
                       ),
                     ),
-                ],
-              ),
+                  ),
+              ],
             ),
           ),
         ),
@@ -737,7 +793,10 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     const estRow = 56.0;
     const estAdd = 50.0;
     const estDiv = 17.0;
-    var estContentH = rows.length * estRow;
+    final liveQ = widget.controller.text.trim().toLowerCase();
+    final allHits = _allHitsForSheet(liveQ);
+    final showSeeAll = allHits.length > rows.length;
+    var estContentH = rows.length * estRow + 40;
     if (showDivider) estContentH += estDiv;
     if (showAddFocused && widget.onAddRow != null) {
       estContentH += estAdd;
@@ -771,16 +830,49 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: IconButton(
-                        tooltip: 'Close suggestions',
-                        visualDensity: VisualDensity.compact,
-                        icon: Icon(Icons.close_rounded, color: cs.onSurfaceVariant),
-                        onPressed: () {
-                          widget.focusNode.unfocus();
-                          _removeSuggestionOverlay();
-                        },
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 4, 4, 0),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '${rows.length} of ${allHits.length}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                          if (showSeeAll)
+                            TextButton(
+                              style: TextButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                              ),
+                              onPressed: () async {
+                                await _openSeeAllSheet();
+                                if (mounted) {
+                                  _suggestionOverlayEntry?.markNeedsBuild();
+                                }
+                              },
+                              child: const Text('See all'),
+                            ),
+                          IconButton(
+                            tooltip: 'Close suggestions',
+                            visualDensity: VisualDensity.compact,
+                            icon: Icon(
+                              Icons.close_rounded,
+                              color: cs.onSurfaceVariant,
+                            ),
+                            onPressed: () {
+                              widget.focusNode.unfocus();
+                              _removeSuggestionOverlay();
+                            },
+                          ),
+                        ],
                       ),
                     ),
                     Expanded(
@@ -984,29 +1076,109 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
           fieldWrapped,
           if (!widget.suggestionsAsOverlay && hasPanelSource) ...[
             const SizedBox(height: 8),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: cs.surface,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: cardShadow,
-                border: Border.all(color: borderColor.withValues(alpha: 0.45)),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (final it in rows) _buildSuggestionTile(cs, it),
-                    if (rows.isNotEmpty &&
-                        showAddFocused &&
-                        widget.onAddRow != null)
-                      Divider(height: 1, thickness: 1, color: borderColor),
-                    if (showAddFocused && widget.onAddRow != null)
-                      _buildAddRowTile(cs),
-                  ],
-                ),
-              ),
+            Builder(
+              builder: (ctx) {
+                final liveQ = widget.controller.text.trim().toLowerCase();
+                final allHits = _allHitsForSheet(liveQ);
+                final showSeeAll = allHits.length > rows.length;
+                final showDivider = rows.isNotEmpty &&
+                    showAddFocused &&
+                    widget.onAddRow != null;
+                const estRow = 52.0;
+                const estAdd = 50.0;
+                const estDiv = 17.0;
+                const estHeader = 44.0;
+                var estH = estHeader + rows.length * estRow;
+                if (showDivider) estH += estDiv;
+                if (showAddFocused && widget.onAddRow != null) {
+                  estH += estAdd;
+                }
+                final listPhysics = estH > widget.maxPanelAbs
+                    ? const ClampingScrollPhysics()
+                    : const NeverScrollableScrollPhysics();
+                return DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: cs.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: cardShadow,
+                    border: Border.all(color: borderColor.withValues(alpha: 0.45)),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(8, 4, 4, 0),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  '${rows.length} of ${allHits.length}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                              if (showSeeAll)
+                                TextButton(
+                                  style: TextButton.styleFrom(
+                                    visualDensity: VisualDensity.compact,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                    ),
+                                  ),
+                                  onPressed: () async {
+                                    await _openSeeAllSheet();
+                                    if (ctx.mounted) setState(() {});
+                                  },
+                                  child: const Text('See all'),
+                                ),
+                              IconButton(
+                                tooltip: 'Close suggestions',
+                                visualDensity: VisualDensity.compact,
+                                icon: Icon(
+                                  Icons.close_rounded,
+                                  color: cs.onSurfaceVariant,
+                                ),
+                                onPressed: () => widget.focusNode.unfocus(),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Divider(height: 1),
+                        ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxHeight: widget.maxPanelAbs,
+                          ),
+                          child: ListView(
+                            shrinkWrap: true,
+                            physics: listPhysics,
+                            padding: EdgeInsets.zero,
+                            children: [
+                              for (final it in rows)
+                                _buildSuggestionTile(cs, it),
+                              if (showDivider)
+                                Divider(
+                                  height: 1,
+                                  thickness: 1,
+                                  color: borderColor,
+                                ),
+                              if (showAddFocused && widget.onAddRow != null)
+                                _buildAddRowTile(cs),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
             ),
           ],
         ],

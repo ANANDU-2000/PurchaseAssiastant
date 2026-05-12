@@ -36,6 +36,111 @@ enum _HistPeriodPreset { today, week, month, year, custom }
 bool _purchaseHistSameDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
 
+/// Bold digit runs in pack summary (bags / kg counts).
+List<InlineSpan> _packSummaryBoldSpans(
+  String pack,
+  TextStyle base,
+  TextStyle boldNumbers,
+) {
+  final re = RegExp(r'[\d,]+(?:\.\d+)?');
+  final spans = <InlineSpan>[];
+  var i = 0;
+  for (final m in re.allMatches(pack)) {
+    if (m.start > i) {
+      spans.add(TextSpan(text: pack.substring(i, m.start), style: base));
+    }
+    spans.add(TextSpan(text: m.group(0), style: boldNumbers));
+    i = m.end;
+  }
+  if (i < pack.length) {
+    spans.add(TextSpan(text: pack.substring(i), style: base));
+  }
+  if (spans.isEmpty) {
+    spans.add(TextSpan(text: pack.isEmpty ? '—' : pack, style: base));
+  }
+  return spans;
+}
+
+Widget? _purchaseHistoryDaysChip(TradePurchase p) {
+  if (p.remaining <= 1e-6) {
+    return null;
+  }
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final due = p.dueDate;
+  if (due == null) {
+    if (p.statusEnum == PurchaseStatus.overdue) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.red.shade50,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: Colors.red.shade200),
+        ),
+        child: Text(
+          'Overdue',
+          style: TextStyle(
+            fontSize: 9.5,
+            fontWeight: FontWeight.w900,
+            height: 1.05,
+            color: Colors.red.shade900,
+          ),
+        ),
+      );
+    }
+    if (p.statusEnum == PurchaseStatus.dueSoon) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF7ED),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: const Color(0xFFFDBA74)),
+        ),
+        child: Text(
+          'Due soon',
+          style: TextStyle(
+            fontSize: 9.5,
+            fontWeight: FontWeight.w900,
+            height: 1.05,
+            color: const Color(0xFF9A3412),
+          ),
+        ),
+      );
+    }
+    return null;
+  }
+  final dueDay = DateTime(due.year, due.month, due.day);
+  final diff = dueDay.difference(today).inDays;
+  final overdue = diff < 0 || p.statusEnum == PurchaseStatus.overdue;
+  final String label;
+  if (overdue) {
+    label = diff < 0 ? '${-diff}d overdue' : 'Due today';
+  } else if (diff == 0) {
+    label = 'Due today';
+  } else {
+    label = 'Due in ${diff}d';
+  }
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+    decoration: BoxDecoration(
+      color: overdue ? Colors.red.shade50 : const Color(0xFFFFF7ED),
+      borderRadius: BorderRadius.circular(4),
+      border: Border.all(
+        color: overdue ? Colors.red.shade200 : const Color(0xFFFDBA74),
+      ),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(
+        fontSize: 9.5,
+        fontWeight: FontWeight.w900,
+        height: 1.05,
+        color: overdue ? Colors.red.shade900 : const Color(0xFF9A3412),
+      ),
+    ),
+  );
+}
+
 _HistPeriodPreset _purchaseHistInferPreset(({DateTime from, DateTime to}) r) {
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
@@ -2027,6 +2132,7 @@ class _PurchaseRow extends StatelessWidget {
     final df = DateFormat('d MMM yyyy');
     final headline = purchaseHistoryItemHeadline(p);
     final pack = purchaseHistoryPackSummary(p);
+    final daysChip = _purchaseHistoryDaysChip(p);
 
     final card = Material(
       color: Colors.white,
@@ -2086,16 +2192,37 @@ class _PurchaseRow extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 1),
-                    Text(
-                      pack,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w700,
-                        color: HexaColors.neutral,
-                        height: 1.15,
-                      ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: RichText(
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            text: TextSpan(
+                              children: _packSummaryBoldSpans(
+                                pack,
+                                const TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: HexaColors.neutral,
+                                  height: 1.15,
+                                ),
+                                const TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w900,
+                                  color: Color(0xFF0F172A),
+                                  height: 1.15,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (daysChip != null) ...[
+                          const SizedBox(width: 6),
+                          daysChip,
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 1),
                     Text(
