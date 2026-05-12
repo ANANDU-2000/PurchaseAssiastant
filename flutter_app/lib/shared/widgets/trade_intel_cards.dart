@@ -26,6 +26,36 @@ String tradeIntelFormatQty(num? n) {
   return n.toStringAsFixed(2);
 }
 
+/// Calendar-day relative label for a purchase date (date-only, local).
+String tradeIntelRelativeAgeLabel(DateTime purchaseDay) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final d = DateTime(purchaseDay.year, purchaseDay.month, purchaseDay.day);
+  final days = today.difference(d).inDays;
+  if (days == 0) return 'today';
+  if (days == 1) return 'yesterday';
+  return '$days days ago';
+}
+
+/// Parses `YYYY-MM-DD` prefix from API date strings; returns null if invalid.
+String? tradeIntelRelativeAgeFromIsoDateString(String raw) {
+  final t = raw.trim();
+  if (t.length < 10) return null;
+  final parsed = DateTime.tryParse(t.substring(0, 10));
+  if (parsed == null) return null;
+  return tradeIntelRelativeAgeLabel(parsed);
+}
+
+String tradeIntelFormatSearchBillDate(String raw) {
+  final t = raw.trim();
+  if (t.length < 10) return t;
+  final parsed = DateTime.tryParse(t.substring(0, 10));
+  if (parsed == null) {
+    return t.length >= 10 ? t.substring(0, 10) : t;
+  }
+  return DateFormat('d MMM yyyy').format(parsed);
+}
+
 /// Qty + weight for catalog / ledger intel maps (bags · kg order via [formatLineQtyWeight]).
 String tradeIntelQtySummaryLine(Map<String, dynamic> m) {
   final kg = tradeIntelToDouble(m['last_line_weight_kg']);
@@ -138,6 +168,75 @@ String tradeIntelSearchCatalogSubtitle(Map<String, dynamic> m) {
   if (hid.isNotEmpty) parts.add(hid);
   if (parts.isEmpty) return '';
   return parts.join(' · ');
+}
+
+/// Rich fact line for unified-search catalog tiles (qty / bill id emphasized).
+Widget tradeIntelCatalogSearchFactRichText(
+  BuildContext context,
+  Map<String, dynamic> m,
+) {
+  final tt = Theme.of(context).textTheme;
+  final cs = Theme.of(context).colorScheme;
+  final base = tt.bodySmall?.copyWith(
+    color: cs.onSurface,
+    fontWeight: FontWeight.w600,
+    height: 1.3,
+  );
+  final qtyStyle = tt.bodySmall?.copyWith(
+    color: cs.primary,
+    fontWeight: FontWeight.w800,
+    height: 1.3,
+  );
+  final hidStyle = tt.bodySmall?.copyWith(
+    color: cs.onSurfaceVariant,
+    fontWeight: FontWeight.w600,
+    height: 1.3,
+  );
+  final spans = <InlineSpan>[];
+  void addSep() {
+    if (spans.isEmpty) return;
+    spans.add(TextSpan(text: ' · ', style: base));
+  }
+
+  final buy = tradeIntelToDouble(m['last_purchase_price']);
+  final sell = tradeIntelToDouble(m['last_selling_rate']);
+  if (buy != null && buy > 0) {
+    if (sell != null && sell > 0) {
+      spans.add(
+        TextSpan(
+          text:
+              'Last buy ${tradeIntelFormatInr(buy)} · Last sell ${tradeIntelFormatInr(sell)}',
+          style: base,
+        ),
+      );
+    } else {
+      spans.add(
+        TextSpan(
+          text: 'Last buy ${tradeIntelFormatInr(buy)}',
+          style: base,
+        ),
+      );
+    }
+  } else if (sell != null && sell > 0) {
+    spans.add(
+      TextSpan(
+        text: 'Last sell ${tradeIntelFormatInr(sell)}',
+        style: base,
+      ),
+    );
+  }
+  final bags = tradeIntelLastPurchaseBagsLabel(m);
+  if (bags.isNotEmpty) {
+    addSep();
+    spans.add(TextSpan(text: bags, style: qtyStyle));
+  }
+  final hid = (m['last_purchase_human_id'] ?? '').toString().trim();
+  if (hid.isNotEmpty) {
+    addSep();
+    spans.add(TextSpan(text: hid, style: hidStyle));
+  }
+  if (spans.isEmpty) return const SizedBox.shrink();
+  return Text.rich(TextSpan(children: spans));
 }
 
 String tradeIntelSourceLine(Map<String, dynamic> m) {
@@ -284,8 +383,6 @@ class TradeIntelCatalogSearchTile extends StatelessWidget {
     final tt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
     final name = (item['name'] ?? 'Item').toString();
-    final factLine =
-        fuzzyNameMatch ? '' : tradeIntelSearchCatalogSubtitle(item);
     final srcLine = fuzzyNameMatch ? '' : tradeIntelSourceLine(item);
 
     return InkWell(
@@ -319,15 +416,11 @@ class TradeIntelCatalogSearchTile extends StatelessWidget {
                       ),
                     ),
                   ],
-                  if (!fuzzyNameMatch && factLine.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      factLine,
-                      style: tt.bodySmall?.copyWith(
-                        color: cs.onSurface,
-                        fontWeight: FontWeight.w600,
-                        height: 1.3,
-                      ),
+                  if (!fuzzyNameMatch &&
+                      tradeIntelSearchCatalogSubtitle(item).isNotEmpty) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: tradeIntelCatalogSearchFactRichText(context, item),
                     ),
                   ],
                   if (!fuzzyNameMatch && item['last_purchase_date'] != null) ...[
@@ -336,28 +429,47 @@ class TradeIntelCatalogSearchTile extends StatelessWidget {
                       builder: (ctx) {
                         final rawDate =
                             item['last_purchase_date']?.toString() ?? '';
-                        final parsed = DateTime.tryParse(rawDate);
+                        final parsed = rawDate.length >= 10
+                            ? DateTime.tryParse(rawDate.substring(0, 10))
+                            : DateTime.tryParse(rawDate);
                         if (parsed == null) return const SizedBox.shrink();
-                        final days =
-                            DateTime.now().difference(parsed).inDays;
-                        final label = days == 0
-                            ? 'today'
-                            : days == 1
-                                ? 'yesterday'
-                                : '$days days ago';
+                        final label = tradeIntelRelativeAgeLabel(parsed);
                         final delRaw = item['last_purchase_delivered'];
                         final delLabel = delRaw is bool
                             ? (delRaw ? 'Delivered' : 'Undelivered')
                             : null;
-                        final datePart =
-                            '${DateFormat('MMM d').format(parsed)} · $label';
-                        return Text(
-                          delLabel != null
-                              ? '$datePart · $delLabel'
-                              : datePart,
-                          style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                        final ctxCs = Theme.of(ctx).colorScheme;
+                        final ctxTt = Theme.of(ctx).textTheme;
+                        final muted = ctxTt.bodySmall?.copyWith(
+                          color: ctxCs.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                          height: 1.3,
+                        );
+                        final ageStyle = ctxTt.bodySmall?.copyWith(
+                          color: ctxCs.primary,
+                          fontWeight: FontWeight.w800,
+                          height: 1.3,
+                        );
+                        final delStyle = ctxTt.bodySmall?.copyWith(
+                          color: ctxCs.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                          height: 1.3,
+                        );
+                        return Text.rich(
+                          TextSpan(
+                            style: muted,
+                            children: [
+                              TextSpan(
+                                text: DateFormat('d MMM yyyy').format(parsed),
                               ),
+                              TextSpan(text: ' · ', style: muted),
+                              TextSpan(text: label, style: ageStyle),
+                              if (delLabel != null) ...[
+                                TextSpan(text: ' · ', style: muted),
+                                TextSpan(text: delLabel, style: delStyle),
+                              ],
+                            ],
+                          ),
                         );
                       },
                     ),

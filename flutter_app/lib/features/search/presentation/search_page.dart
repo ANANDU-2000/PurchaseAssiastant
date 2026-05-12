@@ -83,6 +83,14 @@ String _fmtQty(dynamic v) {
   return n.toStringAsFixed(2);
 }
 
+int _searchYmdKey(Object? dtRaw) {
+  if (dtRaw is String && dtRaw.length >= 10) {
+    final s = dtRaw.substring(0, 10).replaceAll('-', '');
+    return int.tryParse(s) ?? 0;
+  }
+  return 0;
+}
+
 List<Map<String, dynamic>> _asMapListSkipBad(String key, Map<String, dynamic> data) {
   final raw = data[key];
   if (raw is! List) return [];
@@ -113,17 +121,45 @@ Map<String, dynamic>? _pickPurchaseLine(Map<String, dynamic> p, String q) {
   return null;
 }
 
-String _purchaseLineSummary(Map<String, dynamic> line) {
+Widget _purchaseLineSummaryRich(BuildContext context, Map<String, dynamic> line) {
   final nm = line['item_name']?.toString() ?? 'Line';
   final qty = _fmtQty(line['qty']);
-  final unit = line['unit']?.toString() ?? '';
+  final unit = line['unit']?.toString().trim().toLowerCase();
+  final unitLabel = unit == 'sack' ? 'bag' : (line['unit']?.toString() ?? '');
   final pr = line['purchase_rate'];
   final lc = line['landing_cost'];
   final prN = _toD(pr);
   final rate = prN != null && prN > 0
       ? 'Rate ${_fmtInr(pr)}'
       : 'Landing ${_fmtInr(lc)}';
-  return '$nm · $qty $unit · $rate';
+  final tw = _toD(line['total_weight_kg'] ?? line['total_weight']);
+  final tt = Theme.of(context).textTheme;
+  final cs = Theme.of(context).colorScheme;
+  final base = tt.bodySmall?.copyWith(
+    color: cs.onSurface,
+    height: 1.35,
+    fontWeight: FontWeight.w500,
+  );
+  final qtyStyle = tt.bodySmall?.copyWith(
+    color: cs.primary,
+    height: 1.35,
+    fontWeight: FontWeight.w800,
+  );
+  return Text.rich(
+    TextSpan(
+      style: base,
+      children: [
+        TextSpan(text: nm),
+        const TextSpan(text: ' · '),
+        TextSpan(text: '$qty $unitLabel'.trim(), style: qtyStyle),
+        if (tw != null && tw > 1e-6) ...[
+          const TextSpan(text: ' · '),
+          TextSpan(text: '${_fmtQty(tw)} kg', style: qtyStyle),
+        ],
+        TextSpan(text: ' · $rate', style: base),
+      ],
+    ),
+  );
 }
 
 class SearchPage extends ConsumerStatefulWidget {
@@ -253,21 +289,13 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
                 // Enrich catalog item hits with last-line qty/kg from matched recent purchases
                 // so the UI can show "last bags/kg" even when the server only returns prices.
-                int ymdKey(Object? dtRaw) {
-                  if (dtRaw is String && dtRaw.length >= 10) {
-                    final s = dtRaw.substring(0, 10).replaceAll('-', '');
-                    return int.tryParse(s) ?? 0;
-                  }
-                  return 0;
-                }
-
                 final lastLineByItemId = <String, Map<String, dynamic>>{};
                 final lastDateKeyByItemId = <String, int>{};
                 final lastDateStringByItemId = <String, String>{};
                 final lastBillHidByItemId = <String, String>{};
                 final lastDeliveredByItemId = <String, bool>{};
                 for (final p in bills) {
-                  final dtK = ymdKey(p['purchase_date']);
+                  final dtK = _searchYmdKey(p['purchase_date']);
                   final dtStr = p['purchase_date']?.toString() ?? '';
                   final hid = p['human_id']?.toString() ?? '';
                   final delivered = p['is_delivered'] == true;
@@ -293,29 +321,49 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                 final items = rawItems.map((m) {
                   final id = m['id']?.toString() ?? '';
                   if (id.isEmpty) return m;
-                  if (m['last_line_qty'] != null || m['last_line_weight_kg'] != null) {
-                    return m;
-                  }
+
                   final ln = lastLineByItemId[id];
-                  if (ln == null) return m;
                   final next = Map<String, dynamic>.from(m);
-                  next['last_line_qty'] = ln['qty'];
-                  next['last_line_unit'] = ln['unit'];
-                  next['last_line_weight_kg'] = ln['total_weight_kg'] ?? ln['total_weight'];
-                  next['kg_per_unit'] = ln['kg_per_unit'] ?? ln['default_kg_per_bag'];
-                  // Prefer explicit per-kg rate if present.
-                  next['purchase_rate_dim'] = (ln['landing_cost_per_kg'] != null || ln['kg_per_unit'] != null) ? 'kg' : (ln['unit'] ?? '');
-                  next['last_purchase_price'] = ln['landing_cost_per_kg'] ?? ln['purchase_rate'] ?? ln['landing_cost'];
-                  next['last_selling_rate'] = ln['selling_rate'] ?? ln['selling_cost'];
-                  next['selling_rate_dim'] = next['purchase_rate_dim'];
-                  final bh = lastBillHidByItemId[id];
-                  if (bh != null && bh.isNotEmpty) {
-                    next['last_purchase_human_id'] = bh;
+
+                  final needsLineFromBills = next['last_line_qty'] == null &&
+                      next['last_line_weight_kg'] == null;
+                  if (ln != null && needsLineFromBills) {
+                    next['last_line_qty'] = ln['qty'];
+                    next['last_line_unit'] = ln['unit'];
+                    next['last_line_weight_kg'] =
+                        ln['total_weight_kg'] ?? ln['total_weight'];
+                    next['kg_per_unit'] =
+                        ln['kg_per_unit'] ?? ln['default_kg_per_bag'];
+                    next['purchase_rate_dim'] =
+                        (ln['landing_cost_per_kg'] != null ||
+                                ln['kg_per_unit'] != null)
+                            ? 'kg'
+                            : (ln['unit'] ?? '');
+                    next['last_purchase_price'] = ln['landing_cost_per_kg'] ??
+                        ln['purchase_rate'] ??
+                        ln['landing_cost'];
+                    next['last_selling_rate'] =
+                        ln['selling_rate'] ?? ln['selling_cost'];
+                    next['selling_rate_dim'] = next['purchase_rate_dim'];
                   }
-                  final dateStr = lastDateStringByItemId[id];
-                  if (dateStr != null) next['last_purchase_date'] = dateStr;
-                  final del = lastDeliveredByItemId[id];
-                  if (del != null) next['last_purchase_delivered'] = del;
+
+                  if (ln != null) {
+                    final billDate = lastDateStringByItemId[id];
+                    final billKey = lastDateKeyByItemId[id] ?? 0;
+                    final serverKey = _searchYmdKey(next['last_purchase_date']);
+                    if (billDate != null && billKey >= serverKey) {
+                      next['last_purchase_date'] = billDate;
+                      final bh = lastBillHidByItemId[id];
+                      if (bh != null && bh.isNotEmpty) {
+                        next['last_purchase_human_id'] = bh;
+                      }
+                      if (lastDeliveredByItemId.containsKey(id)) {
+                        next['last_purchase_delivered'] =
+                            lastDeliveredByItemId[id] == true;
+                      }
+                    }
+                  }
+
                   return next;
                 }).toList();
                 final contactHits = suppliers.length + brokers.length;
@@ -541,21 +589,25 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                           final id = p['id']?.toString() ?? '';
                           final hid = p['human_id']?.toString() ?? '';
                           final dtRaw = p['purchase_date'];
-                          String dateTxt = '';
+                          String dateIso = '';
                           if (dtRaw is String && dtRaw.length >= 10) {
-                            dateTxt = dtRaw.substring(0, 10);
+                            dateIso = dtRaw.substring(0, 10);
                           } else if (dtRaw != null) {
-                            dateTxt = dtRaw.toString();
+                            final s = dtRaw.toString();
+                            dateIso =
+                                s.length >= 10 ? s.substring(0, 10) : s.trim();
                           }
+                          final datePretty =
+                              tradeIntelFormatSearchBillDate(dateIso);
+                          final ageLabel = dateIso.length >= 10
+                              ? tradeIntelRelativeAgeFromIsoDateString(dateIso)
+                              : null;
                           final sup =
                               p['supplier_name']?.toString() ?? 'Supplier';
                           final line = _pickPurchaseLine(p, q);
-                          final lineTxt = line != null
-                              ? _purchaseLineSummary(line)
-                              : '';
                           return ListTile(
                             contentPadding: EdgeInsets.zero,
-                            isThreeLine: lineTxt.isNotEmpty,
+                            isThreeLine: line != null,
                             leading: Icon(Icons.receipt_long_outlined,
                                 color: cs.secondary),
                             title: Text(
@@ -566,24 +618,41 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text(
-                                  [dateTxt, sup]
-                                      .where((s) => s.isNotEmpty)
-                                      .join(' · '),
-                                  style: tt.bodySmall?.copyWith(
-                                    color: cs.onSurfaceVariant,
+                                Text.rich(
+                                  TextSpan(
+                                    style: tt.bodySmall?.copyWith(
+                                      color: cs.onSurfaceVariant,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    children: [
+                                      if (datePretty.isNotEmpty)
+                                        TextSpan(text: datePretty),
+                                      if (ageLabel != null) ...[
+                                        if (datePretty.isNotEmpty)
+                                          const TextSpan(text: ' · '),
+                                        TextSpan(
+                                          text: ageLabel,
+                                          style: tt.bodySmall?.copyWith(
+                                            color: cs.primary,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                      ],
+                                      if (sup.isNotEmpty) ...[
+                                        if (datePretty.isNotEmpty ||
+                                            ageLabel != null)
+                                          const TextSpan(text: ' · '),
+                                        TextSpan(text: sup),
+                                      ],
+                                    ],
                                   ),
                                 ),
-                                if (lineTxt.isNotEmpty)
+                                if (line != null)
                                   Padding(
                                     padding: const EdgeInsets.only(top: 4),
-                                    child: Text(
-                                      lineTxt,
-                                      style: tt.bodySmall?.copyWith(
-                                        color: cs.onSurface,
-                                        height: 1.35,
-                                        fontWeight: FontWeight.w500,
-                                      ),
+                                    child: _purchaseLineSummaryRich(
+                                      context,
+                                      line,
                                     ),
                                   ),
                               ],
