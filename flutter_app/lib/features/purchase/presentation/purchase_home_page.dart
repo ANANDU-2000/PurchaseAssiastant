@@ -36,20 +36,45 @@ enum _HistPeriodPreset { today, week, month, year, custom }
 bool _purchaseHistSameDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
 
-/// Bold digit runs in pack summary (bags / kg counts).
-List<InlineSpan> _packSummaryBoldSpans(
-  String pack,
-  TextStyle base,
-  TextStyle boldNumbers,
-) {
-  final re = RegExp(r'[\d,]+(?:\.\d+)?');
+/// Pack summary: bold **numbers** (teal) + **unit words** (cyan/slate) for bags/kg/box/tin.
+List<InlineSpan> _packSummaryStyledSpans(String pack) {
+  const base = TextStyle(
+    fontSize: 10.5,
+    fontWeight: FontWeight.w600,
+    color: Color(0xFF64748B),
+    height: 1.15,
+  );
+  const numStyle = TextStyle(
+    fontSize: 11,
+    fontWeight: FontWeight.w900,
+    color: Color(0xFF0D9488),
+    height: 1.15,
+    letterSpacing: -0.2,
+  );
+  const unitStyle = TextStyle(
+    fontSize: 10.5,
+    fontWeight: FontWeight.w900,
+    color: Color(0xFF0E7490),
+    height: 1.15,
+  );
+  final token = RegExp(
+    r'[\d,]+(?:\.\d+)?|BAGS?|SACKS?|BOX(?:ES)?|TIN(?:S)?|KG',
+    caseSensitive: false,
+  );
+  final isNumOnly = RegExp(r'^[\d,]+(?:\.\d+)?$');
   final spans = <InlineSpan>[];
   var i = 0;
-  for (final m in re.allMatches(pack)) {
+  for (final m in token.allMatches(pack)) {
     if (m.start > i) {
       spans.add(TextSpan(text: pack.substring(i, m.start), style: base));
     }
-    spans.add(TextSpan(text: m.group(0), style: boldNumbers));
+    final t = m.group(0)!;
+    spans.add(
+      TextSpan(
+        text: t,
+        style: isNumOnly.hasMatch(t) ? numStyle : unitStyle,
+      ),
+    );
     i = m.end;
   }
   if (i < pack.length) {
@@ -61,6 +86,33 @@ List<InlineSpan> _packSummaryBoldSpans(
   return spans;
 }
 
+Widget _historyMetaChip({
+  required String label,
+  required Color bg,
+  required Color border,
+  required Color fg,
+}) {
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(
+      color: bg,
+      borderRadius: BorderRadius.circular(4),
+      border: Border.all(color: border),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(
+        fontSize: 9.5,
+        fontWeight: FontWeight.w900,
+        height: 1.05,
+        color: fg,
+      ),
+    ),
+  );
+}
+
+/// Payment / delivery context chip per row. Payment “Due in …” only after **delivered**;
+/// before delivery, show **days over** if past due, else **Undelivered · Xd** (days since purchase).
 Widget? _purchaseHistoryDaysChip(TradePurchase p) {
   if (p.remaining <= 1e-6) {
     return null;
@@ -68,43 +120,69 @@ Widget? _purchaseHistoryDaysChip(TradePurchase p) {
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
   final due = p.dueDate;
+
+  if (!p.isDelivered) {
+    if (due != null) {
+      final dueDay = DateTime(due.year, due.month, due.day);
+      final diff = dueDay.difference(today).inDays;
+      if (diff < 0 || p.statusEnum == PurchaseStatus.overdue) {
+        final over = diff < 0 ? -diff : 0;
+        final label = over > 0 ? '${over}d over' : 'Overdue';
+        return _historyMetaChip(
+          label: label,
+          bg: Colors.red.shade50,
+          border: Colors.red.shade200,
+          fg: Colors.red.shade900,
+        );
+      }
+    } else {
+      if (p.statusEnum == PurchaseStatus.overdue) {
+        return _historyMetaChip(
+          label: 'Overdue',
+          bg: Colors.red.shade50,
+          border: Colors.red.shade200,
+          fg: Colors.red.shade900,
+        );
+      }
+      if (p.statusEnum == PurchaseStatus.dueSoon) {
+        return _historyMetaChip(
+          label: 'Due soon',
+          bg: const Color(0xFFFFF7ED),
+          border: const Color(0xFFFDBA74),
+          fg: const Color(0xFF9A3412),
+        );
+      }
+    }
+    final pur = DateTime(
+      p.purchaseDate.year,
+      p.purchaseDate.month,
+      p.purchaseDate.day,
+    );
+    final wait = today.difference(pur).inDays;
+    final label = wait <= 0 ? 'Undelivered' : 'Undelivered · ${wait}d';
+    return _historyMetaChip(
+      label: label,
+      bg: Colors.orange.shade50,
+      border: Colors.orange.shade200,
+      fg: Colors.orange.shade900,
+    );
+  }
+
   if (due == null) {
     if (p.statusEnum == PurchaseStatus.overdue) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-        decoration: BoxDecoration(
-          color: Colors.red.shade50,
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: Colors.red.shade200),
-        ),
-        child: Text(
-          'Overdue',
-          style: TextStyle(
-            fontSize: 9.5,
-            fontWeight: FontWeight.w900,
-            height: 1.05,
-            color: Colors.red.shade900,
-          ),
-        ),
+      return _historyMetaChip(
+        label: 'Overdue',
+        bg: Colors.red.shade50,
+        border: Colors.red.shade200,
+        fg: Colors.red.shade900,
       );
     }
     if (p.statusEnum == PurchaseStatus.dueSoon) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-        decoration: BoxDecoration(
-          color: const Color(0xFFFFF7ED),
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: const Color(0xFFFDBA74)),
-        ),
-        child: Text(
-          'Due soon',
-          style: TextStyle(
-            fontSize: 9.5,
-            fontWeight: FontWeight.w900,
-            height: 1.05,
-            color: const Color(0xFF9A3412),
-          ),
-        ),
+      return _historyMetaChip(
+        label: 'Due soon',
+        bg: const Color(0xFFFFF7ED),
+        border: const Color(0xFFFDBA74),
+        fg: const Color(0xFF9A3412),
       );
     }
     return null;
@@ -120,24 +198,11 @@ Widget? _purchaseHistoryDaysChip(TradePurchase p) {
   } else {
     label = 'Due in ${diff}d';
   }
-  return Container(
-    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-    decoration: BoxDecoration(
-      color: overdue ? Colors.red.shade50 : const Color(0xFFFFF7ED),
-      borderRadius: BorderRadius.circular(4),
-      border: Border.all(
-        color: overdue ? Colors.red.shade200 : const Color(0xFFFDBA74),
-      ),
-    ),
-    child: Text(
-      label,
-      style: TextStyle(
-        fontSize: 9.5,
-        fontWeight: FontWeight.w900,
-        height: 1.05,
-        color: overdue ? Colors.red.shade900 : const Color(0xFF9A3412),
-      ),
-    ),
+  return _historyMetaChip(
+    label: label,
+    bg: overdue ? Colors.red.shade50 : const Color(0xFFFFF7ED),
+    border: overdue ? Colors.red.shade200 : const Color(0xFFFDBA74),
+    fg: overdue ? Colors.red.shade900 : const Color(0xFF9A3412),
   );
 }
 
@@ -2199,23 +2264,7 @@ class _PurchaseRow extends StatelessWidget {
                           child: RichText(
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            text: TextSpan(
-                              children: _packSummaryBoldSpans(
-                                pack,
-                                const TextStyle(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: HexaColors.neutral,
-                                  height: 1.15,
-                                ),
-                                const TextStyle(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w900,
-                                  color: Color(0xFF0F172A),
-                                  height: 1.15,
-                                ),
-                              ),
-                            ),
+                            text: TextSpan(children: _packSummaryStyledSpans(pack)),
                           ),
                         ),
                         if (daysChip != null) ...[
