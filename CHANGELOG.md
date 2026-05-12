@@ -4,6 +4,10 @@ All notable changes to this project are documented here. Append new entries unde
 
 ## Unreleased
 
+### Fixed
+
+- **Vercel / Flutter web:** `purchase_item_entry_sheet.dart` imported `lib/features/purchase/pricing/*` but those files were not in git, so `flutter build web` failed (deploy exit 3). The pricing modules are now tracked in the repository.
+
 ### Added
 
 - `context/tax_rebuild/`: ten markdown specs for Indian trader GST/rate UX (flow, calc rules, PDF/ledger, validation, QA, backup, readiness).
