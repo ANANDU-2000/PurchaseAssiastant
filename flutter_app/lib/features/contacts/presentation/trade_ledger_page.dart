@@ -425,6 +425,13 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
         ),
         title: Text(_title, overflow: TextOverflow.ellipsis, maxLines: 1),
         actions: [
+          if (widget.kind == TradeLedgerKind.catalogItem)
+            IconButton(
+              tooltip: 'Item details',
+              onPressed: () =>
+                  context.push('/catalog/item/${widget.entityId}'),
+              icon: const Icon(Icons.edit_outlined),
+            ),
           if (widget.kind == TradeLedgerKind.supplier ||
               widget.kind == TradeLedgerKind.broker ||
               widget.kind == TradeLedgerKind.catalogItem)

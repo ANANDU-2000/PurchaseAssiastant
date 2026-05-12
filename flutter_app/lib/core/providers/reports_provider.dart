@@ -9,6 +9,7 @@ import '../auth/session_notifier.dart';
 import '../models/trade_purchase_models.dart';
 import '../reporting/trade_report_aggregate.dart';
 import '../services/offline_store.dart';
+import '../../features/shell/shell_branch_provider.dart';
 import 'analytics_kpi_provider.dart';
 
 final Map<String, Future<List<TradePurchase>>> _reportsPurchasesInflight = {};
@@ -226,14 +227,14 @@ Future<List<TradePurchase>> _loadReportsPurchases(Ref ref) async {
   );
 }
 
-/// SSOT: full `/trade-purchases` rows for Reports (Hive fallback on failure).
-final reportsPurchasesPayloadProvider =
-    FutureProvider.autoDispose<ReportsPurchasePayload>((ref) async {
-  ref.keepAlive();
-  final session = ref.watch(sessionProvider);
-  ref.watch(analyticsDateRangeProvider);
+/// Live `/trade-purchases` pages for the current [analyticsDateRangeProvider],
+/// regardless of shell tab — used by scheduled WhatsApp share and should stay
+/// consistent with [reportsPurchasesPayloadProvider] network error handling.
+Future<ReportsPurchasePayload> fetchReportsPurchasesLiveForAnalytics(
+  Ref ref,
+) async {
+  final session = ref.read(sessionProvider);
   if (session == null) return ReportsPurchasePayload.empty();
-
   try {
     final list = await _loadReportsPurchases(ref);
     return ReportsPurchasePayload(items: list, fromLiveFetch: true);
@@ -241,7 +242,6 @@ final reportsPurchasesPayloadProvider =
     if (e is DioException) {
       final sc = e.response?.statusCode;
       if (sc == 401 || sc == 403) {
-        // Session is no longer valid; prevent endless refetch loops.
         try {
           await ref.read(sessionProvider.notifier).logout();
         } catch (_) {}
@@ -267,14 +267,40 @@ final reportsPurchasesPayloadProvider =
           : e.toString(),
     );
   }
+}
+
+/// SSOT: full `/trade-purchases` rows for Reports (Hive fallback on failure).
+final reportsPurchasesPayloadProvider =
+    FutureProvider.autoDispose<ReportsPurchasePayload>((ref) async {
+  ref.keepAlive();
+  final session = ref.watch(sessionProvider);
+  ref.watch(analyticsDateRangeProvider);
+  final branch = ref.watch(shellCurrentBranchProvider);
+  if (session == null) return ReportsPurchasePayload.empty();
+
+  // IndexedStack mounts Reports off-screen; avoid paging `/trade-purchases`
+  // until the user opens this tab (Hive cache still paints summaries if present).
+  if (branch != ShellBranch.reports) {
+    final hive = ref.watch(reportsPurchasesHiveCacheProvider);
+    return ReportsPurchasePayload(
+      items: hive ?? const [],
+      fromLiveFetch: false,
+    );
+  }
+
+  return fetchReportsPurchasesLiveForAnalytics(ref);
 });
 
-/// Merged purchase list for instant UI: latest fetch if present else Hive cache.
+/// Merged purchase list for instant UI: completed payload, else in-flight
+/// previous value, else Hive cache — avoids false empty while reloading.
 final reportsPurchasesMergedProvider =
     Provider.autoDispose<List<TradePurchase>>((ref) {
   final async = ref.watch(reportsPurchasesPayloadProvider);
-  final cached = async.value?.items ?? ref.watch(reportsPurchasesHiveCacheProvider);
-  return cached ?? const [];
+  final hive = ref.watch(reportsPurchasesHiveCacheProvider);
+  return async.maybeWhen(
+    data: (payload) => payload.items,
+    orElse: () => async.valueOrNull?.items ?? hive ?? const [],
+  );
 });
 
 /// Single aggregate engine input → [TradeReportAgg] (all classified lines).

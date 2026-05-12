@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/session_notifier.dart';
 import '../models/trade_purchase_models.dart';
+import '../../features/shell/shell_branch_provider.dart';
 import 'analytics_kpi_provider.dart' show analyticsDateRangeProvider;
 import '../utils/line_display.dart';
 
@@ -118,6 +119,11 @@ class TradePurchasesListNotifier extends AutoDisposeAsyncNotifier<TradePurchases
     if (session == null) {
       return const TradePurchasesListView(rows: [], hasMore: false);
     }
+    final branch = ref.watch(shellCurrentBranchProvider);
+    if (branch != ShellBranch.history) {
+      // IndexedStack mounts History off-screen; defer list API until tab visible.
+      return const TradePurchasesListView(rows: [], hasMore: false);
+    }
     final primary = ref.watch(purchaseHistoryPrimaryFilterProvider);
     final secondary = ref.watch(purchaseHistorySecondaryFilterProvider);
     final apiStatus = _tradeListApiStatus(primary, secondary);
@@ -140,6 +146,7 @@ class TradePurchasesListNotifier extends AutoDisposeAsyncNotifier<TradePurchases
   Future<void> loadMore() async {
     final cur = state.valueOrNull;
     if (cur == null || !cur.hasMore || _loadMoreBusy) return;
+    if (ref.read(shellCurrentBranchProvider) != ShellBranch.history) return;
     final session = ref.read(sessionProvider);
     if (session == null) return;
     final offset = cur.rows.length;

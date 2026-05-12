@@ -73,9 +73,10 @@ class _NotificationTapHandlerState extends ConsumerState<_NotificationTapHandler
       };
 
       ref.read(analyticsDateRangeProvider.notifier).state = (from: from, to: to);
+      // WidgetRef is distinct from riverpod's Ref; implementation supports .read.
+      final payload = await fetchReportsPurchasesLiveForAnalytics(ref as Ref);
       ref.invalidate(reportsPurchasesPayloadProvider);
-      await ref.read(reportsPurchasesPayloadProvider.future);
-      final purchases = ref.read(reportsPurchasesMergedProvider);
+      final purchases = payload.items;
       final agg = buildTradeReportAgg(purchases);
 
       final df = DateFormat('d MMM');

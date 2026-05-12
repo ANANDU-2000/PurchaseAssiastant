@@ -287,9 +287,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         _ => (today.subtract(const Duration(days: 6)), today),
       };
       ref.read(analyticsDateRangeProvider.notifier).state = (from: from, to: to);
+      final payload =
+          await fetchReportsPurchasesLiveForAnalytics(ref as Ref);
       ref.invalidate(reportsPurchasesPayloadProvider);
-      await ref.read(reportsPurchasesPayloadProvider.future);
-      final purchases = ref.read(reportsPurchasesMergedProvider);
+      final purchases = payload.items;
       final agg = buildTradeReportAgg(purchases);
 
       final df = DateFormat('d MMM');

@@ -7,6 +7,7 @@ import '../../core/design_system/hexa_ds_tokens.dart';
 import '../../core/feature_flags.dart';
 import '../../core/providers/connectivity_provider.dart';
 import '../../core/theme/hexa_colors.dart';
+import 'shell_branch_provider.dart';
 
 /// Shell: Home | Reports | ⊕ FAB | History | Assistant
 class ShellScreen extends ConsumerWidget {
@@ -14,14 +15,13 @@ class ShellScreen extends ConsumerWidget {
 
   final StatefulNavigationShell navigationShell;
 
-  static const branchHome      = 0;
-  static const branchReports   = 1;
-  static const branchHistory   = 2;
-  static const branchAssistant = 3;
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final idx       = navigationShell.currentIndex;
+    final prevBranch = ref.read(shellCurrentBranchProvider);
+    if (prevBranch != idx) {
+      ref.read(shellCurrentBranchProvider.notifier).state = idx;
+    }
     final routePath = GoRouterState.of(context).uri.path;
     final conn      = ref.watch(connectivityResultsProvider);
     final offline   = conn.valueOrNull != null && isOfflineResult(conn.valueOrNull!);
@@ -167,42 +167,42 @@ class _BottomBar extends StatelessWidget {
               Expanded(
                 child: _TabItem(
                   label: 'Home',
-                  selected: idx == ShellScreen.branchHome,
-                  icon: idx == ShellScreen.branchHome
+                  selected: idx == ShellBranch.home,
+                  icon: idx == ShellBranch.home
                       ? Icons.grid_view_rounded
                       : Icons.grid_view_outlined,
-                  onTap: () => go(ShellScreen.branchHome),
+                  onTap: () => go(ShellBranch.home),
                 ),
               ),
               Expanded(
                 child: _TabItem(
                   label: 'Reports',
-                  selected: idx == ShellScreen.branchReports,
-                  icon: idx == ShellScreen.branchReports
+                  selected: idx == ShellBranch.reports,
+                  icon: idx == ShellBranch.reports
                       ? Icons.bar_chart_rounded
                       : Icons.bar_chart_outlined,
-                  onTap: () => go(ShellScreen.branchReports),
+                  onTap: () => go(ShellBranch.reports),
                 ),
               ),
               const SizedBox(width: 72), // FAB notch gap
               Expanded(
                 child: _TabItem(
                   label: 'History',
-                  selected: idx == ShellScreen.branchHistory,
-                  icon: idx == ShellScreen.branchHistory
+                  selected: idx == ShellBranch.history,
+                  icon: idx == ShellBranch.history
                       ? Icons.receipt_long_rounded
                       : Icons.receipt_long_outlined,
-                  onTap: () => go(ShellScreen.branchHistory),
+                  onTap: () => go(ShellBranch.history),
                 ),
               ),
               Expanded(
                 child: _TabItem(
                   label: 'Assistant',
-                  selected: idx == ShellScreen.branchAssistant,
-                  icon: idx == ShellScreen.branchAssistant
+                  selected: idx == ShellBranch.assistant,
+                  icon: idx == ShellBranch.assistant
                       ? Icons.chat_bubble_rounded
                       : Icons.chat_bubble_outline_rounded,
-                  onTap: () => go(ShellScreen.branchAssistant),
+                  onTap: () => go(ShellBranch.assistant),
                 ),
               ),
             ],
