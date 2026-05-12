@@ -33,6 +33,32 @@ import '../../../core/widgets/focused_search_chrome.dart';
 
 enum _HistPeriodPreset { today, week, month, year, custom }
 
+bool _purchaseHistSameDay(DateTime a, DateTime b) =>
+    a.year == b.year && a.month == b.month && a.day == b.day;
+
+_HistPeriodPreset _purchaseHistInferPreset(({DateTime from, DateTime to}) r) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final from = DateTime(r.from.year, r.from.month, r.from.day);
+  final to = DateTime(r.to.year, r.to.month, r.to.day);
+  if (_purchaseHistSameDay(from, today) && _purchaseHistSameDay(to, today)) {
+    return _HistPeriodPreset.today;
+  }
+  if (_purchaseHistSameDay(from, today.subtract(const Duration(days: 6))) &&
+      _purchaseHistSameDay(to, today)) {
+    return _HistPeriodPreset.week;
+  }
+  if (_purchaseHistSameDay(from, today.subtract(const Duration(days: 29))) &&
+      _purchaseHistSameDay(to, today)) {
+    return _HistPeriodPreset.month;
+  }
+  if (_purchaseHistSameDay(from, DateTime(today.year, 1, 1)) &&
+      _purchaseHistSameDay(to, today)) {
+    return _HistPeriodPreset.year;
+  }
+  return _HistPeriodPreset.custom;
+}
+
 String _inr(num n) =>
     NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
         .format(n);
@@ -265,29 +291,10 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
   final _selected = <String>{};
   /// Purchase IDs hidden immediately while delete API runs (rolled back on failure).
   final _pendingDeleteIds = <String>{};
+  /// Rows patched until list refresh completes after mark paid/delivered.
+  final Map<String, TradePurchase> _optimisticPurchasePatches = {};
   String _lastRouteFilter = '';
   _HistPeriodPreset _preset = _HistPeriodPreset.month;
-
-  static bool _sameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
-
-  static _HistPeriodPreset _inferPreset(({DateTime from, DateTime to}) r) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final from = DateTime(r.from.year, r.from.month, r.from.day);
-    final to = DateTime(r.to.year, r.to.month, r.to.day);
-    if (_sameDay(from, today) && _sameDay(to, today)) return _HistPeriodPreset.today;
-    if (_sameDay(from, today.subtract(const Duration(days: 6))) && _sameDay(to, today)) {
-      return _HistPeriodPreset.week;
-    }
-    if (_sameDay(from, today.subtract(const Duration(days: 29))) && _sameDay(to, today)) {
-      return _HistPeriodPreset.month;
-    }
-    if (_sameDay(from, DateTime(today.year, 1, 1)) && _sameDay(to, today)) {
-      return _HistPeriodPreset.year;
-    }
-    return _HistPeriodPreset.custom;
-  }
 
   void _applyPreset(_HistPeriodPreset p) {
     final n = DateTime.now();
@@ -320,37 +327,40 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
   Future<void> _openPeriodPicker() async {
     await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       showDragHandle: true,
       builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const ListTile(
-              title: Text('Period', style: TextStyle(fontWeight: FontWeight.w800)),
-              subtitle: Text('Affects History + Reports totals'),
-            ),
-            for (final e in const [
-              (_HistPeriodPreset.today, 'Today'),
-              (_HistPeriodPreset.week, 'This week'),
-              (_HistPeriodPreset.month, 'This month'),
-              (_HistPeriodPreset.year, 'This year'),
-              (_HistPeriodPreset.custom, 'Custom range'),
-            ])
-              ListTile(
-                leading: Icon(
-                  _preset == e.$1 ? Icons.check_circle : Icons.circle_outlined,
-                ),
-                title: Text(e.$2),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  if (e.$1 == _HistPeriodPreset.custom) {
-                    await _pickCustomRange();
-                  } else {
-                    _applyPreset(e.$1);
-                  }
-                },
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const ListTile(
+                title: Text('Period', style: TextStyle(fontWeight: FontWeight.w800)),
+                subtitle: Text('Affects History + Reports totals'),
               ),
-          ],
+              for (final e in const [
+                (_HistPeriodPreset.today, 'Today'),
+                (_HistPeriodPreset.week, 'This week'),
+                (_HistPeriodPreset.month, 'This month'),
+                (_HistPeriodPreset.year, 'This year'),
+                (_HistPeriodPreset.custom, 'Custom range'),
+              ])
+                ListTile(
+                  leading: Icon(
+                    _preset == e.$1 ? Icons.check_circle : Icons.circle_outlined,
+                  ),
+                  title: Text(e.$2),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    if (e.$1 == _HistPeriodPreset.custom) {
+                      await _pickCustomRange();
+                    } else {
+                      _applyPreset(e.$1);
+                    }
+                  },
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -580,9 +590,20 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
     );
   }
 
+  List<TradePurchase> _mergeOptimisticRows(List<TradePurchase> list) {
+    if (_optimisticPurchasePatches.isEmpty) return list;
+    return [
+      for (final row in list) _optimisticPurchasePatches[row.id] ?? row,
+    ];
+  }
+
   Future<void> _markPaidQuick(TradePurchase p) async {
     final session = ref.read(sessionProvider);
     if (session == null) return;
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _optimisticPurchasePatches[p.id] = p.withOptimisticMarkedPaid();
+    });
     try {
       await ref.read(hexaApiProvider).markPurchasePaid(
             businessId: session.primaryBusiness.id,
@@ -593,10 +614,15 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
         await ref.read(tradePurchasesListProvider.future);
       } catch (_) {}
       if (mounted) {
+        setState(() => _optimisticPurchasePatches.remove(p.id));
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Marked paid')));
       }
     } catch (e) {
       if (mounted) {
+        setState(() => _optimisticPurchasePatches.remove(p.id));
+        try {
+          await ref.read(tradePurchasesListProvider.future);
+        } catch (_) {}
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -613,6 +639,10 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
   Future<void> _markDeliveredQuick(TradePurchase p) async {
     final session = ref.read(sessionProvider);
     if (session == null) return;
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _optimisticPurchasePatches[p.id] = p.withOptimisticMarkedDelivered();
+    });
     try {
       await ref.read(hexaApiProvider).markPurchaseDelivered(
             businessId: session.primaryBusiness.id,
@@ -624,12 +654,17 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
         await ref.read(tradePurchasesListProvider.future);
       } catch (_) {}
       if (mounted) {
+        setState(() => _optimisticPurchasePatches.remove(p.id));
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Marked delivered')),
         );
       }
     } catch (e) {
       if (mounted) {
+        setState(() => _optimisticPurchasePatches.remove(p.id));
+        try {
+          await ref.read(tradePurchasesListProvider.future);
+        } catch (_) {}
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -646,13 +681,14 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(sessionProvider);
-    final rows = ref.watch(tradePurchasesParsedProvider);
+    final rows =
+        ref.watch(tradePurchasesParsedProvider).whenData(_mergeOptimisticRows);
     final primary = ref.watch(purchaseHistoryPrimaryFilterProvider);
     final secondary = ref.watch(purchaseHistorySecondaryFilterProvider);
     final alerts = ref.watch(purchaseAlertsProvider);
     final monthStats = ref.watch(purchaseHistoryMonthStatsProvider);
     final range = ref.watch(analyticsDateRangeProvider);
-    final inferred = _inferPreset(range);
+    final inferred = _purchaseHistInferPreset(range);
     if (inferred != _preset && inferred != _HistPeriodPreset.custom) {
       _preset = inferred;
     }
@@ -753,6 +789,19 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
               icon: const Icon(Icons.close_rounded),
             ),
           ] else ...[
+            IconButton(
+              tooltip: 'Filter by period',
+              icon: const Icon(Icons.calendar_today_outlined),
+              onPressed: () => unawaited(_openPeriodPicker()),
+            ),
+            IconButton(
+              tooltip: 'More filters',
+              icon: Badge(
+                isLabelVisible: hasAdv,
+                child: const Icon(Icons.filter_list_rounded),
+              ),
+              onPressed: () => unawaited(_openMoreFilters()),
+            ),
             PopupMenuButton<String>(
               tooltip: 'More',
               itemBuilder: (ctx) => [
@@ -1577,6 +1626,97 @@ class _PurchaseHistoryFullscreenSearchPage extends ConsumerStatefulWidget {
 class _PurchaseHistoryFullscreenSearchPageState
     extends ConsumerState<_PurchaseHistoryFullscreenSearchPage> {
   late final TextEditingController _c;
+  final Map<String, TradePurchase> _optimisticPurchasePatches = {};
+  _HistPeriodPreset _preset = _HistPeriodPreset.month;
+
+  List<TradePurchase> _mergeOptimisticRows(List<TradePurchase> list) {
+    if (_optimisticPurchasePatches.isEmpty) return list;
+    return [
+      for (final row in list) _optimisticPurchasePatches[row.id] ?? row,
+    ];
+  }
+
+  void _applyPreset(_HistPeriodPreset p) {
+    final n = DateTime.now();
+    final today = DateTime(n.year, n.month, n.day);
+    ref.read(analyticsDateRangeProvider.notifier).state = switch (p) {
+      _HistPeriodPreset.today => (from: today, to: today),
+      _HistPeriodPreset.week =>
+        (from: today.subtract(const Duration(days: 6)), to: today),
+      _HistPeriodPreset.month =>
+        (from: today.subtract(const Duration(days: 29)), to: today),
+      _HistPeriodPreset.year => (from: DateTime(n.year, 1, 1), to: today),
+      _HistPeriodPreset.custom => ref.read(analyticsDateRangeProvider),
+    };
+    setState(() => _preset = p);
+  }
+
+  Future<void> _pickCustomRange() async {
+    final now = DateTime.now();
+    final range = ref.read(analyticsDateRangeProvider);
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 5),
+      lastDate: DateTime(now.year + 1, 12, 31),
+      initialDateRange: DateTimeRange(start: range.from, end: range.to),
+    );
+    if (picked == null || !mounted) return;
+    ref.read(analyticsDateRangeProvider.notifier).state =
+        (from: picked.start, to: picked.end);
+    setState(() => _preset = _HistPeriodPreset.custom);
+  }
+
+  Future<void> _openPeriodPicker() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const ListTile(
+                title:
+                    Text('Period', style: TextStyle(fontWeight: FontWeight.w800)),
+                subtitle: Text('Affects History + Reports totals'),
+              ),
+              for (final e in const [
+                (_HistPeriodPreset.today, 'Today'),
+                (_HistPeriodPreset.week, 'This week'),
+                (_HistPeriodPreset.month, 'This month'),
+                (_HistPeriodPreset.year, 'This year'),
+                (_HistPeriodPreset.custom, 'Custom range'),
+              ])
+                ListTile(
+                  leading: Icon(
+                    _preset == e.$1 ? Icons.check_circle : Icons.circle_outlined,
+                  ),
+                  title: Text(e.$2),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    if (e.$1 == _HistPeriodPreset.custom) {
+                      await _pickCustomRange();
+                    } else {
+                      _applyPreset(e.$1);
+                    }
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openMoreFilters() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => const _PurchaseHistoryFiltersSheet(),
+    );
+  }
 
   @override
   void initState() {
@@ -1598,9 +1738,13 @@ class _PurchaseHistoryFullscreenSearchPageState
     super.dispose();
   }
 
-  Future<void> _markPaid(BuildContext ctx, TradePurchase p) async {
+  Future<void> _markPaid(TradePurchase p) async {
     final session = ref.read(sessionProvider);
     if (session == null) return;
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _optimisticPurchasePatches[p.id] = p.withOptimisticMarkedPaid();
+    });
     try {
       await ref.read(hexaApiProvider).markPurchasePaid(
             businessId: session.primaryBusiness.id,
@@ -1610,28 +1754,38 @@ class _PurchaseHistoryFullscreenSearchPageState
       try {
         await ref.read(tradePurchasesListProvider.future);
       } catch (_) {}
-      if (ctx.mounted) {
-        ScaffoldMessenger.of(ctx).showSnackBar(
+      if (mounted) {
+        setState(() => _optimisticPurchasePatches.remove(p.id));
+        ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Marked paid')),
         );
       }
     } catch (e) {
-      if (!ctx.mounted) return;
-      ScaffoldMessenger.of(ctx).showSnackBar(
-        SnackBar(
-          content: Text(
-            e is DioException
-                ? friendlyApiError(e)
-                : 'Something went wrong. Please try again.',
+      if (mounted) {
+        setState(() => _optimisticPurchasePatches.remove(p.id));
+        try {
+          await ref.read(tradePurchasesListProvider.future);
+        } catch (_) {}
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              e is DioException
+                  ? friendlyApiError(e)
+                  : 'Something went wrong. Please try again.',
+            ),
           ),
-        ),
-      );
+        );
+      }
     }
   }
 
-  Future<void> _markDelivered(BuildContext ctx, TradePurchase p) async {
+  Future<void> _markDelivered(TradePurchase p) async {
     final session = ref.read(sessionProvider);
     if (session == null) return;
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _optimisticPurchasePatches[p.id] = p.withOptimisticMarkedDelivered();
+    });
     try {
       await ref.read(hexaApiProvider).markPurchaseDelivered(
             businessId: session.primaryBusiness.id,
@@ -1642,22 +1796,28 @@ class _PurchaseHistoryFullscreenSearchPageState
       try {
         await ref.read(tradePurchasesListProvider.future);
       } catch (_) {}
-      if (ctx.mounted) {
-        ScaffoldMessenger.of(ctx).showSnackBar(
+      if (mounted) {
+        setState(() => _optimisticPurchasePatches.remove(p.id));
+        ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Marked delivered')),
         );
       }
     } catch (e) {
-      if (!ctx.mounted) return;
-      ScaffoldMessenger.of(ctx).showSnackBar(
-        SnackBar(
-          content: Text(
-            e is DioException
-                ? friendlyApiError(e)
-                : 'Something went wrong. Please try again.',
+      if (mounted) {
+        setState(() => _optimisticPurchasePatches.remove(p.id));
+        try {
+          await ref.read(tradePurchasesListProvider.future);
+        } catch (_) {}
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              e is DioException
+                  ? friendlyApiError(e)
+                  : 'Something went wrong. Please try again.',
+            ),
           ),
-        ),
-      );
+        );
+      }
     }
   }
 
@@ -1713,10 +1873,40 @@ class _PurchaseHistoryFullscreenSearchPageState
 
   @override
   Widget build(BuildContext context) {
-    final rows = ref.watch(tradePurchasesParsedProvider);
+    final range = ref.watch(analyticsDateRangeProvider);
+    final inferred = _purchaseHistInferPreset(range);
+    if (inferred != _preset && inferred != _HistPeriodPreset.custom) {
+      _preset = inferred;
+    }
+    final hasAdv =
+        (ref.watch(purchaseHistorySupplierContainsProvider)?.trim().isNotEmpty ??
+            false) ||
+            (ref.watch(purchaseHistoryBrokerContainsProvider)?.trim().isNotEmpty ??
+                false) ||
+            (ref.watch(purchaseHistoryPackKindFilterProvider)?.isNotEmpty ??
+                false) ||
+            ref.watch(purchaseHistoryDateFromProvider) != null ||
+            ref.watch(purchaseHistoryDateToProvider) != null;
+    final rows =
+        ref.watch(tradePurchasesParsedProvider).whenData(_mergeOptimisticRows);
     final searchQ = ref.watch(purchaseHistorySearchProvider);
     return FullscreenSearchShell(
       title: 'Search purchases',
+      actions: [
+        IconButton(
+          tooltip: 'Filter by period',
+          icon: const Icon(Icons.calendar_today_outlined),
+          onPressed: () => unawaited(_openPeriodPicker()),
+        ),
+        IconButton(
+          tooltip: 'More filters',
+          icon: Badge(
+            isLabelVisible: hasAdv,
+            child: const Icon(Icons.filter_list_rounded),
+          ),
+          onPressed: () => unawaited(_openMoreFilters()),
+        ),
+      ],
       searchField: TextField(
         controller: _c,
         autofocus: true,
@@ -1784,8 +1974,8 @@ class _PurchaseHistoryFullscreenSearchPageState
                 onLongPress: () {},
                 onTap: () => context.push('/purchase/detail/${p.id}'),
                 onEdit: () => context.push('/purchase/edit/${p.id}'),
-                onMarkPaid: () => _markPaid(ctx, p),
-                onMarkDelivered: () => _markDelivered(ctx, p),
+                onMarkPaid: () => _markPaid(p),
+                onMarkDelivered: () => _markDelivered(p),
                 onDelete: () => _confirmDelete(ctx, p),
                 onShare: () async {
                   try {

@@ -922,7 +922,6 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                 onPressed: canRetry
                     ? () {
                         _bumpInvalidate();
-                        ref.invalidate(reportsPurchasesPayloadProvider);
                       }
                     : null,
                 child: const Text('Retry'),
@@ -1275,7 +1274,6 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                         canRetry: !purchasesAsync.isLoading,
                         onRetry: () {
                           _bumpInvalidate();
-                          ref.invalidate(reportsPurchasesPayloadProvider);
                         },
                         onMatchHome: _syncRangeWithHome,
                         onPickRange: () => unawaited(_pickCustomRange()),

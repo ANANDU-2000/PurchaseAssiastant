@@ -19,6 +19,17 @@ import '../../../../shared/widgets/inline_search_field.dart';
 import '../../../../shared/widgets/keyboard_safe_form_viewport.dart';
 import 'party_inline_suggest_field.dart';
 
+String _stripKgSuffixForCatalogDisplay(String name) => name
+    .replaceAll(RegExp(r'\s*\d+(\.\d+)?\s*KG\s*$', caseSensitive: false), '')
+    .trim();
+
+/// Persist [default_kg_per_bag] (+ optional rename) for catalog items used as bags.
+typedef PersistCatalogBagWeight = Future<void> Function({
+  required String catalogItemId,
+  required String newName,
+  required double defaultKgPerBag,
+});
+
 /// One purchase line: catalog search, qty/unit, landing, selling, optional
 /// tax/discount (per kg for bag with a catalog kg snapshot, else per unit).
 class PurchaseItemEntrySheet extends StatefulWidget {
@@ -39,7 +50,8 @@ class PurchaseItemEntrySheet extends StatefulWidget {
     this.omitLineFreightDeliveredBilltyDiscount = false,
     /// Optional: push catalog add-item route; caller invalidates catalog + returns `{id,name}`.
     this.navigateCatalogQuickAddItem,
-    /// Boosts catalog suggestions when they match this supplier (defaults / last buy).
+    /// When set, user can save missing kg/bag to the server from a blocking sheet.
+    this.persistCatalogBagWeight,
     this.preferredSupplierId,
   });
 
@@ -55,6 +67,7 @@ class PurchaseItemEntrySheet extends StatefulWidget {
   final bool fullPage;
   final bool omitLineFreightDeliveredBilltyDiscount;
   final Future<Map<String, dynamic>?> Function()? navigateCatalogQuickAddItem;
+  final PersistCatalogBagWeight? persistCatalogBagWeight;
   final String? preferredSupplierId;
 
   @override
@@ -648,6 +661,18 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     // [Bug 2] After switching to bag, seed kg-per-bag from item name if catalog
     // didn't provide one (`SUGAR 50 KG` → 50, `RICE 26 KG` → 26).
     _maybeAutoSeedKgFromName();
+    if ((vLow == 'bag' || vLow == 'sack') &&
+        widget.persistCatalogBagWeight != null &&
+        (_kgPer() == null || _kgPer()! <= 0)) {
+      final cid = _selectedCatalogItemId?.trim();
+      if (cid != null && cid.isNotEmpty) {
+        final row = _catalogRowById(cid);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          unawaited(_offerCatalogKgPerBagSheetIfNeeded(row));
+        });
+      }
+    }
   }
 
   Widget _unitDropdownField({required String? errorText}) {
@@ -1528,7 +1553,8 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       if (unitLow == 'bag' || unitLow == 'sack') {
         final k = _kgPer();
         if (k == null || k <= 0) {
-          _errKgPerBag = 'Kg per bag required';
+          _errKgPerBag =
+              'Kg per bag is required for bag lines. Enter it below, or use the catalog prompt when offered.';
         }
       } else if (clf.type == UnitType.weightBag) {
         final k = _kgPer();
@@ -1731,7 +1757,25 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
 
   void _commit({required bool closeSheet}) {
     final line = _validateAndBuildLine();
-    if (line == null) return;
+    if (line == null) {
+      if (mounted) {
+        final msg = _errKgPerBag ??
+            _errQty ??
+            _errItem ??
+            _errUnit ??
+            _errLanding ??
+            _errSelling;
+        if (msg != null && msg.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(msg),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+      return;
+    }
     widget.onCommitted(line);
     if (!widget.fullPage) {
       if (closeSheet) {
@@ -1836,6 +1880,175 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         _kgPerUnit = kpbD;
         _kgPerBagCtrl.text = _fmtQty(kpbD);
       });
+    }
+  }
+
+  Future<void> _offerCatalogKgPerBagSheetIfNeeded(Map<String, dynamic>? row) async {
+    if (!mounted || row == null || widget.persistCatalogBagWeight == null) return;
+    final cid = _selectedCatalogItemId?.trim();
+    if (cid == null || cid.isEmpty) return;
+    final u = _unitCtrl.text.trim().toLowerCase();
+    if (u != 'bag' && u != 'sack') return;
+    final k = _kgPer();
+    if (k != null && k > 0) return;
+    final kpb = _catalogKpb(row);
+    if (kpb != null && kpb > 0) return;
+
+    final currentName = (row['name']?.toString() ?? _itemCtrl.text).trim();
+    if (currentName.isEmpty) return;
+
+    final kgCtrl = TextEditingController();
+    try {
+      final kgOut = await showModalBottomSheet<double>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        backgroundColor: Colors.white,
+        builder: (ctx) {
+          return Padding(
+            padding: EdgeInsets.only(
+              left: 24,
+              right: 24,
+              top: 8,
+              bottom: 24 + MediaQuery.viewInsetsOf(ctx).bottom,
+            ),
+            child: StatefulBuilder(
+              builder: (ctx2, setModal) {
+                return SingleChildScrollView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                    Text(
+                      'Missing bag weight',
+                      style: Theme.of(ctx2).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Enter kg per bag for "$currentName" so totals calculate correctly. '
+                      'This is saved to the catalog.',
+                      style: TextStyle(color: Colors.grey[700], fontSize: 13),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: kgCtrl,
+                      autofocus: true,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        labelText: 'KG per bag',
+                        suffixText: 'kg/bag',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onChanged: (_) => setModal(() {}),
+                    ),
+                    const SizedBox(height: 8),
+                    Builder(
+                      builder: (ctx3) {
+                        final kg = double.tryParse(kgCtrl.text.trim());
+                        if (kg == null || kg <= 0) {
+                          return const SizedBox.shrink();
+                        }
+                        final base = _stripKgSuffixForCatalogDisplay(currentName);
+                        final suffix = (kg - kg.roundToDouble()).abs() < 1e-6
+                            ? '${kg.round()}KG'
+                            : '${kg.toStringAsFixed(1)}KG';
+                        final newName = '$base $suffix'.trim();
+                        return Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8F5E9),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            'Item will be renamed to:\n"$newName"',
+                            style: const TextStyle(
+                              color: Color(0xFF1A7A6A),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Skip'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: () {
+                              final kg = double.tryParse(kgCtrl.text.trim());
+                              if (kg != null && kg > 0) {
+                                Navigator.pop(ctx, kg);
+                              }
+                            },
+                            child: const Text('Save & continue'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  ),
+                );
+              },
+            ),
+          );
+        },
+      );
+      if (!mounted || kgOut == null || kgOut <= 0) return;
+
+      final base = _stripKgSuffixForCatalogDisplay(currentName);
+      final suffix = (kgOut - kgOut.roundToDouble()).abs() < 1e-6
+          ? '${kgOut.round()}KG'
+          : '${kgOut.toStringAsFixed(1)}KG';
+      final newName = '$base $suffix'.trim();
+      await widget.persistCatalogBagWeight!(
+        catalogItemId: cid,
+        newName: newName,
+        defaultKgPerBag: kgOut,
+      );
+      if (!mounted) return;
+      final merged = Map<String, dynamic>.from(row);
+      merged['name'] = newName;
+      merged['default_kg_per_bag'] = kgOut;
+      setState(() {
+        _catalogFetchById[cid] = merged;
+        _applyBagKgFromCatalog(merged, kgOut);
+        _itemCtrl.text = newName;
+        _errKgPerBag = null;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Saved $kgOut kg/bag for "$newName"'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not save catalog weight: $e'),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.red.shade800,
+        ),
+      );
+    } finally {
+      kgCtrl.dispose();
     }
   }
 
@@ -2281,6 +2494,10 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       nameFallback: it.label,
     );
     _scheduleLastDefaultsFetch(it.id, seq);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || seq != _catalogPickSeq) return;
+      unawaited(_offerCatalogKgPerBagSheetIfNeeded(_catalogRowById(it.id)));
+    });
   }
 
   /// Line preview: qty + unit + total weight, then rates and profit.
@@ -2445,6 +2662,13 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
             focusAfterSelection: _qtyFocus,
             debugLabel: 'catalogItem',
             hintText: 'Search item (name, code, HSN)…',
+            hintStyle: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF334155),
+            ),
+            idleOutlineColor: const Color(0xFF64748B),
+            fillColor: Colors.white,
             prefixIcon: const Icon(Icons.inventory_2_outlined),
             minQueryLength: 1,
             maxMatches: 8,

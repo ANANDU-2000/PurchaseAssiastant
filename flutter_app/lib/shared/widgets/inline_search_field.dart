@@ -71,6 +71,9 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
   FocusNode get _focus => widget.focusNode ?? _ownedFocus;
   bool get _disposeFocus => widget.focusNode == null;
 
+  /// Same group as autocomplete options overlay so taps on suggestions are not "outside".
+  final Object _suggestionTapGroup = Object();
+
   bool _pickInProgress = false;
   String? _lastPickFingerprint;
   int _lastPickMs = 0;
@@ -166,6 +169,7 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
     setState(() {});
     try {
       widget.onSelected(it);
+      HapticFeedback.selectionClick();
     } finally {
       _pickInProgress = false;
     }
@@ -179,24 +183,30 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
     }
   }
 
-  double _optionsMaxHeight(BuildContext context) {
+  double _optionsMaxHeight(BuildContext context, int optionCount) {
     final mq = MediaQuery.of(context);
     final usable = mq.size.height -
         mq.viewInsets.bottom -
         mq.padding.vertical;
-    // Keep overlay short so primary actions (Save / Next) stay reachable.
-    final v = math.max(120.0, usable * 0.34);
-    return math.min(220.0, v);
+    final byCount = optionCount * 56.0 + 48;
+    final v = math.max(120.0, math.min(usable * 0.42, byCount));
+    return math.min(280.0, v);
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        RawAutocomplete<InlineSearchItem>(
+    return TapRegion(
+      groupId: _suggestionTapGroup,
+      onTapOutside: (_) {
+        if (_pickInProgress) return;
+        _focus.unfocus();
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          RawAutocomplete<InlineSearchItem>(
           focusNode: _focus,
           textEditingController: _ctrl,
           displayStringForOption: (InlineSearchItem o) => o.label,
@@ -268,87 +278,114 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
           ) {
             final opts = options.toList();
             if (opts.isEmpty) return const SizedBox.shrink();
-            return Align(
-              alignment: Alignment.topLeft,
-              child: Material(
-                elevation: 8,
-                borderRadius: BorderRadius.circular(12),
-                clipBehavior: Clip.antiAlias,
-                color: Colors.white,
-                child: ConstrainedBox(
-                  constraints:
-                      BoxConstraints(maxHeight: _optionsMaxHeight(context)),
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    padding: EdgeInsets.zero,
-                    physics: const ClampingScrollPhysics(),
-                    itemCount: opts.length,
-                    separatorBuilder: (_, __) => Divider(
-                      height: 1,
-                      thickness: 1,
-                      color: Colors.grey[200],
+            return TapRegion(
+              groupId: _suggestionTapGroup,
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: Material(
+                  elevation: 8,
+                  borderRadius: BorderRadius.circular(12),
+                  clipBehavior: Clip.antiAlias,
+                  color: Colors.white,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: _optionsMaxHeight(context, opts.length),
                     ),
-                    itemBuilder: (BuildContext ctx, int i) {
-                      final it = opts[i];
-                      void commit() => onSelected(it);
-                      return Listener(
-                        behavior: HitTestBehavior.opaque,
-                        onPointerDown: (PointerDownEvent e) {
-                          if (e.buttons != 0 &&
-                              (e.buttons & kPrimaryButton) == 0) {
-                            return;
-                          }
-                          commit();
-                        },
-                        child: InkWell(
-                          onTap: commit,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: IconButton(
+                            tooltip: 'Close suggestions',
+                            visualDensity: VisualDensity.compact,
+                            icon: Icon(
+                              Icons.close_rounded,
+                              color: cs.onSurfaceVariant,
                             ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  it.label,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                                if (it.subtitle != null &&
-                                    it.subtitle!.trim().isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 2),
-                                    child: Text(
-                                      it.subtitle!,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Theme.of(ctx)
-                                            .colorScheme
-                                            .onSurfaceVariant,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
+                            onPressed: () => _focus.unfocus(),
                           ),
                         ),
-                      );
-                    },
+                        Expanded(
+                          child: ListView.separated(
+                            shrinkWrap: false,
+                            padding: EdgeInsets.zero,
+                            physics: const ClampingScrollPhysics(),
+                            itemCount: opts.length,
+                            separatorBuilder: (_, __) => Divider(
+                              height: 1,
+                              thickness: 1,
+                              color: Colors.grey[200],
+                            ),
+                            itemBuilder: (BuildContext ctx, int i) {
+                              final it = opts[i];
+                              void commit() => onSelected(it);
+                              return Listener(
+                                behavior: HitTestBehavior.opaque,
+                                onPointerDown: (PointerDownEvent e) {
+                                  if (e.buttons != 0 &&
+                                      (e.buttons & kPrimaryButton) == 0) {
+                                    return;
+                                  }
+                                  commit();
+                                },
+                                child: InkWell(
+                                  onTap: commit,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 10,
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          it.label,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                        if (it.subtitle != null &&
+                                            it.subtitle!.trim().isNotEmpty)
+                                          Padding(
+                                            padding:
+                                                const EdgeInsets.only(top: 2),
+                                            child: Text(
+                                              it.subtitle!,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Theme.of(ctx)
+                                                    .colorScheme
+                                                    .onSurfaceVariant,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             );
           },
         ),
-      ],
+        ],
+      ),
     );
   }
 }

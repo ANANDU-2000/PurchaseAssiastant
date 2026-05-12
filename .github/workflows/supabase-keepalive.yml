@@ -1,0 +1,25 @@
+# Optional: ping Supabase REST so free-tier projects stay warm (set repo secrets).
+name: Supabase keep-alive
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: HEAD Supabase REST
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "Skip: SUPABASE_URL or SUPABASE_ANON_KEY not set."
+            exit 0
+          fi
+          curl -sS -o /dev/null -w "%{http_code}\n" \
+            -I "$SUPABASE_URL/rest/v1/" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY"

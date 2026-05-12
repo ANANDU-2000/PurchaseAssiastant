@@ -1098,6 +1098,31 @@ async def contacts_search(
             ItemSearchHitOut(name=pair[0], catalog_item_id=pair[1])
             for _, pair in hits_sorted
         ]
+        missing = [h for h in item_hits if h.catalog_item_id is None and h.name.strip()]
+        if missing:
+            norms = {_norm_name(h.name) for h in missing}
+            conds = [
+                func.lower(func.trim(CatalogItem.name)) == n for n in norms if n
+            ]
+            if conds:
+                r2 = await db.execute(
+                    select(CatalogItem.id, CatalogItem.name).where(
+                        CatalogItem.business_id == business_id,
+                        or_(*conds),
+                    )
+                )
+                id_by_norm: dict[str, uuid.UUID] = {}
+                for cid, raw_nm in r2.all():
+                    if raw_nm:
+                        id_by_norm[_norm_name(str(raw_nm))] = cid
+                item_hits = [
+                    ItemSearchHitOut(
+                        name=h.name,
+                        catalog_item_id=h.catalog_item_id
+                        or id_by_norm.get(_norm_name(h.name)),
+                    )
+                    for h in item_hits
+                ]
         item_names = [h.name for h in item_hits]
 
     categories: list[str] = []

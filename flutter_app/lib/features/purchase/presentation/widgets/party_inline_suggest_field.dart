@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -136,6 +137,7 @@ class PartyInlineSuggestField extends StatefulWidget {
     this.idleOutlineColor,
     this.focusedOutlineColor,
     this.fillColor,
+    this.hintStyle,
     this.minFieldHeight = 0,
     this.lockedSelectionLabel,
     this.onLockedSelectionClear,
@@ -182,6 +184,9 @@ class PartyInlineSuggestField extends StatefulWidget {
   final Color? focusedOutlineColor;
 
   final Color? fillColor;
+
+  /// Optional hint typography (e.g. higher contrast on purchase item sheet).
+  final TextStyle? hintStyle;
 
   /// When > 0, field row is given at least this height (wizard uses 56).
   final double minFieldHeight;
@@ -231,6 +236,10 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   final GlobalKey _fieldMeasureKey = GlobalKey(debugLabel: 'partyInlineField');
   final LayerLink _layerLink = LayerLink();
   OverlayEntry? _suggestionOverlayEntry;
+
+  /// Groups the text field and overlay panel so [TapRegion.onTapOutside] does not
+  /// fire when the user taps a suggestion (overlay is not a descendant of the field).
+  final Object _suggestionTapGroup = Object();
 
   @override
   void initState() {
@@ -290,7 +299,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       return;
     }
     _suggestPanelGrace = true;
-    _suggestPanelGraceTimer = Timer(const Duration(milliseconds: 360), () {
+    _suggestPanelGraceTimer = Timer(const Duration(milliseconds: 420), () {
       _suggestPanelGraceTimer = null;
       _suggestPanelGrace = false;
       if (!mounted) return;
@@ -486,6 +495,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
         _pickInProgress = false;
       }
     }
+    HapticFeedback.selectionClick();
 
     widget.controller.value = TextEditingValue(
       text: it.label,
@@ -523,48 +533,56 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     // unfocused the [TextField] and removed the list before [onPressed] ran. InkWell
     // keeps the field focused so taps commit reliably (web + mobile); grace timer
     // below is still a safety net for other focus edge cases.
-    return Material(
-      type: MaterialType.transparency,
-      color: cs.surface,
-      child: InkWell(
-        onTap: commit,
-        hoverColor: cs.primary.withValues(alpha: 0.05),
-        splashColor: cs.primary.withValues(alpha: 0.10),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 44, minWidth: double.infinity),
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: 14,
-              vertical: widget.dense ? 10 : 12,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  it.label,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                    color: cs.onSurface,
-                  ),
-                ),
-                if (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      it.subtitle!.trim(),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: cs.onSurfaceVariant,
-                      ),
+    return Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: (PointerDownEvent e) {
+        if (e.buttons != 0 && (e.buttons & kPrimaryButton) == 0) return;
+        commit();
+      },
+      child: Material(
+        type: MaterialType.transparency,
+        color: cs.surface,
+        child: InkWell(
+          onTap: commit,
+          hoverColor: cs.primary.withValues(alpha: 0.05),
+          splashColor: cs.primary.withValues(alpha: 0.10),
+          child: ConstrainedBox(
+            constraints:
+                const BoxConstraints(minHeight: 44, minWidth: double.infinity),
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: widget.dense ? 10 : 12,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    it.label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      color: cs.onSurface,
                     ),
                   ),
-              ],
+                  if (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        it.subtitle!.trim(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),
@@ -709,8 +727,8 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     final sz = box.size;
     final availBelow =
         media.size.height - media.viewInsets.bottom - media.padding.bottom;
-    final maxPanelH = math.min(
-      widget.maxPanelAbs,
+    final double maxPanelH = math.min(
+      math.min(widget.maxPanelAbs, 280.0),
       math.max(120.0, availBelow - sz.height - 24),
     );
     final showDivider = rows.isNotEmpty &&
@@ -732,33 +750,56 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       link: _layerLink,
       showWhenUnlinked: false,
       offset: Offset(0, sz.height + 4),
-      child: Material(
-        elevation: 12,
-        shadowColor: Colors.black.withValues(alpha: 0.25),
-        borderRadius: BorderRadius.circular(12),
-        clipBehavior: Clip.antiAlias,
-        child: SizedBox(
-          width: sz.width,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: cs.surface,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: borderColor.withValues(alpha: 0.45)),
-            ),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxHeight: maxPanelH),
-              child: ListView(
-                shrinkWrap: true,
-                physics: overlayListPhysics,
-                padding: EdgeInsets.zero,
-                clipBehavior: Clip.hardEdge,
-                children: [
-                  for (final it in rows) _buildSuggestionTile(cs, it),
-                  if (showDivider)
-                    Divider(height: 1, thickness: 1, color: borderColor),
-                  if (showAddFocused && widget.onAddRow != null)
-                    _buildAddRowTile(cs),
-                ],
+      child: TapRegion(
+        groupId: _suggestionTapGroup,
+        child: Material(
+          elevation: 12,
+          shadowColor: Colors.black.withValues(alpha: 0.25),
+          borderRadius: BorderRadius.circular(12),
+          clipBehavior: Clip.antiAlias,
+          child: SizedBox(
+            width: sz.width,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: cs.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: borderColor.withValues(alpha: 0.45)),
+              ),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: maxPanelH),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: IconButton(
+                        tooltip: 'Close suggestions',
+                        visualDensity: VisualDensity.compact,
+                        icon: Icon(Icons.close_rounded, color: cs.onSurfaceVariant),
+                        onPressed: () {
+                          widget.focusNode.unfocus();
+                          _removeSuggestionOverlay();
+                        },
+                      ),
+                    ),
+                    Expanded(
+                      child: ListView(
+                        shrinkWrap: false,
+                        physics: overlayListPhysics,
+                        padding: EdgeInsets.zero,
+                        clipBehavior: Clip.hardEdge,
+                        children: [
+                          for (final it in rows) _buildSuggestionTile(cs, it),
+                          if (showDivider)
+                            Divider(height: 1, thickness: 1, color: borderColor),
+                          if (showAddFocused && widget.onAddRow != null)
+                            _buildAddRowTile(cs),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -821,10 +862,11 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
         decoration: InputDecoration(
           hintText: widget.hintText,
           isDense: true,
-          hintStyle: TextStyle(
-            fontSize: widget.dense ? 13 : 14,
-            color: Colors.grey.shade500,
-          ),
+          hintStyle: widget.hintStyle ??
+              TextStyle(
+                fontSize: widget.dense ? 13 : 14,
+                color: Colors.grey.shade500,
+              ),
           border: InputBorder.none,
           isCollapsed: false,
           contentPadding: fieldPad,
@@ -975,6 +1017,14 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     } else if (_suggestionOverlayEntry != null) {
       _removeSuggestionOverlay();
     }
-    return subtree;
+    return TapRegion(
+      groupId: _suggestionTapGroup,
+      onTapOutside: (_) {
+        if (_pickInProgress || _suppressPanelAfterPick) return;
+        widget.focusNode.unfocus();
+        _removeSuggestionOverlay();
+      },
+      child: subtree,
+    );
   }
 }

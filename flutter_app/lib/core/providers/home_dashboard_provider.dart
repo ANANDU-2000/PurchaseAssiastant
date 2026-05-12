@@ -674,13 +674,18 @@ Future<HomeDashboardPayload> _homeDashboardPullFresh({
 
   try {
     final overviewSw = Stopwatch()..start();
-    final snap = await api.reportsHomeOverview(
-      businessId: bid,
-      from: from,
-      to: to,
-      compact: true,
-      shellBundle: true,
-    );
+    final snap = await api
+        .reportsHomeOverview(
+          businessId: bid,
+          from: from,
+          to: to,
+          compact: true,
+          shellBundle: true,
+        )
+        .timeout(
+          const Duration(seconds: 12),
+          onTimeout: () => throw TimeoutException('reportsHomeOverview'),
+        );
     if (kDebugMode) {
       debugPrint(
         'homeDashboard: reportsHomeOverview ${overviewSw.elapsedMilliseconds}ms '
@@ -762,6 +767,21 @@ Future<HomeDashboardPayload> _homeDashboardPullFresh({
       ),
       readDegradedBanner: readDegradedBanner,
       readDegraded: readDegraded,
+    );
+  } on TimeoutException catch (_) {
+    final streak = _DashboardFailureStats.bump(dedupeKey);
+    if (cachedData != null) {
+      return HomeDashboardPayload(
+        data: cachedData,
+        banner: 'Dashboard request timed out — showing last data',
+        persistAlert: streak >= 3,
+        stale: true,
+      );
+    }
+    return HomeDashboardPayload(
+      data: HomeDashboardData.empty,
+      banner: 'Dashboard load timed out — try again',
+      persistAlert: streak >= 3,
     );
   } on DioException catch (e) {
     final streak = _DashboardFailureStats.bump(dedupeKey);

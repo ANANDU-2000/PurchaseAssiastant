@@ -209,6 +209,7 @@ async def harisree_request_monitor_middleware(request: Request, call_next):
     if cfg.http_propagate_request_id and rid:
         response.headers.setdefault("X-Request-Id", rid)
         response.headers["X-Process-Time-Ms"] = str(ms)
+    response.headers.setdefault("X-Response-Time", f"{ms}ms")
 
     slow_ms = getattr(cfg, "http_slow_request_warning_ms", None) or 0
     is_slow = slow_ms > 0 and ms >= slow_ms

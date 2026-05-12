@@ -27,6 +27,17 @@ Future<void> openTradeItemFromReportRow(
           break;
         }
       }
+      if (cid.isEmpty) {
+        for (final m in list) {
+          final n = norm((m['name'] ?? '').toString());
+          if (want.isNotEmpty &&
+              (n.contains(want) || want.contains(n)) &&
+              (m['id']?.toString() ?? '').trim().isNotEmpty) {
+            cid = m['id']!.toString().trim();
+            break;
+          }
+        }
+      }
     } catch (_) {}
   }
   if (!context.mounted) return;

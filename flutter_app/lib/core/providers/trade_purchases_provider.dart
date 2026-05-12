@@ -78,7 +78,7 @@ final purchaseHistoryDateToProvider =
 final tradePurchasesForAlertsProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final link = ref.keepAlive();
-  final t = Timer(const Duration(minutes: 5), link.close);
+  final t = Timer(const Duration(minutes: 8), link.close);
   ref.onDispose(t.cancel);
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
@@ -111,7 +111,7 @@ class TradePurchasesListNotifier extends AutoDisposeAsyncNotifier<TradePurchases
   @override
   Future<TradePurchasesListView> build() async {
     final link = ref.keepAlive();
-    final t = Timer(const Duration(minutes: 5), link.close);
+    final t = Timer(const Duration(minutes: 8), link.close);
     ref.onDispose(t.cancel);
 
     final session = ref.watch(sessionProvider);
@@ -273,7 +273,7 @@ final purchaseUnitTotalsProvider =
 final tradePurchasesCatalogIntelProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final link = ref.keepAlive();
-  final t = Timer(const Duration(minutes: 5), link.close);
+  final t = Timer(const Duration(minutes: 8), link.close);
   ref.onDispose(t.cancel);
   final session = ref.watch(sessionProvider);
   if (session == null) return [];

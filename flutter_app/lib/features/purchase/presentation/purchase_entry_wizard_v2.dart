@@ -128,6 +128,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
   final _billtyRateCtrl = TextEditingController();
   final _freightCtrl = TextEditingController();
   final _invoiceCtrl = TextEditingController();
+  final _wizardBodyScrollController = ScrollController();
 
   void _partyFieldFocusNotify() {
     if (!mounted) return;
@@ -604,6 +605,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     _billtyRateCtrl.dispose();
     _freightCtrl.dispose();
     _invoiceCtrl.dispose();
+    _wizardBodyScrollController.dispose();
     _partySupplierFocus.dispose();
     _partyBrokerFocus.dispose();
     super.dispose();
@@ -1091,6 +1093,22 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     } catch (_) {}
   }
 
+  void _scrollWizardItemsStepToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_wizardBodyScrollController.hasClients) return;
+        final pos = _wizardBodyScrollController.position;
+        if (pos.maxScrollExtent <= 0) return;
+        _wizardBodyScrollController.animateTo(
+          pos.maxScrollExtent,
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeOut,
+        );
+      });
+    });
+  }
+
   Future<void> _openItemSheet(
     List<Map<String, dynamic>> catalog, {
     int? editIndex,
@@ -1184,6 +1202,24 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
                         brokerId: d.brokerId,
                       );
                 },
+          persistCatalogBagWeight: session == null
+              ? null
+              : ({
+                  required String catalogItemId,
+                  required String newName,
+                  required double defaultKgPerBag,
+                }) async {
+                  await ref.read(hexaApiProvider).updateCatalogItem(
+                        businessId: session.primaryBusiness.id,
+                        itemId: catalogItemId,
+                        name: newName,
+                        patchDefaultKgPerBag: true,
+                        defaultKgPerBag: defaultKgPerBag,
+                        includeDefaultUnit: true,
+                        defaultUnit: 'bag',
+                      );
+                  ref.invalidate(catalogItemsListProvider);
+                },
           onCommitted: (line) {
             final p = PurchaseLineDraft.fromLineMap(
               Map<String, dynamic>.from(line),
@@ -1201,6 +1237,9 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
         ),
       ),
     );
+    if (mounted && _wizStep == 2) {
+      _scrollWizardItemsStepToBottom();
+    }
   }
 
   bool _isEditMode() =>
@@ -2061,6 +2100,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
             children: [
               Expanded(
                 child: SingleChildScrollView(
+                  controller: _wizardBodyScrollController,
                   keyboardDismissBehavior:
                       ScrollViewKeyboardDismissBehavior.onDrag,
                   padding: EdgeInsets.fromLTRB(16, 16, 16, kb > 0 ? 8 : 16),
