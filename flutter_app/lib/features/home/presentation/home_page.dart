@@ -493,16 +493,23 @@ class _HomePageState extends ConsumerState<HomePage>
             Expanded(
               child: Stack(
                 clipBehavior: Clip.none,
+                fit: StackFit.expand,
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                    child: _HomeFixedHeaderBody(
-                      data: effectiveData,
-                      pendingDeliveryCount: effectiveData.pendingDeliveryCount,
-                      categoryColors: _donutColors,
-                      paintShellSkeleton: shellSkeleton,
-                      dashboardRefreshing: async.refreshing,
-                      homePeriod: period,
+                  // Web + nested Scaffold: without [Positioned.fill], [Stack] can pass
+                  // loose vertical constraints; [Column] + inner [Expanded] then lays out
+                  // with zero height and the home body appears blank (shell nav still shows).
+                  Positioned.fill(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                      child: _HomeFixedHeaderBody(
+                        data: effectiveData,
+                        pendingDeliveryCount:
+                            effectiveData.pendingDeliveryCount,
+                        categoryColors: _donutColors,
+                        paintShellSkeleton: shellSkeleton,
+                        dashboardRefreshing: async.refreshing,
+                        homePeriod: period,
+                      ),
                     ),
                   ),
                   Positioned(
@@ -1233,9 +1240,13 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
         if (_chartExpanded)
           LayoutBuilder(
             builder: (context, c) {
+              final mw = c.maxWidth;
+              if (!mw.isFinite || mw < 8) {
+                return const SizedBox(height: 120);
+              }
               final previewSide = computeHomeSpendRingDiameter(
                 screenHeight: MediaQuery.sizeOf(context).height,
-                layoutMaxWidth: c.maxWidth,
+                layoutMaxWidth: mw,
               );
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -1744,6 +1755,15 @@ class _HomeBreakdownListKeepAliveState
 
     return LayoutBuilder(
       builder: (context, constraints) {
+        final maxH = constraints.maxHeight;
+        if (!maxH.isFinite || maxH < 8) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          );
+        }
         if (tab != HomeBreakdownTab.category) {
           if (shell.isLoading &&
               shell.valueOrNull == null &&
