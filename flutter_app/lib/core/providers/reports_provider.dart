@@ -328,6 +328,18 @@ final reportsPurchasesPayloadProvider =
     final key = '${session.primaryBusiness.id}|$fromStr|$toStr';
     final now = DateTime.now().millisecondsSinceEpoch;
     final last = _reportsSilentRefreshAt[key] ?? 0;
+    // After a write we bust Hive keys — [hive] is null until a fetch repopulates.
+    // Returning [] here made Reports/Home aggregates look empty until the user
+    // opened Reports or the 8s throttle fired; await once when cache is missing.
+    if (hive == null) {
+      try {
+        final items = await _loadReportsPurchases(ref);
+        ref.invalidate(reportsPurchasesHiveCacheProvider);
+        return ReportsPurchasePayload(items: items, fromLiveFetch: true);
+      } catch (_) {
+        return ReportsPurchasePayload.empty();
+      }
+    }
     if (now - last >= _reportsSilentRefreshMinIntervalMs) {
       _reportsSilentRefreshAt[key] = now;
       unawaited(() async {
@@ -338,7 +350,7 @@ final reportsPurchasesPayloadProvider =
       }());
     }
     return ReportsPurchasePayload(
-      items: hive ?? const [],
+      items: hive,
       fromLiveFetch: false,
     );
   }

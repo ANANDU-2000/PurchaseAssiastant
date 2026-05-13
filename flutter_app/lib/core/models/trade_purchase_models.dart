@@ -384,14 +384,16 @@ class TradePurchase {
       }
     }
 
-    final pd = parseD('purchase_date') ?? DateTime.now();
+    final pd = parseD('purchase_date') ??
+        parseD('purchaseDate') ??
+        DateTime.now();
     final cm = _normTradePurchaseCommissionMode(j['commission_mode']?.toString());
     final cPct = _decNullableDouble(j['commission_percent']);
     final cMoney = _decNullableDouble(j['commission_money']);
 
     return TradePurchase(
       id: j['id']?.toString() ?? '',
-      humanId: j['human_id']?.toString() ?? '',
+      humanId: j['human_id']?.toString() ?? j['humanId']?.toString() ?? '',
       invoiceNumber: j['invoice_number']?.toString(),
       purchaseDate: pd,
       supplierId: j['supplier_id']?.toString(),
@@ -410,8 +412,8 @@ class TradePurchase {
       remaining: _decNullableDouble(j['remaining']) ??
           _decDouble(j['total_amount']) - _decDouble(j['paid_amount']),
       itemsCount: coerceToInt(j['items_count'], fallback: lines.length),
-      supplierName: j['supplier_name']?.toString(),
-      brokerName: j['broker_name']?.toString(),
+      supplierName: j['supplier_name']?.toString() ?? j['supplierName']?.toString(),
+      brokerName: j['broker_name']?.toString() ?? j['brokerName']?.toString(),
       supplierGst: j['supplier_gst']?.toString(),
       supplierAddress: j['supplier_address']?.toString(),
       supplierPhone: j['supplier_phone']?.toString(),

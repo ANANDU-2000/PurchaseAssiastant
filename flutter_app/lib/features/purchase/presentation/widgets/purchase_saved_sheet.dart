@@ -13,6 +13,33 @@ import '../../../../core/theme/hexa_colors.dart';
 String _inr(num n) =>
     NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(n);
 
+/// Merges wizard-local display fields when the create/update payload omits them
+/// (e.g. minimal API rows) so PDF filename, WhatsApp, and email stay accurate.
+Map<String, dynamic> enrichSavedTradePurchaseJson(
+  Map<String, dynamic> saved, {
+  String? supplierNameFallback,
+  String? brokerNameFallback,
+  DateTime? purchaseDateFallback,
+}) {
+  final o = Map<String, dynamic>.from(saved);
+  void putIfBlank(String key, String? fb) {
+    final cur = o[key]?.toString().trim() ?? '';
+    final v = fb?.trim() ?? '';
+    if (cur.isEmpty && v.isNotEmpty) {
+      o[key] = v;
+    }
+  }
+
+  putIfBlank('supplier_name', supplierNameFallback);
+  putIfBlank('broker_name', brokerNameFallback);
+  final pd = o['purchase_date']?.toString().trim() ?? '';
+  if (pd.isEmpty && purchaseDateFallback != null) {
+    o['purchase_date'] =
+        DateFormat('yyyy-MM-dd').format(purchaseDateFallback);
+  }
+  return o;
+}
+
 String _whatsappSummary(TradePurchase p) {
   final buf = StringBuffer();
   buf.writeln('*Purchase ${p.humanId}*');
@@ -25,7 +52,9 @@ String _whatsappSummary(TradePurchase p) {
     buf.writeln(line);
   }
   buf.writeln('Total: ${_inr(p.totalAmount)}');
-  buf.write('(PDF: open app → Purchases → ${p.humanId} → share/print)');
+  buf.writeln(
+    'Bill PDF: in the app use Share PDF on this purchase (no web link).',
+  );
   return buf.toString();
 }
 
@@ -43,8 +72,17 @@ Future<String?> showPurchaseSavedSheet(
   WidgetRef ref, {
   required Map<String, dynamic> savedJson,
   required bool wasEdit,
+  String? displaySupplierName,
+  String? displayBrokerName,
+  DateTime? displayPurchaseDate,
 }) async {
-  final p = TradePurchase.fromJson(Map<String, dynamic>.from(savedJson));
+  final merged = enrichSavedTradePurchaseJson(
+    savedJson,
+    supplierNameFallback: displaySupplierName,
+    brokerNameFallback: displayBrokerName,
+    purchaseDateFallback: displayPurchaseDate,
+  );
+  final p = TradePurchase.fromJson(merged);
   final biz = ref.read(invoiceBusinessProfileProvider);
 
   if (!context.mounted) return null;
@@ -86,6 +124,8 @@ Future<String?> showPurchaseSavedSheet(
               ),
             ),
             Text(
+              '${DateFormat('dd MMM yyyy').format(p.purchaseDate)} · '
+              '${(p.supplierName ?? '').trim().isNotEmpty ? p.supplierName!.trim() : 'Supplier —'} · '
               '${_inr(p.totalAmount)} · ${p.lines.length} line(s)',
               style: const TextStyle(color: HexaColors.neutral, fontSize: 13),
             ),
@@ -175,7 +215,9 @@ Future<String?> showPurchaseSavedSheet(
             ListTile(
               leading: const Icon(Icons.chat_rounded),
               title: const Text('WhatsApp (summary)'),
-              subtitle: const Text('Opens WhatsApp with text — attach PDF from Share PDF if needed'),
+              subtitle: const Text(
+                'Opens WhatsApp with a text summary — use Share PDF to send the actual bill file',
+              ),
               onTap: () async {
                 ctx.pop('home');
                 await _openWhatsAppSummary(p);
@@ -184,10 +226,24 @@ Future<String?> showPurchaseSavedSheet(
             ListTile(
               leading: const Icon(Icons.email_outlined),
               title: const Text('Email'),
+              subtitle: const Text(
+                'Prefills subject and details — attach the PDF from Share PDF',
+              ),
               onTap: () async {
                 ctx.pop('home');
-                final sub = Uri.encodeComponent('Purchase ${p.humanId}');
-                final body = Uri.encodeComponent('Please find purchase ${p.humanId} attached.');
+                final dateStr = DateFormat('dd MMM yyyy').format(p.purchaseDate);
+                final sup =
+                    (p.supplierName ?? '').trim().isNotEmpty ? p.supplierName!.trim() : '—';
+                final sub = Uri.encodeComponent(
+                  'Purchase ${p.humanId} · $dateStr · $sup',
+                );
+                final body = Uri.encodeComponent(
+                  'Purchase: ${p.humanId}\n'
+                  'Date: $dateStr\n'
+                  'Supplier: $sup\n'
+                  'Total: ${_inr(p.totalAmount)}\n\n'
+                  'Attach the PDF from the app (Share PDF on this purchase).',
+                );
                 final uri = Uri.parse('mailto:?subject=$sub&body=$body');
                 if (await canLaunchUrl(uri)) {
                   await launchUrl(uri);

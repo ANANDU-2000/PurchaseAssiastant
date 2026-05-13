@@ -1671,6 +1671,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
               body: body,
             );
       }
+      final draftSnap = ref.read(purchaseDraftProvider);
       invalidatePurchaseWorkspace(ref);
       ref.read(purchaseDraftProvider.notifier).reset();
       await _clearDraftInPrefs();
@@ -1725,6 +1726,9 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
           ref,
           savedJson: saved,
           wasEdit: isEdit,
+          displaySupplierName: draftSnap.supplierName,
+          displayBrokerName: draftSnap.brokerName,
+          displayPurchaseDate: draftSnap.purchaseDate,
         );
         if (!mounted) return;
         if (!isEdit && pid.isNotEmpty) {
