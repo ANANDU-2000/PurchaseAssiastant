@@ -23,6 +23,37 @@ import 'core/maintenance/maintenance_payment_repository.dart';
 import 'core/services/offline_store.dart';
 import 'core/services/offline_sync_service.dart';
 
+/// Async errors that escape zones are not [FlutterErrorDetails]; treat common
+/// network failures as handled so they do not destabilize the engine. This does
+/// not replace call-site try/catch — see [_HexaErrorBoundary] in [app.dart].
+bool _hexaAsyncErrorLikelyBenign(Object error) {
+  if (error is DioException) return true;
+  if (error is TimeoutException) return true;
+  final s = error.toString();
+  return s.contains('SocketException') ||
+      s.contains('ClientException') ||
+      s.contains('Connection reset') ||
+      s.contains('Connection closed') ||
+      s.contains('HandshakeException') ||
+      s.contains('Failed host lookup');
+}
+
+void _installHexaPlatformAsyncErrorHook() {
+  final prev = ui.PlatformDispatcher.instance.onError;
+  ui.PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    if (prev != null && prev(error, stack)) {
+      return true;
+    }
+    if (kDebugMode) {
+      debugPrint('[Hexa] PlatformDispatcher.onError: $error\n$stack');
+    }
+    if (_hexaAsyncErrorLikelyBenign(error)) {
+      return true;
+    }
+    return false;
+  };
+}
+
 /// Pre-[HexaApp] UI must not use [MaterialApp]: on web the engine sets
 /// [PlatformDispatcher.defaultRouteName] to the browser path (e.g. `/home`).
 /// [MaterialApp] wires an internal [Navigator] that may run
@@ -59,6 +90,7 @@ Widget _bootstrapChrome(Widget child) {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  _installHexaPlatformAsyncErrorHook();
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
   };

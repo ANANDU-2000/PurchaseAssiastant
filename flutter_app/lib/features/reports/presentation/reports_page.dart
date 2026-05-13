@@ -81,11 +81,11 @@ class _MetricTile extends StatelessWidget {
         children: [
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.3,
-              color: Color(0xFF888888),
+              color: HexaColors.textBody,
             ),
           ),
           const SizedBox(height: 2),
@@ -93,7 +93,7 @@ class _MetricTile extends StatelessWidget {
             value,
             style: tt.titleSmall?.copyWith(
               fontWeight: FontWeight.w900,
-              color: const Color(0xFF1A1A1A),
+              color: HexaColors.brandPrimary,
             ),
           ),
         ],
@@ -469,11 +469,11 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                   children: [
                     Text(
                       'TOTAL AMOUNT',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0.8,
-                        color: Color(0xFF888888),
+                        color: HexaColors.textBody,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -481,7 +481,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                       _inr0(t.inr.round()),
                       style: tt.titleLarge?.copyWith(
                         fontWeight: FontWeight.w900,
-                        color: const Color(0xFF1A1A1A),
+                        color: HexaColors.brandPrimary,
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -850,6 +850,48 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
     }
   }
 
+  Widget _reportsFetchErrorCard(BuildContext context, Object? err) {
+    final detail = err == null ? '' : userFacingError(err);
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 10),
+      color: HexaColors.brandCard,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Icon(Icons.cloud_off_rounded,
+                size: 40, color: Colors.grey.shade400),
+            const SizedBox(height: 10),
+            Text(
+              'Could not load report data',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: HexaColors.textBody,
+                  ),
+            ),
+            if (detail.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                detail,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: HexaColors.textBody,
+                      height: 1.3,
+                    ),
+              ),
+            ],
+            const SizedBox(height: 14),
+            FilledButton.icon(
+              onPressed: () => _bumpInvalidate(),
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _openWhatsAppSheet(
     TradeReportAgg aggAll,
     DateTime from,
@@ -891,9 +933,14 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
     final aggList = _aggForList(aggAll, aggFiltered);
 
     final session = ref.watch(sessionProvider);
-    final showSkeleton =
-        purchasesAsync.isLoading && merged.isEmpty && !_stallBanner;
-    final showEmpty = merged.isEmpty && (!purchasesAsync.isLoading || _stallBanner);
+    final hasFetchError = purchasesAsync.hasError;
+    final showSkeleton = !hasFetchError &&
+        purchasesAsync.isLoading &&
+        merged.isEmpty &&
+        !_stallBanner;
+    final showEmpty = !hasFetchError &&
+        merged.isEmpty &&
+        (!purchasesAsync.isLoading || _stallBanner);
 
     Widget emptyCard() {
       final msg = (liveErr != null && liveErr.trim().isNotEmpty)
@@ -1264,6 +1311,8 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                         agg: aggAll,
                         viewportHeight: MediaQuery.sizeOf(context).height,
                         isLoadingInitial: showSkeleton,
+                        loadFailed: hasFetchError && merged.isEmpty,
+                        loadError: purchasesAsync.error,
                         isEmpty: showEmpty,
                         canRetry: true,
                         onRetry: () {
@@ -1283,6 +1332,8 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                           rowHeight: 72,
                           padding: EdgeInsets.fromLTRB(0, 0, 0, 24),
                         )
+                      else if (hasFetchError && merged.isEmpty)
+                        _reportsFetchErrorCard(context, purchasesAsync.error)
                       else if (showEmpty)
                         emptyCard()
                       else

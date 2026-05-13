@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -21,12 +20,12 @@ class ShellScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final idx = navigationShell.currentIndex;
     final prevBranch = ref.read(shellCurrentBranchProvider);
+    // Apply in the same frame as [navigationShell.currentIndex]. A post-frame
+    // update was too late: [tradePurchasesListProvider] watches this value and
+    // returned an empty list while the History tab was already visible, so the
+    // purchase list / loading UI stayed blank despite a 200 from the API.
     if (prevBranch != idx) {
-      SchedulerBinding.instance.addPostFrameCallback((_) {
-        if (ref.read(shellCurrentBranchProvider) != idx) {
-          ref.read(shellCurrentBranchProvider.notifier).state = idx;
-        }
-      });
+      ref.read(shellCurrentBranchProvider.notifier).state = idx;
     }
     final routePath = GoRouterState.of(context).uri.path;
     final conn = ref.watch(connectivityResultsProvider);

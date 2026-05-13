@@ -272,23 +272,59 @@ class _LoadedPurchaseScaffold extends ConsumerWidget {
 
   Future<void> _runPrintPdf(BuildContext context, WidgetRef ref) async {
     final biz = ref.read(invoiceBusinessProfileProvider);
-    await printPurchasePdf(p, biz);
+    final ok = await printPurchasePdf(p, biz);
+    if (!context.mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Could not print PDF. Try again.'),
+          action: SnackBarAction(
+            label: 'Retry',
+            onPressed: () => _runPrintPdf(context, ref),
+          ),
+        ),
+      );
+      return;
+    }
   }
 
   Future<void> _runSharePdf(BuildContext context, WidgetRef ref) async {
     final biz = ref.read(invoiceBusinessProfileProvider);
-    await sharePurchasePdf(p, biz);
-    if (context.mounted) {
+    final ok = await sharePurchasePdf(p, biz);
+    if (!context.mounted) return;
+    if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('PDF ready to share')),
+        SnackBar(
+          content: const Text('Could not export PDF. Try again.'),
+          action: SnackBarAction(
+            label: 'Retry',
+            onPressed: () => _runSharePdf(context, ref),
+          ),
+        ),
       );
+      return;
     }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('PDF ready to share')),
+    );
   }
 
   Future<void> _runDownloadPdf(BuildContext context, WidgetRef ref) async {
     final biz = ref.read(invoiceBusinessProfileProvider);
-    await downloadPurchasePdf(p, biz);
+    final ok = await downloadPurchasePdf(p, biz);
     if (!context.mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Could not open PDF. Try again.'),
+          action: SnackBarAction(
+            label: 'Retry',
+            onPressed: () => _runDownloadPdf(context, ref),
+          ),
+        ),
+      );
+      return;
+    }
     if (kIsWeb) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -982,79 +1018,73 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
 
     Future<void> share() async {
       final biz = ref.read(invoiceBusinessProfileProvider);
-      try {
-        await sharePurchasePdf(p, biz);
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('PDF ready to share')),
-          );
-        }
-      } catch (e) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                e is DioException
-                    ? friendlyApiError(e)
-                    : 'Something went wrong. Please try again.',
-              ),
+      final ok = await sharePurchasePdf(p, biz);
+      if (!context.mounted) return;
+      if (!ok) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Could not export PDF. Try again.'),
+            action: SnackBarAction(
+              label: 'Retry',
+              onPressed: () => share(),
             ),
-          );
-        }
+            duration: const Duration(seconds: 6),
+          ),
+        );
+        return;
       }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('PDF ready to share')),
+      );
     }
 
     Future<void> printPdf() async {
       final biz = ref.read(invoiceBusinessProfileProvider);
-      try {
-        await printPurchasePdf(p, biz);
-      } catch (e) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                e is DioException
-                    ? friendlyApiError(e)
-                    : 'Something went wrong. Please try again.',
-              ),
+      final ok = await printPurchasePdf(p, biz);
+      if (!context.mounted) return;
+      if (!ok) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Could not print PDF. Try again.'),
+            action: SnackBarAction(
+              label: 'Retry',
+              onPressed: () => printPdf(),
             ),
-          );
-        }
+          ),
+        );
       }
     }
 
     Future<void> downloadPdf() async {
       final biz = ref.read(invoiceBusinessProfileProvider);
-      try {
-        await downloadPurchasePdf(p, biz);
-        if (!context.mounted) return;
-        if (kIsWeb) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Use the browser print/save dialog to download PDF'),
+      final ok = await downloadPurchasePdf(p, biz);
+      if (!context.mounted) return;
+      if (!ok) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Could not open PDF. Try again.'),
+            action: SnackBarAction(
+              label: 'Retry',
+              onPressed: () => downloadPdf(),
             ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Use Save as PDF or share from the dialog to save the file',
-              ),
+          ),
+        );
+        return;
+      }
+      if (kIsWeb) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Use the browser print/save dialog to download PDF'),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Use Save as PDF or share from the dialog to save the file',
             ),
-          );
-        }
-      } catch (e) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                e is DioException
-                    ? friendlyApiError(e)
-                    : 'Something went wrong. Please try again.',
-              ),
-            ),
-          );
-        }
+          ),
+        );
       }
     }
 

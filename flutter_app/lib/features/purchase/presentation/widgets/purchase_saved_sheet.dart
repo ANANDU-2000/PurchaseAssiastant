@@ -200,16 +200,47 @@ Future<String?> showPurchaseSavedSheet(
               leading: const Icon(Icons.share_rounded),
               title: const Text('Share PDF'),
               onTap: () async {
+                final messenger = ScaffoldMessenger.of(context);
                 ctx.pop('home');
-                await sharePurchasePdf(p, biz);
+                Future<void> doShare() async {
+                  final ok = await sharePurchasePdf(p, biz);
+                  if (!context.mounted) return;
+                  if (ok) return;
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: const Text('Could not export PDF. Try again.'),
+                      action: SnackBarAction(
+                        label: 'Retry',
+                        onPressed: () => doShare(),
+                      ),
+                      duration: const Duration(seconds: 6),
+                    ),
+                  );
+                }
+                await doShare();
               },
             ),
             ListTile(
               leading: const Icon(Icons.print_rounded),
               title: const Text('Print'),
               onTap: () async {
+                final messenger = ScaffoldMessenger.of(context);
                 ctx.pop('home');
-                await printPurchasePdf(p, biz);
+                Future<void> doPrint() async {
+                  final ok = await printPurchasePdf(p, biz);
+                  if (!context.mounted) return;
+                  if (ok) return;
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: const Text('Could not print PDF. Try again.'),
+                      action: SnackBarAction(
+                        label: 'Retry',
+                        onPressed: () => doPrint(),
+                      ),
+                    ),
+                  );
+                }
+                await doPrint();
               },
             ),
             ListTile(

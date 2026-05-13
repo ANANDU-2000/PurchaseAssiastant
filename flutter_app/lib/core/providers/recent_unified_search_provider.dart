@@ -49,4 +49,13 @@ class RecentUnifiedSearchQueriesNotifier extends Notifier<List<String>> {
     await p.setStringList(k, cur);
     state = cur;
   }
+
+  Future<void> clearAll() async {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    final p = ref.read(sharedPreferencesProvider);
+    final k = _key(session.primaryBusiness.id);
+    await p.setStringList(k, const []);
+    state = const [];
+  }
 }

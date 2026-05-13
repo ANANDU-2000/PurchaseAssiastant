@@ -30,6 +30,10 @@ class _ItemHistoryPageState extends ConsumerState<ItemHistoryPage> {
   void initState() {
     super.initState();
     _searchFocus.addListener(() => setState(() {}));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.invalidate(itemHistoryLinesProvider(widget.catalogItemId));
+    });
   }
 
   @override

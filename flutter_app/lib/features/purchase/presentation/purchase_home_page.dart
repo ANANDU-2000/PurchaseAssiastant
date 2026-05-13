@@ -149,6 +149,7 @@ Widget? _purchaseHistoryDaysChip(TradePurchase p) {
           bg: Colors.red.shade50,
           border: Colors.red.shade200,
           fg: Colors.red.shade900,
+          icon: Icons.timer_off_rounded,
         );
       }
     } else {
@@ -561,6 +562,32 @@ List<TradePurchase> purchaseHistoryVisibleSortedForRef(
     _purchaseHistorySortSearchPromoteUndelivered(out, newestFirst);
   } else {
     _purchaseHistorySortPurchases(out, newestFirst, primary);
+  }
+  final valueSort =
+      ref.read(purchaseHistoryValueSortProvider)?.trim().toLowerCase();
+  if (valueSort == 'high' || valueSort == 'low') {
+    final skipValue = primary == 'pending_delivery' ||
+        primary == 'delivery_stuck' ||
+        s == 'pending';
+    if (!skipValue) {
+      if (valueSort == 'high') {
+        out.sort((a, b) {
+          final c = b.totalAmount.compareTo(a.totalAmount);
+          if (c != 0) return c;
+          final d = b.purchaseDate.compareTo(a.purchaseDate);
+          if (d != 0) return d;
+          return b.humanId.compareTo(a.humanId);
+        });
+      } else {
+        out.sort((a, b) {
+          final c = a.totalAmount.compareTo(b.totalAmount);
+          if (c != 0) return c;
+          final d = b.purchaseDate.compareTo(a.purchaseDate);
+          if (d != 0) return d;
+          return a.humanId.compareTo(b.humanId);
+        });
+      }
+    }
   }
   return out;
 }
@@ -1011,6 +1038,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
             ref.watch(purchaseHistoryDateFromProvider) != null ||
             ref.watch(purchaseHistoryDateToProvider) != null;
     ref.watch(purchaseHistorySortNewestFirstProvider);
+    ref.watch(purchaseHistoryValueSortProvider);
     final searchQ = ref.watch(purchaseHistorySearchProvider);
     final localWip = ref.watch(purchaseLocalWipDraftForHistoryProvider);
 
@@ -1245,10 +1273,14 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                         children: [
                           Padding(
                             padding: const EdgeInsets.fromLTRB(8, 0, 8, 2),
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Row(
-                                children: [
+                            child: SafeArea(
+                              top: false,
+                              bottom: false,
+                              minimum: EdgeInsets.zero,
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Row(
+                                  children: [
                                   _HistMetricPill(
                                     label: switch (_preset) {
                                       _HistPeriodPreset.today => 'Today',
@@ -1283,6 +1315,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                   ),
                                 ],
                               ),
+                            ),
                             ),
                           ),
                           Padding(
@@ -1327,12 +1360,16 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                         ],
                       ),
                     ),
-                    SizedBox(
-                      height: 44,
-                      child: ListView(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        children: [
+                    SafeArea(
+                      top: false,
+                      bottom: false,
+                      minimum: EdgeInsets.zero,
+                      child: SizedBox(
+                        height: 44,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          children: [
                           for (final e in const [
                             ('all', null, 'All'),
                             ('due', null, 'Due'),
@@ -1365,6 +1402,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                             ),
                         ],
                       ),
+                    ),
                     ),
                     if (secondary != null || hasAdv)
                       Padding(
@@ -1496,11 +1534,29 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                   onMarkDelivered: () => _markDeliveredQuick(p),
                                   onDelete: () => _confirmDelete(context, p),
                                   onShare: () async {
-                                    try {
-                                      final biz = ref.read(invoiceBusinessProfileProvider);
-                                      await sharePurchasePdf(p, biz);
-                                      invalidatePurchaseWorkspace(ref);
-                                    } catch (_) {}
+                                    final biz =
+                                        ref.read(invoiceBusinessProfileProvider);
+                                    Future<void> doShare() async {
+                                      final ok = await sharePurchasePdf(p, biz);
+                                      if (!context.mounted) return;
+                                      if (ok) {
+                                        invalidatePurchaseWorkspace(ref);
+                                        return;
+                                      }
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: const Text(
+                                            'Could not export PDF. Try again.',
+                                          ),
+                                          action: SnackBarAction(
+                                            label: 'Retry',
+                                            onPressed: () => doShare(),
+                                          ),
+                                          duration: const Duration(seconds: 6),
+                                        ),
+                                      );
+                                    }
+                                    await doShare();
                                   },
                                 );
                               },
@@ -1691,6 +1747,60 @@ class _PurchaseHistoryFiltersSheetState
                   ref.read(purchaseHistorySortNewestFirstProvider.notifier).state =
                       v;
                 },
+              ),
+              const SizedBox(height: 4),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Amount sort',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                      ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  ChoiceChip(
+                    label: const Text('Off'),
+                    selected:
+                        ref.watch(purchaseHistoryValueSortProvider) == null,
+                    onSelected: (_) {
+                      ref
+                          .read(purchaseHistoryValueSortProvider.notifier)
+                          .state = null;
+                    },
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  ChoiceChip(
+                    label: const Text('₹ High→Low'),
+                    selected:
+                        ref.watch(purchaseHistoryValueSortProvider) == 'high',
+                    onSelected: (_) {
+                      ref
+                          .read(purchaseHistoryValueSortProvider.notifier)
+                          .state = 'high';
+                    },
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  ChoiceChip(
+                    label: const Text('₹ Low→High'),
+                    selected:
+                        ref.watch(purchaseHistoryValueSortProvider) == 'low',
+                    onSelected: (_) {
+                      ref
+                          .read(purchaseHistoryValueSortProvider.notifier)
+                          .state = 'low';
+                    },
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ],
               ),
               const Divider(),
               ListTile(
@@ -2199,6 +2309,7 @@ class _PurchaseHistoryFullscreenSearchPageState
     final rows =
         ref.watch(tradePurchasesParsedProvider).whenData(_mergeOptimisticRows);
     final searchQ = ref.watch(purchaseHistorySearchProvider);
+    ref.watch(purchaseHistoryValueSortProvider);
     return FullscreenSearchShell(
       title: 'Search purchases',
       actions: [
@@ -2287,11 +2398,28 @@ class _PurchaseHistoryFullscreenSearchPageState
                 onMarkDelivered: () => _markDelivered(p),
                 onDelete: () => _confirmDelete(ctx, p),
                 onShare: () async {
-                  try {
-                    final biz = ref.read(invoiceBusinessProfileProvider);
-                    await sharePurchasePdf(p, biz);
-                    invalidatePurchaseWorkspace(ref);
-                  } catch (_) {}
+                  final biz = ref.read(invoiceBusinessProfileProvider);
+                  Future<void> doShare() async {
+                    final ok = await sharePurchasePdf(p, biz);
+                    if (!context.mounted) return;
+                    if (ok) {
+                      invalidatePurchaseWorkspace(ref);
+                      return;
+                    }
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: const Text(
+                          'Could not export PDF. Try again.',
+                        ),
+                        action: SnackBarAction(
+                          label: 'Retry',
+                          onPressed: () => doShare(),
+                        ),
+                        duration: const Duration(seconds: 6),
+                      ),
+                    );
+                  }
+                  await doShare();
                 },
               );
             },

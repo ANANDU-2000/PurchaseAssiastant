@@ -15,6 +15,7 @@ import 'pdf_text_safe.dart';
 final _num2 = NumberFormat('#,##,##0.00', 'en_IN');
 final _num0 = NumberFormat('#,##,##0.##', 'en_IN');
 final _dateFmt = DateFormat('dd MMM yyyy');
+final _dateTimeFmt = DateFormat('dd MMM yyyy · hh:mm a');
 
 const _border = PdfColor.fromInt(0xFFCBD5E1);
 const _muted = PdfColor.fromInt(0xFF64748B);
@@ -189,7 +190,7 @@ pw.Widget _invoiceHeader({
               if (p.invoiceNumber != null && p.invoiceNumber!.trim().isNotEmpty)
                 pw.Text('Bill / ref: ${p.invoiceNumber}',
                     style: const pw.TextStyle(fontSize: 8.5, color: _muted)),
-              pw.Text('Date: ${_dateFmt.format(p.purchaseDate)}',
+              pw.Text('Date: ${_dateTimeFmt.format(p.purchaseDate)}',
                   style: const pw.TextStyle(fontSize: 9, color: PdfColors.black)),
               if (p.paymentDays != null)
                 pw.Text('Payment days: ${p.paymentDays}',

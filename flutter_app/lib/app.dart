@@ -15,7 +15,11 @@ import 'core/notifications/local_notifications_service.dart';
 import 'core/platform/launcher_quick_actions.dart';
 import 'core/platform/remove_boot_overlay.dart';
 import 'core/providers/api_degraded_provider.dart';
+import 'core/providers/home_breakdown_tab_providers.dart';
+import 'core/providers/home_dashboard_provider.dart';
 import 'core/providers/tenant_branding_provider.dart';
+import 'core/providers/trade_purchases_provider.dart'
+    show invalidateTradePurchaseCaches, tradePurchasesListProvider;
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/hexa_colors.dart';
@@ -154,11 +158,25 @@ class _LauncherShortcutsBootstrapState
   Widget build(BuildContext context) => widget.child;
 }
 
+/// Heuristic: transient layout overflows should not replace the entire app in release.
+bool _hexaFlutterErrorLikelyNonFatal(FlutterErrorDetails details) {
+  if (details.silent) return true;
+  final s = details.exceptionAsString();
+  return s.contains('RenderFlex') ||
+      s.contains('overflowed') ||
+      s.contains('BoxConstraints') ||
+      s.contains('viewport');
+}
+
 /// Catches framework errors so the web build can show recovery UI instead of a blank screen.
 class _HexaErrorBoundary extends StatefulWidget {
-  const _HexaErrorBoundary({required this.child});
+  const _HexaErrorBoundary({
+    required this.child,
+    required this.onGoHome,
+  });
 
   final Widget child;
+  final VoidCallback onGoHome;
 
   @override
   State<_HexaErrorBoundary> createState() => _HexaErrorBoundaryState();
@@ -174,9 +192,11 @@ class _HexaErrorBoundaryState extends State<_HexaErrorBoundary> {
     _previousOnError = FlutterError.onError;
     FlutterError.onError = (FlutterErrorDetails details) {
       _previousOnError?.call(details);
-      if (mounted) {
-        setState(() => _error = details.exception);
+      if (!mounted) return;
+      if (!kDebugMode && _hexaFlutterErrorLikelyNonFatal(details)) {
+        return;
       }
+      setState(() => _error = details.exception);
     };
   }
 
@@ -185,6 +205,8 @@ class _HexaErrorBoundaryState extends State<_HexaErrorBoundary> {
     FlutterError.onError = _previousOnError;
     super.dispose();
   }
+
+  void _clearError() => setState(() => _error = null);
 
   @override
   Widget build(BuildContext context) {
@@ -205,9 +227,23 @@ class _HexaErrorBoundaryState extends State<_HexaErrorBoundary> {
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
-                TextButton(
-                  onPressed: () => setState(() => _error = null),
-                  child: const Text('Retry'),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    TextButton(
+                      onPressed: _clearError,
+                      child: const Text('Retry'),
+                    ),
+                    FilledButton.tonal(
+                      onPressed: () {
+                        _clearError();
+                        widget.onGoHome();
+                      },
+                      child: const Text('Go to Home'),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -256,8 +292,8 @@ class HexaApp extends ConsumerWidget {
                     left: 0,
                     right: 0,
                     child: Material(
-                      elevation: 1,
-                      color: const Color(0xFFFFF8E1),
+                      elevation: 0,
+                      color: const Color(0xFFE8F4F2),
                       child: SafeArea(
                         bottom: false,
                         child: Padding(
@@ -266,26 +302,48 @@ class HexaApp extends ConsumerWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Icon(
-                                Icons.cloud_off_outlined,
+                                Icons.cloud_queue_rounded,
                                 size: 20,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant,
+                                color: HexaColors.brandPrimary,
                               ),
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
                                   banner,
-                                  style: Theme.of(context).textTheme.bodySmall,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelMedium
+                                      ?.copyWith(
+                                        color: const Color(0xFF1C1917),
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 12,
+                                        height: 1.25,
+                                      ),
                                 ),
                               ),
+                              TextButton(
+                                onPressed: () {
+                                  ref.invalidate(homeDashboardDataProvider);
+                                  ref.invalidate(homeShellReportsProvider);
+                                  invalidateTradePurchaseCaches(ref);
+                                  ref.invalidate(tradePurchasesListProvider);
+                                  ref.invalidate(reportsPurchasesPayloadProvider);
+                                },
+                                child: const Text('Retry'),
+                              ),
                               Semantics(
-                                label: 'Dismiss connection warning',
+                                label: 'Dismiss connection notice',
                                 button: true,
                                 child: IconButton(
                                   visualDensity: VisualDensity.compact,
-                                  tooltip: null,
-                                  icon: const Icon(Icons.close, size: 20),
+                                  tooltip: 'Dismiss',
+                                  icon: Icon(
+                                    Icons.close,
+                                    size: 20,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
                                   onPressed: () => ref
                                       .read(apiDegradedProvider.notifier)
                                       .clear(),
@@ -304,6 +362,7 @@ class HexaApp extends ConsumerWidget {
           child: DecoratedBox(
             decoration: BoxDecoration(gradient: HexaColors.appShellGradient),
             child: _HexaErrorBoundary(
+              onGoHome: () => ref.read(appRouterProvider).go('/home'),
               child: _LauncherShortcutsBootstrap(
                 child: _NotificationTapHandler(
                   child: PostLoginNotificationPrompt(child: shell),

@@ -216,7 +216,6 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   static const _revealDebounce = Duration(milliseconds: 280);
   static const _maxHitsSheet = 200;
 
-  bool _pickInProgress = false;
   bool _suppressPanelAfterPick = false;
   String? _lastPickedLabel;
 
@@ -312,15 +311,10 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       return;
     }
     _suggestPanelGrace = true;
-    _suggestPanelGraceTimer = Timer(const Duration(milliseconds: 420), () {
+    _suggestPanelGraceTimer = Timer(const Duration(milliseconds: 800), () {
       _suggestPanelGraceTimer = null;
       _suggestPanelGrace = false;
       if (!mounted) return;
-      if (!widget.focusNode.hasFocus &&
-          !_pickInProgress &&
-          !_suppressPanelAfterPick) {
-        _tryBlurExactPick();
-      }
       setState(() {});
       _scheduleOverlaySync();
     });
@@ -532,34 +526,6 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     return EdgeInsets.only(bottom: kb + 240 + safe);
   }
 
-  void _tryBlurExactPick() {
-    if (_pickInProgress) return;
-    // Tap selection sets this before blur; avoid a second _pick from blur exact-match.
-    if (_suppressPanelAfterPick) return;
-    _flushFilterToLive();
-    final q = widget.controller.text.trim().toLowerCase();
-    if (q.isEmpty) return;
-
-    // One visible filtered row — commit on blur when the list tap was eaten.
-    // Require 2+ chars so single-letter queries do not auto-pick the wrong supplier.
-    final narrowed = _listRowsForUi(live: true);
-    if (q.length >= 2 && narrowed.length == 1) {
-      _pick(narrowed.first, keepFocus: false);
-      return;
-    }
-
-    final exact = <InlineSearchItem>[];
-    for (final it in widget.items) {
-      if (it.label.toLowerCase() == q) {
-        exact.add(it);
-        if (exact.length > 1) return;
-      }
-    }
-    if (exact.length == 1) {
-      _pick(exact.first, keepFocus: false);
-    }
-  }
-
   /// Pointer-down plus tap-up can both fire `_pick`; blocks the second commit.
   bool _consumeIfDuplicatePick(InlineSearchItem it) {
     final fp = '${it.id}\u241e${it.label}';
@@ -587,12 +553,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     // id after the text update, a stale id can still be set and the listener clears
     // selection (label vs previous row name mismatch).
     if (widget.onSelected != null) {
-      _pickInProgress = true;
-      try {
-        widget.onSelected!.call(it);
-      } finally {
-        _pickInProgress = false;
-      }
+      widget.onSelected!.call(it);
     }
     HapticFeedback.selectionClick();
 
@@ -996,6 +957,8 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
         textInputAction: widget.textInputAction,
         onSubmitted: _onFieldSubmitted,
         scrollPadding: _scrollPad(context),
+        autocorrect: false,
+        enableSuggestions: false,
         decoration: InputDecoration(
           hintText: widget.hintText,
           isDense: true,
@@ -1201,7 +1164,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
                               controller: _inlineSuggestScroll,
                               shrinkWrap: true,
                               primary: false,
-                              physics: const ClampingScrollPhysics(),
+                              physics: const NeverScrollableScrollPhysics(),
                               padding: EdgeInsets.zero,
                               children: [
                                 for (final it in rows)

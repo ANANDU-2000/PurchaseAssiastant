@@ -57,6 +57,9 @@ void invalidateTradePurchaseCachesFromContainer(ProviderContainer container) {
 final purchaseHistoryPrimaryFilterProvider =
     StateProvider<String>((ref) => 'all');
 
+/// Optional primary sort by bill total (`high` / `low`). When set, overrides date-first ordering except pending-age sorts.
+final purchaseHistoryValueSortProvider = StateProvider<String?>((ref) => null);
+
 /// Client-side filter only (not sent to list API — avoids refetch per keystroke).
 final purchaseHistorySearchProvider = StateProvider<String>((ref) => '');
 
@@ -130,7 +133,9 @@ class TradePurchasesListNotifier extends AutoDisposeAsyncNotifier<TradePurchases
     }
     final branch = ref.watch(shellCurrentBranchProvider);
     if (branch != ShellBranch.history) {
-      // IndexedStack mounts History off-screen; defer list API until tab visible.
+      // Defer full list until the History tab is active (see [ShellScreen] —
+      // [shellCurrentBranchProvider] must match [navigationShell.currentIndex] in
+      // the same frame so this gate is not briefly true while /purchase is visible).
       return const TradePurchasesListView(rows: [], hasMore: false);
     }
     final primary = ref.watch(purchaseHistoryPrimaryFilterProvider);

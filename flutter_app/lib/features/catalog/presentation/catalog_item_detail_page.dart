@@ -84,139 +84,224 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
           ? item['default_selling_cost'].toString()
           : '',
     );
-    final ok = await showDialog<bool>(
+    final ok = await showModalBottomSheet<bool>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSt) => AlertDialog(
-          title: const Text('Edit item'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Name'),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: hsnCtrl,
-                  decoration: const InputDecoration(labelText: 'HSN code'),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: taxCtrl,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: 'Tax %',
-                    hintText: 'e.g. 5',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Default unit (optional)',
-                  style: Theme.of(ctx)
-                      .textTheme
-                      .labelLarge
-                      ?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 6),
-                OutlinedButton(
-                  onPressed: () async {
-                    const none = '__unit_none__';
-                    final id = await showSearchPickerSheet<String>(
-                      context: ctx,
-                      title: 'Default unit',
-                      rows: const [
-                        SearchPickerRow(value: none, title: '— (unspecified)'),
-                        SearchPickerRow(value: 'kg', title: 'kg'),
-                        SearchPickerRow(value: 'bag', title: 'bag'),
-                        SearchPickerRow(value: 'box', title: 'box'),
-                        SearchPickerRow(value: 'piece', title: 'piece'),
-                      ],
-                      selectedValue: unit ?? none,
-                    );
-                    if (!ctx.mounted) return;
-                    if (id != null) setSt(() => unit = id == none ? null : id);
-                  },
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(unit == null ? '— (unspecified)' : '$unit'),
-                  ),
-                ),
-                if (unit == 'bag') ...[
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: kgCtrl,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
-                      labelText: 'Default kg per bag (optional)',
-                      hintText: 'e.g. 50',
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(sheetCtx).bottom,
+        ),
+        child: StatefulBuilder(
+          builder: (ctx, setSt) {
+            return DraggableScrollableSheet(
+              initialChildSize: 0.88,
+              minChildSize: 0.45,
+              maxChildSize: 0.95,
+              expand: false,
+              builder: (_, scrollCtrl) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(vertical: 10),
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
                     ),
-                    onChanged: (_) => setSt(() {}),
-                  ),
-                  const SizedBox(height: 8),
-                  BagDefaultUnitHint(
-                    kgAlreadySet: () {
-                      final v = parseOptionalKgPerBag(kgCtrl.text);
-                      return v != null && v > 0;
-                    }(),
-                  ),
-                ],
-                if (unit == 'box') ...[
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: ipbCtrl,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
-                      labelText: 'Items per box',
-                      hintText: 'How many pieces per box',
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 8, 8),
+                      child: Row(
+                        children: [
+                          Text(
+                            'Edit item',
+                            style: Theme.of(ctx).textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          const Spacer(),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded),
+                            onPressed: () => Navigator.pop(sheetCtx, false),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-                if (unit == 'tin') ...[
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: wptCtrl,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
-                      labelText: 'Liters / weight per tin',
+                    Expanded(
+                      child: ListView(
+                        controller: scrollCtrl,
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                        children: [
+                          TextField(
+                            controller: nameCtrl,
+                            decoration: const InputDecoration(labelText: 'Name'),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: hsnCtrl,
+                            decoration:
+                                const InputDecoration(labelText: 'HSN code'),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: taxCtrl,
+                            keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true),
+                            decoration: const InputDecoration(
+                              labelText: 'Tax %',
+                              hintText: 'e.g. 5',
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Default unit (optional)',
+                            style: Theme.of(ctx)
+                                .textTheme
+                                .labelLarge
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 6),
+                          OutlinedButton(
+                            onPressed: () async {
+                              const none = '__unit_none__';
+                              final id = await showSearchPickerSheet<String>(
+                                context: context,
+                                title: 'Default unit',
+                                rows: const [
+                                  SearchPickerRow(
+                                      value: none, title: '— (unspecified)'),
+                                  SearchPickerRow(value: 'kg', title: 'kg'),
+                                  SearchPickerRow(value: 'bag', title: 'bag'),
+                                  SearchPickerRow(value: 'box', title: 'box'),
+                                  SearchPickerRow(
+                                      value: 'piece', title: 'piece'),
+                                ],
+                                selectedValue: unit ?? none,
+                              );
+                              if (!context.mounted) return;
+                              if (id != null) {
+                                setSt(() => unit = id == none ? null : id);
+                              }
+                            },
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                  unit == null ? '— (unspecified)' : '$unit'),
+                            ),
+                          ),
+                          if (unit == 'bag') ...[
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: kgCtrl,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                      decimal: true),
+                              decoration: const InputDecoration(
+                                labelText: 'Default kg per bag (optional)',
+                                hintText: 'e.g. 50',
+                              ),
+                              onChanged: (_) => setSt(() {}),
+                            ),
+                            const SizedBox(height: 8),
+                            BagDefaultUnitHint(
+                              kgAlreadySet: () {
+                                final v = parseOptionalKgPerBag(kgCtrl.text);
+                                return v != null && v > 0;
+                              }(),
+                            ),
+                          ],
+                          if (unit == 'box') ...[
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: ipbCtrl,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                      decimal: true),
+                              decoration: const InputDecoration(
+                                labelText: 'Items per box',
+                                hintText: 'How many pieces per box',
+                              ),
+                            ),
+                          ],
+                          if (unit == 'tin') ...[
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: wptCtrl,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                      decimal: true),
+                              decoration: const InputDecoration(
+                                labelText: 'Liters / weight per tin',
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: landCtrl,
+                            keyboardType:
+                                const TextInputType.numberWithOptions(
+                                    decimal: true),
+                            decoration: const InputDecoration(
+                              labelText: 'Default landing (₹)',
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: sellCtrl,
+                            keyboardType:
+                                const TextInputType.numberWithOptions(
+                                    decimal: true),
+                            decoration: const InputDecoration(
+                              labelText: 'Default selling (₹)',
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: () =>
+                                      Navigator.pop(sheetCtx, false),
+                                  child: const Text('Cancel'),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                flex: 2,
+                                child: FilledButton(
+                                  onPressed: () =>
+                                      Navigator.pop(sheetCtx, true),
+                                  style: FilledButton.styleFrom(
+                                    minimumSize:
+                                        const Size.fromHeight(52),
+                                  ),
+                                  child: const Text(
+                                    'Save',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                TextField(
-                  controller: landCtrl,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: 'Default landing (₹)',
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: sellCtrl,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: 'Default selling (₹)',
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => ctx.pop(false),
-                child: const Text('Cancel')),
-            FilledButton(
-                onPressed: () => ctx.pop(true),
-                child: const Text('Save')),
-          ],
+                  ],
+                );
+              },
+            );
+          },
         ),
       ),
     );

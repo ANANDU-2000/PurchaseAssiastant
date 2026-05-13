@@ -280,6 +280,20 @@ class _HomePageState extends ConsumerState<HomePage>
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: _HomeTraderPriorityStrip(
+                pendingDeliveryCount: effectiveData.pendingDeliveryCount,
+                purchaseCount: effectiveData.purchaseCount,
+                totalPurchase: effectiveData.totalPurchase,
+                selectedPeriod: period,
+                onJumpToday: () => _selectPeriod(HomePeriod.today),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 4, 16, 0),
+              child: _HomeCloudCostCard(),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: _PeriodStrip(
                 selected: period,
                 custom: custom,
@@ -327,177 +341,6 @@ class _HomePageState extends ConsumerState<HomePage>
                 ],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-              child: Consumer(
-                builder: (context, ref, _) {
-                  final cc = ref.watch(cloudCostProvider);
-                  return cc.when(
-                    skipLoadingOnReload: true,
-                    loading: () => const SizedBox.shrink(),
-                    error: (_, __) => const SizedBox.shrink(),
-                    data: (m) {
-                      if (m.isEmpty) {
-                        return const SizedBox.shrink();
-                      }
-                      final showCard = m['show_home_card'] != false;
-                      if (!showCard) {
-                        return const SizedBox.shrink();
-                      }
-                      final name = m['name']?.toString() ?? 'Cloud Cost';
-                      final amt = coerceToDouble(m['amount_inr']);
-                      final next = m['next_due_date']?.toString() ?? '—';
-                      final needPay = m['show_alert'] == true;
-                      final inPre = m['in_pre_due_window'] == true;
-                      final iconColor = needPay
-                          ? const Color(0xFFDC2626)
-                          : (inPre
-                              ? const Color(0xFFF59E0B)
-                              : const Color(0xFF16A34A));
-                      Future<void> markPaid() async {
-                        final s = ref.read(sessionProvider);
-                        if (s == null) return;
-                        try {
-                          await ref.read(hexaApiProvider).postCloudCostPay(
-                                businessId: s.primaryBusiness.id,
-                                provider: 'manual',
-                              );
-                          if (!context.mounted) return;
-                          ref.invalidate(cloudCostProvider);
-                          invalidateBusinessAggregates(ref);
-                        } catch (e) {
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                                content: Text(friendlyApiError(e))),
-                          );
-                        }
-                      }
-
-                      Future<void> openUpi() async {
-                        if (AppConfig.cloudUpiVpa.isEmpty) return;
-                        final uri = Uri.parse(
-                          'upi://pay?pa=${Uri.encodeComponent(AppConfig.cloudUpiVpa)}'
-                          '&pn=${Uri.encodeComponent(AppConfig.cloudUpiPayeeName)}'
-                          '&am=${amt.toStringAsFixed(0)}'
-                          '&cu=INR',
-                        );
-                        if (!await launchUrl(
-                          uri,
-                          mode: LaunchMode.externalApplication,
-                        )) {
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                                content: Text(
-                                    'Could not open a UPI app. Try again or pay manually.')),
-                          );
-                        }
-                      }
-
-                      return Card(
-                        margin: EdgeInsets.zero,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 8),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.cloud_outlined,
-                                    size: 18,
-                                    color: iconColor,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          name,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                        Text(
-                                          needPay
-                                              ? 'Overdue · due $next'
-                                              : (inPre
-                                                  ? 'Due soon · $next'
-                                                  : 'Due $next'),
-                                          style: const TextStyle(
-                                            fontSize: 10,
-                                            color: HexaColors.textSecondary,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Text(
-                                    'Rs. ${amt.round()}',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              Wrap(
-                                spacing: 6,
-                                runSpacing: 4,
-                                alignment: WrapAlignment.end,
-                                children: [
-                                  if (AppConfig.cloudUpiVpa.isNotEmpty)
-                                    TextButton(
-                                      style: TextButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 8),
-                                        minimumSize: Size.zero,
-                                        tapTargetSize:
-                                            MaterialTapTargetSize.shrinkWrap,
-                                      ),
-                                      onPressed: openUpi,
-                                      child: const Text('UPI',
-                                          style: TextStyle(fontSize: 12)),
-                                    ),
-                                  if (needPay || inPre)
-                                    TextButton(
-                                      style: TextButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 8),
-                                        minimumSize: Size.zero,
-                                        tapTargetSize:
-                                            MaterialTapTargetSize.shrinkWrap,
-                                      ),
-                                      onPressed: markPaid,
-                                      child: const Text('Mark paid',
-                                          style: TextStyle(fontSize: 12)),
-                                    )
-                                  else
-                                    Text(
-                                      'Paid up',
-                                      style: TextStyle(
-                                        color: Colors.green[700],
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 11,
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
             if (FeatureFlags.showMaintenanceFeeCard)
               const Padding(
                 padding: EdgeInsets.fromLTRB(16, 4, 16, 0),
@@ -520,8 +363,6 @@ class _HomePageState extends ConsumerState<HomePage>
                       padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
                       child: _HomeFixedHeaderBody(
                         data: effectiveData,
-                        pendingDeliveryCount:
-                            effectiveData.pendingDeliveryCount,
                         categoryColors: _donutColors,
                         paintShellSkeleton: shellSkeleton,
                         dashboardRefreshing: async.refreshing,
@@ -919,6 +760,253 @@ HomeShellReportsBundle? _breakdownShellBundle(
   return shell.valueOrNull ?? peekShell;
 }
 
+/// Overdue / operational context before period chips and KPI (trader-first scan).
+class _HomeTraderPriorityStrip extends StatelessWidget {
+  const _HomeTraderPriorityStrip({
+    required this.pendingDeliveryCount,
+    required this.purchaseCount,
+    required this.totalPurchase,
+    required this.selectedPeriod,
+    required this.onJumpToday,
+  });
+
+  final int pendingDeliveryCount;
+  final int purchaseCount;
+  final double totalPurchase;
+  final HomePeriod selectedPeriod;
+  final VoidCallback onJumpToday;
+
+  @override
+  Widget build(BuildContext context) {
+    final showTodayCta = selectedPeriod != HomePeriod.today;
+    final showTodaySummary = selectedPeriod == HomePeriod.today &&
+        purchaseCount > 0 &&
+        totalPurchase > 1e-9;
+    if (pendingDeliveryCount <= 0 && !showTodayCta && !showTodaySummary) {
+      return const SizedBox.shrink();
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (pendingDeliveryCount > 0)
+          _HomePendingDeliveryBanner(count: pendingDeliveryCount),
+        if (pendingDeliveryCount > 0 &&
+            (showTodayCta || showTodaySummary))
+          const SizedBox(height: 8),
+        if (showTodayCta)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: onJumpToday,
+              icon: Icon(
+                Icons.today_outlined,
+                size: 20,
+                color: HexaColors.brandPrimary,
+              ),
+              label: const Text("View today's purchases"),
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF0F172A),
+                textStyle: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          )
+        else if (showTodaySummary)
+          Material(
+            color: const Color(0xFFE8F6F4),
+            borderRadius: BorderRadius.circular(10),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.receipt_long_outlined,
+                    size: 18,
+                    color: HexaColors.brandPrimary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Today · $purchaseCount '
+                      '${purchaseCount == 1 ? 'purchase' : 'purchases'} · '
+                      '${_inr(totalPurchase)}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12.5,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Cloud subscription / payment row — kept directly under trader alerts, above period chips.
+class _HomeCloudCostCard extends ConsumerWidget {
+  const _HomeCloudCostCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cc = ref.watch(cloudCostProvider);
+    return cc.when(
+      skipLoadingOnReload: true,
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (m) {
+        if (m.isEmpty) return const SizedBox.shrink();
+        final showCard = m['show_home_card'] != false;
+        if (!showCard) return const SizedBox.shrink();
+        final name = m['name']?.toString() ?? 'Cloud Cost';
+        final amt = coerceToDouble(m['amount_inr']);
+        final next = m['next_due_date']?.toString() ?? '—';
+        final needPay = m['show_alert'] == true;
+        final inPre = m['in_pre_due_window'] == true;
+        final iconColor = needPay
+            ? const Color(0xFFDC2626)
+            : (inPre ? const Color(0xFFF59E0B) : const Color(0xFF16A34A));
+        Future<void> markPaid() async {
+          final s = ref.read(sessionProvider);
+          if (s == null) return;
+          try {
+            await ref.read(hexaApiProvider).postCloudCostPay(
+                  businessId: s.primaryBusiness.id,
+                  provider: 'manual',
+                );
+            if (!context.mounted) return;
+            ref.invalidate(cloudCostProvider);
+            invalidateBusinessAggregates(ref);
+          } catch (e) {
+            if (!context.mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(friendlyApiError(e))),
+            );
+          }
+        }
+
+        Future<void> openUpi() async {
+          if (AppConfig.cloudUpiVpa.isEmpty) return;
+          final uri = Uri.parse(
+            'upi://pay?pa=${Uri.encodeComponent(AppConfig.cloudUpiVpa)}'
+            '&pn=${Uri.encodeComponent(AppConfig.cloudUpiPayeeName)}'
+            '&am=${amt.toStringAsFixed(0)}'
+            '&cu=INR',
+          );
+          if (!await launchUrl(
+            uri,
+            mode: LaunchMode.externalApplication,
+          )) {
+            if (!context.mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Could not open a UPI app. Try again or pay manually.',
+                ),
+              ),
+            );
+          }
+        }
+
+        return Card(
+          margin: EdgeInsets.zero,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.cloud_outlined,
+                      size: 18,
+                      color: iconColor,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
+                          ),
+                          Text(
+                            needPay
+                                ? 'Overdue · due $next'
+                                : (inPre ? 'Due soon · $next' : 'Due $next'),
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: HexaColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Text(
+                      'Rs. ${amt.round()}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  alignment: WrapAlignment.end,
+                  children: [
+                    if (AppConfig.cloudUpiVpa.isNotEmpty)
+                      TextButton(
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: openUpi,
+                        child: const Text('UPI', style: TextStyle(fontSize: 12)),
+                      ),
+                    if (needPay || inPre)
+                      TextButton(
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: markPaid,
+                        child:
+                            const Text('Mark paid', style: TextStyle(fontSize: 12)),
+                      )
+                    else
+                      Text(
+                        'Paid up',
+                        style: TextStyle(
+                          color: Colors.green[700],
+                          fontWeight: FontWeight.w700,
+                          fontSize: 11,
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _HomePendingDeliveryBanner extends StatelessWidget {
   const _HomePendingDeliveryBanner({required this.count});
 
@@ -982,7 +1070,6 @@ class _HomePendingDeliveryBanner extends StatelessWidget {
 class _HomeFixedHeaderBody extends ConsumerStatefulWidget {
   const _HomeFixedHeaderBody({
     required this.data,
-    required this.pendingDeliveryCount,
     required this.categoryColors,
     this.paintShellSkeleton = false,
     this.dashboardRefreshing = false,
@@ -990,7 +1077,6 @@ class _HomeFixedHeaderBody extends ConsumerStatefulWidget {
   });
 
   final HomeDashboardData data;
-  final int pendingDeliveryCount;
   final List<Color> categoryColors;
   final bool paintShellSkeleton;
   final bool dashboardRefreshing;
@@ -1172,11 +1258,6 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (widget.pendingDeliveryCount > 0)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: _HomePendingDeliveryBanner(count: widget.pendingDeliveryCount),
-          ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: _KpiTightBlock(
@@ -1691,7 +1772,20 @@ List<_BreakdownRowSlice> _topSlice(
             line2: _itemUpperQtyLine(r),
             sup: '—',
             bro: '—',
-            onTap: (ctx, _) => ctx.go('/catalog'),
+            onTap: (ctx, _) {
+              final tid =
+                  (r['type_id'] ?? r['typeId'])?.toString().trim() ?? '';
+              final cid =
+                  (r['category_id'] ?? r['categoryId'])?.toString().trim() ??
+                      '';
+              if (tid.isNotEmpty && cid.isNotEmpty) {
+                ctx.push('/catalog/category/$cid/type/$tid');
+              } else if (cid.isNotEmpty) {
+                ctx.push('/catalog/category/$cid');
+              } else {
+                ctx.go('/catalog');
+              }
+            },
           ),
       ];
     case HomeBreakdownTab.supplier:
@@ -1879,7 +1973,9 @@ class _HomeBreakdownListKeepAliveState
           1,
           (constraints.maxHeight / _homeBreakdownRowExtent).floor(),
         );
-        const reserveFooter = 48.0;
+        // Leave slack for "View more", row chrome, and web safe-area so the
+        // breakdown column does not overflow (~29px) on short viewports.
+        const reserveFooter = 80.0;
         maxSlots = math.max(
           1,
           ((constraints.maxHeight - reserveFooter) / _homeBreakdownRowExtent)

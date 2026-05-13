@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:shimmer/shimmer.dart';
 
+import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/reporting/trade_report_aggregate.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../widgets/spend_ring_chart.dart';
@@ -59,6 +60,8 @@ class ReportsOverviewChartSection extends StatelessWidget {
     required this.agg,
     required this.viewportHeight,
     required this.isLoadingInitial,
+    this.loadFailed = false,
+    this.loadError,
     required this.isEmpty,
     required this.canRetry,
     required this.onRetry,
@@ -69,6 +72,8 @@ class ReportsOverviewChartSection extends StatelessWidget {
   final TradeReportAgg agg;
   final double viewportHeight;
   final bool isLoadingInitial;
+  final bool loadFailed;
+  final Object? loadError;
   final bool isEmpty;
   final bool canRetry;
   final VoidCallback onRetry;
@@ -100,6 +105,56 @@ class ReportsOverviewChartSection extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      );
+    }
+
+    if (loadFailed) {
+      final detail =
+          loadError == null ? '' : userFacingError(loadError!);
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Icon(Icons.cloud_off_rounded,
+                  size: 48, color: Colors.grey.shade400),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Could not load report data',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 15,
+                color: HexaColors.textBody,
+              ),
+            ),
+            if (detail.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                detail,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: HexaColors.textBody,
+                  height: 1.3,
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: canRetry ? onRetry : null,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Retry'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: canRetry ? onMatchHome : null,
+              child: const Text('Match Home period'),
+            ),
+          ],
         ),
       );
     }

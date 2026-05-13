@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/reporting/trade_report_aggregate.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../reporting/reports_item_metrics.dart';
 
-/// Compact trader-focused row: index, name, qty line, rate line (no row total ₹).
+/// Compact trader-focused row: index, name, qty line, rate line, total.
 class ReportsItemTile extends StatelessWidget {
   const ReportsItemTile({
     super.key,
@@ -19,10 +20,15 @@ class ReportsItemTile extends StatelessWidget {
   final String rateLine;
   final VoidCallback? onTap;
 
+  static String _inr0(num n) =>
+      NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
+          .format(n);
+
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
     final qtyLine = reportQtySummaryBoldLine(row);
+    final showAmt = row.amountInr > 1e-6;
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -46,18 +52,22 @@ class ReportsItemTile extends StatelessWidget {
                 children: [
                   Text(
                     row.name,
-                    style: tt.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
                       height: 1.2,
+                      color: Color(0xFF1A1A1A),
                     ),
                   ),
                   if (qtyLine.isNotEmpty) ...[
                     const SizedBox(height: 4),
                     Text(
                       qtyLine,
-                      style: tt.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
                         height: 1.25,
+                        color: Color(0xFF0D9488),
                       ),
                     ),
                   ],
@@ -65,16 +75,31 @@ class ReportsItemTile extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       rateLine,
-                      style: tt.bodySmall?.copyWith(
-                        color: const Color(0xFF333333),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: HexaColors.textBody,
                         fontWeight: FontWeight.w600,
+                        height: 1.25,
                       ),
                     ),
                   ],
                 ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded, color: HexaColors.textBody.withValues(alpha: 0.5)),
+            if (showAmt)
+              Padding(
+                padding: const EdgeInsets.only(left: 8, top: 2),
+                child: Text(
+                  _inr0(row.amountInr),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0D9488),
+                  ),
+                ),
+              ),
+            Icon(Icons.chevron_right_rounded,
+                color: HexaColors.textBody.withValues(alpha: 0.5)),
           ],
         ),
       ),

@@ -426,7 +426,19 @@ class _HomeBreakdownListPageState extends ConsumerState<HomeBreakdownListPage> {
       title: title,
       amount: amt,
       boldLine2: _itemUpperQtyLine(r),
-      onTap: () => context.go('/catalog'),
+      onTap: () {
+        final tid =
+            (r['type_id'] ?? r['typeId'])?.toString().trim() ?? '';
+        final cid =
+            (r['category_id'] ?? r['categoryId'])?.toString().trim() ?? '';
+        if (tid.isNotEmpty && cid.isNotEmpty) {
+          context.push('/catalog/category/$cid/type/$tid');
+        } else if (cid.isNotEmpty) {
+          context.push('/catalog/category/$cid');
+        } else {
+          context.go('/catalog');
+        }
+      },
     );
   }
 

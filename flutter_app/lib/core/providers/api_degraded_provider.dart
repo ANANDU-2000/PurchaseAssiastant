@@ -7,7 +7,7 @@ class ApiDegradedNotifier extends Notifier<String?> {
   String? build() => null;
 
   void notifyDegraded([String? message]) {
-    state = message ?? 'Cloud sync delayed — showing last saved data';
+    state = message ?? 'Cloud sync delayed — showing saved data';
   }
 
   void clear() => state = null;

@@ -249,6 +249,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
         decoration: InputDecoration(
           hintText: 'Search purchases, suppliers, items…',
           prefixIcon: const Icon(Icons.search_rounded),
+          isDense: false,
+          contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
           suffixIcon: _controller.text.isNotEmpty
               ? IconButton(
                   icon: const Icon(Icons.clear_rounded),
@@ -281,24 +283,27 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     const meta = <(String id, String label)>[
       ('all', 'All'),
       ('bills', 'Purchases'),
+      ('items', 'Items'),
       ('suppliers', 'Suppliers'),
       ('brokers', 'Brokers'),
-      ('items', 'Items'),
-      ('bills', 'Bills'),
+      ('types', 'Types'),
+      ('contacts', 'Contacts'),
     ];
     return SizedBox(
-      height: 44,
+      height: 52,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
         itemCount: meta.length,
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (context, i) {
           final e = meta[i];
           return ChoiceChip(
+            materialTapTargetSize: MaterialTapTargetSize.padded,
+            labelPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             label: Text(
               e.$2,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
             ),
             selected: _section == e.$1,
             onSelected: (_) => setState(() => _section = e.$1),
@@ -378,27 +383,49 @@ class _SearchPageState extends ConsumerState<SearchPage> {
         padding: listPadding,
         children: [
           if (recents.isNotEmpty) ...[
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Recent',
-                style: tt.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 17,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Text(
+                    'Recent',
+                    style: tt.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 17,
+                    ),
+                  ),
                 ),
-              ),
+                TextButton(
+                  onPressed: () async {
+                    await ref
+                        .read(recentUnifiedSearchQueriesProvider.notifier)
+                        .clearAll();
+                    if (mounted) setState(() {});
+                  },
+                  child: const Text('Clear'),
+                ),
+              ],
             ),
             const SizedBox(height: 10),
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
+              spacing: 10,
+              runSpacing: 10,
               children: [
                 for (final r in recents)
                   ActionChip(
+                    materialTapTargetSize: MaterialTapTargetSize.padded,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 10,
+                    ),
                     label: Text(
                       r,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     onPressed: () => _applyQuery(r),
                   ),

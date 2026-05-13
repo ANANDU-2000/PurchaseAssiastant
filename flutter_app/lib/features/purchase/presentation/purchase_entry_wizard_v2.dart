@@ -2143,6 +2143,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
       removeTop: false,
       child: LayoutBuilder(
         builder: (ctx, _) {
+          final kbInset = MediaQuery.viewInsetsOf(ctx).bottom;
           final stepScroll = wizStep == 2
               ? Padding(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
@@ -2165,7 +2166,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
                   duration: const Duration(milliseconds: 180),
                   curve: Curves.easeOut,
                   color: Theme.of(ctx).scaffoldBackgroundColor,
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  padding: EdgeInsets.fromLTRB(16, 8, 16, 8 + kbInset),
                   child: _wizardFooterChrome(catalog, isEdit),
                 ),
               ),
