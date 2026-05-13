@@ -15,6 +15,7 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/models/trade_purchase_models.dart';
+import '../../../core/purchase/delivery_aging.dart';
 import '../../../core/providers/analytics_kpi_provider.dart'
     show analyticsDateRangeProvider;
 import '../../../core/utils/line_display.dart';
@@ -160,11 +161,13 @@ Widget? _purchaseHistoryDaysChip(TradePurchase p) {
     );
     final wait = today.difference(pur).inDays;
     final label = wait <= 0 ? 'Undelivered' : 'Undelivered · ${wait}d';
+    final band = undeliveredAgingBandFromDays(wait <= 0 ? 0 : wait);
+    final col = undeliveredAgingColors(band);
     return _historyMetaChip(
       label: label,
-      bg: Colors.orange.shade50,
-      border: Colors.orange.shade200,
-      fg: Colors.orange.shade900,
+      bg: col.bg,
+      border: col.border,
+      fg: col.fg,
     );
   }
 
@@ -248,6 +251,8 @@ const _routePrimaryPurchaseFilters = {
   'paid',
   'due_soon',
   'pending_delivery',
+  'received',
+  'delivery_stuck',
 };
 
 String _purchaseSearchHaystack(TradePurchase p) {
@@ -339,7 +344,32 @@ bool _purchaseHistoryMatchesDuePrimary(TradePurchase p) {
   return false;
 }
 
-void _purchaseHistorySortPurchases(List<TradePurchase> list, bool newestFirst) {
+void _purchaseHistorySortPurchases(
+  List<TradePurchase> list,
+  bool newestFirst,
+  String primaryFilter,
+) {
+  int pendingAge(TradePurchase p) {
+    if (p.isDelivered) return -1;
+    final st = p.statusEnum;
+    if (st == PurchaseStatus.deleted || st == PurchaseStatus.cancelled) {
+      return -1;
+    }
+    return undeliveredDaysSincePurchase(p);
+  }
+
+  if (primaryFilter == 'pending_delivery' || primaryFilter == 'delivery_stuck') {
+    list.sort((a, b) {
+      final da = pendingAge(a);
+      final db = pendingAge(b);
+      if (da != db) return db.compareTo(da);
+      final c = b.purchaseDate.compareTo(a.purchaseDate);
+      if (c != 0) return c;
+      return b.humanId.compareTo(a.humanId);
+    });
+    return;
+  }
+
   list.sort((a, b) {
     if (newestFirst) {
       final c = b.purchaseDate.compareTo(a.purchaseDate);
@@ -376,6 +406,19 @@ List<TradePurchase> purchaseHistoryVisibleSortedForRef(
               p.statusEnum != PurchaseStatus.cancelled,
         )
         .toList();
+  }
+  if (primary == 'received') {
+    v = v.where((p) => p.isDelivered).toList();
+  }
+  if (primary == 'delivery_stuck') {
+    v = v.where((p) {
+      if (p.isDelivered) return false;
+      final st = p.statusEnum;
+      if (st == PurchaseStatus.deleted || st == PurchaseStatus.cancelled) {
+        return false;
+      }
+      return undeliveredDaysSincePurchase(p) >= 6;
+    }).toList();
   }
   final s = ref.read(purchaseHistorySecondaryFilterProvider);
   if (s != null) {
@@ -422,6 +465,7 @@ List<TradePurchase> purchaseHistoryVisibleSortedForRef(
   _purchaseHistorySortPurchases(
     out,
     ref.read(purchaseHistorySortNewestFirstProvider),
+    primary,
   );
   return out;
 }
@@ -1205,6 +1249,8 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                             ('paid', 'Paid'),
                             ('draft', 'Draft'),
                             ('pending_delivery', '🚚 Awaiting'),
+                            ('delivery_stuck', '⚠ Stuck'),
+                            ('received', '✅ Done'),
                           ])
                             Padding(
                               padding: const EdgeInsets.only(right: 6),

@@ -6,16 +6,20 @@ import '../../core/providers/notifications_provider.dart';
 import '../../core/theme/hexa_colors.dart';
 import 'app_settings_action.dart';
 
-/// Catalog, Contacts, optional Refresh, Search, Alerts, Settings — reuse on shell tabs.
+/// Catalog, Contacts, optional Refresh, Search tab, Assistant (push), Alerts, Settings.
 class ShellQuickRefActions extends ConsumerWidget {
   const ShellQuickRefActions({
     super.key,
     this.onRefresh,
     this.showRefresh = true,
+    this.suppressToolbarSearch = false,
   });
 
   final VoidCallback? onRefresh;
   final bool showRefresh;
+
+  /// When true, omit the Search icon (Search lives on the bottom nav shell tab).
+  final bool suppressToolbarSearch;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -48,10 +52,17 @@ class ShellQuickRefActions extends ConsumerWidget {
             icon: Icon(Icons.refresh_rounded, color: icon, size: 22),
             padding: const EdgeInsets.all(8),
           ),
+        if (!suppressToolbarSearch)
+          IconButton(
+            tooltip: 'Search',
+            onPressed: () => context.go('/search'),
+            icon: Icon(Icons.search_rounded, color: icon, size: 22),
+            padding: const EdgeInsets.all(8),
+          ),
         IconButton(
-          tooltip: 'Search',
-          onPressed: () => context.push('/search'),
-          icon: Icon(Icons.search_rounded, color: icon, size: 22),
+          tooltip: 'Assistant',
+          onPressed: () => context.push('/assistant'),
+          icon: Icon(Icons.chat_bubble_outline_rounded, color: icon, size: 22),
           padding: const EdgeInsets.all(8),
         ),
         _AlertsIconButton(icon: icon),

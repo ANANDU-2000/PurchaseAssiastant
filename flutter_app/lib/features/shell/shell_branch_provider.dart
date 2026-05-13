@@ -6,7 +6,8 @@ abstract final class ShellBranch {
   static const int home = 0;
   static const int reports = 1;
   static const int history = 2;
-  static const int assistant = 3;
+  /// Global search (replaces former Assistant tab — Assistant opens from toolbar).
+  static const int search = 3;
 }
 
 /// Last-selected main shell tab. Providers defer heavy network work until the

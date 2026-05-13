@@ -623,7 +623,7 @@ class _HomePageState extends ConsumerState<HomePage>
           icon: const Icon(Icons.document_scanner_outlined),
           onPressed: () => context.pushNamed('purchase_scan'),
         ),
-        ShellQuickRefActions(onRefresh: _refresh),
+        ShellQuickRefActions(onRefresh: _refresh, suppressToolbarSearch: true),
       ],
     );
   }

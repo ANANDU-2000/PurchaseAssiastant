@@ -447,11 +447,7 @@ Future<Uint8List> buildTradeStatementSsotPdfBytes({
     'Amount',
   ];
   final rows = <List<String>>[];
-  double sumAmt = 0;
-  double sumKg = 0;
   for (final l in lines) {
-    sumAmt += l.amountInr;
-    sumKg += l.kg;
     rows.add([
       _df.format(l.date),
       l.supplierName,
@@ -469,6 +465,48 @@ Future<Uint8List> buildTradeStatementSsotPdfBytes({
       money2.format(l.amountInr),
     ]);
   }
+
+  // Pack + money totals: same aggregate engine as in-app Reports / dashboard
+  // (classified BAG/BOX/TIN lines only — matches `buildTradeReportAgg`).
+  final agg = buildTradeReportAgg(purchases);
+  final tt = agg.totals;
+  String packLine() {
+    final parts = <String>[];
+    if (tt.bags > 1e-9) {
+      parts.add(
+        '${tt.bags == tt.bags.roundToDouble() ? tt.bags.round().toString() : tt.bags.toStringAsFixed(1)} Bags',
+      );
+    }
+    if (tt.boxes > 1e-9) {
+      parts.add(
+        '${tt.boxes == tt.boxes.roundToDouble() ? tt.boxes.round().toString() : tt.boxes.toStringAsFixed(1)} Boxes',
+      );
+    }
+    if (tt.tins > 1e-9) {
+      parts.add(
+        '${tt.tins == tt.tins.roundToDouble() ? tt.tins.round().toString() : tt.tins.toStringAsFixed(1)} Tins',
+      );
+    }
+    if (tt.kg > 1e-9) {
+      parts.add(
+        tt.kg == tt.kg.roundToDouble()
+            ? '${tt.kg.round()} KG'
+            : '${tt.kg.toStringAsFixed(1)} KG',
+      );
+    }
+    return parts.isEmpty ? '—' : parts.join(' · ');
+  }
+
+  pw.Widget summaryKv(String label, String value) => pw.Padding(
+        padding: const pw.EdgeInsets.only(top: 3),
+        child: pw.Text(
+          safePdfText('$label: $value'),
+          style: pw.TextStyle(
+            fontSize: 9.5,
+            fontWeight: pw.FontWeight.bold,
+          ),
+        ),
+      );
 
   final doc = pw.Document();
   doc.addPage(
@@ -506,17 +544,27 @@ Future<Uint8List> buildTradeStatementSsotPdfBytes({
               ),
           ],
         ),
-        pw.SizedBox(height: 10),
+        pw.SizedBox(height: 12),
         pw.Align(
-          alignment: pw.Alignment.centerRight,
-          child: pw.Text(
-            safePdfText(
-              'Totals: '
-              '${sumKg < 1e-9 ? '—' : (sumKg == sumKg.roundToDouble() ? '${sumKg.round()} kg' : '${sumKg.toStringAsFixed(1)} kg')}'
-              ' · Rs. ${_money.format(sumAmt)}',
-            ),
-            style:
-                pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
+          alignment: pw.Alignment.centerLeft,
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                'Totals (classified pack lines — same engine as in-app reports)',
+                style: pw.TextStyle(
+                  fontSize: 9,
+                  fontWeight: pw.FontWeight.bold,
+                  color: _muted,
+                ),
+              ),
+              summaryKv('Bags / Boxes / Tins · KG', packLine()),
+              summaryKv('Total amount', 'Rs. ${_money.format(tt.inr)}'),
+              summaryKv('Purchases with pack lines', '${tt.deals}'),
+              pw.SizedBox(height: 6),
+              summaryKv('Period', '${_df.format(from)} → ${_df.format(to)}'),
+              summaryKv('Generated', _genDf.format(DateTime.now())),
+            ],
           ),
         ),
       ],

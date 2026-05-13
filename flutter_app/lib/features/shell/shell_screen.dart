@@ -5,12 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/design_system/hexa_ds_tokens.dart';
-import '../../core/feature_flags.dart';
 import '../../core/providers/connectivity_provider.dart';
 import '../../core/theme/hexa_colors.dart';
 import 'shell_branch_provider.dart';
 
-/// Shell: Home | Reports | ⊕ FAB | History | Assistant
+/// Shell: Home | Reports | History | Search + end FAB (new purchase).
 class ShellScreen extends ConsumerWidget {
   const ShellScreen({super.key, required this.navigationShell});
 
@@ -21,8 +20,6 @@ class ShellScreen extends ConsumerWidget {
     final idx = navigationShell.currentIndex;
     final prevBranch = ref.read(shellCurrentBranchProvider);
     if (prevBranch != idx) {
-      // Avoid mutating Riverpod state synchronously during build (can cause
-      // extra rebuilds / flicker for Reports + other branch-gated providers).
       SchedulerBinding.instance.addPostFrameCallback((_) {
         if (ref.read(shellCurrentBranchProvider) != idx) {
           ref.read(shellCurrentBranchProvider.notifier).state = idx;
@@ -30,8 +27,9 @@ class ShellScreen extends ConsumerWidget {
       });
     }
     final routePath = GoRouterState.of(context).uri.path;
-    final conn      = ref.watch(connectivityResultsProvider);
-    final offline   = conn.valueOrNull != null && isOfflineResult(conn.valueOrNull!);
+    final conn = ref.watch(connectivityResultsProvider);
+    final offline =
+        conn.valueOrNull != null && isOfflineResult(conn.valueOrNull!);
 
     void go(int branch) {
       HapticFeedback.selectionClick();
@@ -40,20 +38,12 @@ class ShellScreen extends ConsumerWidget {
 
     final cs = Theme.of(context).colorScheme;
 
-    // Hide docked FAB + bottom bar on Assistant so they never overlap the composer.
-    // Prefer route path over branch index (index can disagree if navigation state is stale).
     final loc = routePath;
-    final hideShellChrome = loc == '/assistant' ||
-        loc.startsWith('/assistant/') ||
+    final hideShellChrome = loc.startsWith('/assistant') ||
         loc == '/reports' ||
         loc.startsWith('/reports/') ||
         loc == '/purchase';
 
-    final bottomFabClearance = hideShellChrome
-        ? 0.0
-        : 70.0 + MediaQuery.viewPaddingOf(context).bottom;
-
-    // Stable key: tab switches must NOT rebuild the entire shell (would drop branch state).
     return Scaffold(
       key: const ValueKey<String>('main_shell'),
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -93,26 +83,49 @@ class ShellScreen extends ConsumerWidget {
                 ),
               ),
             ),
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(bottom: bottomFabClearance),
-              child: navigationShell,
-            ),
-          ),
+          Expanded(child: navigationShell),
         ],
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      floatingActionButton: hideShellChrome ? null : _FabButton(idx: idx),
-      bottomNavigationBar: hideShellChrome ? null : _BottomBar(idx: idx, go: go, cs: cs),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endContained,
+      floatingActionButton: hideShellChrome ? null : const _FabButton(),
+      bottomNavigationBar: hideShellChrome
+          ? null
+          : NavigationBar(
+              height: 68,
+              selectedIndex: idx,
+              onDestinationSelected: go,
+              backgroundColor: cs.surface,
+              indicatorColor: HexaColors.brandPrimary.withValues(alpha: 0.12),
+              labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.grid_view_outlined),
+                  selectedIcon: Icon(Icons.grid_view_rounded),
+                  label: 'Home',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.bar_chart_outlined),
+                  selectedIcon: Icon(Icons.bar_chart_rounded),
+                  label: 'Reports',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.receipt_long_outlined),
+                  selectedIcon: Icon(Icons.receipt_long_rounded),
+                  label: 'History',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.search_rounded),
+                  selectedIcon: Icon(Icons.manage_search_rounded),
+                  label: 'Search',
+                ),
+              ],
+            ),
     );
   }
 }
 
-// ── FAB ────────────────────────────────────────────────────────────────────────
-
 class _FabButton extends StatelessWidget {
-  const _FabButton({required this.idx});
-  final int idx;
+  const _FabButton();
 
   @override
   Widget build(BuildContext context) {
@@ -122,9 +135,9 @@ class _FabButton extends StatelessWidget {
       enabled: true,
       excludeSemantics: true,
       child: Container(
-        width: 60,
-        height: 60,
-        margin: const EdgeInsets.only(top: 4),
+        width: 56,
+        height: 56,
+        margin: const EdgeInsets.only(top: 2),
         decoration: BoxDecoration(
           gradient: HexaColors.ctaGradient,
           shape: BoxShape.circle,
@@ -140,142 +153,7 @@ class _FabButton extends StatelessWidget {
               HapticFeedback.mediumImpact();
               context.push('/purchase/new');
             },
-            child: const Icon(Icons.add_rounded, size: 28, color: Colors.white),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ── BOTTOM BAR ─────────────────────────────────────────────────────────────────
-
-class _BottomBar extends StatelessWidget {
-  const _BottomBar({required this.idx, required this.go, required this.cs});
-  final int idx;
-  final void Function(int) go;
-  final ColorScheme cs;
-
-  @override
-  Widget build(BuildContext context) {
-    return BottomAppBar(
-      key: ValueKey<bool>(FeatureFlags.showVoiceTab),
-      color: cs.surface,
-      elevation: 8,
-      shadowColor: Colors.black.withValues(alpha: 0.10),
-      shape: const CircularNotchedRectangle(),
-      notchMargin: 8,
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 64,
-          child: Row(
-            children: [
-              Expanded(
-                child: _TabItem(
-                  label: 'Home',
-                  selected: idx == ShellBranch.home,
-                  icon: idx == ShellBranch.home
-                      ? Icons.grid_view_rounded
-                      : Icons.grid_view_outlined,
-                  onTap: () => go(ShellBranch.home),
-                ),
-              ),
-              Expanded(
-                child: _TabItem(
-                  label: 'Reports',
-                  selected: idx == ShellBranch.reports,
-                  icon: idx == ShellBranch.reports
-                      ? Icons.bar_chart_rounded
-                      : Icons.bar_chart_outlined,
-                  onTap: () => go(ShellBranch.reports),
-                ),
-              ),
-              const SizedBox(width: 72), // FAB notch gap
-              Expanded(
-                child: _TabItem(
-                  label: 'History',
-                  selected: idx == ShellBranch.history,
-                  icon: idx == ShellBranch.history
-                      ? Icons.receipt_long_rounded
-                      : Icons.receipt_long_outlined,
-                  onTap: () => go(ShellBranch.history),
-                ),
-              ),
-              Expanded(
-                child: _TabItem(
-                  label: 'Assistant',
-                  selected: idx == ShellBranch.assistant,
-                  icon: idx == ShellBranch.assistant
-                      ? Icons.chat_bubble_rounded
-                      : Icons.chat_bubble_outline_rounded,
-                  onTap: () => go(ShellBranch.assistant),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TabItem extends StatelessWidget {
-  const _TabItem({
-    required this.label,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final active =
-        selected ? HexaColors.brandPrimary : cs.onSurfaceVariant;
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: label,
-      hint: selected ? 'Current tab' : 'Switch to $label tab',
-      excludeSemantics: true,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: HexaDsSpace.xs),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 22, color: active),
-              const SizedBox(height: HexaDsSpace.xs),
-              Text(
-                label,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      fontSize: 11,
-                      letterSpacing: 0.12,
-                      color: active,
-                      fontWeight:
-                          selected ? FontWeight.w800 : FontWeight.w600,
-                    ),
-              ),
-              const SizedBox(height: HexaDsSpace.xs),
-              AnimatedContainer(
-                duration: HexaDsMotion.fast,
-                curve: HexaDsMotion.enter,
-                height: 3,
-                width: selected ? 24 : 0,
-                decoration: BoxDecoration(
-                  color: HexaColors.brandPrimary,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ],
+            child: const Icon(Icons.add_rounded, size: 26, color: Colors.white),
           ),
         ),
       ),

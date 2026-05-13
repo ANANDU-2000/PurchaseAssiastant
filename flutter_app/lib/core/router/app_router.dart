@@ -156,14 +156,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
         ),
       ),
-      GoRoute(
-        path: '/search',
-        name: 'search',
-        pageBuilder: (context, state) => iosPushPage(
-          key: state.pageKey,
-          child: const SearchPage(),
-        ),
-      ),
       // Aliases
       GoRoute(path: '/dashboard', redirect: (_, __) => '/home'),
       GoRoute(path: '/history', redirect: (_, __) => '/purchase'),
@@ -380,6 +372,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         redirect: (context, state) => '/assistant',
       ),
       GoRoute(
+        path: '/assistant',
+        name: 'assistant_chat',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const AssistantChatPage(),
+        ),
+      ),
+      GoRoute(
         path: '/entries',
         redirect: (context, state) => '/purchase',
       ),
@@ -586,13 +586,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
-          // Branch 3 — Assistant
+          // Branch 3 — Global search (tab); Assistant is `/assistant` full-screen push.
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/assistant',
-                name: 'assistant',
-                builder: (context, state) => const AssistantChatPage(),
+                path: '/search',
+                name: 'search_tab',
+                builder: (context, state) => const SearchPage(embeddedInShell: true),
               ),
             ],
           ),

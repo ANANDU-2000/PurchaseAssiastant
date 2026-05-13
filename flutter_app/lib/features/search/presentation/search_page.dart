@@ -9,6 +9,7 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/router/navigation_ext.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/trade_intel_cards.dart';
+import '../../shell/shell_branch_provider.dart';
 
 const Duration _unifiedSearchTtl = Duration(seconds: 12);
 const int _unifiedSearchCacheMaxEntries = 40;
@@ -163,7 +164,10 @@ Widget _purchaseLineSummaryRich(BuildContext context, Map<String, dynamic> line)
 }
 
 class SearchPage extends ConsumerStatefulWidget {
-  const SearchPage({super.key});
+  const SearchPage({super.key, this.embeddedInShell = false});
+
+  /// When true (main shell tab), hide back affordance and refocus search when tab is selected.
+  final bool embeddedInShell;
 
   @override
   ConsumerState<SearchPage> createState() => _SearchPageState();
@@ -219,6 +223,15 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.embeddedInShell) {
+      ref.listen<int>(shellCurrentBranchProvider, (prev, next) {
+        if (next == ShellBranch.search) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _focus.requestFocus();
+          });
+        }
+      });
+    }
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
     final q = _debounced.toLowerCase();
@@ -228,10 +241,13 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.popOrGo('/home'),
-        ),
+        automaticallyImplyLeading: !widget.embeddedInShell,
+        leading: widget.embeddedInShell
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.arrow_back_rounded),
+                onPressed: () => context.popOrGo('/home'),
+              ),
         title: const Text('Search'),
       ),
       body: ListView(
