@@ -492,7 +492,7 @@ class _HomePageState extends ConsumerState<HomePage>
                     ),
                   ),
                   Positioned(
-                    right: 8,
+                    left: 8,
                     bottom: 8,
                     child: FloatingActionButton.small(
                       heroTag: 'home_add_item',

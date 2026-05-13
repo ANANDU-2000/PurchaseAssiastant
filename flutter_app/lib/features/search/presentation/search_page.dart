@@ -238,6 +238,96 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     _focus.requestFocus();
   }
 
+  /// App Store–style: docked above the tab bar; moves up with the keyboard.
+  Widget _embeddedBottomSearchBar(ColorScheme cs) {
+    return Material(
+      elevation: 8,
+      shadowColor: Colors.black38,
+      color: cs.surface,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: SearchBar(
+                  focusNode: _focus,
+                  controller: _controller,
+                  hintText: 'Search items, bills, suppliers…',
+                  textInputAction: TextInputAction.search,
+                  textStyle: const WidgetStatePropertyAll(TextStyle()),
+                  leading: const Icon(Icons.search_rounded),
+                  trailing: [
+                    if (_controller.text.isNotEmpty)
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () {
+                          _controller.clear();
+                          setState(() {
+                            _debounced = '';
+                            _recordedQueryKey = null;
+                          });
+                          _scheduleSearch('');
+                        },
+                      ),
+                  ],
+                  onChanged: (v) {
+                    setState(() {});
+                    _scheduleSearch(v);
+                  },
+                ),
+              ),
+              IconButton(
+                tooltip: 'Close search',
+                onPressed: () => context.go('/home'),
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _standaloneTopSearchBar(ColorScheme cs) {
+    return Material(
+      elevation: 1,
+      shadowColor: Colors.black26,
+      color: cs.surface,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+        child: SearchBar(
+          focusNode: _focus,
+          controller: _controller,
+          hintText: 'Item, type, bill, supplier, broker, HSN…',
+          textInputAction: TextInputAction.search,
+          textStyle: const WidgetStatePropertyAll(TextStyle()),
+          leading: const Icon(Icons.search_rounded),
+          trailing: [
+            if (_controller.text.isNotEmpty)
+              IconButton(
+                icon: const Icon(Icons.close_rounded),
+                onPressed: () {
+                  _controller.clear();
+                  setState(() {
+                    _debounced = '';
+                    _recordedQueryKey = null;
+                  });
+                  _scheduleSearch('');
+                },
+              ),
+          ],
+          onChanged: (v) {
+            setState(() {});
+            _scheduleSearch(v);
+          },
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.embeddedInShell) {
@@ -257,110 +347,89 @@ class _SearchPageState extends ConsumerState<SearchPage> {
         : const AsyncValue<Map<String, dynamic>>.data({});
     final recents = ref.watch(recentUnifiedSearchQueriesProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: !widget.embeddedInShell,
-        leading: widget.embeddedInShell
-            ? null
-            : IconButton(
-                icon: const Icon(Icons.arrow_back_rounded),
-                onPressed: () => context.popOrGo('/home'),
-              ),
-        title: const Text('Search'),
-      ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+    final listPadding = EdgeInsets.fromLTRB(
+      16,
+      widget.embeddedInShell ? 8 : 12,
+      16,
+      widget.embeddedInShell ? 12 : 32,
+    );
+
+    final Widget scrollBody;
+    if (q.isEmpty) {
+      scrollBody = ListView(
+        padding: listPadding,
         children: [
-          Material(
-            elevation: 1,
-            shadowColor: Colors.black26,
-            color: cs.surface,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
-              child: SearchBar(
-                focusNode: _focus,
-                controller: _controller,
-                hintText: 'Item, type, bill, supplier, broker, HSN…',
-                textInputAction: TextInputAction.search,
-                textStyle: const WidgetStatePropertyAll(TextStyle()),
-                leading: const Icon(Icons.search_rounded),
-                trailing: [
-                  if (_controller.text.isNotEmpty)
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded),
-                      onPressed: () {
-                        _controller.clear();
-                        setState(() {
-                          _debounced = '';
-                          _recordedQueryKey = null;
-                        });
-                        _scheduleSearch('');
-                      },
-                    ),
-                ],
-                onChanged: (v) {
-                  setState(() {});
-                  _scheduleSearch(v);
-                },
+          if (widget.embeddedInShell)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                'Search',
+                style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800),
               ),
             ),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+          if (recents.isNotEmpty) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Recent',
+                style: tt.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 17,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                if (q.isEmpty) ...[
-                  if (recents.isNotEmpty) ...[
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Recent',
-                        style: tt.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 17,
-                        ),
-                      ),
+                for (final r in recents)
+                  ActionChip(
+                    label: Text(
+                      r,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final r in recents)
-                          ActionChip(
-                            label: Text(
-                              r,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            onPressed: () => _applyQuery(r),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                  ],
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      'Search catalog items (name, HSN, code, category, catalog type), '
-                      'recent purchase bills, suppliers, and brokers.',
-                      style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
-                      textAlign: TextAlign.center,
-                    ),
+                    onPressed: () => _applyQuery(r),
                   ),
-                ] else
-                  searchAsync.when(
-              skipLoadingOnReload: true,
-              loading: () => const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(child: CircularProgressIndicator()),
-              ),
-              error: (_, __) => FriendlyLoadError(
-                message: 'Search failed',
-                onRetry: () =>
-                    ref.invalidate(unifiedSearchProvider(_debounced)),
-              ),
-              data: (data) {
+              ],
+            ),
+            const SizedBox(height: 20),
+          ],
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              'Search catalog items (name, HSN, code, category, catalog type), '
+              'recent purchase bills, suppliers, and brokers.',
+              style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+      );
+    } else {
+      scrollBody = searchAsync.when(
+        skipLoadingOnReload: true,
+        loading: () => ListView(
+          padding: listPadding,
+          children: const [
+            Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          ],
+        ),
+        error: (_, __) => ListView(
+          padding: listPadding,
+          children: [
+            FriendlyLoadError(
+              message: 'Search failed',
+              onRetry: () =>
+                  ref.invalidate(unifiedSearchProvider(_debounced)),
+            ),
+          ],
+        ),
+        data: (data) {
                 final keyNorm = _debounced.trim().toLowerCase();
                 if (keyNorm.length >= 2 && _recordedQueryKey != keyNorm) {
                   _recordedQueryKey = keyNorm;
@@ -476,9 +545,12 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                     suppliers.isNotEmpty ||
                     brokers.isNotEmpty;
 
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                return ListView(
+                  padding: listPadding,
                   children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
                     if (fuzzyItems || fuzzySup || fuzzyBro)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 12),
@@ -992,12 +1064,40 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                         }),
                     ],
                   ],
+                    ),
+                  ],
                 );
               },
-            ),
-              ],
-            ),
-          ),
+      );
+    }
+
+    if (widget.embeddedInShell) {
+      return Scaffold(
+        resizeToAvoidBottomInset: true,
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(child: scrollBody),
+            _embeddedBottomSearchBar(cs),
+          ],
+        ),
+      );
+    }
+
+    return Scaffold(
+      resizeToAvoidBottomInset: true,
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => context.popOrGo('/home'),
+        ),
+        title: const Text('Search'),
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _standaloneTopSearchBar(cs),
+          Expanded(child: scrollBody),
         ],
       ),
     );

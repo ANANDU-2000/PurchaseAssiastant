@@ -9,7 +9,7 @@ import '../../core/providers/connectivity_provider.dart';
 import '../../core/theme/hexa_colors.dart';
 import 'shell_branch_provider.dart';
 
-/// Shell: Home | Reports | History | Search + end FAB (new purchase).
+/// Shell: Home | Reports | History | Search in one row, then [+] (no overlap).
 class ShellScreen extends ConsumerWidget {
   const ShellScreen({super.key, required this.navigationShell});
 
@@ -35,8 +35,6 @@ class ShellScreen extends ConsumerWidget {
       HapticFeedback.selectionClick();
       navigationShell.goBranch(branch);
     }
-
-    final cs = Theme.of(context).colorScheme;
 
     final loc = routePath;
     final hideShellChrome = loc.startsWith('/assistant') ||
@@ -86,40 +84,155 @@ class ShellScreen extends ConsumerWidget {
           Expanded(child: navigationShell),
         ],
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endContained,
-      floatingActionButton: hideShellChrome ? null : const _FabButton(),
       bottomNavigationBar: hideShellChrome
           ? null
-          : NavigationBar(
-              height: 68,
+          : _ShellBottomBar(
               selectedIndex: idx,
               onDestinationSelected: go,
-              backgroundColor: cs.surface,
-              indicatorColor: HexaColors.brandPrimary.withValues(alpha: 0.12),
-              labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-              destinations: const [
-                NavigationDestination(
-                  icon: Icon(Icons.grid_view_outlined),
-                  selectedIcon: Icon(Icons.grid_view_rounded),
-                  label: 'Home',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.bar_chart_outlined),
-                  selectedIcon: Icon(Icons.bar_chart_rounded),
-                  label: 'Reports',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.receipt_long_outlined),
-                  selectedIcon: Icon(Icons.receipt_long_rounded),
-                  label: 'History',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.search_rounded),
-                  selectedIcon: Icon(Icons.manage_search_rounded),
-                  label: 'Search',
-                ),
-              ],
             ),
+    );
+  }
+}
+
+class _ShellBottomBar extends StatelessWidget {
+  const _ShellBottomBar({
+    required this.selectedIndex,
+    required this.onDestinationSelected,
+  });
+
+  final int selectedIndex;
+  final ValueChanged<int> onDestinationSelected;
+
+  static const _fabOuter = 60.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      elevation: 3,
+      shadowColor: Colors.black26,
+      color: cs.surface,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(4, 6, 8, 6),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _ShellNavTile(
+                        selected: selectedIndex == 0,
+                        icon: Icons.grid_view_outlined,
+                        selectedIcon: Icons.grid_view_rounded,
+                        label: 'Home',
+                        onTap: () => onDestinationSelected(0),
+                      ),
+                    ),
+                    Expanded(
+                      child: _ShellNavTile(
+                        selected: selectedIndex == 1,
+                        icon: Icons.bar_chart_outlined,
+                        selectedIcon: Icons.bar_chart_rounded,
+                        label: 'Reports',
+                        onTap: () => onDestinationSelected(1),
+                      ),
+                    ),
+                    Expanded(
+                      child: _ShellNavTile(
+                        selected: selectedIndex == 2,
+                        icon: Icons.receipt_long_outlined,
+                        selectedIcon: Icons.receipt_long_rounded,
+                        label: 'History',
+                        onTap: () => onDestinationSelected(2),
+                      ),
+                    ),
+                    Expanded(
+                      child: _ShellNavTile(
+                        selected: selectedIndex == 3,
+                        icon: Icons.search_rounded,
+                        selectedIcon: Icons.manage_search_rounded,
+                        label: 'Search',
+                        onTap: () => onDestinationSelected(3),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 4),
+              SizedBox(
+                width: _fabOuter,
+                child: Center(
+                  child: const _FabButton(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ShellNavTile extends StatelessWidget {
+  const _ShellNavTile({
+    required this.selected,
+    required this.icon,
+    required this.selectedIcon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final bool selected;
+  final IconData icon;
+  final IconData selectedIcon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final ic = selected ? selectedIcon : icon;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: selected
+                    ? HexaColors.brandPrimary.withValues(alpha: 0.12)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(
+                ic,
+                size: 24,
+                color: selected ? HexaColors.brandPrimary : cs.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                color: selected ? HexaColors.brandPrimary : cs.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -137,7 +250,6 @@ class _FabButton extends StatelessWidget {
       child: Container(
         width: 56,
         height: 56,
-        margin: const EdgeInsets.only(top: 2),
         decoration: BoxDecoration(
           gradient: HexaColors.ctaGradient,
           shape: BoxShape.circle,
