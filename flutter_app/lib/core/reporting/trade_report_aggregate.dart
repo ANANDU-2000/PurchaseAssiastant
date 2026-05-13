@@ -531,6 +531,14 @@ String reportStatementPackLabel(TradePurchaseLine l) {
   };
 }
 
+/// Bags column for statement PDF/table (effective bag count only).
+String reportStatementBagsCell(TradePurchaseLine l) {
+  final eff = reportEffectivePack(l);
+  if (eff == null || eff.kind != ReportPackKind.bag) return '—';
+  final q = eff.packQty;
+  return q == q.roundToDouble() ? '${q.round()}' : q.toStringAsFixed(1);
+}
+
 /// Statement row for PDF/export (every classified line).
 class TradeReportStatementLine {
   TradeReportStatementLine({
@@ -538,6 +546,7 @@ class TradeReportStatementLine {
     required this.supplierName,
     required this.itemName,
     required this.packLabel,
+    required this.bagsCell,
     required this.qty,
     required this.unit,
     required this.kg,
@@ -550,6 +559,8 @@ class TradeReportStatementLine {
   final String itemName;
   /// Same pack semantics as report aggregates (from line unit).
   final String packLabel;
+  /// Numeric bags for PDF column; '—' when line is not bag-classified.
+  final String bagsCell;
   final double qty;
   final String unit;
   final double kg;
@@ -573,6 +584,7 @@ List<TradeReportStatementLine> buildTradeStatementLines(
           supplierName: sup,
           itemName: l.itemName.trim().isEmpty ? '—' : l.itemName.trim(),
           packLabel: reportStatementPackLabel(l),
+          bagsCell: reportStatementBagsCell(l),
           qty: l.qty,
           unit: l.unit.trim().toUpperCase(),
           kg: kg,

@@ -396,14 +396,7 @@ void _purchaseHistorySortPurchases(
   }
 
   if (primaryFilter == 'pending_delivery' || primaryFilter == 'delivery_stuck') {
-    list.sort((a, b) {
-      final da = pendingAge(a);
-      final db = pendingAge(b);
-      if (da != db) return db.compareTo(da);
-      final c = b.purchaseDate.compareTo(a.purchaseDate);
-      if (c != 0) return c;
-      return b.humanId.compareTo(a.humanId);
-    });
+    _purchaseHistorySortByUndeliveredAgeDesc(list, pendingAge);
     return;
   }
 
@@ -416,6 +409,20 @@ void _purchaseHistorySortPurchases(
     final c = a.purchaseDate.compareTo(b.purchaseDate);
     if (c != 0) return c;
     return a.humanId.compareTo(b.humanId);
+  });
+}
+
+void _purchaseHistorySortByUndeliveredAgeDesc(
+  List<TradePurchase> list,
+  int Function(TradePurchase p) pendingAge,
+) {
+  list.sort((a, b) {
+    final da = pendingAge(a);
+    final db = pendingAge(b);
+    if (da != db) return db.compareTo(da);
+    final c = b.purchaseDate.compareTo(a.purchaseDate);
+    if (c != 0) return c;
+    return b.humanId.compareTo(a.humanId);
   });
 }
 
@@ -540,7 +547,17 @@ List<TradePurchase> purchaseHistoryVisibleSortedForRef(
   v = _filterPurchasesBySearch(v, searchQ);
   final out = List<TradePurchase>.of(v);
   final newestFirst = ref.read(purchaseHistorySortNewestFirstProvider);
-  if (searchQ.trim().isNotEmpty || primary == 'all') {
+  if (s == 'pending') {
+    int pendingAge(TradePurchase p) {
+      if (p.isDelivered) return -1;
+      final st = p.statusEnum;
+      if (st == PurchaseStatus.deleted || st == PurchaseStatus.cancelled) {
+        return -1;
+      }
+      return undeliveredDaysSincePurchase(p);
+    }
+    _purchaseHistorySortByUndeliveredAgeDesc(out, pendingAge);
+  } else if (searchQ.trim().isNotEmpty || primary == 'all') {
     _purchaseHistorySortSearchPromoteUndelivered(out, newestFirst);
   } else {
     _purchaseHistorySortPurchases(out, newestFirst, primary);
@@ -1311,7 +1328,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                       ),
                     ),
                     SizedBox(
-                      height: 40,
+                      height: 44,
                       child: ListView(
                         scrollDirection: Axis.horizontal,
                         padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -1438,7 +1455,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                 16,
                                 8,
                                 16,
-                                12 + MediaQuery.viewPaddingOf(context).bottom,
+                                96 + MediaQuery.viewPaddingOf(context).bottom,
                               ),
                       itemCount: visible.length + (showLocalWipRow ? 1 : 0),
                       separatorBuilder: (_, __) => const SizedBox(height: 4),
@@ -2252,7 +2269,7 @@ class _PurchaseHistoryFullscreenSearchPageState
               16,
               8,
               16,
-              12 + MediaQuery.viewPaddingOf(context).bottom,
+              96 + MediaQuery.viewPaddingOf(context).bottom,
             ),
             itemCount: visible.length,
             separatorBuilder: (_, __) => const SizedBox(height: 4),
@@ -2371,10 +2388,15 @@ class _PurchaseRow extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (daysChip != null) ...[
-                          const SizedBox(width: 6),
-                          daysChip,
-                        ],
+                        const SizedBox(width: 8),
+                        Text(
+                          _inr(p.totalAmount.round()),
+                          style: HexaDsType.purchaseLineMoney.copyWith(
+                            fontSize: 15,
+                            letterSpacing: -0.3,
+                            height: 1.1,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 2),
@@ -2407,69 +2429,74 @@ class _PurchaseRow extends StatelessWidget {
                         height: 1.1,
                       ),
                     ),
-                  ],
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    _inr(p.totalAmount.round()),
-                    style: HexaDsType.purchaseLineMoney.copyWith(
-                      fontSize: 15,
-                      letterSpacing: -0.3,
-                      height: 1.1,
-                    ),
-                  ),
-                  if (!selectMode &&
-                      (_showQuickDeliverIcon(p) || _showQuickPaidIcon(p))) ...[
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     Row(
-                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (_showQuickDeliverIcon(p))
-                          IconButton(
-                            tooltip: 'Mark delivered',
-                            padding: EdgeInsets.zero,
-                            visualDensity: VisualDensity.compact,
-                            constraints: const BoxConstraints(
-                              minWidth: 30,
-                              minHeight: 30,
-                            ),
-                            style: IconButton.styleFrom(
-                              foregroundColor: Colors.orange.shade800,
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                            icon: const Icon(
-                              Icons.local_shipping_outlined,
-                              size: 18,
-                            ),
-                            onPressed: onMarkDelivered,
+                        Expanded(
+                          child: Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              if (daysChip != null) daysChip,
+                              if (!_purchaseRowHidePaymentMiniBadge(p))
+                                _MiniBadge(st),
+                            ],
                           ),
-                        if (_showQuickPaidIcon(p))
-                          IconButton(
-                            tooltip: 'Mark paid',
-                            padding: EdgeInsets.zero,
-                            visualDensity: VisualDensity.compact,
-                            constraints: const BoxConstraints(
-                              minWidth: 30,
-                              minHeight: 30,
-                            ),
-                            style: IconButton.styleFrom(
-                              foregroundColor: HexaColors.brandAccent,
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                            icon: const Icon(
-                              Icons.payments_outlined,
-                              size: 18,
-                            ),
-                            onPressed: onMarkPaid,
+                        ),
+                        if (!selectMode &&
+                            (_showQuickDeliverIcon(p) ||
+                                _showQuickPaidIcon(p)))
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (_showQuickDeliverIcon(p))
+                                IconButton(
+                                  tooltip: 'Mark delivered',
+                                  padding: EdgeInsets.zero,
+                                  visualDensity: VisualDensity.compact,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 30,
+                                    minHeight: 30,
+                                  ),
+                                  style: IconButton.styleFrom(
+                                    foregroundColor: Colors.orange.shade800,
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                  icon: const Icon(
+                                    Icons.local_shipping_outlined,
+                                    size: 18,
+                                  ),
+                                  onPressed: onMarkDelivered,
+                                ),
+                              if (_showQuickPaidIcon(p))
+                                IconButton(
+                                  tooltip: 'Mark paid',
+                                  padding: EdgeInsets.zero,
+                                  visualDensity: VisualDensity.compact,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 30,
+                                    minHeight: 30,
+                                  ),
+                                  style: IconButton.styleFrom(
+                                    foregroundColor: HexaColors.brandAccent,
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                  icon: const Icon(
+                                    Icons.payments_outlined,
+                                    size: 18,
+                                  ),
+                                  onPressed: onMarkPaid,
+                                ),
+                            ],
                           ),
                       ],
                     ),
                   ],
-                  if (!_purchaseRowHidePaymentMiniBadge(p)) _MiniBadge(st),
-                ],
+                ),
               ),
             ],
           ),

@@ -46,6 +46,13 @@ void invalidateTradePurchaseCaches(dynamic ref) {
   ref.invalidate(tradePurchasesCatalogIntelProvider);
 }
 
+/// Same as [invalidateTradePurchaseCaches] for use after async gaps where [WidgetRef] may be disposed.
+void invalidateTradePurchaseCachesFromContainer(ProviderContainer container) {
+  container.invalidate(tradePurchasesListProvider);
+  container.invalidate(tradePurchasesForAlertsProvider);
+  container.invalidate(tradePurchasesCatalogIntelProvider);
+}
+
 /// Primary history chip / route filter (client state). Use [_tradeListApiStatus] for API.
 final purchaseHistoryPrimaryFilterProvider =
     StateProvider<String>((ref) => 'all');

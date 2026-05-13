@@ -23,6 +23,9 @@ import 'core/services/offline_sync_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+  };
   // Clean URLs on web (e.g. /home instead of #/home). Requires SPA rewrites (see repo vercel.json).
   if (kIsWeb) {
     usePathUrlStrategy();

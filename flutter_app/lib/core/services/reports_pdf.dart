@@ -52,6 +52,29 @@ pw.Widget _divider() => pw.Container(
       decoration: const pw.BoxDecoration(color: _border),
     );
 
+pw.Widget _totCell(String label, String value, {bool bold = false}) =>
+    pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
+        children: [
+          pw.Text(
+            label,
+            style: const pw.TextStyle(fontSize: 7.5, color: _muted),
+          ),
+          pw.Text(
+            value,
+            textAlign: pw.TextAlign.center,
+            style: pw.TextStyle(
+              fontSize: bold ? 10 : 9,
+              fontWeight:
+                  bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+            ),
+          ),
+        ],
+      ),
+    );
+
 pw.Widget _tableSection({
   required List<String> headers,
   required List<List<String>> rows,
@@ -440,9 +463,9 @@ Future<Uint8List> buildTradeStatementSsotPdfBytes({
     'Date',
     'Supplier',
     'Item',
-    'Pack',
     'Qty',
     'Unit',
+    'Bags',
     'Kg',
     'Rate',
     'Amount',
@@ -453,11 +476,11 @@ Future<Uint8List> buildTradeStatementSsotPdfBytes({
       _df.format(l.date),
       l.supplierName,
       l.itemName,
-      l.packLabel,
       l.qty == l.qty.roundToDouble()
           ? '${l.qty.round()}'
           : money2.format(l.qty),
       l.unit,
+      l.bagsCell,
       l.kg < 1e-9
           ? '—'
           : (l.kg == l.kg.roundToDouble()
@@ -472,43 +495,6 @@ Future<Uint8List> buildTradeStatementSsotPdfBytes({
   // (classified BAG/BOX/TIN lines only — matches `buildTradeReportAgg`).
   final agg = buildTradeReportAgg(purchases);
   final tt = agg.totals;
-  String packLine() {
-    final parts = <String>[];
-    if (tt.bags > 1e-9) {
-      parts.add(
-        '${tt.bags == tt.bags.roundToDouble() ? tt.bags.round().toString() : tt.bags.toStringAsFixed(1)} Bags',
-      );
-    }
-    if (tt.boxes > 1e-9) {
-      parts.add(
-        '${tt.boxes == tt.boxes.roundToDouble() ? tt.boxes.round().toString() : tt.boxes.toStringAsFixed(1)} Boxes',
-      );
-    }
-    if (tt.tins > 1e-9) {
-      parts.add(
-        '${tt.tins == tt.tins.roundToDouble() ? tt.tins.round().toString() : tt.tins.toStringAsFixed(1)} Tins',
-      );
-    }
-    if (tt.kg > 1e-9) {
-      parts.add(
-        tt.kg == tt.kg.roundToDouble()
-            ? '${tt.kg.round()} KG'
-            : '${tt.kg.toStringAsFixed(1)} KG',
-      );
-    }
-    return parts.isEmpty ? '—' : parts.join(' · ');
-  }
-
-  pw.Widget summaryKv(String label, String value) => pw.Padding(
-        padding: const pw.EdgeInsets.only(top: 3),
-        child: pw.Text(
-          safePdfText('$label: $value'),
-          style: pw.TextStyle(
-            fontSize: 9.5,
-            fontWeight: pw.FontWeight.bold,
-          ),
-        ),
-      );
 
   final doc = pw.Document();
   doc.addPage(
@@ -521,8 +507,10 @@ Future<Uint8List> buildTradeStatementSsotPdfBytes({
                 pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
         pw.Text('Trade purchases statement',
             style: const pw.TextStyle(fontSize: 10, color: _muted)),
-        pw.Text('${_df.format(from)} – ${_df.format(to)}',
-            style: const pw.TextStyle(fontSize: 9, color: _muted)),
+        pw.Text(
+          'Period: ${_df.format(from)} → ${_df.format(to)}   |   ${purchases.length} purchases',
+          style: const pw.TextStyle(fontSize: 9, color: _muted),
+        ),
         pw.SizedBox(height: 8),
         pw.Table(
           border: pw.TableBorder.all(color: _border, width: 0.4),
@@ -548,25 +536,74 @@ Future<Uint8List> buildTradeStatementSsotPdfBytes({
           ],
         ),
         pw.SizedBox(height: 12),
-        pw.Align(
-          alignment: pw.Alignment.centerLeft,
+        pw.Container(
+          padding: const pw.EdgeInsets.all(8),
+          decoration: pw.BoxDecoration(
+            border: pw.Border.all(color: _border, width: 0.5),
+            color: _headerBg,
+          ),
           child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               pw.Text(
-                'Totals (classified pack lines — same engine as in-app reports)',
+                'REPORT TOTALS',
                 style: pw.TextStyle(
-                  fontSize: 9,
+                  fontSize: 10,
                   fontWeight: pw.FontWeight.bold,
-                  color: _muted,
                 ),
               ),
-              summaryKv('Bags / Boxes / Tins · KG', packLine()),
-              summaryKv('Total amount', 'Rs. ${_money.format(tt.inr)}'),
-              summaryKv('Purchases with pack lines', '${tt.deals}'),
-              pw.SizedBox(height: 6),
-              summaryKv('Period', '${_df.format(from)} → ${_df.format(to)}'),
-              summaryKv('Generated', _genDf.format(DateTime.now())),
+              pw.SizedBox(height: 4),
+              pw.Table(
+                border: pw.TableBorder.all(color: _border, width: 0.3),
+                children: [
+                  pw.TableRow(
+                    decoration:
+                        const pw.BoxDecoration(color: PdfColors.white),
+                    children: [
+                      _totCell(
+                        'Bags',
+                        '${tt.bags > 1e-9 ? tt.bags.round() : 0}',
+                        bold: tt.bags > 1e-9,
+                      ),
+                      _totCell(
+                        'Boxes',
+                        '${tt.boxes > 1e-9 ? tt.boxes.round() : 0}',
+                        bold: tt.boxes > 1e-9,
+                      ),
+                      _totCell(
+                        'Tins',
+                        '${tt.tins > 1e-9 ? tt.tins.round() : 0}',
+                        bold: tt.tins > 1e-9,
+                      ),
+                      _totCell(
+                        'Total KG',
+                        tt.kg > 1e-9
+                            ? '${tt.kg.round()} KG'
+                            : '—',
+                        bold: true,
+                      ),
+                      _totCell(
+                        'Total Amount',
+                        'Rs. ${_money.format(tt.inr)}',
+                        bold: true,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 4),
+              pw.Text(
+                'Deals (pack-classified lines): ${tt.deals}',
+                style: const pw.TextStyle(fontSize: 8, color: _muted),
+              ),
+              pw.Text(
+                'Period: ${_df.format(from)} → ${_df.format(to)}   |   ${purchases.length} purchases',
+                style: const pw.TextStyle(fontSize: 8, color: _muted),
+              ),
+              pw.Text(
+                'Generated: ${_genDf.format(DateTime.now())}',
+                style: const pw.TextStyle(fontSize: 8, color: _muted),
+              ),
             ],
           ),
         ),

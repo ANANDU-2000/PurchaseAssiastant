@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -120,45 +122,59 @@ class _ShellBottomBar extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _ShellNavTile(
-                        selected: selectedIndex == 0,
-                        icon: Icons.grid_view_outlined,
-                        selectedIcon: Icons.grid_view_rounded,
-                        label: 'Home',
-                        onTap: () => onDestinationSelected(0),
-                      ),
-                    ),
-                    Expanded(
-                      child: _ShellNavTile(
-                        selected: selectedIndex == 1,
-                        icon: Icons.bar_chart_outlined,
-                        selectedIcon: Icons.bar_chart_rounded,
-                        label: 'Reports',
-                        onTap: () => onDestinationSelected(1),
-                      ),
-                    ),
-                    Expanded(
-                      child: _ShellNavTile(
-                        selected: selectedIndex == 2,
-                        icon: Icons.receipt_long_outlined,
-                        selectedIcon: Icons.receipt_long_rounded,
-                        label: 'History',
-                        onTap: () => onDestinationSelected(2),
-                      ),
-                    ),
-                    Expanded(
-                      child: _ShellNavTile(
-                        selected: selectedIndex == 3,
-                        icon: Icons.search_rounded,
-                        selectedIcon: Icons.manage_search_rounded,
-                        label: 'Search',
-                        onTap: () => onDestinationSelected(3),
-                      ),
-                    ),
-                  ],
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final maxW = constraints.maxWidth;
+                    final per = maxW > 0 ? maxW / 4 : 0.0;
+                    var w = math.max(42.0, per);
+                    if (w * 4 > maxW) {
+                      w = per;
+                    }
+                    return Row(
+                      children: [
+                        SizedBox(
+                          width: w,
+                          child: _ShellNavTile(
+                            selected: selectedIndex == 0,
+                            icon: Icons.grid_view_outlined,
+                            selectedIcon: Icons.grid_view_rounded,
+                            label: 'Home',
+                            onTap: () => onDestinationSelected(0),
+                          ),
+                        ),
+                        SizedBox(
+                          width: w,
+                          child: _ShellNavTile(
+                            selected: selectedIndex == 1,
+                            icon: Icons.bar_chart_outlined,
+                            selectedIcon: Icons.bar_chart_rounded,
+                            label: 'Reports',
+                            onTap: () => onDestinationSelected(1),
+                          ),
+                        ),
+                        SizedBox(
+                          width: w,
+                          child: _ShellNavTile(
+                            selected: selectedIndex == 2,
+                            icon: Icons.receipt_long_outlined,
+                            selectedIcon: Icons.receipt_long_rounded,
+                            label: 'History',
+                            onTap: () => onDestinationSelected(2),
+                          ),
+                        ),
+                        SizedBox(
+                          width: w,
+                          child: _ShellNavTile(
+                            selected: selectedIndex == 3,
+                            icon: Icons.search_rounded,
+                            selectedIcon: Icons.manage_search_rounded,
+                            label: 'Search',
+                            onTap: () => onDestinationSelected(3),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ),
               const SizedBox(width: 4),

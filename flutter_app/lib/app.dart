@@ -154,6 +154,71 @@ class _LauncherShortcutsBootstrapState
   Widget build(BuildContext context) => widget.child;
 }
 
+/// Catches framework errors so the web build can show recovery UI instead of a blank screen.
+class _HexaErrorBoundary extends StatefulWidget {
+  const _HexaErrorBoundary({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_HexaErrorBoundary> createState() => _HexaErrorBoundaryState();
+}
+
+class _HexaErrorBoundaryState extends State<_HexaErrorBoundary> {
+  Object? _error;
+  void Function(FlutterErrorDetails)? _previousOnError;
+
+  @override
+  void initState() {
+    super.initState();
+    _previousOnError = FlutterError.onError;
+    FlutterError.onError = (FlutterErrorDetails details) {
+      _previousOnError?.call(details);
+      if (mounted) {
+        setState(() => _error = details.exception);
+      }
+    };
+  }
+
+  @override
+  void dispose() {
+    FlutterError.onError = _previousOnError;
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_error != null) {
+      return Material(
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.warning_amber_rounded,
+                    size: 48, color: Colors.orange),
+                const SizedBox(height: 16),
+                const Text(
+                  'Something went wrong loading the app.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () => setState(() => _error = null),
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    return widget.child;
+  }
+}
+
 class HexaApp extends ConsumerWidget {
   const HexaApp({super.key});
 
@@ -232,9 +297,11 @@ class HexaApp extends ConsumerWidget {
             : body;
         return DecoratedBox(
           decoration: BoxDecoration(gradient: HexaColors.appShellGradient),
-          child: _LauncherShortcutsBootstrap(
-            child: _NotificationTapHandler(
-              child: PostLoginNotificationPrompt(child: shell),
+          child: _HexaErrorBoundary(
+            child: _LauncherShortcutsBootstrap(
+              child: _NotificationTapHandler(
+                child: PostLoginNotificationPrompt(child: shell),
+              ),
             ),
           ),
         );

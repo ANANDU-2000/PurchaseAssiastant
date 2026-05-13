@@ -238,55 +238,72 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     _focus.requestFocus();
   }
 
-  /// App Store–style: docked above the tab bar; moves up with the keyboard.
-  Widget _embeddedBottomSearchBar(ColorScheme cs) {
-    return Material(
-      elevation: 8,
-      shadowColor: Colors.black38,
-      color: cs.surface,
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                child: SearchBar(
-                  focusNode: _focus,
-                  controller: _controller,
-                  hintText: 'Search items, bills, suppliers…',
-                  textInputAction: TextInputAction.search,
-                  textStyle: const WidgetStatePropertyAll(TextStyle()),
-                  leading: const Icon(Icons.search_rounded),
-                  trailing: [
-                    if (_controller.text.isNotEmpty)
-                      IconButton(
-                        icon: const Icon(Icons.close_rounded),
-                        onPressed: () {
-                          _controller.clear();
-                          setState(() {
-                            _debounced = '';
-                            _recordedQueryKey = null;
-                          });
-                          _scheduleSearch('');
-                        },
-                      ),
-                  ],
-                  onChanged: (v) {
-                    setState(() {});
-                    _scheduleSearch(v);
+  Widget _embeddedSearchTextField(ColorScheme cs) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: TextField(
+        controller: _controller,
+        focusNode: _focus,
+        autofocus: true,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          hintText: 'Search purchases, suppliers, items…',
+          prefixIcon: const Icon(Icons.search_rounded),
+          suffixIcon: _controller.text.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.clear_rounded),
+                  onPressed: () {
+                    _controller.clear();
+                    setState(() {
+                      _debounced = '';
+                      _recordedQueryKey = null;
+                    });
+                    _scheduleSearch('');
                   },
-                ),
-              ),
-              IconButton(
-                tooltip: 'Close search',
-                onPressed: () => context.go('/home'),
-                icon: const Icon(Icons.close_rounded),
-              ),
-            ],
+                )
+              : null,
+          filled: true,
+          fillColor: cs.surface,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide.none,
           ),
         ),
+        onChanged: (v) {
+          setState(() {});
+          _scheduleSearch(v);
+        },
+      ),
+    );
+  }
+
+  Widget _embeddedCategoryChips() {
+    const meta = <(String id, String label)>[
+      ('all', 'All'),
+      ('bills', 'Purchases'),
+      ('suppliers', 'Suppliers'),
+      ('brokers', 'Brokers'),
+      ('items', 'Items'),
+      ('bills', 'Bills'),
+    ];
+    return SizedBox(
+      height: 44,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        itemCount: meta.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          final e = meta[i];
+          return ChoiceChip(
+            label: Text(
+              e.$2,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+            ),
+            selected: _section == e.$1,
+            onSelected: (_) => setState(() => _section = e.$1),
+          );
+        },
       ),
     );
   }
@@ -349,9 +366,10 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
     final listPadding = EdgeInsets.fromLTRB(
       16,
-      widget.embeddedInShell ? 8 : 12,
+      widget.embeddedInShell ? 4 : 12,
       16,
-      widget.embeddedInShell ? 12 : 32,
+      (widget.embeddedInShell ? 96 : 32) +
+          MediaQuery.viewPaddingOf(context).bottom,
     );
 
     final Widget scrollBody;
@@ -359,14 +377,6 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       scrollBody = ListView(
         padding: listPadding,
         children: [
-          if (widget.embeddedInShell)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Text(
-                'Search',
-                style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-              ),
-            ),
           if (recents.isNotEmpty) ...[
             Align(
               alignment: Alignment.centerLeft,
@@ -570,104 +580,106 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                           ),
                         ),
                       ),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          ChoiceChip(
-                            label: const Text(
-                              'All',
-                              style: TextStyle(
-                                  fontSize: 13, fontWeight: FontWeight.w700),
+                    if (!widget.embeddedInShell) ...[
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            ChoiceChip(
+                              label: const Text(
+                                'All',
+                                style: TextStyle(
+                                    fontSize: 13, fontWeight: FontWeight.w700),
+                              ),
+                              labelPadding:
+                                  const EdgeInsets.symmetric(horizontal: 10),
+                              selected: _section == 'all',
+                              onSelected: (_) =>
+                                  setState(() => _section = 'all'),
                             ),
-                            labelPadding:
-                                const EdgeInsets.symmetric(horizontal: 10),
-                            selected: _section == 'all',
-                            onSelected: (_) =>
-                                setState(() => _section = 'all'),
-                          ),
-                          const SizedBox(width: 10),
-                          ChoiceChip(
-                            label: Text(
-                              'Types (${sectionCounts['types']})',
-                              style: const TextStyle(
-                                  fontSize: 13, fontWeight: FontWeight.w600),
+                            const SizedBox(width: 10),
+                            ChoiceChip(
+                              label: Text(
+                                'Types (${sectionCounts['types']})',
+                                style: const TextStyle(
+                                    fontSize: 13, fontWeight: FontWeight.w600),
+                              ),
+                              labelPadding:
+                                  const EdgeInsets.symmetric(horizontal: 10),
+                              selected: _section == 'types',
+                              onSelected: (_) =>
+                                  setState(() => _section = 'types'),
                             ),
-                            labelPadding:
-                                const EdgeInsets.symmetric(horizontal: 10),
-                            selected: _section == 'types',
-                            onSelected: (_) =>
-                                setState(() => _section = 'types'),
-                          ),
-                          const SizedBox(width: 10),
-                          ChoiceChip(
-                            label: Text(
-                              'Items (${sectionCounts['items']})',
-                              style: const TextStyle(
-                                  fontSize: 13, fontWeight: FontWeight.w600),
+                            const SizedBox(width: 10),
+                            ChoiceChip(
+                              label: Text(
+                                'Items (${sectionCounts['items']})',
+                                style: const TextStyle(
+                                    fontSize: 13, fontWeight: FontWeight.w600),
+                              ),
+                              labelPadding:
+                                  const EdgeInsets.symmetric(horizontal: 10),
+                              selected: _section == 'items',
+                              onSelected: (_) =>
+                                  setState(() => _section = 'items'),
                             ),
-                            labelPadding:
-                                const EdgeInsets.symmetric(horizontal: 10),
-                            selected: _section == 'items',
-                            onSelected: (_) =>
-                                setState(() => _section = 'items'),
-                          ),
-                          const SizedBox(width: 10),
-                          ChoiceChip(
-                            label: Text(
-                              'Bills (${sectionCounts['bills']})',
-                              style: const TextStyle(
-                                  fontSize: 13, fontWeight: FontWeight.w600),
+                            const SizedBox(width: 10),
+                            ChoiceChip(
+                              label: Text(
+                                'Bills (${sectionCounts['bills']})',
+                                style: const TextStyle(
+                                    fontSize: 13, fontWeight: FontWeight.w600),
+                              ),
+                              labelPadding:
+                                  const EdgeInsets.symmetric(horizontal: 10),
+                              selected: _section == 'bills',
+                              onSelected: (_) =>
+                                  setState(() => _section = 'bills'),
                             ),
-                            labelPadding:
-                                const EdgeInsets.symmetric(horizontal: 10),
-                            selected: _section == 'bills',
-                            onSelected: (_) =>
-                                setState(() => _section = 'bills'),
-                          ),
-                          const SizedBox(width: 10),
-                          ChoiceChip(
-                            label: Text(
-                              'Suppliers (${sectionCounts['suppliers']})',
-                              style: const TextStyle(
-                                  fontSize: 13, fontWeight: FontWeight.w600),
+                            const SizedBox(width: 10),
+                            ChoiceChip(
+                              label: Text(
+                                'Suppliers (${sectionCounts['suppliers']})',
+                                style: const TextStyle(
+                                    fontSize: 13, fontWeight: FontWeight.w600),
+                              ),
+                              labelPadding:
+                                  const EdgeInsets.symmetric(horizontal: 10),
+                              selected: _section == 'suppliers',
+                              onSelected: (_) =>
+                                  setState(() => _section = 'suppliers'),
                             ),
-                            labelPadding:
-                                const EdgeInsets.symmetric(horizontal: 10),
-                            selected: _section == 'suppliers',
-                            onSelected: (_) =>
-                                setState(() => _section = 'suppliers'),
-                          ),
-                          const SizedBox(width: 10),
-                          ChoiceChip(
-                            label: Text(
-                              'Brokers (${sectionCounts['brokers']})',
-                              style: const TextStyle(
-                                  fontSize: 13, fontWeight: FontWeight.w600),
+                            const SizedBox(width: 10),
+                            ChoiceChip(
+                              label: Text(
+                                'Brokers (${sectionCounts['brokers']})',
+                                style: const TextStyle(
+                                    fontSize: 13, fontWeight: FontWeight.w600),
+                              ),
+                              labelPadding:
+                                  const EdgeInsets.symmetric(horizontal: 10),
+                              selected: _section == 'brokers',
+                              onSelected: (_) =>
+                                  setState(() => _section = 'brokers'),
                             ),
-                            labelPadding:
-                                const EdgeInsets.symmetric(horizontal: 10),
-                            selected: _section == 'brokers',
-                            onSelected: (_) =>
-                                setState(() => _section = 'brokers'),
-                          ),
-                          const SizedBox(width: 10),
-                          ChoiceChip(
-                            label: Text(
-                              'Contacts (${sectionCounts['contacts']})',
-                              style: const TextStyle(
-                                  fontSize: 13, fontWeight: FontWeight.w600),
+                            const SizedBox(width: 10),
+                            ChoiceChip(
+                              label: Text(
+                                'Contacts (${sectionCounts['contacts']})',
+                                style: const TextStyle(
+                                    fontSize: 13, fontWeight: FontWeight.w600),
+                              ),
+                              labelPadding:
+                                  const EdgeInsets.symmetric(horizontal: 10),
+                              selected: _section == 'contacts',
+                              onSelected: (_) =>
+                                  setState(() => _section = 'contacts'),
                             ),
-                            labelPadding:
-                                const EdgeInsets.symmetric(horizontal: 10),
-                            selected: _section == 'contacts',
-                            onSelected: (_) =>
-                                setState(() => _section = 'contacts'),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
+                      const SizedBox(height: 12),
+                    ],
                     if (!hasAny)
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
@@ -1074,12 +1086,15 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     if (widget.embeddedInShell) {
       return Scaffold(
         resizeToAvoidBottomInset: true,
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(child: scrollBody),
-            _embeddedBottomSearchBar(cs),
-          ],
+        body: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _embeddedSearchTextField(cs),
+              _embeddedCategoryChips(),
+              Expanded(child: scrollBody),
+            ],
+          ),
         ),
       );
     }

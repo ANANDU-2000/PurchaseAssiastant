@@ -107,7 +107,7 @@ class ReportsFullListPage extends StatelessWidget {
                   // BAG rows: kg + bags via formatPackagedQty; BOX/TIN use count only.
                   final rows = _filterItems(agg.itemsBag);
                   return ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
                     itemCount: rows.length,
                     itemBuilder: (c, i) {
                       final r = rows[i];
@@ -128,7 +128,7 @@ class ReportsFullListPage extends StatelessWidget {
               ReportsFullListKind.itemsBox => () {
                   final rows = _filterItems(agg.itemsBox);
                   return ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
                     itemCount: rows.length,
                     itemBuilder: (c, i) {
                       final r = rows[i];
@@ -146,7 +146,7 @@ class ReportsFullListPage extends StatelessWidget {
               ReportsFullListKind.itemsTin => () {
                   final rows = _filterItems(agg.itemsTin);
                   return ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
                     itemCount: rows.length,
                     itemBuilder: (c, i) {
                       final r = rows[i];
@@ -164,7 +164,7 @@ class ReportsFullListPage extends StatelessWidget {
               ReportsFullListKind.suppliers => () {
                   final rows = _filterSup(agg.suppliers);
                   return ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
                     itemCount: rows.length,
                     itemBuilder: (c, i) {
                       final s = rows[i];
@@ -180,7 +180,7 @@ class ReportsFullListPage extends StatelessWidget {
               ReportsFullListKind.brokers => () {
                   final rows = _filterBro(agg.brokers);
                   return ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
                     itemCount: rows.length,
                     itemBuilder: (c, i) {
                       final b = rows[i];

@@ -16,7 +16,7 @@ import '../../../core/providers/cloud_expense_provider.dart';
 import '../../../core/providers/purchase_post_save_provider.dart';
 import '../../../core/providers/reports_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart'
-    show invalidateTradePurchaseCaches;
+    show invalidateTradePurchaseCaches, invalidateTradePurchaseCachesFromContainer;
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/feature_flags.dart';
 import '../../../core/widgets/list_skeleton.dart';
@@ -162,7 +162,11 @@ class _HomePageState extends ConsumerState<HomePage>
 
   @override
   Widget build(BuildContext context) {
-    _handlePurchasePostSave();
+    ref.listen<PurchasePostSavePayload?>(purchasePostSaveProvider, (prev, next) {
+      if (next == null || _handlingPurchasePostSave) return;
+      _handlingPurchasePostSave = true;
+      unawaited(_doHandlePurchasePostSave(next));
+    });
 
     final period = ref.watch(homePeriodProvider);
     final custom = ref.watch(homeCustomDateRangeProvider);
@@ -178,9 +182,14 @@ class _HomePageState extends ConsumerState<HomePage>
           if (prev?.refreshing != true) {
             _dashRefreshGuardTimer?.cancel();
             _dashRefreshGuardTimer = Timer(const Duration(seconds: 6), () {
-              if (!mounted) return;
+              if (!mounted) {
+                _dashRefreshGuardTimer = null;
+                return;
+              }
               _dashRefreshGuardTimer = null;
-              ref.read(homeDashboardDataProvider.notifier).forceStopRefreshing();
+              try {
+                ref.read(homeDashboardDataProvider.notifier).forceStopRefreshing();
+              } catch (_) {}
             });
           }
           return;
@@ -219,11 +228,16 @@ class _HomePageState extends ConsumerState<HomePage>
 
     if (shellSkeleton && !_loadCapReached) {
       _loadCapTimer ??= Timer(const Duration(seconds: 6), () {
+        if (!mounted) {
+          _loadCapTimer = null;
+          return;
+        }
+        try {
+          ref.read(homeDashboardDataProvider.notifier).forceStopRefreshing();
+        } catch (_) {}
         if (!mounted) return;
-        ref.read(homeDashboardDataProvider.notifier).forceStopRefreshing();
         setState(() {
           _loadCapReached = true;
-          _loadCapTimer?.cancel();
           _loadCapTimer = null;
         });
       });
@@ -511,25 +525,16 @@ class _HomePageState extends ConsumerState<HomePage>
     );
   }
 
-  void _handlePurchasePostSave() {
-    final postSave = ref.watch(purchasePostSaveProvider);
-    if (postSave == null || _handlingPurchasePostSave) return;
-    _handlingPurchasePostSave = true;
-    final payload = postSave;
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) {
-        _handlingPurchasePostSave = false;
-        return;
-      }
-      // Immediately invalidate dashboards + reports so Home/Reports reflect the new bill
-      // even if the user switches tabs before the next periodic refresh.
-      ref.invalidate(homeDashboardDataProvider);
-      ref.invalidate(homeShellReportsProvider);
-      ref.invalidate(reportsPurchasesPayloadProvider);
-      invalidateTradePurchaseCaches(ref);
-
-      ref.read(purchasePostSaveProvider.notifier).state = null;
-      _handlingPurchasePostSave = false;
+  Future<void> _doHandlePurchasePostSave(PurchasePostSavePayload payload) async {
+    try {
+      if (!mounted) return;
+      final container = ProviderScope.containerOf(context, listen: false);
+      container.invalidate(homeDashboardDataProvider);
+      container.invalidate(homeShellReportsProvider);
+      container.invalidate(reportsPurchasesPayloadProvider);
+      invalidateTradePurchaseCachesFromContainer(container);
+      container.read(purchasePostSaveProvider.notifier).state = null;
+      if (!mounted) return;
       final route = await showPurchaseSavedSheet(
         context,
         ref,
@@ -543,7 +548,9 @@ class _HomePageState extends ConsumerState<HomePage>
       } else if (route == 'detail' && sid != null && sid.isNotEmpty) {
         context.go('/purchase/detail/$sid');
       }
-    });
+    } finally {
+      _handlingPurchasePostSave = false;
+    }
   }
 
   PreferredSizeWidget _buildAppBar() {
@@ -552,7 +559,15 @@ class _HomePageState extends ConsumerState<HomePage>
       backgroundColor: HexaColors.brandBackground,
       surfaceTintColor: Colors.transparent,
       scrolledUnderElevation: 0,
-      title: const SizedBox.shrink(),
+      title: Text(
+        AppConfig.appName,
+        style: const TextStyle(
+          fontWeight: FontWeight.w900,
+          fontSize: 17,
+          letterSpacing: -0.2,
+          color: Color(0xFF0F172A),
+        ),
+      ),
       actions: [
         IconButton(
           tooltip: 'New supplier',
@@ -1840,7 +1855,7 @@ class _HomeBreakdownListKeepAliveState
           children: [
             Expanded(
               child: ListView.builder(
-                padding: EdgeInsets.zero,
+                padding: const EdgeInsets.only(bottom: 96),
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: cap,
                 itemBuilder: (ctx, i) {
