@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
+import 'package:flutter/foundation.dart'
+    show kDebugMode, kIsWeb, kReleaseMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
@@ -21,6 +23,40 @@ import 'core/maintenance/maintenance_payment_repository.dart';
 import 'core/services/offline_store.dart';
 import 'core/services/offline_sync_service.dart';
 
+/// Pre-[HexaApp] UI must not use [MaterialApp]: on web the engine sets
+/// [PlatformDispatcher.defaultRouteName] to the browser path (e.g. `/home`).
+/// [MaterialApp] wires an internal [Navigator] that may run
+/// [Navigator.defaultGenerateInitialRoutes] against an empty route table →
+/// "Could not navigate to initial route" and a broken stack / blank home after
+/// [MaterialApp.router] mounts.
+Widget _bootstrapChrome(Widget child) {
+  removeBootOverlayIfPresent();
+  final ui.FlutterView? view = ui.PlatformDispatcher.instance.implicitView ??
+      (ui.PlatformDispatcher.instance.views.isNotEmpty
+          ? ui.PlatformDispatcher.instance.views.first
+          : null);
+  final MediaQueryData mq =
+      view != null ? MediaQueryData.fromView(view) : const MediaQueryData();
+
+  return MediaQuery(
+    data: mq,
+    child: Theme(
+      data: buildHexaTheme(Brightness.light),
+      child: Directionality(
+        textDirection: TextDirection.ltr,
+        child: Material(
+          type: MaterialType.canvas,
+          color: Colors.transparent,
+          child: DecoratedBox(
+            decoration: BoxDecoration(gradient: HexaColors.appShellGradient),
+            child: child,
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   FlutterError.onError = (FlutterErrorDetails details) {
@@ -29,6 +65,13 @@ Future<void> main() async {
   // Clean URLs on web (e.g. /home instead of #/home). Requires SPA rewrites (see repo vercel.json).
   if (kIsWeb) {
     usePathUrlStrategy();
+  }
+  // Cursor IDE / Playwright snapshots read the web a11y tree. Flutter web
+  // otherwise defers full semantics until a screen reader opts in (the
+  // "Enable accessibility" overlay), so snapshots look empty even when the
+  // canvas UI is fine. Debug + profile only — release keeps default behavior.
+  if (kIsWeb && !kReleaseMode) {
+    WidgetsBinding.instance.ensureSemantics();
   }
   // Do not await Hive / prefs / restore here: on web, flutter_bootstrap.js awaits
   // runApp until this async main() completes — a long wait leaves the HTML "Starting…"
@@ -148,18 +191,8 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
   @override
   Widget build(BuildContext context) {
     if (_error != null) {
-      return MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: buildHexaTheme(Brightness.light),
-        builder: (context, child) {
-          removeBootOverlayIfPresent();
-          final c = child ?? const SizedBox.shrink();
-          return DecoratedBox(
-            decoration: BoxDecoration(gradient: HexaColors.appShellGradient),
-            child: c,
-          );
-        },
-        home: Scaffold(
+      return _bootstrapChrome(
+        Scaffold(
           backgroundColor: Colors.transparent,
           body: SafeArea(
             child: Center(
@@ -169,46 +202,85 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        kIsWeb
-                            ? 'Could not start offline storage. Try a hard refresh or another browser.'
-                            : 'Could not start the app.',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyLarge,
+                      Builder(
+                        builder: (context) => Text(
+                          kIsWeb
+                              ? 'Could not start offline storage. Try a hard refresh or another browser.'
+                              : 'Could not start the app.',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodyLarge,
+                        ),
                       ),
                       if (kDebugMode && _error != null) ...[
-                        const SizedBox(height: 16),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'Debug detail',
-                            style: Theme.of(context).textTheme.labelLarge,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        SelectableText(
-                          _error.toString(),
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                fontFamily: 'monospace',
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                              ),
-                        ),
-                        if (_errorStackTrace != null) ...[
-                          const SizedBox(height: 12),
-                          SelectableText(
-                            _errorStackTrace!,
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  fontFamily: 'monospace',
-                                  fontSize: 11,
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        Builder(
+                          builder: (context) {
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const SizedBox(height: 16),
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    'Debug detail',
+                                    style: Theme.of(context).textTheme.labelLarge,
+                                  ),
                                 ),
-                          ),
-                        ],
+                                const SizedBox(height: 6),
+                                SelectableText(
+                                  _error.toString(),
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                        fontFamily: 'monospace',
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant,
+                                      ),
+                                ),
+                                if (_errorStackTrace != null) ...[
+                                  const SizedBox(height: 12),
+                                  SelectableText(
+                                    _errorStackTrace!,
+                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                          fontFamily: 'monospace',
+                                          fontSize: 11,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurfaceVariant,
+                                        ),
+                                  ),
+                                ],
+                              ],
+                            );
+                          },
+                        ),
                       ],
                       const SizedBox(height: 16),
-                      FilledButton(
-                        onPressed: () => unawaited(_prepare()),
-                        child: const Text('Retry'),
+                      Builder(
+                        builder: (context) {
+                          final cs = Theme.of(context).colorScheme;
+                          return Material(
+                            color: cs.primary,
+                            borderRadius: BorderRadius.circular(24),
+                            child: InkWell(
+                              onTap: () => unawaited(_prepare()),
+                              borderRadius: BorderRadius.circular(24),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 22,
+                                  vertical: 12,
+                                ),
+                                child: Text(
+                                  'Retry',
+                                  style: TextStyle(
+                                    color: cs.onPrimary,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -221,18 +293,8 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
     }
 
     if (_container == null) {
-      return MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: buildHexaTheme(Brightness.light),
-        builder: (context, child) {
-          removeBootOverlayIfPresent();
-          final c = child ?? const SizedBox.shrink();
-          return DecoratedBox(
-            decoration: BoxDecoration(gradient: HexaColors.appShellGradient),
-            child: c,
-          );
-        },
-        home: const Scaffold(
+      return _bootstrapChrome(
+        const Scaffold(
           backgroundColor: Colors.transparent,
           body: Center(
             child: SizedBox(

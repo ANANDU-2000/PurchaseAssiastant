@@ -44,54 +44,63 @@ class ShellScreen extends ConsumerWidget {
         loc.startsWith('/reports/') ||
         loc == '/purchase';
 
-    return Scaffold(
-      key: const ValueKey<String>('main_shell'),
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (offline)
-            Semantics(
-              liveRegion: true,
-              container: true,
-              label: "You're offline — showing cached data",
-              child: Material(
-                color: const Color(0xFFF59E0B),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: HexaDsLayout.pageGutter,
-                    vertical: HexaDsSpace.xs + 2,
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.wifi_off_rounded,
-                          size: 18, color: Color(0xFF1C1917)),
-                      const SizedBox(width: HexaDsLayout.inlineGap),
-                      Expanded(
-                        child: Text(
-                          "You're offline — showing cached data",
-                          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                                color: const Color(0xFF1C1917),
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12,
-                                height: 1.25,
-                              ),
+    // Do not use a shell [Scaffold] with [bottomNavigationBar]: on web, nested
+    // GoRouter [Navigator]s can interact badly with scaffold body layout so the
+    // body gets ~zero height while the bar still paints — it then looks vertically
+    // centered with a blank page. [SizedBox.expand] + [Column] keeps tabs + bar as
+    // explicit flex siblings (see also [NoTransitionPage] in app_router).
+    return SizedBox.expand(
+      child: Material(
+        key: const ValueKey<String>('main_shell'),
+        color: Theme.of(context).scaffoldBackgroundColor,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (offline)
+              Semantics(
+                liveRegion: true,
+                container: true,
+                label: "You're offline — showing cached data",
+                child: Material(
+                  color: const Color(0xFFF59E0B),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: HexaDsLayout.pageGutter,
+                      vertical: HexaDsSpace.xs + 2,
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.wifi_off_rounded,
+                            size: 18, color: Color(0xFF1C1917)),
+                        const SizedBox(width: HexaDsLayout.inlineGap),
+                        Expanded(
+                          child: Text(
+                            "You're offline — showing cached data",
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelMedium
+                                ?.copyWith(
+                                  color: const Color(0xFF1C1917),
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                  height: 1.25,
+                                ),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          Expanded(child: navigationShell),
-        ],
+            Expanded(child: navigationShell),
+            if (!hideShellChrome)
+              _ShellBottomBar(
+                selectedIndex: idx,
+                onDestinationSelected: go,
+              ),
+          ],
+        ),
       ),
-      bottomNavigationBar: hideShellChrome
-          ? null
-          : _ShellBottomBar(
-              selectedIndex: idx,
-              onDestinationSelected: go,
-            ),
     );
   }
 }

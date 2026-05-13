@@ -33,7 +33,8 @@ import '../../features/item/presentation/item_history_page.dart';
 import '../../features/broker/presentation/broker_history_page.dart';
 import '../../features/home/presentation/home_breakdown_list_page.dart';
 import '../../features/home/presentation/home_page.dart';
-import '../providers/home_breakdown_tab_providers.dart' show homeBreakdownTabFromQuery, HomeBreakdownTab;
+import '../providers/home_breakdown_tab_providers.dart'
+    show homeBreakdownTabFromQuery, HomeBreakdownTab;
 import '../../features/purchase/domain/purchase_draft.dart';
 import '../../features/purchase/presentation/purchase_detail_page.dart';
 import '../../features/purchase/presentation/purchase_home_page.dart';
@@ -393,9 +394,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) {
           final cid = state.uri.queryParameters['catalogItemId']?.trim();
           PurchaseDraft? seed;
-          bool resumeDraft = state.uri.queryParameters['resumeDraft'] ==
-                  'true' ||
-              state.uri.queryParameters['resume'] == '1';
+          bool resumeDraft =
+              state.uri.queryParameters['resumeDraft'] == 'true' ||
+                  state.uri.queryParameters['resume'] == '1';
           String? aiScanToken;
           Map<String, dynamic>? aiScanBaseJson;
           final ex = state.extra;
@@ -405,8 +406,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             try {
               final m = Map<String, dynamic>.from(ex);
               final rd = m['resumeDraft'];
-              resumeDraft |=
-                  rd == true || '$rd'.toLowerCase() == 'true';
+              resumeDraft |= rd == true || '$rd'.toLowerCase() == 'true';
               final d = m['initialDraft'];
               if (d is PurchaseDraft) seed = d;
               final ed = m['entryDraft'];
@@ -540,8 +540,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       // or `context.go('/home'|'/reports'|...)` — avoid `push` onto the root stack for these paths
       // or the active tab and visible content can disagree.
       StatefulShellRoute.indexedStack(
-        builder: (context, state, navigationShell) =>
-            ShellScreen(navigationShell: navigationShell),
+        // Use [pageBuilder] so the shell is the [Page] child directly. The default
+        // shell path (widget-only [builder] inside [MaterialPage]) can receive a
+        // tiny max height on web; [Scaffold] then collapses to ~bottom bar height
+        // and sits centered with a blank body. [NoTransitionPage] + expand fixes that.
+        pageBuilder: (context, state, navigationShell) =>
+            NoTransitionPage<void>(
+          key: state.pageKey,
+          name: state.name ?? state.path,
+          restorationId: state.pageKey.value,
+          child: SizedBox.expand(
+            child: ShellScreen(navigationShell: navigationShell),
+          ),
+        ),
         branches: [
           // Branch 0 — Home dashboard
           StatefulShellBranch(
@@ -592,7 +603,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: '/search',
                 name: 'search_tab',
-                builder: (context, state) => const SearchPage(embeddedInShell: true),
+                builder: (context, state) =>
+                    const SearchPage(embeddedInShell: true),
               ),
             ],
           ),

@@ -258,9 +258,22 @@ class _HomePageState extends ConsumerState<HomePage>
       body: SafeArea(
         top: false,
         bottom: true,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+        child: LayoutBuilder(
+          builder: (context, viewport) {
+            final h = viewport.maxHeight;
+            final headerCap = h.isFinite
+                ? (h * 0.48).clamp(160.0, 520.0)
+                : 320.0;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: headerCap),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
             const Padding(
               padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: ResumePurchaseDraftBanner(),
@@ -490,7 +503,11 @@ class _HomePageState extends ConsumerState<HomePage>
                 padding: EdgeInsets.fromLTRB(16, 4, 16, 0),
                 child: MaintenanceHomeCard(),
               ),
-            Expanded(
+                      ],
+                    ),
+                  ),
+                ),
+                Expanded(
               child: Stack(
                 clipBehavior: Clip.none,
                 fit: StackFit.expand,
@@ -526,7 +543,9 @@ class _HomePageState extends ConsumerState<HomePage>
                 ],
               ),
             ),
-          ],
+              ],
+            );
+          },
         ),
       ),
     );

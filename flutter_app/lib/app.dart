@@ -236,7 +236,12 @@ class HexaApp extends ConsumerWidget {
       routerConfig: router,
       builder: (context, child) {
         removeBootOverlayIfPresent();
-        final body = child ?? const SizedBox.shrink();
+        // Web: the router [child] can lay out with zero intrinsic height unless we
+        // force it to fill the viewport — otherwise the shell / Home body stays blank
+        // while the bottom bar (sibling scaffold) still paints.
+        final body = SizedBox.expand(
+          child: child ?? const SizedBox.shrink(),
+        );
         final banner = ref.watch(apiDegradedProvider);
         // Stack (not Column+Expanded): [MaterialApp.router] builder can get unbounded
         // height on web; Expanded would overflow. Overlay for tooltips lives under
@@ -245,7 +250,7 @@ class HexaApp extends ConsumerWidget {
             ? Stack(
                 fit: StackFit.expand,
                 children: [
-                  body,
+                  Positioned.fill(child: body),
                   Positioned(
                     top: 0,
                     left: 0,
@@ -295,12 +300,14 @@ class HexaApp extends ConsumerWidget {
                 ],
               )
             : body;
-        return DecoratedBox(
-          decoration: BoxDecoration(gradient: HexaColors.appShellGradient),
-          child: _HexaErrorBoundary(
-            child: _LauncherShortcutsBootstrap(
-              child: _NotificationTapHandler(
-                child: PostLoginNotificationPrompt(child: shell),
+        return SizedBox.expand(
+          child: DecoratedBox(
+            decoration: BoxDecoration(gradient: HexaColors.appShellGradient),
+            child: _HexaErrorBoundary(
+              child: _LauncherShortcutsBootstrap(
+                child: _NotificationTapHandler(
+                  child: PostLoginNotificationPrompt(child: shell),
+                ),
               ),
             ),
           ),
