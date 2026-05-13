@@ -476,61 +476,6 @@ class _HomePageState extends ConsumerState<HomePage>
                 padding: EdgeInsets.fromLTRB(16, 4, 16, 0),
                 child: MaintenanceHomeCard(),
               ),
-            if (effectiveData.pendingDeliveryCount > 0)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-                child: Material(
-                  color: Colors.orange.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () =>
-                        context.go('/purchase?filter=pending_delivery'),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 10),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.local_shipping_outlined,
-                            color: Colors.orange.shade800,
-                            size: 22,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  effectiveData.pendingDeliveryCount == 1
-                                      ? '1 shipment awaiting delivery'
-                                      : '${effectiveData.pendingDeliveryCount} shipments awaiting delivery',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 13,
-                                    color: Colors.orange.shade900,
-                                  ),
-                                ),
-                                Text(
-                                  'Tap to open Purchase history',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.orange.shade800,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Icon(
-                            Icons.chevron_right,
-                            color: Colors.orange.shade800,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
             Expanded(
               child: Stack(
                 clipBehavior: Clip.none,
@@ -539,6 +484,7 @@ class _HomePageState extends ConsumerState<HomePage>
                     padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
                     child: _HomeFixedHeaderBody(
                       data: effectiveData,
+                      pendingDeliveryCount: effectiveData.pendingDeliveryCount,
                       categoryColors: _donutColors,
                       paintShellSkeleton: shellSkeleton,
                       dashboardRefreshing: async.refreshing,
@@ -932,9 +878,70 @@ HomeShellReportsBundle? _breakdownShellBundle(
   return shell.valueOrNull ?? peekShell;
 }
 
+class _HomePendingDeliveryBanner extends StatelessWidget {
+  const _HomePendingDeliveryBanner({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    if (count <= 0) return const SizedBox.shrink();
+    return Material(
+      color: Colors.orange.shade50,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => context.go('/purchase?filter=pending_delivery'),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              Icon(
+                Icons.local_shipping_outlined,
+                color: Colors.orange.shade800,
+                size: 22,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      count == 1
+                          ? '1 shipment awaiting delivery'
+                          : '$count shipments awaiting delivery',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        color: Colors.orange.shade900,
+                      ),
+                    ),
+                    Text(
+                      'Tap to open Purchase history',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.orange.shade800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                color: Colors.orange.shade800,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _HomeFixedHeaderBody extends ConsumerStatefulWidget {
   const _HomeFixedHeaderBody({
     required this.data,
+    required this.pendingDeliveryCount,
     required this.categoryColors,
     this.paintShellSkeleton = false,
     this.dashboardRefreshing = false,
@@ -942,6 +949,7 @@ class _HomeFixedHeaderBody extends ConsumerStatefulWidget {
   });
 
   final HomeDashboardData data;
+  final int pendingDeliveryCount;
   final List<Color> categoryColors;
   final bool paintShellSkeleton;
   final bool dashboardRefreshing;
@@ -953,6 +961,8 @@ class _HomeFixedHeaderBody extends ConsumerStatefulWidget {
 }
 
 class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
+  bool _chartExpanded = true;
+
   Widget _ring(
     BuildContext context,
     HomeBreakdownTab tab,
@@ -1121,6 +1131,11 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (widget.pendingDeliveryCount > 0)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _HomePendingDeliveryBanner(count: widget.pendingDeliveryCount),
+          ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: _KpiTightBlock(
@@ -1175,44 +1190,127 @@ class _HomeFixedHeaderBodyState extends ConsumerState<_HomeFixedHeaderBody> {
           ),
         if (!emptyPortfolio) ...[
         const SizedBox(height: 4),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: _HomeBreakdownTabStrip(
-            selected: tab,
-            onSelect: (t) {
-              ref.read(homeBreakdownTabProvider.notifier).state = t;
-            },
-          ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: _HomeBreakdownTabStrip(
+                  selected: tab,
+                  onSelect: (t) {
+                    ref.read(homeBreakdownTabProvider.notifier).state = t;
+                  },
+                ),
+              ),
+            ),
+            IconButton(
+              tooltip: _chartExpanded ? 'Hide spend chart' : 'Show spend chart',
+              onPressed: () => setState(() => _chartExpanded = !_chartExpanded),
+              icon: Icon(
+                _chartExpanded ? Icons.unfold_less : Icons.unfold_more,
+                size: 22,
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 2),
-        LayoutBuilder(
-          builder: (context, c) {
-            final previewSide = computeHomeSpendRingDiameter(
-              screenHeight: MediaQuery.sizeOf(context).height,
-              layoutMaxWidth: c.maxWidth,
-            );
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: _ring(context, tab, shell, peekShell, rc, previewSide),
-            );
-          },
-        ),
+        if (_chartExpanded)
+          LayoutBuilder(
+            builder: (context, c) {
+              final previewSide = computeHomeSpendRingDiameter(
+                screenHeight: MediaQuery.sizeOf(context).height,
+                layoutMaxWidth: c.maxWidth,
+              );
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: _ring(context, tab, shell, peekShell, rc, previewSide),
+              );
+            },
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+            child: Material(
+              color: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: HexaColors.brandBorder),
+              ),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => setState(() => _chartExpanded = true),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.donut_large_outlined,
+                        color: Colors.blueGrey.shade600,
+                        size: 26,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Spend chart hidden',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleSmall
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: const Color(0xFF0F172A),
+                                  ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              rc.take(2).join(' · '),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        'Show',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
         const SizedBox(height: 2),
         Expanded(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
-            child: IndexedStack(
-              index: tab.index,
-              sizing: StackFit.expand,
-              children: [
-                for (final t in HomeBreakdownTab.values)
-                  _HomeBreakdownListKeepAlive(
-                    key: ValueKey<String>('home_bd_${t.name}'),
-                    panelTab: t,
-                    data: widget.data,
-                    categoryColors: widget.categoryColors,
-                  ),
-              ],
+          child: RepaintBoundary(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
+              child: IndexedStack(
+                index: tab.index,
+                sizing: StackFit.expand,
+                children: [
+                  for (final t in HomeBreakdownTab.values)
+                    _HomeBreakdownListKeepAlive(
+                      key: ValueKey<String>('home_bd_${t.name}'),
+                      panelTab: t,
+                      data: widget.data,
+                      categoryColors: widget.categoryColors,
+                    ),
+                ],
+              ),
             ),
           ),
         ),

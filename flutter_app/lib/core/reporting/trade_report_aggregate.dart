@@ -517,12 +517,27 @@ List<TradeReportCategoryRow> buildTradeReportCategoryRows(
   return list;
 }
 
+/// Human-readable pack count for statement tables (bag / box / tin from unit).
+String reportStatementPackLabel(TradePurchaseLine l) {
+  final pk = reportClassifyPackKind(l);
+  if (pk == null) return '—';
+  final q = l.qty;
+  final qs =
+      q == q.roundToDouble() ? '${q.round()}' : q.toStringAsFixed(1);
+  return switch (pk) {
+    ReportPackKind.bag => '$qs bag',
+    ReportPackKind.box => '$qs box',
+    ReportPackKind.tin => '$qs tin',
+  };
+}
+
 /// Statement row for PDF/export (every classified line).
 class TradeReportStatementLine {
   TradeReportStatementLine({
     required this.date,
     required this.supplierName,
     required this.itemName,
+    required this.packLabel,
     required this.qty,
     required this.unit,
     required this.kg,
@@ -533,6 +548,8 @@ class TradeReportStatementLine {
   final DateTime date;
   final String supplierName;
   final String itemName;
+  /// Same pack semantics as report aggregates (from line unit).
+  final String packLabel;
   final double qty;
   final String unit;
   final double kg;
@@ -555,6 +572,7 @@ List<TradeReportStatementLine> buildTradeStatementLines(
           date: p.purchaseDate,
           supplierName: sup,
           itemName: l.itemName.trim().isEmpty ? '—' : l.itemName.trim(),
+          packLabel: reportStatementPackLabel(l),
           qty: l.qty,
           unit: l.unit.trim().toUpperCase(),
           kg: kg,
