@@ -23,6 +23,9 @@ GOOGLE_ID="${GOOGLE_OAUTH_CLIENT_ID:-}"
 
 # --no-web-resources-cdn: ship CanvasKit under build/web/canvaskit/ so
 # web/flutter_bootstrap.js (canvasKitBaseUrl: '/canvaskit/') works on static hosts.
+#
+# Note: `flutter build web --web-renderer html` was removed in current Flutter;
+# use `flutter build web --wasm` if you migrate bootstrap to skwasm/canvaskit fallback.
 flutter build web --release \
   --no-web-resources-cdn \
   --dart-define=API_BASE_URL="$API_URL" \

@@ -1199,9 +1199,20 @@ class HexaApi {
     );
   }
 
-  Future<List<Map<String, dynamic>>> listSuppliers(
-      {required String businessId}) async {
-    final res = await _dio.get<dynamic>('/v1/businesses/$businessId/suppliers');
+  Future<List<Map<String, dynamic>>> listSuppliers({
+    required String businessId,
+    /// Smaller JSON (no address/notes); server skips loading those columns.
+    bool compact = true,
+    /// Only honored when [compact] is true (server cap 5000).
+    int? limit,
+  }) async {
+    final q = <String, dynamic>{};
+    if (compact) q['compact'] = 'true';
+    if (compact && limit != null) q['limit'] = limit;
+    final res = await _dio.get<dynamic>(
+      '/v1/businesses/$businessId/suppliers',
+      queryParameters: q.isEmpty ? null : q,
+    );
     final data = res.data;
     if (data is! List) return [];
     return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();

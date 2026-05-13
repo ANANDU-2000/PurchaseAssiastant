@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from app.database import get_db
 from app.services.trade_query import trade_purchase_status_in_reports
@@ -168,6 +169,29 @@ class SupplierOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class SupplierOutCompact(BaseModel):
+    """List/picker payload without large `address` / `notes` blobs (still includes preferences_json)."""
+
+    id: uuid.UUID
+    name: str
+    phone: str | None = None
+    whatsapp_number: str | None = None
+    location: str | None = None
+    broker_id: uuid.UUID | None = None
+    broker_ids: list[uuid.UUID] = Field(default_factory=list)
+    gst_number: str | None = None
+    default_payment_days: int | None = None
+    default_discount: float | None = None
+    default_delivered_rate: float | None = None
+    default_billty_rate: float | None = None
+    freight_type: str | None = None
+    ai_memory_enabled: bool = False
+    preferences_json: str | None = None
+    last_purchase_date: date | None = None
+
+    model_config = {"from_attributes": True}
+
+
 class SupplierUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     phone: str | None = None
@@ -268,16 +292,34 @@ async def _supplier_out(db: AsyncSession, s: Supplier) -> SupplierOut:
     return SupplierOut.model_validate(base)
 
 
-@router.get("/suppliers", response_model=list[SupplierOut])
+@router.get(
+    "/suppliers",
+    response_model=list[SupplierOut] | list[SupplierOutCompact],
+    summary="List suppliers (optional compact wire + limit)",
+)
 async def list_suppliers(
     business_id: uuid.UUID,
     _m: Annotated[Membership, Depends(require_membership)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    compact: Annotated[
+        bool,
+        Query(
+            description="Omit address/notes; skips loading those DB columns when true.",
+        ),
+    ] = False,
+    limit: Annotated[
+        int | None,
+        Query(
+            ge=1,
+            le=5000,
+            description="Max rows (only applied when compact=true).",
+        ),
+    ] = None,
 ):
     del _m
     t0 = time.perf_counter()
 
-    async def _read() -> list[SupplierOut]:
+    async def _read_full() -> list[SupplierOut]:
         r = await db.execute(select(Supplier).where(Supplier.business_id == business_id))
         rows = r.scalars().all()
         if not rows:
@@ -300,11 +342,87 @@ async def list_suppliers(
             out.append(SupplierOut.model_validate(base))
         return out
 
-    out = await execute_with_retry(_read)
+    async def _read_compact() -> list[SupplierOutCompact]:
+        stmt = (
+            select(Supplier)
+            .options(
+                load_only(
+                    Supplier.id,
+                    Supplier.name,
+                    Supplier.phone,
+                    Supplier.gst_number,
+                    Supplier.default_payment_days,
+                    Supplier.default_discount,
+                    Supplier.default_delivered_rate,
+                    Supplier.default_billty_rate,
+                    Supplier.whatsapp_number,
+                    Supplier.location,
+                    Supplier.freight_type,
+                    Supplier.ai_memory_enabled,
+                    Supplier.preferences_json,
+                    Supplier.broker_id,
+                )
+            )
+            .where(Supplier.business_id == business_id)
+            .order_by(Supplier.name.asc())
+        )
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        r = await db.execute(stmt)
+        rows = r.scalars().all()
+        if not rows:
+            return []
+
+        supplier_ids = [s.id for s in rows]
+        rb = await db.execute(
+            select(BrokerSupplierLink.supplier_id, BrokerSupplierLink.broker_id).where(
+                BrokerSupplierLink.supplier_id.in_(supplier_ids)
+            )
+        )
+        broker_map: dict[uuid.UUID, list[uuid.UUID]] = defaultdict(list)
+        for sid, bid in rb.all():
+            broker_map[sid].append(bid)
+
+        out: list[SupplierOutCompact] = []
+        for s in rows:
+            out.append(
+                SupplierOutCompact(
+                    id=s.id,
+                    name=s.name,
+                    phone=s.phone,
+                    whatsapp_number=s.whatsapp_number,
+                    location=s.location,
+                    broker_id=s.broker_id,
+                    broker_ids=list(broker_map.get(s.id, [])),
+                    gst_number=s.gst_number,
+                    default_payment_days=s.default_payment_days,
+                    default_discount=float(s.default_discount)
+                    if s.default_discount is not None
+                    else None,
+                    default_delivered_rate=float(s.default_delivered_rate)
+                    if s.default_delivered_rate is not None
+                    else None,
+                    default_billty_rate=float(s.default_billty_rate)
+                    if s.default_billty_rate is not None
+                    else None,
+                    freight_type=s.freight_type,
+                    ai_memory_enabled=bool(s.ai_memory_enabled),
+                    preferences_json=s.preferences_json,
+                    last_purchase_date=None,
+                )
+            )
+        return out
+
+    if compact:
+        out = await execute_with_retry(_read_compact)
+    else:
+        out = await execute_with_retry(_read_full)
     ms = int((time.perf_counter() - t0) * 1000)
     logger.info(
-        "list_suppliers ok business_id=%s count=%s ms=%s",
+        "list_suppliers ok business_id=%s compact=%s limit=%s count=%s ms=%s",
         business_id,
+        compact,
+        limit,
         len(out),
         ms,
     )
