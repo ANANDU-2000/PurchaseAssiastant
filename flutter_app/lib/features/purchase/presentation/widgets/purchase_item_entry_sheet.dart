@@ -20,8 +20,11 @@ import '../../../../core/utils/unit_classifier.dart';
 import '../../../../shared/widgets/inline_search_field.dart';
 import '../../../../shared/widgets/keyboard_safe_form_viewport.dart';
 import '../../domain/purchase_draft.dart' show RateTaxBasis;
-import '../../pricing/purchase_line_preview_narrative.dart';
 import '../../pricing/purchase_tax_prefs.dart';
+import 'item_entry/item_entry_advanced_panel.dart';
+import 'item_entry/item_entry_minimal_form.dart';
+import 'item_entry/item_entry_payload.dart';
+import 'item_entry/item_entry_preview.dart';
 import 'party_inline_suggest_field.dart';
 
 String _stripKgSuffixForCatalogDisplay(String name) => name
@@ -99,6 +102,9 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
 
   /// Discount / tax % / freight / notes — expanded when user opens or when save needs Tax %.
   bool _moreSectionExpanded = false;
+
+  /// Primary UX: Tax OFF forces `tax_percent = 0` on save; Tax ON uses item/catalog %.
+  bool _taxOn = true;
 
   /// Extra bottom inset so fields clear pinned preview + IME when scrolling into view.
   static const double _kPinnedPreviewReserve = 268;
@@ -321,6 +327,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       final d = coerceToDoubleNullable(init['discount']);
       _discCtrl.text = d != null && d > 0 ? d.toString() : '';
       final t = coerceToDoubleNullable(init['tax_percent']);
+      _taxOn = t != null && t > 0;
       _taxCtrl.text = t != null && t > 0 ? t.toString() : '';
       final hsn = init['hsn_code']?.toString().trim() ?? '';
       _hsnCode = hsn.isEmpty ? null : hsn;
@@ -338,21 +345,11 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       _weightPerTinCtrl.text = _fmtInput(init['weight_per_tin'], 3, trim: true);
       _boxFixedWeight = (init['box_mode']?.toString() != 'items_per_box');
     }
-    if (widget.initial == null && !widget.isEdit && widget.gstPrefs != null) {
-      final p = widget.gstPrefs!;
-      final pb = GstRateBasisPrefs.readPurchase(
-        p,
-        supplierId: widget.preferredSupplierId,
-      );
-      final sb = GstRateBasisPrefs.readSelling(p);
-      if (pb != null) {
-        _purchaseRateTaxBasis = pb;
-      }
-      if (sb != null) {
-        _sellingRateTaxBasis = sb;
-        _sellingGstBasisManual = sb != _purchaseRateTaxBasis;
-      }
-    }
+    // Minimal trader UX: rates are always entered **excluding GST** (`taxExtra`).
+    // Legacy “GST included typing” lives under Advanced if we re-expose it later.
+    _purchaseRateTaxBasis = RateTaxBasis.taxExtra;
+    _sellingRateTaxBasis = RateTaxBasis.taxExtra;
+    _sellingGstBasisManual = false;
     _syncKgStateFromCatalogRow();
     _lineTotalsListenable = Listenable.merge([
       _qtyCtrl,
@@ -833,39 +830,12 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     String? prefixText,
     String? errorText,
   }) {
-    final pad = widget.fullPage
-        ? const EdgeInsets.symmetric(horizontal: 12, vertical: 14)
-        : const EdgeInsets.symmetric(horizontal: 10, vertical: 10);
-    return InputDecoration(
-      labelText: label,
-      labelStyle: const TextStyle(fontWeight: FontWeight.w700),
+    return itemEntryFieldDecoration(
+      Theme.of(context),
+      label: label,
       prefixText: prefixText,
       errorText: errorText,
-      errorMaxLines: 2,
-      isDense: true,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(6),
-        borderSide: const BorderSide(
-          color: HexaColors.inputBorderGrey,
-          width: 1.75,
-        ),
-      ),
-      focusedBorder: const OutlineInputBorder(
-        borderRadius: BorderRadius.all(Radius.circular(6)),
-        borderSide: BorderSide(color: HexaColors.brandPrimary, width: 2),
-      ),
-      errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(6),
-        borderSide: BorderSide(color: Colors.red[700]!, width: 1),
-      ),
-      focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(6),
-        borderSide: BorderSide(color: Colors.red[700]!, width: 1.5),
-      ),
-      filled: true,
-      fillColor: HexaColors.surfaceApp,
-      contentPadding: pad,
+      fullPage: widget.fullPage,
     );
   }
 
@@ -1048,25 +1018,49 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     if (!_isBagFamilyUnit()) return null;
     final k = _kgPer();
     if (k == null || k <= 0) return null;
+    final cs = Theme.of(context).colorScheme;
+    Widget chip(String label, bool sel) {
+      return Expanded(
+        child: Material(
+          color: sel ? cs.primaryContainer : Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          child: InkWell(
+            onTap: () {
+              setState(() {
+                _qtyEntryMode = label == 'Bags' ? 'bags' : 'kg';
+                _errQty = null;
+              });
+              _schedulePreviewRebuild();
+            },
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              height: 44,
+              child: Center(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                    color: sel ? cs.onPrimaryContainer : const Color(0xFF0F172A),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: SegmentedButton<String>(
-          segments: const [
-            ButtonSegment(value: 'bags', label: Text('Bags')),
-            ButtonSegment(value: 'kg', label: Text('Kg')),
-          ],
-          selected: {_qtyEntryMode},
-          onSelectionChanged: (s) {
-            if (s.isEmpty) return;
-            setState(() {
-              _qtyEntryMode = s.first;
-              _errQty = null;
-            });
-            _schedulePreviewRebuild();
-          },
-        ),
+      child: Row(
+        children: [
+          chip('Bags', _qtyEntryMode == 'bags'),
+          const SizedBox(width: 8),
+          chip('Kg', _qtyEntryMode == 'kg'),
+        ],
       ),
     );
   }
@@ -1185,10 +1179,26 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     );
   }
 
+  double? _numericTaxFromCatalogRow() {
+    final id = _selectedCatalogItemId;
+    if (id == null || id.isEmpty) return null;
+    final row = _catalogRowById(id);
+    if (row == null) return null;
+    return _numD(row['tax_percent']);
+  }
+
+  /// Effective tax % for preview + [TradeCalcLine] math (0 when Tax OFF).
+  double _effectiveTaxPercentForLine() {
+    if (!_taxOn) return 0;
+    final typed = _parseD(_taxCtrl.text);
+    if (typed != null && typed > 0) return typed;
+    return (_numericTaxFromCatalogRow() ?? 0).clamp(0.0, 100.0);
+  }
+
   TradeCalcLine _currentLine() {
     final qty = _qtyVal();
     final disc = _parseD(_discCtrl.text);
-    final tax = _parseD(_taxCtrl.text);
+    final tax = _effectiveTaxPercentForLine();
     final fv = _parseD(_freightCtrl.text);
     final dr = _parseD(_deliveredCtrl.text);
     final br = _parseD(_billtyCtrl.text);
@@ -1244,59 +1254,6 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
           },
         ),
       ),
-    );
-  }
-
-  Widget _gstRateBasisSegment(
-    String title,
-    RateTaxBasis value,
-    ValueChanged<RateTaxBasis> onChanged, {
-    required String helperExtra,
-    required String helperIncluded,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
-            color: cs.onSurface.withValues(alpha: 0.9),
-          ),
-        ),
-        const SizedBox(height: 6),
-        SegmentedButton<RateTaxBasis>(
-          segments: const [
-            ButtonSegment(
-              value: RateTaxBasis.taxExtra,
-              label: Text('GST Extra'),
-            ),
-            ButtonSegment(
-              value: RateTaxBasis.includesTax,
-              label: Text('GST Included'),
-            ),
-          ],
-          selected: {value},
-          onSelectionChanged: (s) {
-            if (s.isEmpty) return;
-            onChanged(s.first);
-          },
-        ),
-        Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: Text(
-            value == RateTaxBasis.taxExtra ? helperExtra : helperIncluded,
-            style: TextStyle(
-              fontSize: 12,
-              height: 1.3,
-              fontWeight: FontWeight.w600,
-              color: cs.onSurface.withValues(alpha: 0.78),
-            ),
-          ),
-        ),
-      ],
     );
   }
 
@@ -1793,19 +1750,21 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       // HSN is optional on purchase lines (backend accepts null); do not block save.
       _errHsn = null;
       _errTaxBasis = null;
-      final taxPct = _parseD(_taxCtrl.text);
-      if (_purchaseRateTaxBasis == RateTaxBasis.includesTax &&
-          (taxPct == null || taxPct <= 0)) {
-        _errTaxBasis =
-            'Enter GST %, or set purchase price to “Tax extra”.';
-      } else if (_sellingRateTaxBasis == RateTaxBasis.includesTax &&
-          sellT.isNotEmpty &&
-          (taxPct == null || taxPct <= 0)) {
-        _errTaxBasis =
-            'Enter GST % for tax-inclusive selling, or set selling to “Tax extra”.';
-      }
-      if (_errTaxBasis != null) {
-        _moreSectionExpanded = true;
+      if (_taxOn) {
+        final taxPct = _parseD(_taxCtrl.text);
+        if (_purchaseRateTaxBasis == RateTaxBasis.includesTax &&
+            (taxPct == null || taxPct <= 0)) {
+          _errTaxBasis =
+              'Enter GST %, or set purchase price to “Tax extra”.';
+        } else if (_sellingRateTaxBasis == RateTaxBasis.includesTax &&
+            sellT.isNotEmpty &&
+            (taxPct == null || taxPct <= 0)) {
+          _errTaxBasis =
+              'Enter GST % for tax-inclusive selling, or set selling to “Tax extra”.';
+        }
+        if (_errTaxBasis != null) {
+          _moreSectionExpanded = true;
+        }
       }
     });
 
@@ -1820,7 +1779,6 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       return null;
     }
     final disc = _parseD(_discCtrl.text);
-    final tax = _parseD(_taxCtrl.text);
     final sellSt = _sellingCtrl.text.trim();
 
     final m = <String, dynamic>{
@@ -1896,7 +1854,12 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     if (!widget.omitLineFreightDeliveredBilltyDiscount) {
       if (disc != null && disc > 0) m['discount'] = disc;
     }
-    if (tax != null && tax > 0) m['tax_percent'] = tax;
+    applyTaxPercentToPurchaseLineMap(
+      m,
+      taxOn: _taxOn,
+      typedTaxPercent: _parseD(_taxCtrl.text),
+      catalogTaxPercent: _numericTaxFromCatalogRow(),
+    );
     if (sellSt.isNotEmpty) {
       final sellIn = _sellingParsedAsPerKg() ?? _parseD(sellSt)!;
       final sellParsed = _toPreTaxRate(sellIn, _sellingRateTaxBasis);
@@ -2131,8 +2094,8 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        const narrowBreak = 340.0;
-        const minPairWidth = 520.0;
+        const narrowBreak = 300.0;
+        const minPairWidth = 280.0;
         final stackRates = preferVerticalRates ||
             constraints.maxWidth < minPairWidth;
         if (stackRates || constraints.maxWidth < narrowBreak) {
@@ -2154,6 +2117,53 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
           ],
         );
       },
+    );
+  }
+
+  Widget _buildTaxOnOffToggle(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Tax',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+            color: theme.colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 6),
+        SizedBox(
+          height: 44,
+          child: SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment<bool>(value: false, label: Text('OFF')),
+              ButtonSegment<bool>(value: true, label: Text('ON')),
+            ],
+            selected: <bool>{_taxOn},
+            showSelectedIcon: false,
+            onSelectionChanged: (Set<bool> s) {
+              if (s.isEmpty) return;
+              setState(() {
+                _taxOn = s.first;
+                _errTaxBasis = null;
+                if (!_taxOn) {
+                  _taxCtrl.clear();
+                } else {
+                  final rowTax = _numericTaxFromCatalogRow();
+                  if (rowTax != null &&
+                      rowTax > 0 &&
+                      _taxCtrl.text.trim().isEmpty) {
+                    _taxCtrl.text =
+                        StrictDecimal.fromObject(rowTax).format(2);
+                  }
+                }
+              });
+              _schedulePreviewRebuild();
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -2540,9 +2550,11 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         }
       }
 
-      final tax = _numD(row['tax_percent']);
-      _taxCtrl.text =
-          tax != null && tax > 0 ? StrictDecimal.fromObject(tax).format(2) : '';
+      if (_taxOn) {
+        final tax = _numD(row['tax_percent']);
+        _taxCtrl.text =
+            tax != null && tax > 0 ? StrictDecimal.fromObject(tax).format(2) : '';
+      }
       _errItem = null;
     });
   }
@@ -2616,9 +2628,12 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
           _kgPerBagCtrl.text = _fmtQty(kpu);
         }
       }
-      if (taxPercent != null && taxPercent >= 0) {
-        _taxCtrl.text =
-            taxPercent > 0 ? StrictDecimal.fromObject(taxPercent).format(2) : '';
+      if (_taxOn) {
+        if (taxPercent != null && taxPercent >= 0) {
+          _taxCtrl.text = taxPercent > 0
+              ? StrictDecimal.fromObject(taxPercent).format(2)
+              : '';
+        }
       }
       final ft = d['freight_type']?.toString();
       if (ft == 'included' || ft == 'separate') _freightType = ft!;
@@ -2902,18 +2917,6 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         : (_parseD(_landingCtrl.text) ?? 0);
     final line = _currentLine();
     final unitWord = _capitalUnitWord(u.isEmpty ? 'unit' : u);
-    final model = buildPurchaseLinePreviewModel(
-      line: line,
-      unitLabel: unitWord,
-      qty: q,
-      enteredPurchaseDisplay: enteredPurchase,
-      purchaseBasis: _purchaseRateTaxBasis,
-      enteredSellingDisplay: sell,
-      sellBasis: _sellingRateTaxBasis,
-      omitLineFreight: widget.omitLineFreightDeliveredBilltyDiscount,
-      profitPreview: profit,
-      hasSelling: sell != null && sell > 0,
-    );
 
     TextStyle bodyStyle({double fs = 13.5, FontWeight w = FontWeight.w600}) =>
         theme.textTheme.bodyMedium!.copyWith(
@@ -2923,7 +2926,23 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
           color: const Color(0xFF0F172A),
         );
 
-    final warnings = _gstSoftWarningMessages();
+    final warnings =
+        _moreSectionExpanded ? _gstSoftWarningMessages() : const <String>[];
+    final traderLines = buildTraderPurchasePreviewLines(
+      qtySummaryLine: _qtyAndUnitWeightSummaryLine(),
+      line: line,
+      taxOn: _taxOn,
+      qty: q,
+      unitWord: unitWord,
+      ratesPerKgEconomics: _ratesPerKgEconomics,
+      rateFieldsPerKg: _rateFieldsPerKg,
+      enteredPurchaseDisplay: enteredPurchase,
+      kgPer: _kgPer(),
+      enteredSellingDisplay: sell,
+      omitLineFreight: widget.omitLineFreightDeliveredBilltyDiscount,
+      profitPreview: profit,
+    );
+
     final lines = <Widget>[
       for (final w in warnings)
         Padding(
@@ -2952,72 +2971,21 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
             ),
           ),
         ),
-      Text(
-        _qtyAndUnitWeightSummaryLine(),
-        style: bodyStyle(fs: 14, w: FontWeight.w800),
-      ),
-      const SizedBox(height: 8),
+      for (var i = 0; i < traderLines.length; i++) ...[
+        Text(
+          traderLines[i],
+          style: i == 0
+              ? bodyStyle(fs: 14, w: FontWeight.w800)
+              : i == 1
+                  ? bodyStyle(fs: 14, w: FontWeight.w800)
+                  : i == traderLines.length - 1
+                      ? bodyStyle(fs: 15, w: FontWeight.w900)
+                      : bodyStyle(),
+        ),
+        if (i < traderLines.length - 1)
+          SizedBox(height: i == 0 ? 8 : (i == 1 ? 4 : 2)),
+      ],
     ];
-
-    if (_showPerKgLandingLabels) {
-      final k = _kgPer();
-      if (k != null && k > 0 && q > 0) {
-        final totalK = q * k;
-        lines.add(Text(
-          '${_inQtyWtFmt.format(q)} × ${_fmtQty(k)} kg/bag = ${_inQtyWtFmt.format(totalK)} kg',
-          style: bodyStyle(fs: 13, w: FontWeight.w600)
-              .copyWith(color: Colors.blueGrey[800]),
-        ));
-        lines.add(const SizedBox(height: 6));
-      } else if (_activeClassification().type == UnitType.weightBag) {
-        lines.add(Text(
-          'Enter kg per bag',
-          style: bodyStyle(fs: 13).copyWith(color: Colors.blueGrey[700]),
-        ));
-        lines.add(const SizedBox(height: 6));
-      }
-    }
-
-    lines.addAll([
-      Text(model.enteredPurchaseLine, style: bodyStyle(fs: 14, w: FontWeight.w800)),
-      const SizedBox(height: 4),
-      Text(model.taxableLine, style: bodyStyle()),
-      const SizedBox(height: 2),
-      Text(model.gstLine, style: bodyStyle(w: FontWeight.w700)),
-      const SizedBox(height: 2),
-      Text(model.linePurchaseLine, style: bodyStyle(fs: 14.5, w: FontWeight.w900)),
-    ]);
-    if (model.chargesLine != null) {
-      lines.addAll([
-        const SizedBox(height: 4),
-        Text(model.chargesLine!, style: bodyStyle().copyWith(color: Colors.blueGrey[900])),
-      ]);
-    }
-    lines.add(const SizedBox(height: 10));
-    lines.add(
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: const Color(0xFFE0F2FE).withValues(alpha: 0.55),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: const Color(0xFF0EA5E9).withValues(alpha: 0.35)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (model.sellingLine != null) ...[
-              Text(model.sellingLine!, style: bodyStyle(fs: 13)),
-              const SizedBox(height: 4),
-            ],
-            Text(
-              model.profitLine ?? 'Profit —',
-              style: bodyStyle(fs: 15, w: FontWeight.w900)
-                  .copyWith(color: const Color(0xFF0F172A)),
-            ),
-          ],
-        ),
-      ),
-    );
 
     return Container(
       width: double.infinity,
@@ -3066,40 +3034,10 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       if (rateBasisSeg != null) rateBasisSeg,
       _buildPurchaseSellingRateRow(
         showPerKgFields,
-        preferVerticalRates: widget.fullPage,
+        preferVerticalRates: false,
       ),
-      SizedBox(height: widget.fullPage ? 8 : 6),
-      _gstRateBasisSegment(
-        'Purchase rate (GST)',
-        _purchaseRateTaxBasis,
-        (v) => setState(() {
-          _purchaseRateTaxBasis = v;
-          _errTaxBasis = null;
-          if (!_sellingGstBasisManual) {
-            _sellingRateTaxBasis = v;
-          }
-          _persistGstPrefs();
-        }),
-        helperExtra:
-            'You type the rate before GST. Tax % is added on top in the breakdown.',
-        helperIncluded:
-            'You type the rate with GST inside. We split base + tax to match the bill.',
-      ),
-      SizedBox(height: widget.fullPage ? 12 : 8),
-      _gstRateBasisSegment(
-        'Selling rate (GST)',
-        _sellingRateTaxBasis,
-        (v) => setState(() {
-          _sellingRateTaxBasis = v;
-          _errTaxBasis = null;
-          _sellingGstBasisManual = v != _purchaseRateTaxBasis;
-          _persistGstPrefs();
-        }),
-        helperExtra:
-            'Selling before GST — margin uses the same rule as purchase.',
-        helperIncluded:
-            'Selling includes GST — we strip to pre-tax before save, same as purchase.',
-      ),
+      SizedBox(height: widget.fullPage ? 10 : 8),
+      _buildTaxOnOffToggle(theme),
       if (_errTaxBasis != null) ...[
         SizedBox(height: widget.fullPage ? 8 : 6),
         Text(
@@ -3600,7 +3538,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                               children: [
                                 Expanded(
                                   child: Text(
-                                    'More (discount, freight, notes)',
+                                    'Advanced',
                                     style: theme.textTheme.labelLarge?.copyWith(
                                       fontWeight: FontWeight.w700,
                                       fontSize: 13,
@@ -3623,6 +3561,47 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
+                                Text(
+                                  'GST inside your typed rate (optional)',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.blueGrey[800],
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                GstRateBasisSegmentColumn(
+                                  title: 'Purchase rate',
+                                  value: _purchaseRateTaxBasis,
+                                  onChanged: (v) => setState(() {
+                                    _purchaseRateTaxBasis = v;
+                                    _errTaxBasis = null;
+                                    if (!_sellingGstBasisManual) {
+                                      _sellingRateTaxBasis = v;
+                                    }
+                                    _persistGstPrefs();
+                                  }),
+                                  helperExtra:
+                                      'Rate is before GST; tax % is added on top.',
+                                  helperIncluded:
+                                      'Rate already includes GST; we split for saving.',
+                                ),
+                                const SizedBox(height: 8),
+                                GstRateBasisSegmentColumn(
+                                  title: 'Selling rate',
+                                  value: _sellingRateTaxBasis,
+                                  onChanged: (v) => setState(() {
+                                    _sellingRateTaxBasis = v;
+                                    _errTaxBasis = null;
+                                    _sellingGstBasisManual =
+                                        v != _purchaseRateTaxBasis;
+                                    _persistGstPrefs();
+                                  }),
+                                  helperExtra:
+                                      'Selling before GST — same idea as purchase.',
+                                  helperIncluded:
+                                      'Selling includes GST — split for saving.',
+                                ),
+                                const SizedBox(height: 12),
                                 if (widget
                                     .omitLineFreightDeliveredBilltyDiscount) ...[
                                   TextField(
@@ -3924,6 +3903,11 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
             ),
             body: LayoutBuilder(
               builder: (context, c) {
+                final imeBottom = MediaQuery.viewInsetsOf(context).bottom;
+                final safeBottom = MediaQuery.paddingOf(context).bottom;
+                final double previewBottomPad = imeBottom > 0
+                    ? imeBottom + 12.0
+                    : (safeBottom > 0 ? safeBottom + 8.0 : 12.0);
                 final previewPinned = Material(
                   elevation: 8,
                   color: Colors.white,
@@ -3933,7 +3917,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                       16,
                       8,
                       16,
-                      MediaQuery.paddingOf(context).bottom > 0 ? 4 : 8,
+                      previewBottomPad,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3941,8 +3925,9 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                       children: [
                         ListenableBuilder(
                           listenable: _lineTotalsListenable,
-                          builder: (context, _) =>
-                              _fpShell(_liveTotalsCard(theme)),
+                          builder: (context, _) => RepaintBoundary(
+                            child: _fpShell(_liveTotalsCard(theme)),
+                          ),
                         ),
                         footer,
                       ],
