@@ -313,9 +313,29 @@ String _historyPaymentChipLabel(PurchaseStatus st) {
       return 'Due soon';
     case PurchaseStatus.partiallyPaid:
       return 'Partial';
-    default:
-      return 'Pending';
+    case PurchaseStatus.saved:
+      return 'Saved';
+    case PurchaseStatus.confirmed:
+      return 'Unpaid';
+    case PurchaseStatus.cancelled:
+      return 'Cancelled';
+    case PurchaseStatus.deleted:
+      return 'Deleted';
+    case PurchaseStatus.unknown:
+      return '—';
   }
+}
+
+/// Avoid repeating “Pending” beside the delivery-aging chip (same row = clutter).
+bool _purchaseRowHidePaymentMiniBadge(TradePurchase p) {
+  final st = p.statusEnum;
+  if (st == PurchaseStatus.deleted || st == PurchaseStatus.cancelled) {
+    return false;
+  }
+  if (!p.isDelivered && (st == PurchaseStatus.confirmed || st == PurchaseStatus.saved)) {
+    return true;
+  }
+  return false;
 }
 
 String _histCsvCell(String raw) {
@@ -520,7 +540,7 @@ List<TradePurchase> purchaseHistoryVisibleSortedForRef(
   v = _filterPurchasesBySearch(v, searchQ);
   final out = List<TradePurchase>.of(v);
   final newestFirst = ref.read(purchaseHistorySortNewestFirstProvider);
-  if (searchQ.trim().isNotEmpty) {
+  if (searchQ.trim().isNotEmpty || primary == 'all') {
     _purchaseHistorySortSearchPromoteUndelivered(out, newestFirst);
   } else {
     _purchaseHistorySortPurchases(out, newestFirst, primary);
@@ -1198,11 +1218,6 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                             },
                             icon: const Icon(Icons.open_in_full_rounded),
                           ),
-                          IconButton.filledTonal(
-                            tooltip: 'Filters & sort',
-                            onPressed: _openMoreFilters,
-                            icon: const Icon(Icons.tune_rounded),
-                          ),
                         ],
                       ),
                     ),
@@ -1302,19 +1317,22 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                         padding: const EdgeInsets.symmetric(horizontal: 10),
                         children: [
                           for (final e in const [
-                            ('all', 'All'),
-                            ('due', 'Due'),
-                            ('paid', 'Paid'),
-                            ('draft', 'Draft'),
-                            ('pending_delivery', '🚚 Awaiting'),
-                            ('delivery_stuck', '⚠ Stuck'),
-                            ('received', '✅ Done'),
+                            ('all', null, 'All'),
+                            ('due', null, 'Due'),
+                            ('paid', null, 'Paid'),
+                            ('draft', null, 'Draft'),
+                            ('pending_delivery', Icons.local_shipping_outlined, 'Awaiting'),
+                            ('delivery_stuck', Icons.warning_amber_rounded, 'Stuck'),
+                            ('received', Icons.check_circle_outline_rounded, 'Done'),
                           ])
                             Padding(
                               padding: const EdgeInsets.only(right: 6),
                               child: FilterChip(
+                                avatar: e.$2 == null
+                                    ? null
+                                    : Icon(e.$2, size: 16),
                                 label: Text(
-                                  e.$2,
+                                  e.$3,
                                   style: const TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w700,
@@ -2305,8 +2323,6 @@ class _PurchaseRow extends StatelessWidget {
     final agingBand = undeliveredAgingBandForPurchase(p);
     final stripe =
         agingBand == null ? null : undeliveredLeftStripeColor(agingBand);
-    final agingCol =
-        agingBand == null ? null : undeliveredAgingColors(agingBand);
 
     final tileInk = InkWell(
         onTap: onTap,
@@ -2339,18 +2355,29 @@ class _PurchaseRow extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      supp,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: HexaDsType.purchaseQtyUnit.copyWith(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w900,
-                        color: const Color(0xFF0F172A),
-                        height: 1.15,
-                      ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            supp,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: HexaDsType.purchaseQtyUnit.copyWith(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w900,
+                              color: const Color(0xFF0F172A),
+                              height: 1.15,
+                            ),
+                          ),
+                        ),
+                        if (daysChip != null) ...[
+                          const SizedBox(width: 6),
+                          daysChip,
+                        ],
+                      ],
                     ),
-                    const SizedBox(height: 1),
+                    const SizedBox(height: 2),
                     Text(
                       headline,
                       maxLines: 1,
@@ -2362,24 +2389,13 @@ class _PurchaseRow extends StatelessWidget {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(height: 1),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: RichText(
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            text: TextSpan(children: _packSummaryStyledSpans(pack)),
-                          ),
-                        ),
-                        if (daysChip != null) ...[
-                          const SizedBox(width: 6),
-                          daysChip,
-                        ],
-                      ],
+                    const SizedBox(height: 2),
+                    RichText(
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      text: TextSpan(children: _packSummaryStyledSpans(pack)),
                     ),
-                    const SizedBox(height: 1),
+                    const SizedBox(height: 2),
                     Text(
                       '${p.humanId} • ${df.format(p.purchaseDate)}',
                       maxLines: 1,
@@ -2452,76 +2468,7 @@ class _PurchaseRow extends StatelessWidget {
                       ],
                     ),
                   ],
-                  const SizedBox(height: 1),
-                  if (!p.isDelivered &&
-                      p.statusEnum != PurchaseStatus.deleted &&
-                      p.statusEnum != PurchaseStatus.cancelled)
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 2),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: agingCol?.bg ?? Colors.orange.shade50,
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(
-                          color: agingCol?.border ?? Colors.orange.shade200,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.local_shipping_outlined,
-                            size: 12,
-                            color: agingCol?.fg ?? Colors.orange.shade800,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Pending',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: agingCol?.fg ?? Colors.orange.shade800,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  else if (p.isDelivered)
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 2),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade50,
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: Colors.green.shade200),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.check_circle_outline_rounded,
-                            size: 12,
-                            color: Colors.green.shade800,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Received',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: Colors.green.shade800,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  _MiniBadge(st),
+                  if (!_purchaseRowHidePaymentMiniBadge(p)) _MiniBadge(st),
                 ],
               ),
             ],
