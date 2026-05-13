@@ -92,22 +92,37 @@ Widget _historyMetaChip({
   required Color bg,
   required Color border,
   required Color fg,
+  IconData? icon,
+  double fontSize = 9.5,
 }) {
   return Container(
-    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    padding: EdgeInsets.symmetric(horizontal: icon == null ? 6 : 7, vertical: 3),
     decoration: BoxDecoration(
       color: bg,
-      borderRadius: BorderRadius.circular(4),
-      border: Border.all(color: border),
+      borderRadius: BorderRadius.circular(6),
+      border: Border.all(color: border, width: 1),
     ),
-    child: Text(
-      label,
-      style: TextStyle(
-        fontSize: 9.5,
-        fontWeight: FontWeight.w900,
-        height: 1.05,
-        color: fg,
-      ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (icon != null) ...[
+          Icon(icon, size: fontSize + 2.5, color: fg),
+          const SizedBox(width: 4),
+        ],
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: fontSize,
+              fontWeight: FontWeight.w900,
+              height: 1.05,
+              color: fg,
+            ),
+          ),
+        ),
+      ],
     ),
   );
 }
@@ -160,14 +175,16 @@ Widget? _purchaseHistoryDaysChip(TradePurchase p) {
       p.purchaseDate.day,
     );
     final wait = today.difference(pur).inDays;
-    final label = wait <= 0 ? 'Undelivered' : 'Undelivered · ${wait}d';
-    final band = undeliveredAgingBandFromDays(wait <= 0 ? 0 : wait);
+    final band = undeliveredAgingBandFromDays(wait < 0 ? 0 : wait);
     final col = undeliveredAgingColors(band);
+    final label = undeliveredAgingChipLabel(wait < 0 ? 0 : wait, band);
     return _historyMetaChip(
       label: label,
       bg: col.bg,
       border: col.border,
       fg: col.fg,
+      icon: undeliveredAgingIcon(band),
+      fontSize: band == UndeliveredAgingBand.critical ? 10 : 9.5,
     );
   }
 
@@ -382,6 +399,46 @@ void _purchaseHistorySortPurchases(
   });
 }
 
+/// Fullscreen / inline **search**: surface the longest-wait undelivered rows first,
+/// then keep normal date order for the rest (matches trader “who is stuck?” workflow).
+void _purchaseHistorySortSearchPromoteUndelivered(
+  List<TradePurchase> list,
+  bool newestFirst,
+) {
+  bool liveUndelivered(TradePurchase p) {
+    final st = p.statusEnum;
+    if (st == PurchaseStatus.deleted || st == PurchaseStatus.cancelled) {
+      return false;
+    }
+    return !p.isDelivered;
+  }
+
+  int age(TradePurchase p) =>
+      liveUndelivered(p) ? undeliveredDaysSincePurchase(p) : -1;
+
+  list.sort((a, b) {
+    final ua = liveUndelivered(a);
+    final ub = liveUndelivered(b);
+    if (ua != ub) {
+      if (ua) return -1;
+      if (ub) return 1;
+    }
+    if (ua && ub) {
+      final da = age(a);
+      final db = age(b);
+      if (da != db) return db.compareTo(da);
+    }
+    if (newestFirst) {
+      final c = b.purchaseDate.compareTo(a.purchaseDate);
+      if (c != 0) return c;
+      return b.humanId.compareTo(a.humanId);
+    }
+    final c = a.purchaseDate.compareTo(b.purchaseDate);
+    if (c != 0) return c;
+    return a.humanId.compareTo(b.humanId);
+  });
+}
+
 /// Shared filter + sort pipeline for Purchase History (main screen + fullscreen search).
 List<TradePurchase> purchaseHistoryVisibleSortedForRef(
   WidgetRef ref,
@@ -462,11 +519,12 @@ List<TradePurchase> purchaseHistoryVisibleSortedForRef(
   }
   v = _filterPurchasesBySearch(v, searchQ);
   final out = List<TradePurchase>.of(v);
-  _purchaseHistorySortPurchases(
-    out,
-    ref.read(purchaseHistorySortNewestFirstProvider),
-    primary,
-  );
+  final newestFirst = ref.read(purchaseHistorySortNewestFirstProvider);
+  if (searchQ.trim().isNotEmpty) {
+    _purchaseHistorySortSearchPromoteUndelivered(out, newestFirst);
+  } else {
+    _purchaseHistorySortPurchases(out, newestFirst, primary);
+  }
   return out;
 }
 
@@ -2244,11 +2302,13 @@ class _PurchaseRow extends StatelessWidget {
     final headline = purchaseHistoryItemHeadline(p);
     final pack = purchaseHistoryPackSummary(p);
     final daysChip = _purchaseHistoryDaysChip(p);
+    final agingBand = undeliveredAgingBandForPurchase(p);
+    final stripe =
+        agingBand == null ? null : undeliveredLeftStripeColor(agingBand);
+    final agingCol =
+        agingBand == null ? null : undeliveredAgingColors(agingBand);
 
-    final card = Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
+    final tileInk = InkWell(
         onTap: onTap,
         onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(8),
@@ -2399,40 +2459,66 @@ class _PurchaseRow extends StatelessWidget {
                     Container(
                       margin: const EdgeInsets.only(bottom: 2),
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 5,
-                        vertical: 2,
+                        horizontal: 6,
+                        vertical: 3,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.orange.shade50,
+                        color: agingCol?.bg ?? Colors.orange.shade50,
                         borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: Colors.orange.shade200),
-                      ),
-                      child: Text(
-                        '🚚 Pending',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Colors.orange.shade800,
-                          fontWeight: FontWeight.w600,
+                        border: Border.all(
+                          color: agingCol?.border ?? Colors.orange.shade200,
                         ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.local_shipping_outlined,
+                            size: 12,
+                            color: agingCol?.fg ?? Colors.orange.shade800,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Pending',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: agingCol?.fg ?? Colors.orange.shade800,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
                       ),
                     )
                   else if (p.isDelivered)
                     Container(
                       margin: const EdgeInsets.only(bottom: 2),
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 5,
-                        vertical: 2,
+                        horizontal: 6,
+                        vertical: 3,
                       ),
                       decoration: BoxDecoration(
                         color: Colors.green.shade50,
                         borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Colors.green.shade200),
                       ),
-                      child: Text(
-                        '✅ Received',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Colors.green.shade800,
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.check_circle_outline_rounded,
+                            size: 12,
+                            color: Colors.green.shade800,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Received',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.green.shade800,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   _MiniBadge(st),
@@ -2441,7 +2527,21 @@ class _PurchaseRow extends StatelessWidget {
             ],
           ),
         ),
-      ),
+      );
+
+    final card = Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(8),
+      clipBehavior: Clip.antiAlias,
+      child: stripe != null
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(width: 5, color: stripe),
+                Expanded(child: tileInk),
+              ],
+            )
+          : tileInk,
     );
 
     if (selectMode) return card;
