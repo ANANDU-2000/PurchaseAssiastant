@@ -121,6 +121,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
   final _brokerCtrl = TextEditingController();
   final _partySupplierFocus = FocusNode();
   final _partyBrokerFocus = FocusNode();
+  final _termsPaymentDaysFocus = FocusNode();
   final _paymentDaysCtrl = TextEditingController();
   final _headerDiscCtrl = TextEditingController();
   final _commissionCtrl = TextEditingController();
@@ -615,6 +616,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     _itemsStepListScrollController.dispose();
     _partySupplierFocus.dispose();
     _partyBrokerFocus.dispose();
+    _termsPaymentDaysFocus.dispose();
     super.dispose();
   }
 
@@ -1872,7 +1874,10 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
       _brokerFieldError = null;
       _wizStep = 1;
     });
-    FocusScope.of(context).unfocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _termsPaymentDaysFocus.requestFocus();
+    });
   }
 
   void _autoSelectCommissionUnitFromLinesIfNeeded() {
@@ -1992,6 +1997,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
         break;
       case 1:
         step = PurchaseTermsOnlyStep(
+          paymentDaysFocus: _termsPaymentDaysFocus,
           paymentDaysCtrl: _paymentDaysCtrl,
           commissionCtrl: _commissionCtrl,
           headerDiscCtrl: _headerDiscCtrl,
@@ -2038,10 +2044,12 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
           ],
         );
       },
-      child: Padding(
-        key: ValueKey<int>(_wizStep),
-        padding: EdgeInsets.zero,
-        child: step,
+      child: RepaintBoundary(
+        child: Padding(
+          key: ValueKey<int>(_wizStep),
+          padding: EdgeInsets.zero,
+          child: step,
+        ),
       ),
     );
   }
@@ -2131,29 +2139,31 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
       removeTop: false,
       child: LayoutBuilder(
         builder: (ctx, _) {
-          final kb = MediaQuery.viewInsetsOf(ctx).bottom;
           final stepScroll = wizStep == 2
               ? Padding(
-                  padding: EdgeInsets.fromLTRB(16, 16, 16, kb > 0 ? 8 : 16),
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                   child: stepContent,
                 )
               : SingleChildScrollView(
                   controller: _wizardBodyScrollController,
                   keyboardDismissBehavior:
                       ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: EdgeInsets.fromLTRB(16, 16, 16, kb > 0 ? 8 : 16),
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                   child: stepContent,
                 );
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(child: stepScroll),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                curve: Curves.easeOut,
-                color: Theme.of(ctx).scaffoldBackgroundColor,
-                padding: EdgeInsets.fromLTRB(16, 8, 16, kb > 0 ? kb + 8 : 16),
-                child: _wizardFooterChrome(catalog, isEdit),
+              SafeArea(
+                top: false,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOut,
+                  color: Theme.of(ctx).scaffoldBackgroundColor,
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  child: _wizardFooterChrome(catalog, isEdit),
+                ),
               ),
             ],
           );
@@ -2363,7 +2373,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
         await _handleWizardExitFromRoot();
       },
       child: Scaffold(
-        resizeToAvoidBottomInset: false,
+        resizeToAvoidBottomInset: true,
         appBar: AppBar(
           title: Text(appBarTitle),
           elevation: 0,

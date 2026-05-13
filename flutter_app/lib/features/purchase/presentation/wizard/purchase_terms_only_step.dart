@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/widgets/form_field_scroll.dart';
 import '../../domain/purchase_draft.dart';
 import '../../state/purchase_draft_provider.dart';
 import 'purchase_wizard_shared.dart';
@@ -10,6 +11,7 @@ import 'purchase_wizard_shared.dart';
 class PurchaseTermsOnlyStep extends ConsumerWidget {
   const PurchaseTermsOnlyStep({
     super.key,
+    required this.paymentDaysFocus,
     required this.paymentDaysCtrl,
     required this.commissionCtrl,
     required this.headerDiscCtrl,
@@ -17,6 +19,7 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
     required this.onDraftChanged,
   });
 
+  final FocusNode paymentDaysFocus;
   final TextEditingController paymentDaysCtrl;
   final TextEditingController commissionCtrl;
   final TextEditingController headerDiscCtrl;
@@ -60,37 +63,49 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
     final sub = Theme.of(context).colorScheme.onSurfaceVariant;
     final mode = draft.commissionMode;
 
-    Widget field(
-      TextEditingController c,
-      String label, {
+    Widget orderedField({
+      required int order,
+      required TextEditingController c,
+      required String label,
+      FocusNode? focusNode,
+      TextInputAction textInputAction = TextInputAction.next,
+      VoidCallback? onSubmitted,
       TextInputType? keyboard,
       int maxLines = 1,
       void Function(String)? onChanged,
+      InputDecoration? decoration,
     }) {
       final tf = TextField(
         controller: c,
+        focusNode: focusNode,
         keyboardType: keyboard,
         maxLines: maxLines,
         minLines: maxLines > 1 ? 1 : null,
-        scrollPadding: const EdgeInsets.only(bottom: 200),
+        scrollPadding: formFieldScrollPaddingForContext(
+          context,
+          reserveBelowField: 220,
+        ),
+        textInputAction: textInputAction,
+        onSubmitted: onSubmitted != null ? (_) => onSubmitted() : null,
         textCapitalization: maxLines > 1
             ? TextCapitalization.sentences
             : TextCapitalization.none,
-        decoration: densePurchaseFieldDecoration(label),
+        decoration: decoration ?? densePurchaseFieldDecoration(label),
         onChanged: onChanged,
       );
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        // Avoid fixed-height wrappers; they cause clipping/overlap on small phones
-        // with larger text scale and when the keyboard is open.
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: kPurchaseFieldHeight),
-          child: tf,
+      return FocusTraversalOrder(
+        order: NumericFocusOrder(order.toDouble()),
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: kPurchaseFieldHeight),
+            child: tf,
+          ),
         ),
       );
     }
 
-    return Column(
+    final column = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -169,9 +184,11 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
               ),
         ),
         const SizedBox(height: 6),
-        field(
-          paymentDaysCtrl,
-          'Payment days',
+        orderedField(
+          order: 10,
+          c: paymentDaysCtrl,
+          label: 'Payment days',
+          focusNode: paymentDaysFocus,
           keyboard: TextInputType.number,
           onChanged: (s) {
             ref.read(purchaseDraftProvider.notifier).setPaymentDaysText(s);
@@ -251,20 +268,18 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
               style: TextStyle(fontSize: 11, height: 1.25, color: sub),
             ),
             const SizedBox(height: 8),
-            ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: kPurchaseFieldHeight),
-              child: TextField(
-                controller: commissionCtrl,
-                scrollPadding: const EdgeInsets.only(bottom: 200),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration: densePurchaseFieldDecoration('Commission %')
-                    .copyWith(suffixText: '%'),
-                onChanged: (s) {
-                  ref.read(purchaseDraftProvider.notifier).setCommissionText(s);
-                  onDraftChanged();
-                },
-              ),
+            orderedField(
+              order: 20,
+              c: commissionCtrl,
+              label: 'Commission %',
+              keyboard:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: densePurchaseFieldDecoration('Commission %')
+                  .copyWith(suffixText: '%'),
+              onChanged: (s) {
+                ref.read(purchaseDraftProvider.notifier).setCommissionText(s);
+                onDraftChanged();
+              },
             ),
           ] else ...[
             Builder(
@@ -301,52 +316,51 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    ConstrainedBox(
-                      constraints:
-                          const BoxConstraints(minHeight: kPurchaseFieldHeight),
-                      child: TextField(
-                        controller: commissionCtrl,
-                        scrollPadding: const EdgeInsets.only(bottom: 200),
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                        decoration: densePurchaseFieldDecoration(
-                          'Amount (₹)',
-                        ),
-                        onChanged: (s) {
-                          ref
-                              .read(purchaseDraftProvider.notifier)
-                              .setCommissionText(s);
-                          onDraftChanged();
-                        },
-                      ),
+                    orderedField(
+                      order: 20,
+                      c: commissionCtrl,
+                      label: 'Amount (₹)',
+                      keyboard: const TextInputType.numberWithOptions(
+                          decimal: true),
+                      decoration:
+                          densePurchaseFieldDecoration('Amount (₹)'),
+                      onChanged: (s) {
+                        ref
+                            .read(purchaseDraftProvider.notifier)
+                            .setCommissionText(s);
+                        onDraftChanged();
+                      },
                     ),
                     const SizedBox(height: 8),
-                    InputDecorator(
-                      decoration: densePurchaseFieldDecoration(
-                        'Commission applies to',
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: coerced,
-                          isExpanded: true,
-                          isDense: true,
-                          items: [
-                            for (final o in figOpts)
-                              DropdownMenuItem<String>(
-                                value: o.$1,
-                                child: Text(
-                                  _unitDropdownLabel(o.$1),
-                                  overflow: TextOverflow.ellipsis,
+                    FocusTraversalOrder(
+                      order: const NumericFocusOrder(30),
+                      child: InputDecorator(
+                        decoration: densePurchaseFieldDecoration(
+                          'Commission applies to',
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: coerced,
+                            isExpanded: true,
+                            isDense: true,
+                            items: [
+                              for (final o in figOpts)
+                                DropdownMenuItem<String>(
+                                  value: o.$1,
+                                  child: Text(
+                                    _unitDropdownLabel(o.$1),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
-                              ),
-                          ],
-                          onChanged: (v) {
-                            if (v == null) return;
-                            ref
-                                .read(purchaseDraftProvider.notifier)
-                                .setCommissionMode(v);
-                            onDraftChanged();
-                          },
+                            ],
+                            onChanged: (v) {
+                              if (v == null) return;
+                              ref
+                                  .read(purchaseDraftProvider.notifier)
+                                  .setCommissionMode(v);
+                              onDraftChanged();
+                            },
+                          ),
                         ),
                       ),
                     ),
@@ -369,26 +383,35 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
           ],
           const SizedBox(height: 8),
         ],
-        field(
-          headerDiscCtrl,
-          'Discount %',
+        orderedField(
+          order: hasBroker ? 40 : 20,
+          c: headerDiscCtrl,
+          label: 'Discount %',
           keyboard: const TextInputType.numberWithOptions(decimal: true),
           onChanged: (s) {
             ref.read(purchaseDraftProvider.notifier).setHeaderDiscountFromText(s);
             onDraftChanged();
           },
         ),
-        field(
-          narrationCtrl,
-          'Narration / ref (optional)',
+        orderedField(
+          order: hasBroker ? 50 : 30,
+          c: narrationCtrl,
+          label: 'Narration / ref (optional)',
           keyboard: TextInputType.text,
           maxLines: 2,
+          textInputAction: TextInputAction.done,
+          onSubmitted: () => FocusManager.instance.primaryFocus?.unfocus(),
           onChanged: (s) {
             ref.read(purchaseDraftProvider.notifier).setInvoiceText(s);
             onDraftChanged();
           },
         ),
       ],
+    );
+
+    return FocusTraversalGroup(
+      policy: OrderedTraversalPolicy(),
+      child: column,
     );
   }
 }

@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/calc_engine.dart';
+import '../../../../core/widgets/form_field_scroll.dart';
 import '../../../../core/errors/user_facing_errors.dart';
 import '../../../../core/json_coerce.dart';
 import '../../../../core/models/trade_purchase_models.dart';
@@ -1341,10 +1342,12 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   }
 
   EdgeInsets _textFieldScrollPadding() {
-    final ime = MediaQuery.viewInsetsOf(context).bottom;
     final reserve =
         widget.fullPage ? _kPinnedPreviewReserve : 140.0;
-    return EdgeInsets.only(bottom: ime + reserve);
+    return formFieldScrollPaddingForContext(
+      context,
+      reserveBelowField: reserve,
+    );
   }
 
   void _ensureFocusedFieldVisible() {

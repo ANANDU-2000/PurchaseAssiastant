@@ -229,7 +229,7 @@ class _AppTextFieldState extends State<AppTextField> {
               fillColor: widget.enabled ? hx.inputFill : hx.surfaceCanvas,
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 14,
-                vertical: 13,
+                vertical: 15,
               ),
               labelStyle: HexaDsType.label(14, color: hx.textMuted)
                   .copyWith(fontWeight: FontWeight.w500),

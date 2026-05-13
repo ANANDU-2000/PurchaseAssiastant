@@ -1,8 +1,11 @@
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import '../../core/widgets/form_field_scroll.dart';
 
 /// A selectable option for [InlineSearchField].
 class InlineSearchItem {
@@ -187,7 +190,10 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
 
   double _optionsMaxHeight(BuildContext context, int optionCount) {
     final mq = MediaQuery.of(context);
-    final usable = mq.size.height - mq.viewInsets.bottom - mq.padding.vertical;
+    var usable = mq.size.height - mq.viewInsets.bottom - mq.padding.vertical;
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      usable -= kMobileFormKeyboardAccessoryAllowance;
+    }
     final byCount = optionCount * 56.0 + 48;
     final v = math.max(120.0, math.min(usable * 0.42, byCount));
     return math.min(280.0, v);

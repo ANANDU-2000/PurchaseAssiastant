@@ -8,7 +8,7 @@ class HexaOutlineInputBorder extends OutlineInputBorder {
   const HexaOutlineInputBorder({
     super.borderSide,
     super.borderRadius = const BorderRadius.all(Radius.circular(12)),
-    super.gapPadding = 4,
+    super.gapPadding = 6,
     this.focusRing = false,
     this.ringColor = HexaColors.inputFocusRing,
     this.ringStrokeWidth = 3,

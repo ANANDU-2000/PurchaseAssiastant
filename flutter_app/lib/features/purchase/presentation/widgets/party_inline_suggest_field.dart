@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../core/theme/hexa_colors.dart';
+import '../../../../core/widgets/form_field_scroll.dart';
 import '../../../../shared/widgets/inline_search_field.dart';
 import '../../../../shared/widgets/smart_search_field.dart';
 
@@ -819,7 +820,10 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     final fieldBottom = fieldTop + sz.height;
     final kbBottom = media.viewInsets.bottom;
     final safeBottom = media.padding.bottom;
-    final usableBottom = media.size.height - kbBottom - safeBottom;
+    final accessory = defaultTargetPlatform == TargetPlatform.iOS
+        ? kMobileFormKeyboardAccessoryAllowance
+        : 0.0;
+    final usableBottom = media.size.height - kbBottom - safeBottom - accessory;
     final spaceBelowField = usableBottom - fieldBottom - 12;
     final capByScreen = media.size.height * 0.35;
     final double maxPanelH = math.max(
