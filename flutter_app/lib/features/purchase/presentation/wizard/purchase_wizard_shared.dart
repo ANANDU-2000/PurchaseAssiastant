@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/hexa_colors.dart';
 
-const double kPurchaseFieldHeight = 52;
+const double kPurchaseFieldHeight = 44;
 
 InputDecoration densePurchaseFieldDecoration(
   String label, {
@@ -26,6 +26,6 @@ InputDecoration densePurchaseFieldDecoration(
     ),
     filled: true,
     fillColor: Colors.grey[50],
-    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
   );
 }

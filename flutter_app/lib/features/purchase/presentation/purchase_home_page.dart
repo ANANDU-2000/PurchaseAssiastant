@@ -181,12 +181,12 @@ Widget? _purchaseHistoryDaysChip(TradePurchase p) {
     final col = undeliveredAgingColors(band);
     final label = undeliveredAgingChipLabel(wait < 0 ? 0 : wait, band);
     return _historyMetaChip(
-      label: label,
+      label: label.toUpperCase(),
       bg: col.bg,
       border: col.border,
       fg: col.fg,
       icon: undeliveredAgingIcon(band),
-      fontSize: band == UndeliveredAgingBand.critical ? 10 : 9.5,
+      fontSize: band == UndeliveredAgingBand.critical ? 10.5 : 9.5,
     );
   }
 
@@ -592,62 +592,79 @@ List<TradePurchase> purchaseHistoryVisibleSortedForRef(
   final newestFirst = ref.read(purchaseHistorySortNewestFirstProvider);
   final undeliveredSort = ref.read(purchaseHistoryUndeliveredSortProvider);
 
-  // Undelivered-days sort overrides everything: most days waiting → top.
+  // Undelivered-days sort overrides everything except active filters: most days waiting → top.
   if (undeliveredSort) {
     int deliveryAge(TradePurchase p) {
       if (p.isDelivered) return -1;
       final st = p.statusEnum;
-      if (st == PurchaseStatus.deleted || st == PurchaseStatus.cancelled) {
+      if (st == PurchaseStatus.deleted || st == PurchaseStatus.cancelled || st == PurchaseStatus.paid) {
         return -1;
       }
       return undeliveredDaysSincePurchase(p);
     }
-    _purchaseHistorySortByUndeliveredAgeDesc(out, deliveryAge);
+    out.sort((a, b) {
+      final aa = deliveryAge(a);
+      final ab = deliveryAge(b);
+      // Both undelivered: highest age first
+      if (aa > -1 && ab > -1) return ab.compareTo(aa);
+      // Only one undelivered: it goes to top
+      if (aa > -1) return -1;
+      if (ab > -1) return 1;
+      
+      // If none undelivered, fallback to standard priority
+      final pa = _purchaseBusinessPriority(a);
+      final pb = _purchaseBusinessPriority(b);
+      if (pa != pb) return pa.compareTo(pb);
+      return b.purchaseDate.compareTo(a.purchaseDate);
+    });
     return out;
   }
 
-  if (s == 'pending') {
-    int pendingAge(TradePurchase p) {
-      if (p.isDelivered) return -1;
-      final st = p.statusEnum;
-      if (st == PurchaseStatus.deleted || st == PurchaseStatus.cancelled) {
-        return -1;
-      }
-      return undeliveredDaysSincePurchase(p);
+  out.sort((a, b) {
+    final pa = _purchaseBusinessPriority(a);
+    final pb = _purchaseBusinessPriority(b);
+    if (pa != pb) return pa.compareTo(pb);
+
+    // Within same priority, newest first (except overdue which is oldest first)
+    if (pa == 0) {
+      // Overdue: most days waiting (highest age) at top
+      return undeliveredDaysSincePurchase(b).compareTo(undeliveredDaysSincePurchase(a));
     }
-    _purchaseHistorySortByUndeliveredAgeDesc(out, pendingAge);
-  } else if (searchQ.trim().isNotEmpty || primary == 'all') {
-    _purchaseHistorySortSearchPromoteUndelivered(out, newestFirst);
-  } else {
-    _purchaseHistorySortPurchases(out, newestFirst, primary);
-  }
-  final valueSort =
-      ref.read(purchaseHistoryValueSortProvider)?.trim().toLowerCase();
-  if (valueSort == 'high' || valueSort == 'low') {
-    final skipValue = primary == 'pending_delivery' ||
-        primary == 'delivery_stuck' ||
-        s == 'pending';
-    if (!skipValue) {
-      if (valueSort == 'high') {
-        out.sort((a, b) {
-          final c = b.totalAmount.compareTo(a.totalAmount);
-          if (c != 0) return c;
-          final d = b.purchaseDate.compareTo(a.purchaseDate);
-          if (d != 0) return d;
-          return b.humanId.compareTo(a.humanId);
-        });
-      } else {
-        out.sort((a, b) {
-          final c = a.totalAmount.compareTo(b.totalAmount);
-          if (c != 0) return c;
-          final d = b.purchaseDate.compareTo(a.purchaseDate);
-          if (d != 0) return d;
-          return a.humanId.compareTo(b.humanId);
-        });
-      }
-    }
-  }
+
+    final dt = b.purchaseDate.compareTo(a.purchaseDate);
+    if (dt != 0) return dt;
+    return b.humanId.compareTo(a.humanId);
+  });
+
   return out;
+}
+
+int _purchaseBusinessPriority(TradePurchase p) {
+  final st = p.statusEnum;
+  if (st == PurchaseStatus.overdue) return 0;
+
+  // Due today
+  if (p.dueDate != null) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final d = DateTime(p.dueDate!.year, p.dueDate!.month, p.dueDate!.day);
+    if (d == today && st != PurchaseStatus.paid && st != PurchaseStatus.cancelled) {
+      return 1;
+    }
+  }
+
+  // Pending / Recent
+  if (!p.isDelivered &&
+      st != PurchaseStatus.paid &&
+      st != PurchaseStatus.cancelled &&
+      st != PurchaseStatus.draft) {
+    return 2;
+  }
+
+  if (st == PurchaseStatus.draft) return 3;
+
+  // Paid / Received / Cancelled
+  return 4;
 }
 
 bool _showQuickDeliverIcon(TradePurchase p) {
@@ -1299,52 +1316,33 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                 return Column(
                   children: [
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 2),
                       child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(
                             child: TextField(
                               controller: _searchCtrl,
                               focusNode: _searchFocus,
+                              style: const TextStyle(fontSize: 13),
                               decoration: const InputDecoration(
-                                hintText:
-                                    'Search supplier, PUR ID, items, broker…',
+                                hintText: 'Search supplier, ID, items…',
                                 isDense: true,
                                 filled: true,
                                 fillColor: Colors.white,
                                 border: OutlineInputBorder(
-                                  borderRadius:
-                                      BorderRadius.all(Radius.circular(12)),
+                                  borderRadius: BorderRadius.all(Radius.circular(8)),
                                 ),
-                                prefixIcon:
-                                    Icon(Icons.search_rounded, size: 20),
-                                contentPadding:
-                                    EdgeInsets.symmetric(vertical: 8),
+                                prefixIcon: Icon(Icons.search_rounded, size: 18),
+                                contentPadding: const EdgeInsets.fromLTRB(10, 4, 10, 4),
                               ),
                             ),
                           ),
+                          const SizedBox(width: 4),
                           IconButton.filledTonal(
-                            tooltip: 'Full-screen search',
-                            onPressed: () {
-                              Navigator.of(context)
-                                  .push<void>(
-                                MaterialPageRoute<void>(
-                                  fullscreenDialog: true,
-                                  builder: (ctx) =>
-                                      _PurchaseHistoryFullscreenSearchPage(
-                                    initialSearchText:
-                                        ref.read(purchaseHistorySearchProvider),
-                                  ),
-                                ),
-                              )
-                                  .then((_) {
-                                if (!mounted) return;
-                                _searchCtrl.text =
-                                    ref.read(purchaseHistorySearchProvider);
-                              });
-                            },
-                            icon: const Icon(Icons.open_in_full_rounded),
+                            visualDensity: VisualDensity.compact,
+                            tooltip: 'Scanner',
+                            onPressed: () => context.push('/purchase/scan'),
+                            icon: const Icon(Icons.document_scanner_outlined, size: 18),
                           ),
                         ],
                       ),
@@ -1354,55 +1352,39 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                       chrome: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
-                            child: SafeArea(
-                              top: false,
-                              bottom: false,
-                              minimum: EdgeInsets.zero,
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: Row(
-                                  children: [
-                                    _HistMetricPill(
-                                      label: switch (_preset) {
-                                        _HistPeriodPreset.today => 'Today',
-                                        _HistPeriodPreset.week => 'Week',
-                                        _HistPeriodPreset.month => 'Month',
-                                        _HistPeriodPreset.year => 'Year',
-                                        _HistPeriodPreset.custom => 'Custom',
-                                      },
-                                      onTap: _openPeriodPicker,
-                                      isPrimary: true,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    _HistMetricPill(
-                                      label: monthStats.purchaseCount == 0 &&
-                                              monthStats.totalInr < 1e-6
-                                          ? '₹0'
-                                          : _compactInrLakh(monthStats.totalInr),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    if (monthStats.purchaseCount > 0)
-                                      _HistMetricPill(
-                                        label: formatPurchaseHistoryMonthPackLine(monthStats),
-                                      ),
-                                    const SizedBox(width: 6),
-                                    if ((alerts['overdue'] ?? 0) > 0)
-                                      _HistMetricPill(
-                                        label: '${alerts['overdue']} Overdue',
-                                        isError: true,
-                                        onTap: () => _selectSecondary('overdue'),
-                                      ),
-                                    const SizedBox(width: 6),
-                                    if ((alerts['dueSoon'] ?? 0) > 0)
-                                      _HistMetricPill(
-                                        label: '${alerts['dueSoon']} Due',
-                                        onTap: () => _selectPrimary('due'),
-                                      ),
-                                  ],
-                                ),
+                          Container(
+                            height: 24,
+                            width: double.infinity,
+                            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(3),
+                                border: Border.all(color: HexaColors.brandBorder),
                               ),
+                            child: Row(
+                              children: [
+                                _CompactMetric(
+                                  label: monthStats.purchaseCount == 0 && monthStats.totalInr < 1e-6
+                                      ? '₹0'
+                                      : _compactInrLakh(monthStats.totalInr),
+                                  primary: true,
+                                ),
+                                _MetricSep(),
+                                if (monthStats.purchaseCount > 0) ...[
+                                  _CompactMetric(label: formatPurchaseHistoryMonthPackLine(monthStats)),
+                                  _MetricSep(),
+                                ],
+                                _CompactMetric(label: '${monthStats.purchaseCount} Purch'),
+                                if ((alerts['overdue'] ?? 0) > 0) ...[
+                                  _MetricSep(),
+                                  _CompactMetric(
+                                    label: '${alerts['overdue']} Overdue',
+                                    isError: true,
+                                    onTap: () => _selectSecondary('overdue'),
+                                  ),
+                                ],
+                              ],
                             ),
                           ),
                         ],
@@ -1413,7 +1395,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                       bottom: false,
                       minimum: EdgeInsets.zero,
                       child: SizedBox(
-                        height: 44,
+                        height: 38,
                         child: ListView(
                           scrollDirection: Axis.horizontal,
                           padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -1429,15 +1411,19 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                           ])
                             Padding(
                               padding: const EdgeInsets.only(right: 6),
-                              child: FilterChip(
+                                child: FilterChip(
+                                  padding: EdgeInsets.zero,
+                                  labelPadding: const EdgeInsets.symmetric(horizontal: 6),
+                                  visualDensity: VisualDensity.compact,
+                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                 avatar: e.$2 == null
                                     ? null
-                                    : Icon(e.$2, size: 16),
+                                    : Icon(e.$2, size: 14),
                                 label: Text(
                                   e.$3,
                                   style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
                                   ),
                                 ),
                                 selected:
@@ -2668,185 +2654,123 @@ class _PurchaseRow extends StatelessWidget {
         agingBand == null ? null : undeliveredLeftStripeColor(agingBand);
 
     final tileInk = InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 56),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-                color: selected ? HexaColors.brandPrimary : HexaColors.brandBorder,
-                width: selected ? 2 : 1),
-          ),
-          padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(right: 8, top: 1),
-                child: Text(
-                  '$serial.',
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: HexaColors.neutral,
-                  ),
-                ),
-              ),
-              Expanded(
-                child: Column(
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            supp,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w900,
-                              color: Color(0xFF0F172A),
-                              height: 1.15,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          _inr(p.totalAmount.round()),
-                          style: HexaDsType.purchaseLineMoney.copyWith(
-                            fontSize: 14,
-                            letterSpacing: -0.3,
+      onTap: onTap,
+      onLongPress: onLongPress,
+      borderRadius: BorderRadius.circular(0),
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 80),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+        ),
+        padding: const EdgeInsets.fromLTRB(10, 5, 10, 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          supp.toUpperCase(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.2,
+                            color: Color(0xFF0F172A),
                             height: 1.1,
                           ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            headline,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Color(0xFF475569),
-                              height: 1.15,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _inr(p.totalAmount.round()),
+                        style: HexaDsType.purchaseLineMoney.copyWith(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          color: const Color(0xFF0F172A),
+                          letterSpacing: -0.4,
+                          height: 1.0,
                         ),
-                        Text(
-                          p.humanId,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: HexaColors.neutral,
-                          ),
-                        ),
-                      ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    headline,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF1E293B),
+                      fontWeight: FontWeight.w700,
                     ),
-                    const SizedBox(height: 3),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              RichText(
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                text: TextSpan(children: _packSummaryStyledSpans(pack)),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      _CompactDetailLabel(label: pack),
+                      const _Dot(),
+                      _CompactDetailLabel(label: df.format(p.purchaseDate)),
+                      const _Dot(),
+                      _CompactDetailLabel(label: p.humanId),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      if (daysChip != null) ...[
+                        daysChip,
+                        const SizedBox(width: 6),
+                      ],
+                      _MiniBadge(st),
+                      const Spacer(),
+                      if (!selectMode && (_showQuickDeliverIcon(p) || _showQuickPaidIcon(p)))
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_showQuickDeliverIcon(p))
+                              _QuickActionBtn(
+                                label: 'DELIVER',
+                                color: Colors.orange.shade800,
+                                bg: Colors.orange.shade50,
+                                onTap: onMarkDelivered,
                               ),
-                              const Text('•', style: TextStyle(color: Colors.grey, fontSize: 10)),
-                              Text(
-                                df.format(p.purchaseDate),
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  color: HexaColors.neutral,
-                                ),
+                            if (_showQuickPaidIcon(p))
+                              _QuickActionBtn(
+                                label: 'PAY',
+                                color: HexaColors.brandAccent,
+                                bg: HexaColors.brandAccent.withValues(alpha: 0.1),
+                                onTap: onMarkPaid,
                               ),
-                              if (daysChip != null) daysChip,
-                              if (!_purchaseRowHidePaymentMiniBadge(p))
-                                _MiniBadge(st),
-                            ],
-                          ),
+                          ],
                         ),
-                        if (!selectMode && (_showQuickDeliverIcon(p) || _showQuickPaidIcon(p)))
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (_showQuickDeliverIcon(p))
-                                GestureDetector(
-                                  onTap: onMarkDelivered,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                                    margin: const EdgeInsets.only(right: 6),
-                                    decoration: BoxDecoration(
-                                      color: Colors.orange.shade50,
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Text(
-                                      'Deliver',
-                                      style: TextStyle(
-                                        fontSize: 9.5,
-                                        fontWeight: FontWeight.w800,
-                                        color: Colors.orange.shade800,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              if (_showQuickPaidIcon(p))
-                                GestureDetector(
-                                  onTap: onMarkPaid,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: HexaColors.brandAccent.withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Text(
-                                      'Pay',
-                                      style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: HexaColors.brandAccent),
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-
-    final card = Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(8),
-      clipBehavior: Clip.antiAlias,
-      child: stripe != null
-          ? IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Container(width: 5, color: stripe),
-                  Expanded(child: tileInk),
+                    ],
+                  ),
                 ],
               ),
-            )
-          : tileInk,
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final card = Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          bottom: BorderSide(color: HexaColors.brandBorder),
+          left: stripe != null ? BorderSide(color: stripe, width: 4) : BorderSide.none,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: tileInk,
+      ),
     );
 
     if (selectMode) return card;
@@ -2898,15 +2822,108 @@ class _MiniBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
       decoration: BoxDecoration(
         color: st.color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(2),
       ),
       child: Text(
-        _historyPaymentChipLabel(st),
+        _historyPaymentChipLabel(st).toUpperCase(),
         style: TextStyle(
-            fontSize: 9, fontWeight: FontWeight.w700, height: 1.05, color: st.color),
+            fontSize: 9, 
+            fontWeight: FontWeight.w900, 
+            letterSpacing: 0.2,
+            height: 1.1, 
+            color: st.color),
+      ),
+    );
+  }
+}
+
+class _CompactMetric extends StatelessWidget {
+  const _CompactMetric({required this.label, this.primary = false, this.isError = false, this.onTap});
+  final String label;
+  final bool primary;
+  final bool isError;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = TextStyle(
+      fontSize: 10,
+      fontWeight: FontWeight.w900,
+      color: isError ? HexaColors.loss : (primary ? HexaColors.brandPrimary : const Color(0xFF475569)),
+    );
+    if (onTap == null) return Text(label, style: style);
+    return GestureDetector(onTap: onTap, child: Text(label, style: style));
+  }
+}
+
+class _MetricSep extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      child: Text('|', style: TextStyle(color: Colors.grey.shade300, fontSize: 10)),
+    );
+  }
+}
+
+class _CompactDetailLabel extends StatelessWidget {
+  const _CompactDetailLabel({required this.label});
+  final String label;
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      label,
+      style: const TextStyle(
+        fontSize: 10,
+        fontWeight: FontWeight.w800,
+        color: Color(0xFF64748B),
+        letterSpacing: 0.1,
+      ),
+    );
+  }
+}
+
+class _Dot extends StatelessWidget {
+  const _Dot();
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 5),
+      child: Text('•', style: TextStyle(color: Colors.grey.shade400, fontSize: 8)),
+    );
+  }
+}
+
+class _QuickActionBtn extends StatelessWidget {
+  const _QuickActionBtn({required this.label, required this.color, required this.bg, required this.onTap});
+  final String label;
+  final Color color;
+  final Color bg;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        margin: const EdgeInsets.only(left: 6),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 9,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0.3,
+            color: color,
+          ),
+        ),
       ),
     );
   }

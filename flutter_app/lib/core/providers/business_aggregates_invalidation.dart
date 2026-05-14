@@ -21,7 +21,7 @@ import 'trade_purchases_provider.dart';
 
 // Debounce guard: prevent stampede when called from multiple sources within 400ms.
 Timer? _invalidateDebounce;
-const _invalidateDebounceMs = 400;
+const _invalidateDebounceMs = 150;
 
 /// KPIs and tables that depend on [analyticsDateRangeProvider] and/or entries.
 /// [ref] is any Riverpod `Ref` / `WidgetRef` with `invalidate`.

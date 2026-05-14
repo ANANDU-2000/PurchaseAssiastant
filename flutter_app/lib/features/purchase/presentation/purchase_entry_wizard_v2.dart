@@ -2124,13 +2124,13 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
           ),
         if (_wizStep == 0 || _wizStep == 1 || _wizStep == 2) ...[
           SizedBox(
-            height: 56,
+            height: kbInset > 0 ? 44 : 52,
             width: double.infinity,
             child: FilledButton(
               onPressed: _isSaving ? null : _wizNext,
-              child: const Text(
-                'Continue →',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+              child: Text(
+                _wizStep == 2 ? 'Review purchase →' : 'Continue →',
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
               ),
             ),
           ),
@@ -2138,34 +2138,34 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
         if (_wizStep == 3) ...[
           if (!saveVal.isOk)
             Padding(
-              padding: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.only(bottom: 4),
               child: Text(
                 saveVal.errorMessage ??
                     (saveVal.lineErrors.isNotEmpty
                         ? saveVal.lineErrors.values.first
                         : ''),
-                style: TextStyle(color: Colors.red[800], fontSize: 12),
+                style: TextStyle(color: Colors.red[800], fontSize: 11),
               ),
             ),
           SizedBox(
-            height: 60,
+            height: kbInset > 0 ? 44 : 56,
             width: double.infinity,
             child: FilledButton(
               onPressed: _isSaving ? null : _validateAndSave,
               child: _isSaving
                   ? const SizedBox(
-                      height: 22,
-                      width: 22,
+                      height: 18,
+                      width: 18,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
                         color: Colors.white,
                       ),
                     )
                   : const Text(
-                      'Save Purchase',
+                      'CONTINUE',
                       style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
                       ),
                     ),
             ),
@@ -2188,16 +2188,16 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
       child: LayoutBuilder(
         builder: (ctx, _) {
           final kbInset = MediaQuery.viewInsetsOf(ctx).bottom;
-          final stepScroll = wizStep == 2
+            final stepScroll = wizStep == 2
               ? Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
                   child: stepContent,
                 )
               : SingleChildScrollView(
                   controller: _wizardBodyScrollController,
                   keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.manual,
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.fromLTRB(16, 12, 16, kbInset > 0 ? 12 : 100),
                   child: stepContent,
                 );
           return Column(
@@ -2224,10 +2224,10 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
                     duration: const Duration(milliseconds: 180),
                     curve: Curves.easeOut,
                     padding: EdgeInsets.fromLTRB(
-                      16,
                       12,
-                      16,
-                      12 + kbInset + (kbInset == 0 ? MediaQuery.paddingOf(ctx).bottom : 0),
+                      8,
+                      12,
+                      8 + (kbInset > 0 ? kbInset - MediaQuery.paddingOf(ctx).bottom : 0),
                     ),
                     child: _wizardFooterChrome(catalog, isEdit),
                   ),
@@ -2441,7 +2441,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
         await _handleWizardExitFromRoot();
       },
       child: Scaffold(
-        resizeToAvoidBottomInset: true,
+        resizeToAvoidBottomInset: false,
         appBar: AppBar(
           title: Text(appBarTitle),
           elevation: 0,

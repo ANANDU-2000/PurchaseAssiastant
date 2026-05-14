@@ -102,7 +102,7 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
       return FocusTraversalOrder(
         order: NumericFocusOrder(order.toDouble()),
         child: Padding(
-          padding: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.only(bottom: 4),
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: kPurchaseFieldHeight),
             child: tf,
@@ -207,7 +207,7 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
             final t = paymentDaysCtrl.text.trim();
             if (t.isEmpty) return const SizedBox.shrink();
             return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.only(bottom: 4),
               child: Text(
                 _duePreview(ref, paymentDaysCtrl),
                 style: const TextStyle(

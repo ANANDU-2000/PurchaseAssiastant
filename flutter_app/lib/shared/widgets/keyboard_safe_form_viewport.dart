@@ -17,7 +17,7 @@ class KeyboardSafeFormViewport extends StatelessWidget {
     this.scrollController,
     this.horizontalPadding = 16,
     this.topPadding = 12,
-    this.bottomExtraInset = 24,
+    this.bottomExtraInset = 60,
     /// When > 0, wraps [fields] so nested [Expanded]/[Spacer] get bounded height.
     this.minFieldsHeight = 0,
     this.dismissKeyboardOnTap = false,

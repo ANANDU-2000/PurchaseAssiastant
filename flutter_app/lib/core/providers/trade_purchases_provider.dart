@@ -148,8 +148,16 @@ class TradePurchasesListNotifier extends AutoDisposeAsyncNotifier<TradePurchases
     final primary = ref.watch(purchaseHistoryPrimaryFilterProvider);
     final secondary = ref.watch(purchaseHistorySecondaryFilterProvider);
     final apiStatus = _tradeListApiStatus(primary, secondary);
-    final purchaseFrom = _purchaseFromApi(ref.watch(purchaseHistoryDateFromProvider));
-    final purchaseTo = _purchaseFromApi(ref.watch(purchaseHistoryDateToProvider));
+    final analyticsRange = ref.watch(analyticsDateRangeProvider);
+    final advFrom = ref.watch(purchaseHistoryDateFromProvider);
+    final advTo = ref.watch(purchaseHistoryDateToProvider);
+
+    final fromDate = advFrom ?? analyticsRange.from;
+    final toDate = advTo ?? analyticsRange.to;
+
+    final purchaseFrom = _purchaseFromApi(fromDate);
+    // Add one day to toDate to ensure inclusive filtering on the backend
+    final purchaseTo = _purchaseFromApi(toDate.add(const Duration(days: 1)));
 
     final page = await ref.read(hexaApiProvider).listTradePurchases(
           businessId: session.primaryBusiness.id,
@@ -179,8 +187,16 @@ class TradePurchasesListNotifier extends AutoDisposeAsyncNotifier<TradePurchases
       final primary = ref.read(purchaseHistoryPrimaryFilterProvider);
       final secondary = ref.read(purchaseHistorySecondaryFilterProvider);
       final apiStatus = _tradeListApiStatus(primary, secondary);
-      final purchaseFrom = _purchaseFromApi(ref.read(purchaseHistoryDateFromProvider));
-      final purchaseTo = _purchaseFromApi(ref.read(purchaseHistoryDateToProvider));
+      final analyticsRange = ref.read(analyticsDateRangeProvider);
+      final advFrom = ref.read(purchaseHistoryDateFromProvider);
+      final advTo = ref.read(purchaseHistoryDateToProvider);
+
+      final fromDate = advFrom ?? analyticsRange.from;
+      final toDate = advTo ?? analyticsRange.to;
+
+      final purchaseFrom = _purchaseFromApi(fromDate);
+      // Add one day to toDate to ensure inclusive filtering on the backend
+      final purchaseTo = _purchaseFromApi(toDate.add(const Duration(days: 1)));
       final page = await ref.read(hexaApiProvider).listTradePurchases(
             businessId: session.primaryBusiness.id,
             limit: kTradePurchasesHistoryFetchLimit,

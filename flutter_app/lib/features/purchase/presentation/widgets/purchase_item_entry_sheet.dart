@@ -22,7 +22,6 @@ import '../../../../shared/widgets/inline_search_field.dart';
 import '../../../../shared/widgets/keyboard_safe_form_viewport.dart';
 import 'item_entry/item_entry_minimal_form.dart';
 import 'item_entry/item_entry_payload.dart';
-import 'item_entry/item_entry_preview.dart';
 import 'party_inline_suggest_field.dart';
 import '../../../../core/utils/currency_utils.dart';
 
@@ -163,6 +162,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   bool _suppressCatalogTextUnlink = false;
   Timer? _defaultsDebounceTimer;
 
+  bool _keyboardVisible = false;
   late final Listenable _lineTotalsListenable;
 
   /// Memoized catalog rows as [InlineSearchItem] (rebuilt when [widget.catalog] changes).
@@ -253,9 +253,23 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
 
   void _schedulePreviewRebuild() {}
 
+  void _onFocusChange() {
+    // Proactively check FocusScope for any focused descendant.
+    final hasFocus = FocusScope.of(context).focusedChild != null;
+    if (hasFocus != _keyboardVisible) {
+      if (mounted) setState(() => _keyboardVisible = hasFocus);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    _itemFocus.addListener(_onFocusChange);
+    _qtyFocus.addListener(_onFocusChange);
+    _landingFocus.addListener(_onFocusChange);
+    _sellingFocus.addListener(_onFocusChange);
+    _kgManualFocus.addListener(_onFocusChange);
+    _onFocusChange(); // Initial check
     _itemCtrl.addListener(_onItemTextChanged);
     _kgPerBagCtrl.addListener(_onKgPerBagChanged);
     final init = widget.initial;
@@ -404,6 +418,8 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     _landingFocus.dispose();
     _sellingFocus.dispose();
     _kgManualFocus.dispose();
+    if (_taxFocus != null) _taxFocus!.dispose();
+    if (_discFocus != null) _discFocus!.dispose();
     _qtyCtrl.dispose();
     _unitCtrl.dispose();
     _landingCtrl.dispose();
@@ -2272,17 +2288,101 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                         Expanded(
                           child: FilledButton(
                             onPressed: () {
-                              final kg = double.tryParse(kgCtrl.text.trim());
-                              if (kg != null && kg > 0) {
-                                Navigator.pop(ctx, kg);
-                              }
-                            },
-                            child: const Text('Save & continue'),
+          return Scaffold(
+            resizeToAvoidBottomInset: false,
+            body: Padding(
+              padding: MediaQuery.viewInsetsOf(ctx),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: StatefulBuilder(
+                  builder: (ctx2, setModal) {
+                    return SingleChildScrollView(
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                        Text(
+                          'Missing bag weight',
+                          style: Theme.of(ctx2).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Enter kg per bag for "$currentName" so totals calculate correctly. '
+                          'This is saved to the catalog.',
+                          style: TextStyle(color: Colors.grey[700], fontSize: 13),
+                        ),
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: kgCtrl,
+                          autofocus: true,
+                          keyboardType:
+                              const TextInputType.numberWithOptions(decimal: true),
+                          decoration: InputDecoration(
+                            labelText: 'KG per bag',
+                            suffixText: 'kg/bag',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
+                          onChanged: (_) => setModal(() {}),
+                        ),
+                        const SizedBox(height: 8),
+                        Builder(
+                          builder: (ctx3) {
+                            final kg = double.tryParse(kgCtrl.text.trim());
+                            if (kg == null || kg <= 0) {
+                              return const SizedBox.shrink();
+                            }
+                            final base = _stripKgSuffixForCatalogDisplay(currentName);
+                            final suffix = (kg - kg.roundToDouble()).abs() < 1e-6
+                                ? '${kg.round()}KG'
+                                : '${kg.toStringAsFixed(1)}KG';
+                            final newName = '$base $suffix'.trim();
+                            return Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE8F5E9),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                'Item will be renamed to:\n"$newName"',
+                                style: const TextStyle(
+                                  color: Color(0xFF1A7A6A),
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () => Navigator.pop(ctx),
+                                child: const Text('Skip'),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: FilledButton(
+                                onPressed: () {
+                                  final kg = double.tryParse(kgCtrl.text.trim());
+                                  if (kg != null && kg > 0) {
+                                    Navigator.pop(ctx, kg);
+                                  }
+                                },
+                                child: const Text('DONE +'),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
-                    ),
-                  ],
                   ),
                 );
               },
@@ -2817,9 +2917,9 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     return out;
   }
 
-  /// Line preview: trader-readable breakdown (matches server line money).
   Widget _liveTotalsCard(ThemeData theme) {
-    final q = _qtyVal();
+    // Use the reliable focus-driven flag OR direct inset check.
+    final kbd = _keyboardVisible || View.of(context).viewInsets.bottom > 0;
     final sell = _ratesPerKgEconomics
         ? _sellingParsedAsPerKg()
         : _parseD(_sellingCtrl.text);
@@ -2834,16 +2934,49 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     final gst = lineTaxAmount(line);
     final total = lineMoney(line);
 
+    if (kbd) {
+      // In keyboard mode, we return an empty widget and move the logic to the unified footer row.
+      return const SizedBox.shrink();
+    }
+      return Container(
+        margin: const EdgeInsets.only(bottom: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: const Color(0xFFCBD5E1)),
+        ),
+        child: Row(
+          children: [
+            _CompactLiveMetric(label: 'TOTAL', value: formatRupee(total), isPrimary: true),
+            _MetricDivider(),
+            _CompactLiveMetric(
+              label: 'PROFIT', 
+              value: sell != null && sell > 0 ? formatRupee(profit) : '—',
+              color: profit >= 0 ? const Color(0xFF059669) : const Color(0xFFDC2626),
+            ),
+            _MetricDivider(),
+            _CompactLiveMetric(label: 'GST', value: gst > 1e-6 ? formatRupee(gst) : '—'),
+            const Spacer(),
+            Text(
+              _qtyAndUnitWeightSummaryLine(),
+              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF475569)),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (final w in warnings)
           _WarningPill(message: w),
         Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: const Color(0xFFF8FAFC),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(8),
             border: Border.all(color: const Color(0xFFE2E8F0)),
           ),
           child: Column(
@@ -2865,7 +2998,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                 ],
               ),
               const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
+                padding: EdgeInsets.symmetric(vertical: 6),
                 child: Divider(height: 1, color: Color(0xFFE2E8F0)),
               ),
               Row(
@@ -3681,7 +3814,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                           borderRadius: BorderRadius.all(Radius.circular(12)),
                         ),
                       ),
-                      child: const Text('Save & add more'),
+                      child: const Text('DONE +'),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -3698,7 +3831,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                         ),
                       ),
                       child: const Text(
-                        'Save',
+                        'SAVE LINE',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w800,
@@ -3719,7 +3852,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
             await _confirmDiscardAndPop();
           },
           child: Scaffold(
-            resizeToAvoidBottomInset: true,
+            resizeToAvoidBottomInset: false,
             backgroundColor: Colors.white,
             appBar: AppBar(
               backgroundColor: Colors.white,
@@ -3731,36 +3864,42 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                 onPressed: _handleLeadingBack,
               ),
             ),
-            body: LayoutBuilder(
+            body: Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+              child: LayoutBuilder(
               builder: (context, c) {
 // Scaffold.resizeToAvoidBottomInset:true already shrinks body for keyboard.
 // Only add safe area bottom — never add imeBottom (would double-count).
                 final safeBottom = MediaQuery.paddingOf(context).bottom;
-                final double previewBottomPad = safeBottom > 0 ? safeBottom + 8.0 : 12.0;
+                final double previewBottomPad = safeBottom > 0 ? safeBottom + 6.0 : 10.0;
+                final kbd = _keyboardVisible || MediaQuery.viewInsetsOf(context).bottom > 20;
+                
                 final previewPinned = Material(
                   elevation: 8,
                   color: Colors.white,
                   shadowColor: Colors.black26,
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(
-                      16,
-                      8,
-                      16,
-                      previewBottomPad,
+                      12,
+                      kbd ? 4 : 8,
+                      12,
+                      kbd ? 4 : previewBottomPad,
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        ListenableBuilder(
-                          listenable: _lineTotalsListenable,
-                          builder: (context, _) => RepaintBoundary(
-                            child: _fpShell(_liveTotalsCard(theme)),
-                          ),
+                    child: kbd 
+                      ? _buildKeyboardAccessoryRow(theme)
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ListenableBuilder(
+                              listenable: _lineTotalsListenable,
+                              builder: (context, _) => RepaintBoundary(
+                                child: _fpShell(_liveTotalsCard(theme)),
+                              ),
+                            ),
+                            footer,
+                          ],
                         ),
-                        footer,
-                      ],
-                    ),
                   ),
                 );
                 return Column(
@@ -3859,26 +3998,31 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         child: LayoutBuilder(
           builder: (context, c) {
             final homeBottomInset = MediaQuery.paddingOf(context).bottom;
+            final kbd = _keyboardVisible || MediaQuery.viewInsetsOf(context).bottom > 20;
             return KeyboardSafeFormViewport(
               dismissKeyboardOnTap: true,
               scrollController: _scrollController,
               horizontalPadding: 10,
               topPadding: 4,
-              bottomExtraInset: 12,
+              bottomExtraInset: kbd ? 10 : 80,
               minFieldsHeight: 0,
               fields: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
                 children: formChildren,
               ),
-              footer: Padding(
-                padding: EdgeInsets.only(
-                  left: 10,
-                  right: 10,
-                  top: 8,
-                  bottom: homeBottomInset > 0 ? homeBottomInset + 10.0 : 12.0,
+              footer: Material(
+                elevation: kbd ? 8 : 0,
+                color: theme.colorScheme.surface,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    10,
+                    kbd ? 4 : 8,
+                    10,
+                    kbd ? 4 : (homeBottomInset > 0 ? homeBottomInset + 10.0 : 12.0),
+                  ),
+                  child: kbd ? _buildKeyboardAccessoryRow(theme) : footer,
                 ),
-                child: footer,
               ),
             );
           },
@@ -3894,6 +4038,69 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     }
 
     return content;
+  }
+
+  Widget _buildKeyboardAccessoryRow(ThemeData theme) {
+    return ListenableBuilder(
+      listenable: _lineTotalsListenable,
+      builder: (context, _) {
+        final l = _currentLine();
+        final t = lineMoney(l);
+        final p = _profitPreview();
+        final s = _ratesPerKgEconomics ? _sellingParsedAsPerKg() : _parseD(_sellingCtrl.text);
+        final qStr = _qtyAndUnitWeightSummaryLine();
+
+        return Row(
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('TOTAL: ${formatRupee(t)}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+                Text('PROFIT: ${s != null && s > 0 ? formatRupee(p) : "—"}', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: p >= 0 ? const Color(0xFF059669) : const Color(0xFFDC2626))),
+              ],
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(qStr, 
+                maxLines: 1, 
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: Color(0xFF64748B))
+              ),
+            ),
+            if (!widget.isEdit)
+              SizedBox(
+                height: 34,
+                child: OutlinedButton(
+                  onPressed: () => _commit(closeSheet: false),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF17A8A7),
+                    side: const BorderSide(color: Color(0xFF17A8A7)),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                  ),
+                  child: const Text('Add+'),
+                ),
+              ),
+            if (!widget.isEdit) const SizedBox(width: 4),
+            SizedBox(
+              height: 34,
+              child: FilledButton(
+                onPressed: () => _commit(closeSheet: true),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF17A8A7),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                ),
+                child: const Text('Save'),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
 
@@ -3966,6 +4173,36 @@ class _Metric extends StatelessWidget {
         const SizedBox(height: 2),
         Text(value, style: TextStyle(fontSize: 14, fontWeight: isBold ? FontWeight.w900 : FontWeight.w800, color: color)),
       ],
+    );
+  }
+}
+class _CompactLiveMetric extends StatelessWidget {
+  const _CompactLiveMetric({required this.label, required this.value, this.color, this.isPrimary = false});
+  final String label;
+  final String value;
+  final Color? color;
+  final bool isPrimary;
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(label, style: TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: isPrimary ? const Color(0xFF17A8A7) : const Color(0xFF64748B))),
+        Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: color ?? const Color(0xFF0F172A))),
+      ],
+    );
+  }
+}
+
+class _MetricDivider extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: 16,
+      margin: const EdgeInsets.symmetric(horizontal: 8),
+      color: const Color(0xFFCBD5E1),
     );
   }
 }
