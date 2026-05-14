@@ -402,7 +402,48 @@ void _purchaseHistorySortPurchases(
     return;
   }
 
+  // Strict ERP sorting rule:
+  // 1. Overdue purchases first (by days overdue, then by amount)
+  // 2. Highest due amount (for non-overdue but pending)
+  // 3. Drafts last, Paid lowest priority.
+
+  int overdueDays(TradePurchase p) {
+    if (p.statusEnum != PurchaseStatus.overdue) return -1;
+    final due = p.dueDate ?? p.purchaseDate;
+    final days = DateTime.now().difference(due).inDays;
+    return days > 0 ? days : 1;
+  }
+
+  int rankStatus(TradePurchase p) {
+    final st = p.statusEnum;
+    if (st == PurchaseStatus.overdue) return 0;
+    if (st == PurchaseStatus.dueSoon) return 1;
+    if (st == PurchaseStatus.partiallyPaid) return 2;
+    if (st == PurchaseStatus.confirmed) return 3;
+    if (st == PurchaseStatus.saved) return 4;
+    if (st == PurchaseStatus.draft) return 5;
+    if (st == PurchaseStatus.paid) return 6;
+    return 7;
+  }
+
   list.sort((a, b) {
+    final ra = rankStatus(a);
+    final rb = rankStatus(b);
+    if (ra != rb) return ra.compareTo(rb);
+
+    if (ra == 0) {
+      // both overdue: sort by most urgent (highest days)
+      final oDa = overdueDays(a);
+      final oDb = overdueDays(b);
+      if (oDa != oDb) return oDb.compareTo(oDa); // descending
+    }
+
+    // sort by pending amount desc
+    if (a.remaining != b.remaining) {
+      return b.remaining.compareTo(a.remaining); // descending
+    }
+
+    // fallback to date
     if (newestFirst) {
       final c = b.purchaseDate.compareTo(a.purchaseDate);
       if (c != 0) return c;
@@ -1258,7 +1299,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                 return Column(
                   children: [
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -1277,9 +1318,9 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                       BorderRadius.all(Radius.circular(12)),
                                 ),
                                 prefixIcon:
-                                    Icon(Icons.search_rounded, size: 22),
+                                    Icon(Icons.search_rounded, size: 20),
                                 contentPadding:
-                                    EdgeInsets.symmetric(vertical: 10),
+                                    EdgeInsets.symmetric(vertical: 8),
                               ),
                             ),
                           ),
@@ -1314,7 +1355,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Padding(
-                            padding: const EdgeInsets.fromLTRB(8, 0, 8, 2),
+                            padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
                             child: SafeArea(
                               top: false,
                               bottom: false,
@@ -1323,77 +1364,42 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                 scrollDirection: Axis.horizontal,
                                 child: Row(
                                   children: [
-                                  _HistMetricPill(
-                                    label: switch (_preset) {
-                                      _HistPeriodPreset.today => 'Today',
-                                      _HistPeriodPreset.week => 'Week',
-                                      _HistPeriodPreset.month => 'Month',
-                                      _HistPeriodPreset.year => 'Year',
-                                      _HistPeriodPreset.custom => 'Custom',
-                                    },
-                                    onTap: _openPeriodPicker,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  _HistMetricPill(
-                                    label: '${alerts['dueSoon'] ?? 0} Due',
-                                    onTap: () => _selectPrimary('due'),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  _HistMetricPill(
-                                    label: '${monthStats.purchaseCount} Purch',
-                                  ),
-                                  const SizedBox(width: 6),
-                                  _HistMetricPill(
-                                    label: monthStats.purchaseCount == 0 &&
-                                            monthStats.totalInr < 1e-6
-                                        ? '₹0 Mo'
-                                        : '${_compactInrLakh(monthStats.totalInr)} Mo',
-                                  ),
-                                  const SizedBox(width: 6),
-                                  _HistMetricPill(
-                                    label:
-                                        '${alerts['overdue'] ?? 0} Overdue',
-                                    onTap: () => _selectSecondary('overdue'),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
-                            child: Material(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              child: Padding(
-                                padding:
-                                    const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      monthStats.purchaseCount == 0 &&
+                                    _HistMetricPill(
+                                      label: switch (_preset) {
+                                        _HistPeriodPreset.today => 'Today',
+                                        _HistPeriodPreset.week => 'Week',
+                                        _HistPeriodPreset.month => 'Month',
+                                        _HistPeriodPreset.year => 'Year',
+                                        _HistPeriodPreset.custom => 'Custom',
+                                      },
+                                      onTap: _openPeriodPicker,
+                                      isPrimary: true,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    _HistMetricPill(
+                                      label: monthStats.purchaseCount == 0 &&
                                               monthStats.totalInr < 1e-6
-                                          ? 'No purchases in this period'
+                                          ? '₹0'
                                           : _compactInrLakh(monthStats.totalInr),
-                                      style: const TextStyle(
-                                        fontSize: 17,
-                                        fontWeight: FontWeight.w900,
-                                        color: Color(0xFF0F172A),
-                                        letterSpacing: -0.3,
-                                      ),
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      formatPurchaseHistoryMonthPackLine(
-                                          monthStats),
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w700,
-                                        color: Color(0xFF7C2D12),
-                                        height: 1.2,
+                                    const SizedBox(width: 6),
+                                    if (monthStats.purchaseCount > 0)
+                                      _HistMetricPill(
+                                        label: formatPurchaseHistoryMonthPackLine(monthStats),
                                       ),
-                                    ),
+                                    const SizedBox(width: 6),
+                                    if ((alerts['overdue'] ?? 0) > 0)
+                                      _HistMetricPill(
+                                        label: '${alerts['overdue']} Overdue',
+                                        isError: true,
+                                        onTap: () => _selectSecondary('overdue'),
+                                      ),
+                                    const SizedBox(width: 6),
+                                    if ((alerts['dueSoon'] ?? 0) > 0)
+                                      _HistMetricPill(
+                                        label: '${alerts['dueSoon']} Due',
+                                        onTap: () => _selectPrimary('due'),
+                                      ),
                                   ],
                                 ),
                               ),
@@ -1679,26 +1685,47 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
 }
 
 class _HistMetricPill extends StatelessWidget {
-  const _HistMetricPill({required this.label, this.onTap});
+  const _HistMetricPill({
+    required this.label,
+    this.onTap,
+    this.isPrimary = false,
+    this.isError = false,
+  });
 
   final String label;
   final VoidCallback? onTap;
+  final bool isPrimary;
+  final bool isError;
 
   @override
   Widget build(BuildContext context) {
+    Color bg = Colors.white;
+    Color fg = const Color(0xFF0F172A);
+    Color border = HexaColors.brandBorder;
+
+    if (isPrimary) {
+      bg = HexaColors.brandPrimary.withValues(alpha: 0.1);
+      fg = HexaColors.brandPrimary;
+      border = HexaColors.brandPrimary;
+    } else if (isError) {
+      bg = const Color(0xFFFEF2F2);
+      fg = HexaColors.loss;
+      border = HexaColors.loss.withValues(alpha: 0.3);
+    }
+
     final child = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: bg,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: HexaColors.brandBorder),
+        border: Border.all(color: border),
       ),
       child: Text(
         label,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w800,
-          color: Color(0xFF0F172A),
+          color: fg,
         ),
       ),
     );
@@ -2669,7 +2696,6 @@ class _PurchaseRow extends StatelessWidget {
               ),
               Expanded(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2677,12 +2703,12 @@ class _PurchaseRow extends StatelessWidget {
                         Expanded(
                           child: Text(
                             supp,
-                            maxLines: 2,
+                            maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: HexaDsType.purchaseQtyUnit.copyWith(
-                              fontSize: 12.5,
+                            style: const TextStyle(
+                              fontSize: 13,
                               fontWeight: FontWeight.w900,
-                              color: const Color(0xFF0F172A),
+                              color: Color(0xFF0F172A),
                               height: 1.15,
                             ),
                           ),
@@ -2691,7 +2717,7 @@ class _PurchaseRow extends StatelessWidget {
                         Text(
                           _inr(p.totalAmount.round()),
                           style: HexaDsType.purchaseLineMoney.copyWith(
-                            fontSize: 15,
+                            fontSize: 14,
                             letterSpacing: -0.3,
                             height: 1.1,
                           ),
@@ -2699,38 +2725,35 @@ class _PurchaseRow extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      headline,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 11.5,
-                        color: Color(0xFF0F172A),
-                        height: 1.15,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    RichText(
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      text: TextSpan(children: _packSummaryStyledSpans(pack)),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${p.humanId} • ${df.format(p.purchaseDate)}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.w700,
-                        color: HexaColors.neutral,
-                        height: 1.1,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            headline,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF475569),
+                              height: 1.15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          p.humanId,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: HexaColors.neutral,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Expanded(
                           child: Wrap(
@@ -2738,57 +2761,64 @@ class _PurchaseRow extends StatelessWidget {
                             runSpacing: 4,
                             crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
+                              RichText(
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                text: TextSpan(children: _packSummaryStyledSpans(pack)),
+                              ),
+                              const Text('•', style: TextStyle(color: Colors.grey, fontSize: 10)),
+                              Text(
+                                df.format(p.purchaseDate),
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: HexaColors.neutral,
+                                ),
+                              ),
                               if (daysChip != null) daysChip,
                               if (!_purchaseRowHidePaymentMiniBadge(p))
                                 _MiniBadge(st),
                             ],
                           ),
                         ),
-                        if (!selectMode &&
-                            (_showQuickDeliverIcon(p) ||
-                                _showQuickPaidIcon(p)))
+                        if (!selectMode && (_showQuickDeliverIcon(p) || _showQuickPaidIcon(p)))
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               if (_showQuickDeliverIcon(p))
-                                IconButton(
-                                  tooltip: 'Mark delivered',
-                                  padding: EdgeInsets.zero,
-                                  visualDensity: VisualDensity.compact,
-                                  constraints: const BoxConstraints(
-                                    minWidth: 30,
-                                    minHeight: 30,
+                                GestureDetector(
+                                  onTap: onMarkDelivered,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                    margin: const EdgeInsets.only(right: 6),
+                                    decoration: BoxDecoration(
+                                      color: Colors.orange.shade50,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      'Deliver',
+                                      style: TextStyle(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.orange.shade800,
+                                      ),
+                                    ),
                                   ),
-                                  style: IconButton.styleFrom(
-                                    foregroundColor: Colors.orange.shade800,
-                                    tapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                  ),
-                                  icon: const Icon(
-                                    Icons.local_shipping_outlined,
-                                    size: 18,
-                                  ),
-                                  onPressed: onMarkDelivered,
                                 ),
                               if (_showQuickPaidIcon(p))
-                                IconButton(
-                                  tooltip: 'Mark paid',
-                                  padding: EdgeInsets.zero,
-                                  visualDensity: VisualDensity.compact,
-                                  constraints: const BoxConstraints(
-                                    minWidth: 30,
-                                    minHeight: 30,
+                                GestureDetector(
+                                  onTap: onMarkPaid,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: HexaColors.brandAccent.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      'Pay',
+                                      style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: HexaColors.brandAccent),
+                                    ),
                                   ),
-                                  style: IconButton.styleFrom(
-                                    foregroundColor: HexaColors.brandAccent,
-                                    tapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                  ),
-                                  icon: const Icon(
-                                    Icons.payments_outlined,
-                                    size: 18,
-                                  ),
-                                  onPressed: onMarkPaid,
                                 ),
                             ],
                           ),

@@ -106,6 +106,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
 
   /// Latest [purchase_date] per supplier from recent trade list (for autocomplete sort).
   Map<String, DateTime> _supplierLastPurchaseById = {};
+  Map<String, double> _supplierBalanceById = {};
 
   /// Ignore stale async work when the user picks another supplier before requests finish.
   int _supplierApplySeq = 0;
@@ -668,17 +669,36 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
             limit: 500,
           );
       final map = <String, DateTime>{};
+      final balanceMap = <String, double>{};
       for (final p in list) {
         final sid = p['supplier_id']?.toString().trim();
         if (sid == null || sid.isEmpty) continue;
         final d = _parsePurchaseDateOnly(p['purchase_date']);
+
+        // Only count balance for non-cancelled non-deleted purchases
+        final st = p['status']?.toString().toLowerCase();
+        if (st != 'cancelled' && st != 'deleted') {
+          final rem = _decDouble(p['remaining']);
+          balanceMap[sid] = (balanceMap[sid] ?? 0) + rem;
+        }
+
         if (d == null) continue;
         final cur = map[sid];
         if (cur == null || d.isAfter(cur)) map[sid] = d;
       }
-      if (mounted) setState(() => _supplierLastPurchaseById = map);
+      if (mounted) {
+        setState(() {
+          _supplierLastPurchaseById = map;
+          _supplierBalanceById = balanceMap;
+        });
+      }
     } catch (_) {
-      if (mounted) setState(() => _supplierLastPurchaseById = {});
+      if (mounted) {
+        setState(() {
+          _supplierLastPurchaseById = {};
+          _supplierBalanceById = {};
+        });
+      }
     }
   }
 
@@ -2015,6 +2035,8 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
             openQuickBrokerCreate: _openQuickBrokerCreate,
             brokerRowId: _brokerRowId,
             brokerMapLabel: _brokerMapLabel,
+            supplierLastPurchaseById: _supplierLastPurchaseById,
+            supplierBalanceById: _supplierBalanceById,
           );
         break;
       case 1:
@@ -2181,19 +2203,33 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(child: stepScroll),
-              SafeArea(
-                top: false,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  curve: Curves.easeOut,
-                  color: Theme.of(ctx).scaffoldBackgroundColor,
-                  padding: EdgeInsets.fromLTRB(
-                    16,
-                    8,
-                    16,
-                    8 + kbInset + (kbInset == 0 ? MediaQuery.paddingOf(ctx).bottom : 0),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, -5),
+                    ),
+                  ],
+                  border: Border(
+                    top: BorderSide(color: Colors.grey.shade200, width: 1),
                   ),
-                  child: _wizardFooterChrome(catalog, isEdit),
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOut,
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      12,
+                      16,
+                      12 + kbInset + (kbInset == 0 ? MediaQuery.paddingOf(ctx).bottom : 0),
+                    ),
+                    child: _wizardFooterChrome(catalog, isEdit),
+                  ),
                 ),
               ),
             ],

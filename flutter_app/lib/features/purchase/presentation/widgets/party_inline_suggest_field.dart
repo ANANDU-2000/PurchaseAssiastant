@@ -599,39 +599,68 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
         child: ConstrainedBox(
           constraints:
               const BoxConstraints(minHeight: 44, minWidth: double.infinity),
-          child: Padding(
+      child: Padding(
             padding: EdgeInsets.symmetric(
               horizontal: 14,
-              vertical: widget.dense ? 10 : 12,
+              vertical: widget.dense ? 8 : 10,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  it.label,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                    color: cs.onSurface,
-                  ),
-                ),
-                if (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      it.subtitle!.trim(),
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: cs.onSurfaceVariant,
-                        height: 1.2,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        it.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13.5,
+                          color: cs.onSurface,
+                        ),
                       ),
                     ),
-                  ),
+                    if (it.pendingBalance != null && it.pendingBalance! > 1)
+                      Text(
+                        '₹${it.pendingBalance!.round()}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: HexaColors.loss,
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 1),
+                Row(
+                  children: [
+                    if (it.subtitle != null && it.subtitle!.trim().isNotEmpty)
+                      Expanded(
+                        child: Text(
+                          it.subtitle!.trim(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: cs.onSurfaceVariant,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    if (it.lastPurchaseDate != null)
+                      Text(
+                        'Last: ${it.lastPurchaseDate}',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                  ],
+                ),
               ],
             ),
           ),

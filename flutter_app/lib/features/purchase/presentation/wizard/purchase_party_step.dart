@@ -49,7 +49,12 @@ class PurchasePartyStep extends ConsumerWidget {
     required this.openQuickBrokerCreate,
     required this.brokerRowId,
     required this.brokerMapLabel,
+    required this.supplierLastPurchaseById,
+    required this.supplierBalanceById,
   });
+
+  final Map<String, DateTime> supplierLastPurchaseById;
+  final Map<String, double> supplierBalanceById;
 
   final bool isEdit;
   final String? loadedDerivedStatus;
@@ -227,12 +232,18 @@ class PurchasePartyStep extends ConsumerWidget {
     for (final m in sorted) {
       if (supplierRowId(m).isEmpty) continue;
       final h = _supplierHaystack(m);
+      final sid = supplierRowId(m);
+      final last = supplierLastPurchaseById[sid];
+      final bal = supplierBalanceById[sid];
+
       items.add(
         InlineSearchItem(
-          id: supplierRowId(m),
+          id: sid,
           label: supplierMapLabel(m),
           subtitle: supplierSubtitleFor(m),
           searchText: h.isEmpty ? null : h,
+          lastPurchaseDate: last != null ? DateFormat('MMM d').format(last) : null,
+          pendingBalance: bal,
         ),
       );
     }

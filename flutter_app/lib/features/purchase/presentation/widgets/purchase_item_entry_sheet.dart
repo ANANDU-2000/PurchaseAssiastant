@@ -2819,7 +2819,6 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   /// Line preview: trader-readable breakdown (matches server line money).
   Widget _liveTotalsCard(ThemeData theme) {
     final q = _qtyVal();
-    final u = _unitCtrl.text.trim();
     final sell = _ratesPerKgEconomics
         ? _sellingParsedAsPerKg()
         : _parseD(_sellingCtrl.text);
@@ -2828,101 +2827,74 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         ? (_landingParsedAsPerKg() ?? 0)
         : (_parseD(_landingCtrl.text) ?? 0);
     final line = _currentLine();
-    final unitWord = _capitalUnitWord(u.isEmpty ? 'unit' : u);
-
-    TextStyle bodyStyle({double fs = 13.5, FontWeight w = FontWeight.w600}) =>
-        theme.textTheme.bodyMedium!.copyWith(
-          fontSize: fs,
-          fontWeight: w,
-          height: 1.28,
-          color: const Color(0xFF0F172A),
-        );
 
     final warnings =
         _moreSectionExpanded ? _gstSoftWarningMessages() : const <String>[];
-    final traderLines = buildTraderPurchasePreviewLines(
-      qtySummaryLine: _qtyAndUnitWeightSummaryLine(),
-      line: line,
-      taxOn: _taxOn,
-      qty: q,
-      unitWord: unitWord,
-      ratesPerKgEconomics: _ratesPerKgEconomics,
-      rateFieldsPerKg: _rateFieldsPerKg,
-      enteredPurchaseDisplay: enteredPurchase,
-      kgPer: _kgPer(),
-      enteredSellingDisplay: sell,
-      omitLineFreight: widget.omitLineFreightDeliveredBilltyDiscount,
-      profitPreview: profit,
-    );
+    final gst = lineTaxAmount(line);
+    final total = lineMoney(line);
 
-    final lines = <Widget>[
-      for (final w in warnings)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: Material(
-            color: const Color(0xFFFFF7ED),
-            borderRadius: BorderRadius.circular(8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final w in warnings)
+          _WarningPill(message: w),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Icon(Icons.warning_amber_rounded,
-                      size: 20, color: Colors.orange.shade800),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      w,
-                      style: bodyStyle(fs: 12.5, w: FontWeight.w600).copyWith(
-                        color: Colors.orange.shade900,
-                      ),
-                    ),
+                  _SummaryPill(
+                    label: 'QTY',
+                    value: _qtyAndUnitWeightSummaryLine(),
+                    color: const Color(0xFF64748B),
+                  ),
+                  _SummaryPill(
+                    label: 'RATE',
+                    value: _purchaseRateLabel(true).replaceFirst(' *', '').replaceFirst('Landing cost ', '').replaceFirst('Purchase Rate ', ''),
+                    subtitle: _rupee(enteredPurchase, decimals: true),
+                    color: const Color(0xFF64748B),
                   ),
                 ],
               ),
-            ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Divider(height: 1, color: Color(0xFFE2E8F0)),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _Metric(
+                    label: 'TAX',
+                    value: gst > 1e-6 ? _rupee(gst, decimals: true) : '—',
+                    color: const Color(0xFF64748B),
+                  ),
+                  _Metric(
+                    label: 'PROFIT',
+                    value: sell != null && sell > 0 ? _rupee(profit, decimals: true) : '—',
+                    color: (profit >= 0) ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                  ),
+                  _Metric(
+                    label: 'TOTAL',
+                    value: _rupee(total, decimals: true),
+                    isBold: true,
+                    color: const Color(0xFF0F172A),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
-      for (var i = 0; i < traderLines.length; i++) ...[
-        Text(
-          traderLines[i],
-          style: i == 0
-              ? bodyStyle(fs: 14, w: FontWeight.w800)
-              : i == 1
-                  ? bodyStyle(fs: 14, w: FontWeight.w800)
-                  : i == traderLines.length - 1
-                      ? bodyStyle(fs: 15, w: FontWeight.w900)
-                      : bodyStyle(),
-        ),
-        if (i < traderLines.length - 1)
-          SizedBox(height: i == 0 ? 8 : (i == 1 ? 4 : 2)),
       ],
-    ];
-
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.symmetric(
-        horizontal: widget.fullPage ? 12 : 8,
-        vertical: widget.fullPage ? 12 : 8,
-      ),
-      decoration: BoxDecoration(
-        color: widget.fullPage
-            ? const Color(0xFFF0FDFD)
-            : Colors.blueGrey[50],
-        borderRadius: BorderRadius.circular(widget.fullPage ? 12 : 8),
-        border: Border.all(
-          color: widget.fullPage
-              ? const Color(0xFF17A8A7).withValues(alpha: 0.45)
-              : Colors.blueGrey[200]!,
-          width: widget.fullPage ? 1.5 : 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: lines,
-      ),
     );
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -3921,5 +3893,78 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     }
 
     return content;
+  }
+}
+
+class _WarningPill extends StatelessWidget {
+  const _WarningPill({required this.message});
+  final String message;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7ED),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFFFEDD5)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded, size: 16, color: Color(0xFF9A3412)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF9A3412),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryPill extends StatelessWidget {
+  const _SummaryPill({required this.label, required this.value, this.subtitle, required this.color});
+  final String label;
+  final String value;
+  final String? subtitle;
+  final Color color;
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.5, color: color.withValues(alpha: 0.7))),
+        const SizedBox(height: 2),
+        Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+        if (subtitle != null)
+          Text(subtitle!, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+      ],
+    );
+  }
+}
+
+class _Metric extends StatelessWidget {
+  const _Metric({required this.label, required this.value, required this.color, this.isBold = false});
+  final String label;
+  final String value;
+  final Color color;
+  final bool isBold;
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.5, color: const Color(0xFF64748B).withValues(alpha: 0.7))),
+        const SizedBox(height: 2),
+        Text(value, style: TextStyle(fontSize: 14, fontWeight: isBold ? FontWeight.w900 : FontWeight.w800, color: color)),
+      ],
+    );
   }
 }

@@ -18,6 +18,10 @@ class InlineSearchItem {
 
     /// Higher sorts earlier when match rank ties (e.g. supplier-linked catalog row).
     this.sortBoost = 0,
+
+    /// Optional ERP metrics
+    this.pendingBalance,
+    this.lastPurchaseDate,
   });
 
   final String id;
@@ -25,6 +29,9 @@ class InlineSearchItem {
   final String? subtitle;
   final String? searchText;
   final int sortBoost;
+
+  final double? pendingBalance;
+  final String? lastPurchaseDate;
 
   @override
   bool operator ==(Object other) =>
