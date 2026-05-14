@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show VoidCallback;
 
-import '../../debug/agent_ingest_log.dart';
 import 'hexa_api.dart';
 
 /// Cold PaaS warm-up (`/health/ready` + `/health`) and optional periodic ping.
@@ -27,30 +26,8 @@ class ApiWarmupService {
       try {
         await api.healthReady().timeout(timeout);
         slow.cancel();
-        // #region agent log
-        agentIngestLog(
-          location: 'api_warmup.dart:pingHealth',
-          message: 'health_ready_ok',
-          hypothesisId: 'H1',
-          data: <String, Object?>{'attempt': attempt},
-        );
-        // #endregion agent log
         return;
       } catch (e) {
-        // #region agent log
-        agentIngestLog(
-          location: 'api_warmup.dart:pingHealth',
-          message: 'health_ready_failed',
-          hypothesisId: 'H1',
-          data: <String, Object?>{
-            'attempt': attempt,
-            'errorType': e.runtimeType.toString(),
-            'unreachable': _isUnreachableHost(e),
-            if (e is DioException) 'dioType': e.type.name,
-            if (e is DioException) 'uri': e.requestOptions.uri.toString(),
-          },
-        );
-        // #endregion agent log
         if (_isUnreachableHost(e)) {
           slow.cancel();
           onUnreachable?.call();
@@ -61,20 +38,6 @@ class ApiWarmupService {
           slow.cancel();
           return;
         } catch (e2) {
-          // #region agent log
-          agentIngestLog(
-            location: 'api_warmup.dart:pingHealth',
-            message: 'health_fallback_failed',
-            hypothesisId: 'H1',
-            data: <String, Object?>{
-              'attempt': attempt,
-              'errorType': e2.runtimeType.toString(),
-              'unreachable': _isUnreachableHost(e2),
-              if (e2 is DioException) 'dioType': e2.type.name,
-              if (e2 is DioException) 'uri': e2.requestOptions.uri.toString(),
-            },
-          );
-          // #endregion agent log
           if (_isUnreachableHost(e2)) {
             slow.cancel();
             onUnreachable?.call();

@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../debug/agent_ingest_log.dart';
 import '../auth/session_notifier.dart';
 import '../models/trade_purchase_models.dart';
 import '../../features/shell/shell_branch_provider.dart';
@@ -138,14 +137,6 @@ class TradePurchasesListNotifier extends AutoDisposeAsyncNotifier<TradePurchases
 
     final session = ref.watch(sessionProvider);
     if (session == null) {
-      // #region agent log
-      agentIngestLog(
-        location: 'trade_purchases_provider.dart:build',
-        message: 'history_list_skipped_no_session',
-        hypothesisId: 'H4',
-        data: const <String, Object?>{},
-      );
-      // #endregion agent log
       return const TradePurchasesListView(rows: [], hasMore: false);
     }
     ref.keepAlive();
@@ -164,17 +155,6 @@ class TradePurchasesListNotifier extends AutoDisposeAsyncNotifier<TradePurchases
           purchaseTo: purchaseTo,
         );
     final hasMore = page.length >= kTradePurchasesHistoryFetchLimit;
-    // #region agent log
-    agentIngestLog(
-      location: 'trade_purchases_provider.dart:build',
-      message: 'history_list_fetched',
-      hypothesisId: 'H4',
-      data: <String, Object?>{
-        'rowCount': page.length,
-        'apiStatus': apiStatus ?? 'null',
-      },
-    );
-    // #endregion agent log
     return TradePurchasesListView(rows: page, hasMore: hasMore);
   }
 
