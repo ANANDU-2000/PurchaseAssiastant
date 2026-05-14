@@ -3885,7 +3885,6 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
         child: LayoutBuilder(
           builder: (context, c) {
-            final keyboardBottom = MediaQuery.viewInsetsOf(context).bottom;
             final homeBottomInset = MediaQuery.paddingOf(context).bottom;
             return KeyboardSafeFormViewport(
               dismissKeyboardOnTap: true,
