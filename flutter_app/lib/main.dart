@@ -185,20 +185,26 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
           await ApiWarmupService.pingHealth(
             api,
             onSlow: () {
-              container.read(apiDegradedProvider.notifier).notifyDegraded(
-                    'Connecting to server…',
-                  );
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                container.read(apiDegradedProvider.notifier).notifyDegraded(
+                      'Connecting to server…',
+                    );
+              });
             },
           );
-          container.read(apiDegradedProvider.notifier).clear();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            container.read(apiDegradedProvider.notifier).clear();
+          });
           ApiWarmupService.startPeriodicHealth(api);
           try {
             await api.healthReady().timeout(const Duration(seconds: 8));
           } on DioException catch (e) {
             if (e.response?.statusCode == 503) {
-              container.read(apiDegradedProvider.notifier).notifyDegraded(
-                    'Database is still starting — we will retry reads automatically.',
-                  );
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                container.read(apiDegradedProvider.notifier).notifyDegraded(
+                      'Database is still starting — we will retry reads automatically.',
+                    );
+              });
             }
           }
         } catch (_) {}

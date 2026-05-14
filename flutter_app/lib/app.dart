@@ -336,11 +336,14 @@ class HexaApp extends ConsumerWidget {
                               ),
                               TextButton(
                                 onPressed: () {
-                                  ref.invalidate(homeDashboardDataProvider);
-                                  ref.invalidate(homeShellReportsProvider);
-                                  invalidateTradePurchaseCaches(ref);
-                                  ref.invalidate(tradePurchasesListProvider);
-                                  ref.invalidate(reportsPurchasesPayloadProvider);
+                                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                                    if (!context.mounted) return;
+                                    ref.invalidate(homeDashboardDataProvider);
+                                    ref.invalidate(homeShellReportsProvider);
+                                    invalidateTradePurchaseCaches(ref);
+                                    ref.invalidate(tradePurchasesListProvider);
+                                    ref.invalidate(reportsPurchasesPayloadProvider);
+                                  });
                                 },
                                 child: const Text('Retry'),
                               ),
@@ -358,9 +361,15 @@ class HexaApp extends ConsumerWidget {
                                         .colorScheme
                                         .onSurfaceVariant,
                                   ),
-                                  onPressed: () => ref
-                                      .read(apiDegradedProvider.notifier)
-                                      .clear(),
+                                  onPressed: () {
+                                    WidgetsBinding.instance
+                                        .addPostFrameCallback((_) {
+                                      if (!context.mounted) return;
+                                      ref
+                                          .read(apiDegradedProvider.notifier)
+                                          .clear();
+                                    });
+                                  },
                                 ),
                               ),
                             ],

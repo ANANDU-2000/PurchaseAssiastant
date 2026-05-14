@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/hexa_api.dart';
@@ -111,20 +112,25 @@ final hexaApiProvider = Provider<HexaApi>((ref) {
         ),
     onConnectivityBanner: (degraded, hint) {
       if (disposed) return;
-      try {
-        final n = ref.read(apiDegradedProvider.notifier);
-        if (degraded) {
-          if (hint != null && hint.isNotEmpty) {
-            n.notifyDegraded(hint);
+      // Dio interceptors can run synchronously while a frame is building; never
+      // mutate Riverpod state mid-build (web: "setState/markNeedsBuild during build").
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (disposed) return;
+        try {
+          final n = ref.read(apiDegradedProvider.notifier);
+          if (degraded) {
+            if (hint != null && hint.isNotEmpty) {
+              n.notifyDegraded(hint);
+            } else {
+              n.notifyDegraded();
+            }
           } else {
-            n.notifyDegraded();
+            n.clear();
           }
-        } else {
-          n.clear();
+        } catch (_) {
+          /* ref/container disposed */
         }
-      } catch (_) {
-        /* ref/container disposed */
-      }
+      });
     },
   );
   return api;
