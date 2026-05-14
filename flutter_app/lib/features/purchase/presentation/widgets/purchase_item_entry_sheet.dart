@@ -3904,7 +3904,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                   left: 10,
                   right: 10,
                   top: 8,
-                  bottom: (keyboardBottom > 0 ? keyboardBottom : homeBottomInset) + 10,
+                  bottom: homeBottomInset > 0 ? homeBottomInset + 10.0 : 12.0,
                 ),
                 child: footer,
               ),

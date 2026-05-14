@@ -1417,7 +1417,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                             ('due', null, 'Due'),
                             ('paid', null, 'Paid'),
                             ('draft', null, 'Draft'),
-                            ('pending_delivery', Icons.local_shipping_outlined, 'Awaiting'),
+                            ('pending_delivery', Icons.local_shipping_outlined, 'Undelivered'),
                             ('delivery_stuck', Icons.warning_amber_rounded, 'Stuck'),
                             ('received', Icons.check_circle_outline_rounded, 'Done'),
                           ])

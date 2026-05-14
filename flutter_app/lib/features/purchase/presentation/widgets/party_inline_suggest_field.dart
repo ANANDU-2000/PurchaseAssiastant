@@ -954,6 +954,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       child: TextField(
         controller: widget.controller,
         focusNode: widget.focusNode,
+        tapRegionGroupId: _suggestionTapGroup,
         textInputAction: widget.textInputAction,
         onSubmitted: _onFieldSubmitted,
         scrollPadding: _scrollPad(context),
