@@ -79,6 +79,12 @@ final purchaseHistorySecondaryFilterProvider =
 final purchaseHistorySortNewestFirstProvider =
     StateProvider<bool>((ref) => true);
 
+/// When true, the list is sorted by **most undelivered days first** (overrides
+/// date/value sort — trader workflow: see the oldest pending deliveries at the top).
+final purchaseHistoryUndeliveredSortProvider =
+    StateProvider<bool>((ref) => false);
+
+
 final purchaseHistorySupplierContainsProvider =
     StateProvider<String?>((ref) => null);
 
@@ -132,14 +138,13 @@ class TradePurchasesListNotifier extends AutoDisposeAsyncNotifier<TradePurchases
   @override
   Future<TradePurchasesListView> build() async {
     final link = ref.keepAlive();
-    final t = Timer(const Duration(minutes: 8), link.close);
+    final t = Timer(const Duration(minutes: 2), link.close);
     ref.onDispose(t.cancel);
 
     final session = ref.watch(sessionProvider);
     if (session == null) {
       return const TradePurchasesListView(rows: [], hasMore: false);
     }
-    ref.keepAlive();
     final primary = ref.watch(purchaseHistoryPrimaryFilterProvider);
     final secondary = ref.watch(purchaseHistorySecondaryFilterProvider);
     final apiStatus = _tradeListApiStatus(primary, secondary);

@@ -1162,9 +1162,9 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
                             interactive: true,
                             child: ListView(
                               controller: _inlineSuggestScroll,
-                              shrinkWrap: true,
+                              shrinkWrap: false,
                               primary: false,
-                              physics: const NeverScrollableScrollPhysics(),
+                              physics: const ClampingScrollPhysics(),
                               padding: EdgeInsets.zero,
                               children: [
                                 for (final it in rows)

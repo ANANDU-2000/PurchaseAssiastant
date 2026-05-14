@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 
-import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -327,68 +326,58 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
                               itemBuilder: (BuildContext ctx, int i) {
                                 final it = opts[i];
                                 void commit() => onSelected(it);
-                                return Listener(
-                                  behavior: HitTestBehavior.opaque,
-                                  onPointerDown: (PointerDownEvent e) {
-                                    if (e.buttons != 0 &&
-                                        (e.buttons & kPrimaryButton) == 0) {
-                                      return;
-                                    }
-                                    commit();
-                                  },
-                                  child: InkWell(
-                                    onTap: commit,
-                                    child: ConstrainedBox(
-                                      constraints: const BoxConstraints(
-                                        minHeight: 44,
+                                return InkWell(
+                                  onTap: commit,
+                                  child: ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                      minHeight: 44,
+                                    ),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 10,
                                       ),
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 10,
-                                        ),
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Text(
-                                              it.label,
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.w600,
-                                                fontSize: 14,
-                                              ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            it.label,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 14,
                                             ),
-                                            if (it.subtitle != null &&
-                                                it.subtitle!.trim().isNotEmpty)
-                                              Padding(
-                                                padding: const EdgeInsets.only(
-                                                    top: 2),
-                                                child: Text(
-                                                  it.subtitle!,
-                                                  maxLines: 3,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.w600,
-                                                    height: 1.25,
-                                                    color: Color.lerp(
-                                                      Theme.of(ctx)
-                                                          .colorScheme
-                                                          .onSurface,
-                                                      Theme.of(ctx)
-                                                          .colorScheme
-                                                          .onSurfaceVariant,
-                                                      0.35,
-                                                    ),
+                                          ),
+                                          if (it.subtitle != null &&
+                                              it.subtitle!.trim().isNotEmpty)
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                  top: 2),
+                                              child: Text(
+                                                it.subtitle!,
+                                                maxLines: 3,
+                                                overflow:
+                                                    TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w600,
+                                                  height: 1.25,
+                                                  color: Color.lerp(
+                                                    Theme.of(ctx)
+                                                        .colorScheme
+                                                        .onSurface,
+                                                    Theme.of(ctx)
+                                                        .colorScheme
+                                                        .onSurfaceVariant,
+                                                    0.35,
                                                   ),
                                                 ),
                                               ),
-                                          ],
-                                        ),
+                                            ),
+                                        ],
                                       ),
                                     ),
                                   ),

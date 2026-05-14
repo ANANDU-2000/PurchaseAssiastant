@@ -549,6 +549,22 @@ List<TradePurchase> purchaseHistoryVisibleSortedForRef(
   v = _filterPurchasesBySearch(v, searchQ);
   final out = List<TradePurchase>.of(v);
   final newestFirst = ref.read(purchaseHistorySortNewestFirstProvider);
+  final undeliveredSort = ref.read(purchaseHistoryUndeliveredSortProvider);
+
+  // Undelivered-days sort overrides everything: most days waiting → top.
+  if (undeliveredSort) {
+    int deliveryAge(TradePurchase p) {
+      if (p.isDelivered) return -1;
+      final st = p.statusEnum;
+      if (st == PurchaseStatus.deleted || st == PurchaseStatus.cancelled) {
+        return -1;
+      }
+      return undeliveredDaysSincePurchase(p);
+    }
+    _purchaseHistorySortByUndeliveredAgeDesc(out, deliveryAge);
+    return out;
+  }
+
   if (s == 'pending') {
     int pendingAge(TradePurchase p) {
       if (p.isDelivered) return -1;
@@ -1047,6 +1063,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
             ref.watch(purchaseHistoryDateToProvider) != null;
     ref.watch(purchaseHistorySortNewestFirstProvider);
     ref.watch(purchaseHistoryValueSortProvider);
+    final undeliveredSort = ref.watch(purchaseHistoryUndeliveredSortProvider);
     final searchQ = ref.watch(purchaseHistorySearchProvider);
     final localWip = ref.watch(purchaseLocalWipDraftForHistoryProvider);
 
@@ -1134,6 +1151,23 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
               icon: const Icon(Icons.close_rounded),
             ),
           ] else ...[
+            // Delivery-age sort toggle: truck icon glows when active.
+            IconButton(
+              tooltip: undeliveredSort
+                  ? 'Sort: most waiting days first (tap to reset)'
+                  : 'Sort by undelivered days (oldest first)',
+              icon: Icon(
+                undeliveredSort
+                    ? Icons.local_shipping_rounded
+                    : Icons.local_shipping_outlined,
+                color: undeliveredSort ? const Color(0xFF0D9488) : null,
+              ),
+              onPressed: () {
+                ref
+                    .read(purchaseHistoryUndeliveredSortProvider.notifier)
+                    .state = !undeliveredSort;
+              },
+            ),
             IconButton(
               tooltip: 'Filter by period',
               icon: const Icon(Icons.calendar_today_outlined),
