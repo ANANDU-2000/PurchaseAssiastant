@@ -631,9 +631,6 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
   /// Rows patched until list refresh completes after mark paid/delivered.
   final Map<String, TradePurchase> _optimisticPurchasePatches = {};
   String _lastRouteFilter = '';
-  /// Last shell [GoRouterState.matchedLocation] seen here — used to bust a stale
-  /// empty [tradePurchasesListProvider] when returning to `/purchase` (web/shell).
-  String _lastPurchaseShellLocation = '';
   _HistPeriodPreset _preset = _HistPeriodPreset.month;
 
   void _applyPreset(_HistPeriodPreset p) {

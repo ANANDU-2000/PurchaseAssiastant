@@ -101,18 +101,21 @@ class TradeLedgerSummaryStrip extends StatelessWidget {
   String? _extras() {
     final parts = <String>[];
     final b = bags ?? 0, bx = boxes ?? 0, t = tins ?? 0;
-    if (b > 0)
+    if (b > 0) {
       parts.add(b == b.roundToDouble()
           ? '${b.round()} bags'
           : '${b.toStringAsFixed(1)} bags');
-    if (bx > 0)
+    }
+    if (bx > 0) {
       parts.add(bx == bx.roundToDouble()
           ? '${bx.round()} boxes'
           : '${bx.toStringAsFixed(1)} boxes');
-    if (t > 0)
+    }
+    if (t > 0) {
       parts.add(t == t.roundToDouble()
           ? '${t.round()} tins'
           : '${t.toStringAsFixed(1)} tins');
+    }
     return parts.isEmpty ? null : parts.join(' · ');
   }
 
@@ -348,8 +351,7 @@ class TradeLedgerCardList extends StatelessWidget {
                                 padding: const EdgeInsets.only(bottom: 10),
                                 child: InkWell(
                                   onTap: () => context.push(
-                                    context.push('/purchase/detail/${p.id}',
-                                        extra: p),
+                                    '/purchase/detail/${p.id}',
                                     extra: p,
                                   ),
                                   borderRadius: BorderRadius.circular(8),

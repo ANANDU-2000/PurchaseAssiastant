@@ -456,7 +456,6 @@ class _LoadedPurchaseScaffold extends ConsumerWidget {
         SnackBar(content: Text('Failed to export PDF.')),
       );
     }
-    }
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('PDF ready to share')),
     );
@@ -1213,7 +1212,6 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to export PDF.')),
         );
-      }
       }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('PDF ready to share')),
