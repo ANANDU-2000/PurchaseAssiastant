@@ -24,6 +24,7 @@ import 'item_entry/item_entry_minimal_form.dart';
 import 'item_entry/item_entry_payload.dart';
 import 'item_entry/item_entry_preview.dart';
 import 'party_inline_suggest_field.dart';
+import '../../../../core/utils/currency_utils.dart';
 
 String _stripKgSuffixForCatalogDisplay(String name) => name
     .replaceAll(RegExp(r'\s*\d+(\.\d+)?\s*KG\s*$', caseSensitive: false), '')
@@ -2858,7 +2859,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                   _SummaryPill(
                     label: 'RATE',
                     value: _purchaseRateLabel(true).replaceFirst(' *', '').replaceFirst('Landing cost ', '').replaceFirst('Purchase Rate ', ''),
-                    subtitle: _rupee(enteredPurchase, decimals: true),
+                    subtitle: formatRupee(enteredPurchase, decimals: true),
                     color: const Color(0xFF64748B),
                   ),
                 ],
@@ -2872,17 +2873,17 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                 children: [
                   _Metric(
                     label: 'TAX',
-                    value: gst > 1e-6 ? _rupee(gst, decimals: true) : '—',
+                    value: gst > 1e-6 ? formatRupee(gst, decimals: true) : '—',
                     color: const Color(0xFF64748B),
                   ),
                   _Metric(
                     label: 'PROFIT',
-                    value: sell != null && sell > 0 ? _rupee(profit, decimals: true) : '—',
+                    value: sell != null && sell > 0 ? formatRupee(profit, decimals: true) : '—',
                     color: (profit >= 0) ? const Color(0xFF10B981) : const Color(0xFFEF4444),
                   ),
                   _Metric(
                     label: 'TOTAL',
-                    value: _rupee(total, decimals: true),
+                    value: formatRupee(total, decimals: true),
                     isBold: true,
                     color: const Color(0xFF0F172A),
                   ),

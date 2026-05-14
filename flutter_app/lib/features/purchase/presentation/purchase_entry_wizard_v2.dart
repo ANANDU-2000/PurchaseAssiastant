@@ -18,6 +18,7 @@ import '../../../core/json_coerce.dart' show coerceToDoubleNullable;
 import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/widgets/form_field_scroll.dart';
 import '../../../core/providers/brokers_list_provider.dart';
+import '../../../core/utils/currency_utils.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart'
     show invalidatePurchaseWorkspace, invalidateWorkspaceSeedData;
 import '../../../core/providers/catalog_providers.dart';
@@ -678,7 +679,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
         // Only count balance for non-cancelled non-deleted purchases
         final st = p['status']?.toString().toLowerCase();
         if (st != 'cancelled' && st != 'deleted') {
-          final rem = _decDouble(p['remaining']);
+          final rem = decDouble(p['remaining']);
           balanceMap[sid] = (balanceMap[sid] ?? 0) + rem;
         }
 
