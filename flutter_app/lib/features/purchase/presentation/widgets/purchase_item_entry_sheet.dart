@@ -3760,11 +3760,10 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
             ),
             body: LayoutBuilder(
               builder: (context, c) {
-                final imeBottom = MediaQuery.viewInsetsOf(context).bottom;
+// Scaffold.resizeToAvoidBottomInset:true already shrinks body for keyboard.
+// Only add safe area bottom — never add imeBottom (would double-count).
                 final safeBottom = MediaQuery.paddingOf(context).bottom;
-                final double previewBottomPad = imeBottom > 0
-                    ? imeBottom + 12.0
-                    : (safeBottom > 0 ? safeBottom + 8.0 : 12.0);
+                final double previewBottomPad = safeBottom > 0 ? safeBottom + 8.0 : 12.0;
                 final previewPinned = Material(
                   elevation: 8,
                   color: Colors.white,
