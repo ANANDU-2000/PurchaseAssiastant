@@ -103,7 +103,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
   bool _taxOn = true;
 
   /// Extra bottom inset so fields clear pinned preview + IME when scrolling into view.
-  static const double _kPinnedPreviewReserve = 268;
+  static const double _kPinnedPreviewReserve = 310;
 
   final _itemCtrl = TextEditingController();
   final _itemFocus = FocusNode();

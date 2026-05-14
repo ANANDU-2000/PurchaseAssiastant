@@ -1,0 +1,9 @@
+﻿Analyzing flutter_app...
+
+warning - lib\features\purchase\presentation\purchase_home_page.dart:636:10 - The value of the field '_lastPurchaseShellLocation' isn't used. Try removing the field, or using it. - unused_field
+   info - lib\features\purchase\presentation\purchase_home_page.dart:636:10 - The private field _lastPurchaseShellLocation could be 'final'. Try making the field 'final'. - prefer_final_fields
+   info - lib\shared\widgets\trade_purchase_ledger_cards.dart:105:7 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - lib\shared\widgets\trade_purchase_ledger_cards.dart:109:7 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - lib\shared\widgets\trade_purchase_ledger_cards.dart:113:7 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+
+5 issues found.

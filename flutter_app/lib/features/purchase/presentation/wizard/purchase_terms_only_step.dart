@@ -89,7 +89,7 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
         minLines: maxLines > 1 ? 1 : null,
         scrollPadding: formFieldScrollPaddingForContext(
           context,
-          reserveBelowField: 220,
+          reserveBelowField: 280,
         ),
         textInputAction: textInputAction,
         onSubmitted: onSubmitted != null ? (_) => onSubmitted() : null,

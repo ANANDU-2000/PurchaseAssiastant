@@ -2173,7 +2173,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
               : SingleChildScrollView(
                   controller: _wizardBodyScrollController,
                   keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
+                      ScrollViewKeyboardDismissBehavior.manual,
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                   child: stepContent,
                 );
@@ -2187,7 +2187,12 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
                   duration: const Duration(milliseconds: 180),
                   curve: Curves.easeOut,
                   color: Theme.of(ctx).scaffoldBackgroundColor,
-                  padding: EdgeInsets.fromLTRB(16, 8, 16, 8 + kbInset),
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    8,
+                    16,
+                    8 + kbInset + (kbInset == 0 ? MediaQuery.paddingOf(ctx).bottom : 0),
+                  ),
                   child: _wizardFooterChrome(catalog, isEdit),
                 ),
               ),
