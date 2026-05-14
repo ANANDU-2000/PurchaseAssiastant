@@ -349,7 +349,8 @@ class HexaApp extends ConsumerWidget {
                                 button: true,
                                 child: IconButton(
                                   visualDensity: VisualDensity.compact,
-                                  tooltip: 'Dismiss',
+                                  // No [tooltip]: this subtree is a sibling of the router
+                                  // [Navigator] in the builder Stack — tooltips need an Overlay.
                                   icon: Icon(
                                     Icons.close,
                                     size: 20,
