@@ -366,6 +366,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     _landingFocus.addListener(_onLandingFocusScroll);
     _sellingFocus.addListener(_onSellingFocusScroll);
     _kgManualFocus.addListener(_onKgManualFocusScroll);
+    _itemFocus.addListener(_onItemFocusScroll);
   }
 
   void _syncKgStateFromCatalogRow() {
@@ -387,6 +388,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
 
   @override
   void dispose() {
+    _itemFocus.removeListener(_onItemFocusScroll);
     _qtyFocus.removeListener(_onQtyFocusScroll);
     _landingFocus.removeListener(_onLandingFocusScroll);
     _sellingFocus.removeListener(_onSellingFocusScroll);
@@ -1362,6 +1364,10 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         curve: Curves.easeOutCubic,
       );
     });
+  }
+
+  void _onItemFocusScroll() {
+    if (_itemFocus.hasFocus) _ensureFocusedFieldVisible();
   }
 
   void _onQtyFocusScroll() {

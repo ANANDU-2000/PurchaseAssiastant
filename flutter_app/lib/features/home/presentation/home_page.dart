@@ -13,6 +13,7 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/cloud_expense_provider.dart';
+import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/providers/purchase_post_save_provider.dart';
 import '../../../core/providers/reports_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart'
@@ -413,7 +414,13 @@ class _HomePageState extends ConsumerState<HomePage>
       if (route == 'edit_missing' && sid != null && sid.isNotEmpty) {
         context.go('/purchase/edit/$sid');
       } else if (route == 'detail' && sid != null && sid.isNotEmpty) {
-        context.go('/purchase/detail/$sid');
+        TradePurchase? seed;
+        try {
+          seed = TradePurchase.fromJson(
+            Map<String, dynamic>.from(payload.savedJson),
+          );
+        } catch (_) {}
+        context.go('/purchase/detail/$sid', extra: seed);
       }
     } finally {
       _handlingPurchasePostSave = false;

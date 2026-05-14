@@ -213,8 +213,10 @@ class _CatalogItemPurchaseHistoryPageState
                               _inr(p.totalAmount.round()),
                               style: const TextStyle(fontWeight: FontWeight.w800),
                             ),
-                            onTap: () =>
-                                context.push('/purchase/detail/${p.id}'),
+                            onTap: () => context.push(
+                              '/purchase/detail/${p.id}',
+                              extra: p,
+                            ),
                           );
                         },
                       ),

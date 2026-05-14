@@ -14,6 +14,7 @@ import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
 import '../../../core/widgets/form_feedback.dart';
+import '../../../core/widgets/form_field_scroll.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/full_screen_form_scaffold.dart';
 import 'supplier_create_wizard_page.dart';
@@ -72,11 +73,24 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
   List<Map<String, dynamic>> _itemHits = [];
   String _freightType = 'separate';
 
+  final _brkNameFocus = FocusNode();
+  final _brkPhoneFocus = FocusNode();
+  final _brkCommissionFocus = FocusNode();
+  final _brkPaymentDaysFocus = FocusNode();
+  final _brkSearchSuppliersFocus = FocusNode();
+  final _brkSearchItemsFocus = FocusNode();
+
   @override
   void initState() {
     super.initState();
     _phone.addListener(_syncWa);
     _name.addListener(_checkDupDebounced);
+    bindFocusNodeScrollIntoView(_brkNameFocus);
+    bindFocusNodeScrollIntoView(_brkPhoneFocus);
+    bindFocusNodeScrollIntoView(_brkCommissionFocus);
+    bindFocusNodeScrollIntoView(_brkPaymentDaysFocus);
+    bindFocusNodeScrollIntoView(_brkSearchSuppliersFocus);
+    bindFocusNodeScrollIntoView(_brkSearchItemsFocus);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_loadInitial());
     });
@@ -98,6 +112,12 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
     _billty.dispose();
     _searchSuppliers.dispose();
     _searchItems.dispose();
+    _brkNameFocus.dispose();
+    _brkPhoneFocus.dispose();
+    _brkCommissionFocus.dispose();
+    _brkPaymentDaysFocus.dispose();
+    _brkSearchSuppliersFocus.dispose();
+    _brkSearchItemsFocus.dispose();
     super.dispose();
   }
 
@@ -475,7 +495,8 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       );
 
-  Widget _step0() {
+  Widget _step0(BuildContext context) {
+    final sp = formFieldScrollPaddingForContext(context, reserveBelowField: 200);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -487,6 +508,8 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
           ),
         TextField(
           controller: _name,
+          focusNode: _brkNameFocus,
+          scrollPadding: sp,
           decoration: _d('Broker Name *').copyWith(errorText: _nameError),
           onChanged: (_) => _markDirty(),
           textInputAction: TextInputAction.next,
@@ -494,6 +517,8 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
         const SizedBox(height: 8),
         TextField(
           controller: _phone,
+          focusNode: _brkPhoneFocus,
+          scrollPadding: sp,
           decoration: _d('Phone (optional)').copyWith(errorText: _phoneError),
           keyboardType: const TextInputType.numberWithOptions(signed: false, decimal: false),
           onChanged: (_) => _markDirty(),
@@ -502,6 +527,7 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
         const SizedBox(height: 8),
         TextField(
           controller: _wa,
+          scrollPadding: sp,
           decoration: _d('WhatsApp (optional)'),
           keyboardType: const TextInputType.numberWithOptions(signed: false, decimal: false),
           onChanged: (_) => _markDirty(),
@@ -510,6 +536,7 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
         const SizedBox(height: 8),
         TextField(
           controller: _location,
+          scrollPadding: sp,
           decoration: _d('Location'),
           onChanged: (_) => _markDirty(),
           textInputAction: TextInputAction.next,
@@ -517,6 +544,7 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
         const SizedBox(height: 8),
         TextField(
           controller: _notes,
+          scrollPadding: sp,
           decoration: _d('Notes'),
           minLines: 2,
           maxLines: 3,
@@ -526,7 +554,8 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
     );
   }
 
-  Widget _step1() {
+  Widget _step1(BuildContext context) {
+    final sp = formFieldScrollPaddingForContext(context, reserveBelowField: 200);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -546,6 +575,8 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
         const SizedBox(height: 10),
         TextField(
           controller: _commission,
+          focusNode: _brkCommissionFocus,
+          scrollPadding: sp,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: _d(_commissionType == 'percent'
                   ? 'Commission Value (%)'
@@ -563,6 +594,8 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
         const SizedBox(height: 8),
         TextField(
           controller: _paymentDays,
+          focusNode: _brkPaymentDaysFocus,
+          scrollPadding: sp,
           keyboardType: TextInputType.number,
           decoration: _d('Payment days (optional)'),
           onChanged: (_) => _markDirty(),
@@ -570,6 +603,7 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
         const SizedBox(height: 8),
         TextField(
           controller: _discount,
+          scrollPadding: sp,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: _d('Header discount % (optional)'),
           onChanged: (_) => _markDirty(),
@@ -577,6 +611,7 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
         const SizedBox(height: 8),
         TextField(
           controller: _delivered,
+          scrollPadding: sp,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: _d('Default delivered rate ₹ (optional)'),
           onChanged: (_) => _markDirty(),
@@ -584,6 +619,7 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
         const SizedBox(height: 8),
         TextField(
           controller: _billty,
+          scrollPadding: sp,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: _d('Default billty rate ₹ (optional)'),
           onChanged: (_) => _markDirty(),
@@ -608,7 +644,8 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
     );
   }
 
-  Widget _step2() {
+  Widget _step2(BuildContext context) {
+    final sp = formFieldScrollPaddingForContext(context, reserveBelowField: 200);
     final suppliersAsync = ref.watch(suppliersListProvider);
     final q = _searchSuppliers.text.trim().toLowerCase();
     return Column(
@@ -619,6 +656,8 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
             Expanded(
               child: TextField(
                 controller: _searchSuppliers,
+                focusNode: _brkSearchSuppliersFocus,
+                scrollPadding: sp,
                 decoration: _d('Search suppliers'),
                 onChanged: (_) => setState(() {}),
               ),
@@ -676,13 +715,16 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
     );
   }
 
-  Widget _step3() {
+  Widget _step3(BuildContext context) {
+    final sp = formFieldScrollPaddingForContext(context, reserveBelowField: 200);
     final cats = ref.watch(itemCategoriesListProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TextField(
           controller: _searchItems,
+          focusNode: _brkSearchItemsFocus,
+          scrollPadding: sp,
           decoration: _d('Search items / categories'),
           onChanged: (v) => _runItemSearch(v),
         ),
@@ -752,7 +794,7 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _step0(),
+              _step0(context),
               const SizedBox(height: 4),
               Theme(
                 data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -781,7 +823,7 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
                           ),
                     ),
                     const SizedBox(height: 8),
-                    _step2(),
+                    _step2(context),
                     const SizedBox(height: 16),
                     Text(
                       'Preferred items & categories',
@@ -791,7 +833,7 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
                           ),
                     ),
                     const SizedBox(height: 8),
-                    _step3(),
+                    _step3(context),
                   ],
                 ),
               ),
@@ -799,7 +841,7 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
           ),
         );
       default:
-        return _step1();
+        return _step1(context);
     }
   }
 

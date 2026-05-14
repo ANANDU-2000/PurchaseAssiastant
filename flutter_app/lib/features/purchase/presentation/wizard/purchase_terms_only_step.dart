@@ -16,6 +16,9 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
     required this.commissionCtrl,
     required this.headerDiscCtrl,
     required this.narrationCtrl,
+    this.commissionFocus,
+    this.headerDiscFocus,
+    this.narrationFocus,
     required this.onDraftChanged,
   });
 
@@ -25,6 +28,9 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
   final TextEditingController headerDiscCtrl;
   /// Stored on wire as `invoice_number`; UX label = Narration/Ref.
   final TextEditingController narrationCtrl;
+  final FocusNode? commissionFocus;
+  final FocusNode? headerDiscFocus;
+  final FocusNode? narrationFocus;
   final VoidCallback onDraftChanged;
 
   static String _duePreview(WidgetRef ref, TextEditingController c) {
@@ -272,6 +278,7 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
               order: 20,
               c: commissionCtrl,
               label: 'Commission %',
+              focusNode: commissionFocus,
               keyboard:
                   const TextInputType.numberWithOptions(decimal: true),
               decoration: densePurchaseFieldDecoration('Commission %')
@@ -320,6 +327,7 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
                       order: 20,
                       c: commissionCtrl,
                       label: 'Amount (₹)',
+                      focusNode: commissionFocus,
                       keyboard: const TextInputType.numberWithOptions(
                           decimal: true),
                       decoration:
@@ -387,6 +395,7 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
           order: hasBroker ? 40 : 20,
           c: headerDiscCtrl,
           label: 'Discount %',
+          focusNode: headerDiscFocus,
           keyboard: const TextInputType.numberWithOptions(decimal: true),
           onChanged: (s) {
             ref.read(purchaseDraftProvider.notifier).setHeaderDiscountFromText(s);
@@ -397,6 +406,7 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
           order: hasBroker ? 50 : 30,
           c: narrationCtrl,
           label: 'Narration / ref (optional)',
+          focusNode: narrationFocus,
           keyboard: TextInputType.text,
           maxLines: 2,
           textInputAction: TextInputAction.done,

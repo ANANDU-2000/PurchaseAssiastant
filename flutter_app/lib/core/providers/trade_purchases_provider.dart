@@ -252,17 +252,43 @@ final purchaseAlertsProvider = Provider.autoDispose<Map<String, int>>((ref) {
 
 /// Period strip for Purchase History: aligns with [analyticsDateRangeProvider]
 /// (same period as Reports/Home Month preset).
+///
+/// Uses the **same** parsed rows as the history list whenever that list has
+/// resolved ([tradePurchasesParsedProvider]), so KPI chips cannot disagree with
+/// visible cards. While the list is still loading, falls back to the small alerts
+/// fetch so the strip is not blank during the first paint.
 final purchaseHistoryMonthStatsProvider =
     Provider.autoDispose<PurchaseHistoryMonthStats>((ref) {
-  final async = ref.watch(tradePurchasesForAlertsParsedProvider);
   final range = ref.watch(analyticsDateRangeProvider);
-  return async.maybeWhen(
+  final listAsync = ref.watch(tradePurchasesParsedProvider);
+  return listAsync.when(
     data: (list) => computePurchaseHistoryRangeStats(
       list,
       from: range.from,
       to: range.to,
     ),
-    orElse: () => PurchaseHistoryMonthStats.empty,
+    loading: () {
+      final alerts = ref.watch(tradePurchasesForAlertsParsedProvider);
+      return alerts.maybeWhen(
+        data: (list) => computePurchaseHistoryRangeStats(
+          list,
+          from: range.from,
+          to: range.to,
+        ),
+        orElse: () => PurchaseHistoryMonthStats.empty,
+      );
+    },
+    error: (_, __) {
+      final alerts = ref.watch(tradePurchasesForAlertsParsedProvider);
+      return alerts.maybeWhen(
+        data: (list) => computePurchaseHistoryRangeStats(
+          list,
+          from: range.from,
+          to: range.to,
+        ),
+        orElse: () => PurchaseHistoryMonthStats.empty,
+      );
+    },
   );
 });
 

@@ -827,7 +827,10 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
                               tt: tt,
                               kind: widget.kind,
                               onOpen: () =>
-                                  context.push('/purchase/detail/${p.id}'),
+                                  context.push(
+                                    '/purchase/detail/${p.id}',
+                                    extra: p,
+                                  ),
                               onDelete: () => _confirmDelete(p),
                             )),
                     ],

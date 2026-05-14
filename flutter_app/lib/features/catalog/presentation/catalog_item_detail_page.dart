@@ -22,6 +22,7 @@ import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
 import '../../../core/services/reports_pdf.dart';
 import '../../../core/widgets/friendly_load_error.dart';
+import '../../../core/widgets/form_field_scroll.dart';
 import '../../../core/widgets/list_skeleton.dart';
 import '../../../shared/widgets/bag_default_unit_hint.dart';
 import '../../../shared/widgets/trade_intel_cards.dart';
@@ -52,7 +53,6 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
   }
 
   Future<void> _editItemDefaults(Map<String, dynamic> item) async {
-    var unit = item['default_unit']?.toString();
     final nameCtrl =
         TextEditingController(text: item['name']?.toString() ?? '');
     final hsnCtrl =
@@ -84,7 +84,7 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
           ? item['default_selling_cost'].toString()
           : '',
     );
-    final ok = await showModalBottomSheet<bool>(
+    final sheetResult = await showModalBottomSheet<Map<String, dynamic>?>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -96,217 +96,23 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
         padding: EdgeInsets.only(
           bottom: MediaQuery.viewInsetsOf(sheetCtx).bottom,
         ),
-        child: StatefulBuilder(
-          builder: (ctx, setSt) {
-            return DraggableScrollableSheet(
-              initialChildSize: 0.88,
-              minChildSize: 0.45,
-              maxChildSize: 0.95,
-              expand: false,
-              builder: (_, scrollCtrl) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Center(
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(vertical: 10),
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 8, 8),
-                      child: Row(
-                        children: [
-                          Text(
-                            'Edit item',
-                            style: Theme.of(ctx).textTheme.titleLarge
-                                ?.copyWith(fontWeight: FontWeight.w700),
-                          ),
-                          const Spacer(),
-                          IconButton(
-                            icon: const Icon(Icons.close_rounded),
-                            onPressed: () => Navigator.pop(sheetCtx, false),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: ListView(
-                        controller: scrollCtrl,
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                        children: [
-                          TextField(
-                            controller: nameCtrl,
-                            decoration: const InputDecoration(labelText: 'Name'),
-                          ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: hsnCtrl,
-                            decoration:
-                                const InputDecoration(labelText: 'HSN code'),
-                          ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: taxCtrl,
-                            keyboardType: const TextInputType.numberWithOptions(
-                                decimal: true),
-                            decoration: const InputDecoration(
-                              labelText: 'Tax %',
-                              hintText: 'e.g. 5',
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Default unit (optional)',
-                            style: Theme.of(ctx)
-                                .textTheme
-                                .labelLarge
-                                ?.copyWith(fontWeight: FontWeight.w700),
-                          ),
-                          const SizedBox(height: 6),
-                          OutlinedButton(
-                            onPressed: () async {
-                              const none = '__unit_none__';
-                              final id = await showSearchPickerSheet<String>(
-                                context: context,
-                                title: 'Default unit',
-                                rows: const [
-                                  SearchPickerRow(
-                                      value: none, title: '— (unspecified)'),
-                                  SearchPickerRow(value: 'kg', title: 'kg'),
-                                  SearchPickerRow(value: 'bag', title: 'bag'),
-                                  SearchPickerRow(value: 'box', title: 'box'),
-                                  SearchPickerRow(
-                                      value: 'piece', title: 'piece'),
-                                ],
-                                selectedValue: unit ?? none,
-                              );
-                              if (!context.mounted) return;
-                              if (id != null) {
-                                setSt(() => unit = id == none ? null : id);
-                              }
-                            },
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                  unit == null ? '— (unspecified)' : '$unit'),
-                            ),
-                          ),
-                          if (unit == 'bag') ...[
-                            const SizedBox(height: 12),
-                            TextField(
-                              controller: kgCtrl,
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                      decimal: true),
-                              decoration: const InputDecoration(
-                                labelText: 'Default kg per bag (optional)',
-                                hintText: 'e.g. 50',
-                              ),
-                              onChanged: (_) => setSt(() {}),
-                            ),
-                            const SizedBox(height: 8),
-                            BagDefaultUnitHint(
-                              kgAlreadySet: () {
-                                final v = parseOptionalKgPerBag(kgCtrl.text);
-                                return v != null && v > 0;
-                              }(),
-                            ),
-                          ],
-                          if (unit == 'box') ...[
-                            const SizedBox(height: 12),
-                            TextField(
-                              controller: ipbCtrl,
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                      decimal: true),
-                              decoration: const InputDecoration(
-                                labelText: 'Items per box',
-                                hintText: 'How many pieces per box',
-                              ),
-                            ),
-                          ],
-                          if (unit == 'tin') ...[
-                            const SizedBox(height: 12),
-                            TextField(
-                              controller: wptCtrl,
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                      decimal: true),
-                              decoration: const InputDecoration(
-                                labelText: 'Liters / weight per tin',
-                              ),
-                            ),
-                          ],
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: landCtrl,
-                            keyboardType:
-                                const TextInputType.numberWithOptions(
-                                    decimal: true),
-                            decoration: const InputDecoration(
-                              labelText: 'Default landing (₹)',
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: sellCtrl,
-                            keyboardType:
-                                const TextInputType.numberWithOptions(
-                                    decimal: true),
-                            decoration: const InputDecoration(
-                              labelText: 'Default selling (₹)',
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton(
-                                  onPressed: () =>
-                                      Navigator.pop(sheetCtx, false),
-                                  child: const Text('Cancel'),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                flex: 2,
-                                child: FilledButton(
-                                  onPressed: () =>
-                                      Navigator.pop(sheetCtx, true),
-                                  style: FilledButton.styleFrom(
-                                    minimumSize:
-                                        const Size.fromHeight(52),
-                                  ),
-                                  child: const Text(
-                                    'Save',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                );
-              },
-            );
-          },
+        child: _EditCatalogItemDefaultsSheet(
+          pickerContext: context,
+          nameCtrl: nameCtrl,
+          hsnCtrl: hsnCtrl,
+          taxCtrl: taxCtrl,
+          kgCtrl: kgCtrl,
+          ipbCtrl: ipbCtrl,
+          wptCtrl: wptCtrl,
+          landCtrl: landCtrl,
+          sellCtrl: sellCtrl,
+          initialUnit: item['default_unit']?.toString(),
         ),
       ),
     );
     try {
-      if (ok != true) return;
+      if (sheetResult == null || sheetResult['ok'] != true) return;
+      final unit = sheetResult['unit'] as String?;
       final session = ref.read(sessionProvider);
       if (session == null) return;
       final kgParsed =
@@ -1152,6 +958,302 @@ class _CatalogItemDefaultParties extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+class _EditCatalogItemDefaultsSheet extends StatefulWidget {
+  const _EditCatalogItemDefaultsSheet({
+    required this.pickerContext,
+    required this.nameCtrl,
+    required this.hsnCtrl,
+    required this.taxCtrl,
+    required this.kgCtrl,
+    required this.ipbCtrl,
+    required this.wptCtrl,
+    required this.landCtrl,
+    required this.sellCtrl,
+    required this.initialUnit,
+  });
+
+  final BuildContext pickerContext;
+  final TextEditingController nameCtrl;
+  final TextEditingController hsnCtrl;
+  final TextEditingController taxCtrl;
+  final TextEditingController kgCtrl;
+  final TextEditingController ipbCtrl;
+  final TextEditingController wptCtrl;
+  final TextEditingController landCtrl;
+  final TextEditingController sellCtrl;
+  final String? initialUnit;
+
+  @override
+  State<_EditCatalogItemDefaultsSheet> createState() =>
+      _EditCatalogItemDefaultsSheetState();
+}
+
+class _EditCatalogItemDefaultsSheetState
+    extends State<_EditCatalogItemDefaultsSheet> {
+  late String? _unit;
+  late final FocusNode _nameFocus;
+  late final FocusNode _hsnFocus;
+  late final FocusNode _taxFocus;
+  late final FocusNode _kgFocus;
+  late final FocusNode _ipbFocus;
+  late final FocusNode _wptFocus;
+  late final FocusNode _landFocus;
+  late final FocusNode _sellFocus;
+
+  @override
+  void initState() {
+    super.initState();
+    _unit = widget.initialUnit;
+    _nameFocus = FocusNode();
+    _hsnFocus = FocusNode();
+    _taxFocus = FocusNode();
+    _kgFocus = FocusNode();
+    _ipbFocus = FocusNode();
+    _wptFocus = FocusNode();
+    _landFocus = FocusNode();
+    _sellFocus = FocusNode();
+    bindFocusNodeScrollIntoView(_nameFocus);
+    bindFocusNodeScrollIntoView(_hsnFocus);
+    bindFocusNodeScrollIntoView(_taxFocus);
+    bindFocusNodeScrollIntoView(_kgFocus);
+    bindFocusNodeScrollIntoView(_ipbFocus);
+    bindFocusNodeScrollIntoView(_wptFocus);
+    bindFocusNodeScrollIntoView(_landFocus);
+    bindFocusNodeScrollIntoView(_sellFocus);
+  }
+
+  @override
+  void dispose() {
+    _nameFocus.dispose();
+    _hsnFocus.dispose();
+    _taxFocus.dispose();
+    _kgFocus.dispose();
+    _ipbFocus.dispose();
+    _wptFocus.dispose();
+    _landFocus.dispose();
+    _sellFocus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sp =
+        formFieldScrollPaddingForContext(context, reserveBelowField: 220);
+    return DraggableScrollableSheet(
+      initialChildSize: 0.88,
+      minChildSize: 0.45,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (_, scrollCtrl) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                margin: const EdgeInsets.symmetric(vertical: 10),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 8, 8),
+              child: Row(
+                children: [
+                  Text(
+                    'Edit item',
+                    style: Theme.of(context).textTheme.titleLarge
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                controller: scrollCtrl,
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                children: [
+                  TextField(
+                    controller: widget.nameCtrl,
+                    focusNode: _nameFocus,
+                    scrollPadding: sp,
+                    decoration: const InputDecoration(labelText: 'Name'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: widget.hsnCtrl,
+                    focusNode: _hsnFocus,
+                    scrollPadding: sp,
+                    decoration: const InputDecoration(labelText: 'HSN code'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: widget.taxCtrl,
+                    focusNode: _taxFocus,
+                    scrollPadding: sp,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Tax %',
+                      hintText: 'e.g. 5',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Default unit (optional)',
+                    style: Theme.of(context)
+                        .textTheme
+                        .labelLarge
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 6),
+                  OutlinedButton(
+                    onPressed: () async {
+                      const none = '__unit_none__';
+                      final id = await showSearchPickerSheet<String>(
+                        context: widget.pickerContext,
+                        title: 'Default unit',
+                        rows: const [
+                          SearchPickerRow(value: none, title: '— (unspecified)'),
+                          SearchPickerRow(value: 'kg', title: 'kg'),
+                          SearchPickerRow(value: 'bag', title: 'bag'),
+                          SearchPickerRow(value: 'box', title: 'box'),
+                          SearchPickerRow(value: 'piece', title: 'piece'),
+                        ],
+                        selectedValue: _unit ?? none,
+                      );
+                      if (!mounted) return;
+                      if (id != null) {
+                        setState(() => _unit = id == none ? null : id);
+                      }
+                    },
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        _unit == null ? '— (unspecified)' : '$_unit',
+                      ),
+                    ),
+                  ),
+                  if (_unit == 'bag') ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: widget.kgCtrl,
+                      focusNode: _kgFocus,
+                      scrollPadding: sp,
+                      keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: 'Default kg per bag (optional)',
+                        hintText: 'e.g. 50',
+                      ),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    const SizedBox(height: 8),
+                    BagDefaultUnitHint(
+                      kgAlreadySet: () {
+                        final v = parseOptionalKgPerBag(widget.kgCtrl.text);
+                        return v != null && v > 0;
+                      }(),
+                    ),
+                  ],
+                  if (_unit == 'box') ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: widget.ipbCtrl,
+                      focusNode: _ipbFocus,
+                      scrollPadding: sp,
+                      keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: 'Items per box',
+                        hintText: 'How many pieces per box',
+                      ),
+                    ),
+                  ],
+                  if (_unit == 'tin') ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: widget.wptCtrl,
+                      focusNode: _wptFocus,
+                      scrollPadding: sp,
+                      keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: 'Liters / weight per tin',
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: widget.landCtrl,
+                    focusNode: _landFocus,
+                    scrollPadding: sp,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Default landing (₹)',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: widget.sellCtrl,
+                    focusNode: _sellFocus,
+                    scrollPadding: sp,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Default selling (₹)',
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: FilledButton(
+                          onPressed: () => Navigator.pop(context, {
+                            'ok': true,
+                            'unit': _unit,
+                          }),
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(52),
+                          ),
+                          child: const Text(
+                            'Save',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

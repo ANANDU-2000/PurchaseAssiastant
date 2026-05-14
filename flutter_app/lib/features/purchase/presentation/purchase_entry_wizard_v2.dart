@@ -15,6 +15,8 @@ import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/json_coerce.dart' show coerceToDoubleNullable;
+import '../../../core/models/trade_purchase_models.dart';
+import '../../../core/widgets/form_field_scroll.dart';
 import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart'
     show invalidatePurchaseWorkspace, invalidateWorkspaceSeedData;
@@ -122,6 +124,9 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
   final _partySupplierFocus = FocusNode();
   final _partyBrokerFocus = FocusNode();
   final _termsPaymentDaysFocus = FocusNode();
+  final _termsCommissionFocus = FocusNode();
+  final _termsHeaderDiscFocus = FocusNode();
+  final _termsNarrationFocus = FocusNode();
   final _paymentDaysCtrl = TextEditingController();
   final _headerDiscCtrl = TextEditingController();
   final _commissionCtrl = TextEditingController();
@@ -143,6 +148,12 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     WidgetsBinding.instance.addObserver(this);
     _partySupplierFocus.addListener(_partyFieldFocusNotify);
     _partyBrokerFocus.addListener(_partyFieldFocusNotify);
+    bindFocusNodeScrollIntoView(_partySupplierFocus);
+    bindFocusNodeScrollIntoView(_partyBrokerFocus);
+    bindFocusNodeScrollIntoView(_termsPaymentDaysFocus);
+    bindFocusNodeScrollIntoView(_termsCommissionFocus);
+    bindFocusNodeScrollIntoView(_termsHeaderDiscFocus);
+    bindFocusNodeScrollIntoView(_termsNarrationFocus);
     WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrap());
   }
 
@@ -617,6 +628,9 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     _partySupplierFocus.dispose();
     _partyBrokerFocus.dispose();
     _termsPaymentDaysFocus.dispose();
+    _termsCommissionFocus.dispose();
+    _termsHeaderDiscFocus.dispose();
+    _termsNarrationFocus.dispose();
     super.dispose();
   }
 
@@ -1751,7 +1765,11 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
         if (where == 'detail') {
           final id = saved['id']?.toString();
           if (id != null && id.isNotEmpty) {
-            context.go('/purchase/detail/$id');
+            TradePurchase? seed;
+            try {
+              seed = TradePurchase.fromJson(Map<String, dynamic>.from(saved));
+            } catch (_) {}
+            context.go('/purchase/detail/$id', extra: seed);
           }
         } else {
           if (context.canPop()) context.pop();
@@ -2006,6 +2024,9 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
           commissionCtrl: _commissionCtrl,
           headerDiscCtrl: _headerDiscCtrl,
           narrationCtrl: _invoiceCtrl,
+          commissionFocus: _termsCommissionFocus,
+          headerDiscFocus: _termsHeaderDiscFocus,
+          narrationFocus: _termsNarrationFocus,
           onDraftChanged: _onDraftChanged,
         );
         break;

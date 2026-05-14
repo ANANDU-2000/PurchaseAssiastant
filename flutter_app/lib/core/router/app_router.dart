@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../auth/session_notifier.dart';
+import '../models/trade_purchase_models.dart';
 import 'page_transitions.dart';
 import '../../features/analytics/presentation/full_reports_page.dart';
 import '../../features/analytics/presentation/item_analytics_detail_page.dart';
@@ -475,9 +476,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: 'purchase_detail',
         pageBuilder: (context, state) {
           final id = state.pathParameters['purchaseId']!;
+          final ex = state.extra;
+          final seed = ex is TradePurchase ? ex : null;
+          final seedOk = seed != null && seed.id == id;
           return iosPushPage(
             key: state.pageKey,
-            child: PurchaseDetailPage(purchaseId: id),
+            child: PurchaseDetailPage(
+              purchaseId: id,
+              seedPurchase: seedOk ? seed : null,
+            ),
           );
         },
       ),

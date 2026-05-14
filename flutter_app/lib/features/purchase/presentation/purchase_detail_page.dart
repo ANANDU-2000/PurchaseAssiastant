@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -185,55 +187,198 @@ _Agg _buildAgg(TradePurchase p) {
   );
 }
 
-class PurchaseDetailPage extends ConsumerWidget {
-  const PurchaseDetailPage({super.key, required this.purchaseId});
+class PurchaseDetailPage extends ConsumerStatefulWidget {
+  const PurchaseDetailPage({
+    super.key,
+    required this.purchaseId,
+    this.seedPurchase,
+  });
 
   final String purchaseId;
+  /// Optional row from list/ledger while GET detail runs (same [id] as [purchaseId]).
+  final TradePurchase? seedPurchase;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(tradePurchaseDetailProvider(purchaseId));
+  ConsumerState<PurchaseDetailPage> createState() => _PurchaseDetailPageState();
+}
+
+class _PurchaseDetailPageState extends ConsumerState<PurchaseDetailPage> {
+  Timer? _slowLoadTimer;
+  bool _slowLoadPastSkeleton = false;
+  bool _slowLoadTimerArmed = false;
+
+  @override
+  void dispose() {
+    _slowLoadTimer?.cancel();
+    super.dispose();
+  }
+
+  void _syncDetailLoadUi(AsyncValue<TradePurchase> async, bool seedOk) {
+    final loadingNoSeed = async.isLoading && !seedOk;
+    if (!loadingNoSeed) {
+      _slowLoadTimer?.cancel();
+      _slowLoadTimer = null;
+      _slowLoadTimerArmed = false;
+      if (_slowLoadPastSkeleton) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() => _slowLoadPastSkeleton = false);
+        });
+      }
+      return;
+    }
+    if (_slowLoadTimerArmed) return;
+    _slowLoadTimerArmed = true;
+    _slowLoadTimer?.cancel();
+    _slowLoadTimer = Timer(const Duration(milliseconds: 1500), () {
+      if (!mounted) return;
+      _slowLoadTimer = null;
+      _slowLoadTimerArmed = false;
+      setState(() => _slowLoadPastSkeleton = true);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final async = ref.watch(tradePurchaseDetailProvider(widget.purchaseId));
+    final seed = widget.seedPurchase;
+    final seedOk = seed != null && seed.id == widget.purchaseId;
+    _syncDetailLoadUi(async, seedOk);
+
     return async.when(
       skipLoadingOnReload: true,
       skipLoadingOnRefresh: true,
-      loading: () => Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_rounded),
-            onPressed: () => context.popOrGo('/purchase'),
-          ),
-          title: const Text('Purchase'),
+      loading: () {
+        if (seedOk) {
+          return _LoadedPurchaseScaffold(
+            p: seed,
+            showRefreshBanner: true,
+          );
+        }
+        return Scaffold(
           backgroundColor: Colors.transparent,
-          foregroundColor: HexaColors.brandPrimary,
-        ),
-        body: const DetailSkeleton(),
-      ),
-      error: (_, __) => Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_rounded),
-            onPressed: () => context.popOrGo('/purchase'),
+          appBar: AppBar(
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_rounded),
+              onPressed: () => context.popOrGo('/purchase'),
+            ),
+            title: const Text('Purchase'),
+            backgroundColor: Colors.transparent,
+            foregroundColor: HexaColors.brandPrimary,
           ),
-          title: const Text('Purchase'),
+          body: _slowLoadPastSkeleton
+              ? _DetailSlowLoadBody(
+                  onRetry: () {
+                    setState(() {
+                      _slowLoadPastSkeleton = false;
+                      _slowLoadTimerArmed = false;
+                    });
+                    ref.invalidate(tradePurchaseDetailProvider(widget.purchaseId));
+                  },
+                )
+              : const DetailSkeleton(),
+        );
+      },
+      error: (e, _) {
+        var msg = "Couldn't load purchase";
+        if (e is Exception) {
+          final t = e.toString();
+          const p = 'Exception: ';
+          msg = t.startsWith(p) ? t.substring(p.length) : t;
+        }
+        return Scaffold(
           backgroundColor: Colors.transparent,
-          foregroundColor: HexaColors.brandPrimary,
-        ),
-        body: FriendlyLoadError(
-          message: "Couldn't load purchase",
-          onRetry: () => ref.invalidate(tradePurchaseDetailProvider(purchaseId)),
-        ),
-      ),
+          appBar: AppBar(
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_rounded),
+              onPressed: () => context.popOrGo('/purchase'),
+            ),
+            title: const Text('Purchase'),
+            backgroundColor: Colors.transparent,
+            foregroundColor: HexaColors.brandPrimary,
+          ),
+          body: FriendlyLoadError(
+            message: msg,
+            onRetry: () =>
+                ref.invalidate(tradePurchaseDetailProvider(widget.purchaseId)),
+          ),
+        );
+      },
       data: (p) => _LoadedPurchaseScaffold(p: p),
     );
   }
 }
 
+/// After [DetailSkeleton] window (~1.5s), show a lighter wait state + inline retry.
+class _DetailSlowLoadBody extends StatelessWidget {
+  const _DetailSlowLoadBody({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Material(
+          color: const Color(0xFFFFF7ED),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.hourglass_top_rounded, color: Colors.orange.shade800),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Still loading this purchase — weak signal or large bill. '
+                    'You can wait or tap Retry.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF1C1917),
+                          height: 1.3,
+                        ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: onRetry,
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        Expanded(
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: cs.primary),
+                const SizedBox(height: 16),
+                Text(
+                  'Fetching latest lines…',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: cs.onSurfaceVariant,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _LoadedPurchaseScaffold extends ConsumerWidget {
-  const _LoadedPurchaseScaffold({required this.p});
+  const _LoadedPurchaseScaffold({
+    required this.p,
+    this.showRefreshBanner = false,
+  });
 
   final TradePurchase p;
+  final bool showRefreshBanner;
 
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
     final ok = await showDialog<bool>(
@@ -402,7 +547,28 @@ class _LoadedPurchaseScaffold extends ConsumerWidget {
             ),
         ],
       ),
-      body: _PurchaseDetailBody(p: p),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (showRefreshBanner) ...[
+            const LinearProgressIndicator(minHeight: 2),
+            Material(
+              color: const Color(0xFFE8F4F2),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                child: Text(
+                  'Refreshing latest totals…',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF0F766E),
+                      ),
+                ),
+              ),
+            ),
+          ],
+          Expanded(child: _PurchaseDetailBody(p: p)),
+        ],
+      ),
     );
   }
 }

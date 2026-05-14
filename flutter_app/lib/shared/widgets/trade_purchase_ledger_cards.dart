@@ -314,7 +314,10 @@ class TradeLedgerCardList extends StatelessWidget {
                   _inr(p.totalAmount.round()),
                   style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
                 ),
-                onTap: () => context.push('/purchase/detail/${p.id}'),
+                onTap: () => context.push(
+                      '/purchase/detail/${p.id}',
+                      extra: p,
+                    ),
               ),
               if (p.lines.isEmpty)
                 Padding(
@@ -336,7 +339,10 @@ class TradeLedgerCardList extends StatelessWidget {
                                 padding: const EdgeInsets.only(bottom: 10),
                                 child: InkWell(
                                   onTap: () =>
-                                      context.push('/purchase/detail/${p.id}'),
+                                      context.push(
+                                        '/purchase/detail/${p.id}',
+                                        extra: p,
+                                      ),
                                   borderRadius: BorderRadius.circular(8),
                                   child: DecoratedBox(
                                     decoration: BoxDecoration(

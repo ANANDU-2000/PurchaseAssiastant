@@ -23,6 +23,7 @@ import '../../../core/providers/business_profile_provider.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart'
     show invalidatePurchaseWorkspace;
 import '../../../core/providers/trade_purchases_provider.dart';
+import '../../shell/shell_branch_provider.dart';
 import '../providers/trade_purchase_detail_provider.dart';
 import '../state/purchase_local_wip_draft_provider.dart';
 import '../../../core/services/purchase_pdf.dart';
@@ -708,6 +709,15 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
     _searchCtrl.addListener(_onSearchChanged);
     _searchFocus.addListener(() => setState(() {}));
     _scroll.addListener(_onHistoryScrollNearEnd);
+    // Belt-and-suspenders: [tradePurchasesListProvider] is gated on History branch.
+    // If [shellCurrentBranchProvider] ever lags the visible /purchase route, the
+    // list would stay empty while KPIs (from alerts) looked populated.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (ref.read(shellCurrentBranchProvider) != ShellBranch.history) {
+        ref.read(shellCurrentBranchProvider.notifier).state = ShellBranch.history;
+      }
+    });
   }
 
   @override
@@ -1481,7 +1491,63 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                       ),
                     Expanded(
                       child: visible.isEmpty && !showLocalWipRow
-                          ? _HistoryEmpty(onAdd: () => context.push('/purchase/new'))
+                          ? (items.isEmpty
+                              ? _HistoryEmpty(
+                                  onAdd: () => context.push('/purchase/new'),
+                                )
+                              : _HistoryFiltersHideAll(
+                                  loadedCount: items.length,
+                                  onClearAll: () {
+                                    ref
+                                        .read(purchaseHistorySearchProvider
+                                            .notifier)
+                                        .state = '';
+                                    _searchCtrl.clear();
+                                    ref
+                                        .read(
+                                          purchaseHistoryPrimaryFilterProvider
+                                              .notifier,
+                                        )
+                                        .state = 'all';
+                                    ref
+                                        .read(
+                                          purchaseHistorySecondaryFilterProvider
+                                              .notifier,
+                                        )
+                                        .state = null;
+                                    ref
+                                        .read(
+                                          purchaseHistorySupplierContainsProvider
+                                              .notifier,
+                                        )
+                                        .state = null;
+                                    ref
+                                        .read(
+                                          purchaseHistoryBrokerContainsProvider
+                                              .notifier,
+                                        )
+                                        .state = null;
+                                    ref
+                                        .read(
+                                          purchaseHistoryPackKindFilterProvider
+                                              .notifier,
+                                        )
+                                        .state = null;
+                                    ref
+                                        .read(
+                                          purchaseHistoryDateFromProvider
+                                              .notifier,
+                                        )
+                                        .state = null;
+                                    ref
+                                        .read(
+                                          purchaseHistoryDateToProvider
+                                              .notifier,
+                                        )
+                                        .state = null;
+                                    context.go('/purchase');
+                                  },
+                                ))
                           : ListView.separated(
                               keyboardDismissBehavior:
                                   ScrollViewKeyboardDismissBehavior.onDrag,
@@ -1525,7 +1591,10 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                         }
                                       });
                                     } else {
-                                      context.push('/purchase/detail/${p.id}');
+                                      context.push(
+                                        '/purchase/detail/${p.id}',
+                                        extra: p,
+                                      );
                                     }
                                   },
                                   onEdit: () =>
@@ -2392,7 +2461,10 @@ class _PurchaseHistoryFullscreenSearchPageState
                 selectMode: false,
                 selected: false,
                 onLongPress: () {},
-                onTap: () => context.push('/purchase/detail/${p.id}'),
+                onTap: () => context.push(
+                      '/purchase/detail/${p.id}',
+                      extra: p,
+                    ),
                 onEdit: () => context.push('/purchase/edit/${p.id}'),
                 onMarkPaid: () => _markPaid(p),
                 onMarkDelivered: () => _markDelivered(p),
@@ -2704,6 +2776,62 @@ class _MiniBadge extends StatelessWidget {
         _historyPaymentChipLabel(st),
         style: TextStyle(
             fontSize: 9, fontWeight: FontWeight.w700, height: 1.05, color: st.color),
+      ),
+    );
+  }
+}
+
+class _HistoryFiltersHideAll extends StatelessWidget {
+  const _HistoryFiltersHideAll({
+    required this.loadedCount,
+    required this.onClearAll,
+  });
+
+  final int loadedCount;
+  final VoidCallback onClearAll;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.filter_alt_off_rounded,
+              size: 52,
+              color: Colors.orange.shade700,
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Filters hide all purchases',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+                color: HexaColors.brandPrimary,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Search or filters hide every one of your $loadedCount loaded '
+              'purchases. Clear filters to see the list again.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13.5,
+                height: 1.35,
+                color: Colors.grey.shade800,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 22),
+            FilledButton(
+              onPressed: onClearAll,
+              child: const Text('Clear search & filters'),
+            ),
+          ],
+        ),
       ),
     );
   }

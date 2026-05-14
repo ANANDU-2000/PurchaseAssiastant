@@ -8,6 +8,7 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/widgets/form_field_scroll.dart';
 import '../../../shared/widgets/keyboard_safe_form_viewport.dart';
 
 /// Simplified single-page supplier creation form
@@ -22,6 +23,7 @@ class SupplierCreateSimple extends ConsumerStatefulWidget {
 
 class _SupplierCreateSimpleState extends ConsumerState<SupplierCreateSimple> {
   final _formKey = GlobalKey<FormState>();
+  final _nameFocus = FocusNode();
   final _nameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   final _placeCtrl = TextEditingController();
@@ -34,7 +36,14 @@ class _SupplierCreateSimpleState extends ConsumerState<SupplierCreateSimple> {
   bool _isSaving = false;
 
   @override
+  void initState() {
+    super.initState();
+    bindFocusNodeScrollIntoView(_nameFocus);
+  }
+
+  @override
   void dispose() {
+    _nameFocus.dispose();
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
     _placeCtrl.dispose();
@@ -90,6 +99,11 @@ class _SupplierCreateSimpleState extends ConsumerState<SupplierCreateSimple> {
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: _nameCtrl,
+                    focusNode: _nameFocus,
+                    scrollPadding: formFieldScrollPaddingForContext(
+                      context,
+                      reserveBelowField: 220,
+                    ),
                     decoration: InputDecoration(
                       labelText: 'Supplier Name *',
                       hintText: 'e.g., Suraj Rice Traders',

@@ -6,10 +6,14 @@ All notable changes to this project are documented here. Append new entries unde
 
 ### Fixed
 
+- **Flutter production UX:** Purchase history KPI strip now derives from the same list provider as cards (with alerts-only fallback while loading); filter-empty state shows clear actions; `PurchaseHomePage` forces History shell branch after first frame if misaligned; purchase detail GET uses 15s timeout; optional `TradePurchase` seed via `GoRouter` `extra` for immediate body while refreshing; global `_HexaErrorBoundary` treats common layout/lifecycle errors as non-fatal in all build modes; wizard Terms fields gain focus-scroll bindings; add-item sheet scrolls on item focus; supplier quick-create name field uses focus-scroll padding; shell bottom bar adds extra padding from home indicator; reports stall banner after 1.5s.
 - **Vercel / Flutter web:** `purchase_item_entry_sheet.dart` imported `lib/features/purchase/pricing/*` but those files were not in git, so `flutter build web` failed (deploy exit 3). The pricing modules are now tracked in the repository.
 
 ### Added
 
+- `docs/production-readiness/`: ten runbooks (`PURCHASE_DETAILS_STABILITY_FIX.md`, `GLOBAL_ERROR_BOUNDARY_REWRITE.md`, `KEYBOARD_OVERLAY_SYSTEM.md`, `IPHONE_SAFEAREA_AUDIT.md`, `PURCHASE_LIST_RENDER_FIX.md`, `REPORTS_LOADING_AND_RECOVERY.md`, `ADD_ITEM_FORM_UX_REBUILD.md`, `TERMS_PAGE_KEYBOARD_FIX.md`, `APPSTORE_STYLE_BOTTOM_NAV.md`, `FINAL_PRODUCTION_VALIDATION.md`).
+- `flutter_app/lib/shared/widgets/keyboard_lifted_footer.dart`: optional animated footer lift for IME-safe CTAs.
+- `bindFocusNodeScrollIntoView` in `flutter_app/lib/core/widgets/form_field_scroll.dart`.
 - `context/tax_rebuild/`: ten markdown specs for Indian trader GST/rate UX (flow, calc rules, PDF/ledger, validation, QA, backup, readiness).
 - `flutter_app/lib/features/purchase/pricing/purchase_line_preview_narrative.dart`: trader-readable purchase line preview strings aligned with `calc_engine`.
 - `flutter_app/lib/features/purchase/pricing/purchase_tax_prefs.dart`: SharedPreferences for last GST Extra / GST Included (global + optional per-supplier purchase, global selling).

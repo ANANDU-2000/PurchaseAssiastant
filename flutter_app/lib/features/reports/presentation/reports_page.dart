@@ -176,7 +176,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
     }
     if (_stallBanner) return;
     if (_stallTimer != null) return;
-    _stallTimer = Timer(const Duration(seconds: 2), () {
+    _stallTimer = Timer(const Duration(milliseconds: 1500), () {
       _stallTimer = null;
       if (!mounted) return;
       setState(() => _stallBanner = true);
