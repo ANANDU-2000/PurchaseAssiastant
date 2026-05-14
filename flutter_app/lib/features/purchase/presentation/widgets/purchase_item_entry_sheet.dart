@@ -4057,7 +4057,18 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text('TOTAL: ${formatRupee(t)}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
-                Text('PROFIT: ${s != null && s > 0 ? formatRupee(p) : "—"}', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: p >= 0 ? const Color(0xFF059669) : const Color(0xFFDC2626))),
+                Row(
+                  children: [
+                    Text('PROFIT: ${s != null && s > 0 ? formatRupee(p) : "—"}', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: p >= 0 ? const Color(0xFF059669) : const Color(0xFFDC2626))),
+                    const SizedBox(width: 8),
+                    Builder(builder: (context) {
+                      final li = _lineToCalc(l);
+                      final taxable = lineTaxableAfterLineDisc(li);
+                      final tax = t - taxable;
+                      return Text('TAX: ${formatRupee(tax)}', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: Color(0xFF64748B)));
+                    }),
+                  ],
+                ),
               ],
             ),
             const SizedBox(width: 8),

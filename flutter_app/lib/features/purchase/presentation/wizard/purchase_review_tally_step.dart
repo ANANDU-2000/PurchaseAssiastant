@@ -246,39 +246,38 @@ class PurchaseReviewTallyStep extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    'FINAL TOTAL',
-                    style: tt.labelMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    _inr(bd.grand),
-                    style: tt.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w900,
-                      color: const Color(0xFF0F172A),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    qtyLine,
-                    style: tt.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF0F172A),
-                    ),
-                  ),
-                  if (hasRetail) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'Est. profit (sell − buy): ${_inr(estRetail)}',
-                      style: tt.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: const Color(0xFF047857),
+                  Row(
+                    children: [
+                      _ReviewStat(label: 'QTY', value: qtyLine),
+                      const Spacer(),
+                      _ReviewStat(
+                        label: 'GRAND TOTAL',
+                        value: _inr(bd.grand),
+                        isPrimary: true,
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+                  const Divider(height: 12),
+                  Row(
+                    children: [
+                      _ReviewStat(
+                        label: 'TAX TOTAL',
+                        value: _inr(bd.tax),
+                      ),
+                      const _ReviewMetricSep(),
+                      _ReviewStat(
+                        label: 'CHARGES',
+                        value: _inr(bd.comm + bd.freight),
+                      ),
+                      const Spacer(),
+                      if (hasRetail)
+                        _ReviewStat(
+                          label: 'EST. PROFIT',
+                          value: _inr(estRetail),
+                          isSuccess: true,
+                        ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -454,6 +453,66 @@ class _ReviewLineTile extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ReviewStat extends StatelessWidget {
+  const _ReviewStat({
+    required this.label,
+    required this.value,
+    this.isPrimary = false,
+    this.isSuccess = false,
+  });
+
+  final String label;
+  final String value;
+  final bool isPrimary;
+  final bool isSuccess;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final primaryColor = const Color(0xFF0F172A);
+    final successColor = const Color(0xFF047857);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label.toUpperCase(),
+          style: tt.labelSmall?.copyWith(
+            fontWeight: FontWeight.w900,
+            fontSize: 9,
+            letterSpacing: 0.5,
+            color: Colors.grey.shade600,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: (isPrimary ? tt.titleLarge : tt.titleSmall)?.copyWith(
+            fontWeight: FontWeight.w900,
+            color: isSuccess ? successColor : primaryColor,
+            height: 1.1,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ReviewMetricSep extends StatelessWidget {
+  const _ReviewMetricSep();
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Container(
+        height: 24,
+        width: 1,
+        color: Colors.grey.shade300,
       ),
     );
   }

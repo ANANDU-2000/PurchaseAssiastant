@@ -625,9 +625,9 @@ List<TradePurchase> purchaseHistoryVisibleSortedForRef(
     final pb = _purchaseBusinessPriority(b);
     if (pa != pb) return pa.compareTo(pb);
 
-    // Within same priority, newest first (except overdue which is oldest first)
-    if (pa == 0) {
-      // Overdue: most days waiting (highest age) at top
+    // Within same priority, newest first (except overdue/pending which is oldest first)
+    if (pa == 0 || pa == 2) {
+      // Overdue/Pending: most days waiting (highest age) at top
       return undeliveredDaysSincePurchase(b).compareTo(undeliveredDaysSincePurchase(a));
     }
 
