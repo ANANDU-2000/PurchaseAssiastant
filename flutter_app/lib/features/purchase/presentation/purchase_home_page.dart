@@ -2773,12 +2773,14 @@ class _PurchaseRow extends StatelessWidget {
       borderRadius: BorderRadius.circular(8),
       clipBehavior: Clip.antiAlias,
       child: stripe != null
-          ? Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Container(width: 5, color: stripe),
-                Expanded(child: tileInk),
-              ],
+          ? IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(width: 5, color: stripe),
+                  Expanded(child: tileInk),
+                ],
+              ),
             )
           : tileInk,
     );

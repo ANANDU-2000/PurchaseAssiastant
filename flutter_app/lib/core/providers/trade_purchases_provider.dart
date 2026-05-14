@@ -148,27 +148,7 @@ class TradePurchasesListNotifier extends AutoDisposeAsyncNotifier<TradePurchases
       // #endregion agent log
       return const TradePurchasesListView(rows: [], hasMore: false);
     }
-    final branch = ref.watch(shellCurrentBranchProvider);
-    final fullscreenSearch =
-        ref.watch(purchaseHistoryFullscreenSearchActiveProvider);
-    if (branch != ShellBranch.history && !fullscreenSearch) {
-      // #region agent log
-      agentIngestLog(
-        location: 'trade_purchases_provider.dart:build',
-        message: 'history_list_deferred_branch_gate',
-        hypothesisId: 'H4',
-        data: <String, Object?>{
-          'branch': branch,
-          'fullscreenSearch': fullscreenSearch,
-        },
-      );
-      // #endregion agent log
-      // Defer full list until the History tab is active (see [ShellScreen] —
-      // [shellCurrentBranchProvider] must match [navigationShell.currentIndex] in
-      // the same frame so this gate is not briefly true while /purchase is visible).
-      await Completer<TradePurchasesListView>().future;
-      return const TradePurchasesListView(rows: [], hasMore: false);
-    }
+    ref.keepAlive();
     final primary = ref.watch(purchaseHistoryPrimaryFilterProvider);
     final secondary = ref.watch(purchaseHistorySecondaryFilterProvider);
     final apiStatus = _tradeListApiStatus(primary, secondary);
@@ -192,7 +172,6 @@ class TradePurchasesListNotifier extends AutoDisposeAsyncNotifier<TradePurchases
       data: <String, Object?>{
         'rowCount': page.length,
         'apiStatus': apiStatus ?? 'null',
-        'branch': branch,
       },
     );
     // #endregion agent log
