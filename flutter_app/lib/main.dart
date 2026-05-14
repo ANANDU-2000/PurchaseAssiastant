@@ -10,7 +10,9 @@ import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
+import 'core/config/app_config.dart';
 import 'core/api/api_warmup.dart';
+import 'debug/agent_ingest_log.dart';
 import 'core/auth/session_notifier.dart' show sessionProvider, hexaApiProvider;
 import 'core/theme/app_theme.dart';
 import 'core/theme/hexa_colors.dart';
@@ -182,6 +184,20 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
       unawaited(() async {
         try {
           final api = container.read(hexaApiProvider);
+          // #region agent log
+          agentIngestLog(
+            location: 'main.dart:_prepare',
+            message: 'api_base_before_warmup',
+            hypothesisId: 'H1',
+            data: <String, Object?>{
+              'kIsWeb': kIsWeb,
+              'apiBaseUrl': AppConfig.apiBaseUrl,
+              'resolvedApiBaseUrl': AppConfig.resolvedApiBaseUrl,
+              'pageOrigin': Uri.base.origin,
+            },
+          );
+          // #endregion agent log
+          var healthUnreachable = false;
           await ApiWarmupService.pingHealth(
             api,
             onSlow: () {
@@ -191,8 +207,31 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
                     );
               });
             },
+            onUnreachable: () {
+              healthUnreachable = true;
+            },
           );
           WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (healthUnreachable) {
+              final base = AppConfig.resolvedApiBaseUrl;
+              final hint = AppConfig.apiBasePointsToLoopback
+                  ? 'Cannot reach $base — start the FastAPI server (e.g. uvicorn on port 8000), or run with --dart-define=API_BASE_URL=…'
+                  : 'Cannot reach $base — check that the API is up and that Vercel/build defines API_BASE_URL correctly.';
+              container.read(apiDegradedProvider.notifier).notifyDegraded(hint);
+              // #region agent log
+              agentIngestLog(
+                location: 'main.dart:_prepare',
+                message: 'bootstrap_unreachable_banner',
+                hypothesisId: 'H1',
+                runId: 'post-fix',
+                data: <String, Object?>{
+                  'resolvedApiBaseUrl': base,
+                  'loopback': AppConfig.apiBasePointsToLoopback,
+                },
+              );
+              // #endregion agent log
+              return;
+            }
             container.read(apiDegradedProvider.notifier).clear();
           });
           ApiWarmupService.startPeriodicHealth(api);

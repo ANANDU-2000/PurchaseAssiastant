@@ -101,9 +101,18 @@ class TradeLedgerSummaryStrip extends StatelessWidget {
   String? _extras() {
     final parts = <String>[];
     final b = bags ?? 0, bx = boxes ?? 0, t = tins ?? 0;
-    if (b > 0) parts.add(b == b.roundToDouble() ? '${b.round()} bags' : '${b.toStringAsFixed(1)} bags');
-    if (bx > 0) parts.add(bx == bx.roundToDouble() ? '${bx.round()} boxes' : '${bx.toStringAsFixed(1)} boxes');
-    if (t > 0) parts.add(t == t.roundToDouble() ? '${t.round()} tins' : '${t.toStringAsFixed(1)} tins');
+    if (b > 0)
+      parts.add(b == b.roundToDouble()
+          ? '${b.round()} bags'
+          : '${b.toStringAsFixed(1)} bags');
+    if (bx > 0)
+      parts.add(bx == bx.roundToDouble()
+          ? '${bx.round()} boxes'
+          : '${bx.toStringAsFixed(1)} boxes');
+    if (t > 0)
+      parts.add(t == t.roundToDouble()
+          ? '${t.round()} tins'
+          : '${t.toStringAsFixed(1)} tins');
     return parts.isEmpty ? null : parts.join(' · ');
   }
 
@@ -315,9 +324,9 @@ class TradeLedgerCardList extends StatelessWidget {
                   style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
                 ),
                 onTap: () => context.push(
-                      '/purchase/detail/${p.id}',
-                      extra: p,
-                    ),
+                  '/purchase/detail/${p.id}',
+                  extra: p,
+                ),
               ),
               if (p.lines.isEmpty)
                 Padding(
@@ -338,11 +347,11 @@ class TradeLedgerCardList extends StatelessWidget {
                             ? Padding(
                                 padding: const EdgeInsets.only(bottom: 10),
                                 child: InkWell(
-                                  onTap: () =>
-                                      context.push(
-                                        '/purchase/detail/${p.id}',
-                                        extra: p,
-                                      ),
+                                  onTap: () => context.push(
+                                    context.push('/purchase/detail/${p.id}',
+                                        extra: p),
+                                    extra: p,
+                                  ),
                                   borderRadius: BorderRadius.circular(8),
                                   child: DecoratedBox(
                                     decoration: BoxDecoration(
@@ -358,8 +367,7 @@ class TradeLedgerCardList extends StatelessWidget {
                                         children: [
                                           Text(
                                             ln.itemName,
-                                            style:
-                                                tt.bodySmall?.copyWith(
+                                            style: tt.bodySmall?.copyWith(
                                               fontWeight: FontWeight.w700,
                                             ),
                                           ),
@@ -376,21 +384,18 @@ class TradeLedgerCardList extends StatelessWidget {
                                               Text(
                                                 _rateP(ln),
                                                 style: tt.labelSmall?.copyWith(
-                                                    color:
-                                                        cs.onSurfaceVariant),
+                                                    color: cs.onSurfaceVariant),
                                               ),
                                               if (_rateS(ln) != null)
                                                 Text(
                                                   _rateS(ln)!,
-                                                  style:
-                                                      tt.labelSmall?.copyWith(
-                                                          color: cs
-                                                              .onSurfaceVariant),
+                                                  style: tt.labelSmall?.copyWith(
+                                                      color:
+                                                          cs.onSurfaceVariant),
                                                 ),
                                               Text(
                                                 _inr(lineAmountInr(ln).round()),
-                                                style:
-                                                    tt.labelSmall?.copyWith(
+                                                style: tt.labelSmall?.copyWith(
                                                   fontWeight: FontWeight.w800,
                                                   color: cs.onSurface,
                                                 ),

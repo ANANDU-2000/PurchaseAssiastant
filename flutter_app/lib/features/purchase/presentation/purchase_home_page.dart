@@ -712,36 +712,17 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
     _searchCtrl.addListener(_onSearchChanged);
     _searchFocus.addListener(() => setState(() {}));
     _scroll.addListener(_onHistoryScrollNearEnd);
-    // Belt-and-suspenders: [tradePurchasesListProvider] is gated on History branch.
-    // If [shellCurrentBranchProvider] ever lags the visible /purchase route, the
-    // list would stay empty while KPIs (from alerts) looked populated.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (ref.read(shellCurrentBranchProvider) != ShellBranch.history) {
-        ref.read(shellCurrentBranchProvider.notifier).state = ShellBranch.history;
-      }
-    });
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final routerState = GoRouterState.of(context);
-    final loc = routerState.matchedLocation;
-    if (loc == '/purchase') {
-      if (ref.read(shellCurrentBranchProvider) != ShellBranch.history) {
-        ref.read(shellCurrentBranchProvider.notifier).state = ShellBranch.history;
-      }
-      if (_lastPurchaseShellLocation != '/purchase') {
-        _lastPurchaseShellLocation = '/purchase';
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          ref.invalidate(tradePurchasesListProvider);
-        });
-      }
-    } else {
-      _lastPurchaseShellLocation = loc;
+    final container = ProviderScope.containerOf(context, listen: false);
+    if (container.read(shellCurrentBranchProvider) != ShellBranch.history) {
+      container.read(shellCurrentBranchProvider.notifier).state = ShellBranch.history;
     }
+    
+    final routerState = GoRouterState.of(context);
 
     final raw = routerState.uri.queryParameters['filter'];
     final f = (raw == null || raw.isEmpty) ? 'all' : raw.toLowerCase();
@@ -1626,24 +1607,31 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                     final biz =
                                         ref.read(invoiceBusinessProfileProvider);
                                     Future<void> doShare() async {
-                                      final ok = await sharePurchasePdf(p, biz);
-                                      if (!context.mounted) return;
-                                      if (ok) {
-                                        invalidatePurchaseWorkspace(ref);
-                                        return;
+                                      try {
+                                        final ok = await sharePurchasePdf(p, biz);
+                                        if (!context.mounted) return;
+                                        if (ok) {
+                                          invalidatePurchaseWorkspace(ref);
+                                          return;
+                                        }
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: const Text(
+                                              'Could not export PDF. Try again.',
+                                            ),
+                                            action: SnackBarAction(
+                                              label: 'Retry',
+                                              onPressed: () => doShare(),
+                                            ),
+                                            duration: const Duration(seconds: 6),
+                                          ),
+                                        );
+                                      } catch (e) {
+                                        if (!context.mounted) return;
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Failed to export PDF.')),
+                                        );
                                       }
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: const Text(
-                                            'Could not export PDF. Try again.',
-                                          ),
-                                          action: SnackBarAction(
-                                            label: 'Retry',
-                                            onPressed: () => doShare(),
-                                          ),
-                                          duration: const Duration(seconds: 6),
-                                        ),
-                                      );
                                     }
                                     await doShare();
                                   },
@@ -2545,24 +2533,31 @@ class _PurchaseHistoryFullscreenSearchPageState
                 onShare: () async {
                   final biz = ref.read(invoiceBusinessProfileProvider);
                   Future<void> doShare() async {
-                    final ok = await sharePurchasePdf(p, biz);
-                    if (!context.mounted) return;
-                    if (ok) {
-                      invalidatePurchaseWorkspace(ref);
-                      return;
+                    try {
+                      final ok = await sharePurchasePdf(p, biz);
+                      if (!context.mounted) return;
+                      if (ok) {
+                        invalidatePurchaseWorkspace(ref);
+                        return;
+                      }
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text(
+                            'Could not export PDF. Try again.',
+                          ),
+                          action: SnackBarAction(
+                            label: 'Retry',
+                            onPressed: () => doShare(),
+                          ),
+                          duration: const Duration(seconds: 6),
+                        ),
+                      );
+                    } catch (e) {
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Failed to export PDF.')),
+                      );
                     }
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: const Text(
-                          'Could not export PDF. Try again.',
-                        ),
-                        action: SnackBarAction(
-                          label: 'Retry',
-                          onPressed: () => doShare(),
-                        ),
-                        duration: const Duration(seconds: 6),
-                      ),
-                    );
                   }
                   await doShare();
                 },

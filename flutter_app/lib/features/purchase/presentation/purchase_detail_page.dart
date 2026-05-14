@@ -229,7 +229,7 @@ class _PurchaseDetailPageState extends ConsumerState<PurchaseDetailPage> {
     if (_slowLoadTimerArmed) return;
     _slowLoadTimerArmed = true;
     _slowLoadTimer?.cancel();
-    _slowLoadTimer = Timer(const Duration(milliseconds: 1500), () {
+    _slowLoadTimer = Timer(const Duration(milliseconds: 600), () {
       if (!mounted) return;
       _slowLoadTimer = null;
       _slowLoadTimerArmed = false;
@@ -435,19 +435,27 @@ class _LoadedPurchaseScaffold extends ConsumerWidget {
 
   Future<void> _runSharePdf(BuildContext context, WidgetRef ref) async {
     final biz = ref.read(invoiceBusinessProfileProvider);
-    final ok = await sharePurchasePdf(p, biz);
-    if (!context.mounted) return;
-    if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Could not export PDF. Try again.'),
-          action: SnackBarAction(
-            label: 'Retry',
-            onPressed: () => _runSharePdf(context, ref),
+    try {
+      final ok = await sharePurchasePdf(p, biz);
+      if (!context.mounted) return;
+      if (!ok) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Could not export PDF. Try again.'),
+            action: SnackBarAction(
+              label: 'Retry',
+              onPressed: () => _runSharePdf(context, ref),
+            ),
           ),
-        ),
+        );
+        return;
+      }
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to export PDF.')),
       );
-      return;
+    }
     }
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('PDF ready to share')),
@@ -1184,20 +1192,28 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
 
     Future<void> share() async {
       final biz = ref.read(invoiceBusinessProfileProvider);
-      final ok = await sharePurchasePdf(p, biz);
-      if (!context.mounted) return;
-      if (!ok) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Could not export PDF. Try again.'),
-            action: SnackBarAction(
-              label: 'Retry',
-              onPressed: () => share(),
+      try {
+        final ok = await sharePurchasePdf(p, biz);
+        if (!context.mounted) return;
+        if (!ok) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Could not export PDF. Try again.'),
+              action: SnackBarAction(
+                label: 'Retry',
+                onPressed: () => share(),
+              ),
+              duration: const Duration(seconds: 6),
             ),
-            duration: const Duration(seconds: 6),
-          ),
+          );
+          return;
+        }
+      } catch (e) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to export PDF.')),
         );
-        return;
+      }
       }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('PDF ready to share')),

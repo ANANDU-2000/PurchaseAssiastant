@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../debug/agent_ingest_log.dart';
 import '../auth/session_notifier.dart';
 import '../models/trade_purchase_models.dart';
 import '../../features/shell/shell_branch_provider.dart';
@@ -136,15 +137,35 @@ class TradePurchasesListNotifier extends AutoDisposeAsyncNotifier<TradePurchases
 
     final session = ref.watch(sessionProvider);
     if (session == null) {
+      // #region agent log
+      agentIngestLog(
+        location: 'trade_purchases_provider.dart:build',
+        message: 'history_list_skipped_no_session',
+        hypothesisId: 'H4',
+        data: const <String, Object?>{},
+      );
+      // #endregion agent log
       return const TradePurchasesListView(rows: [], hasMore: false);
     }
     final branch = ref.watch(shellCurrentBranchProvider);
     final fullscreenSearch =
         ref.watch(purchaseHistoryFullscreenSearchActiveProvider);
     if (branch != ShellBranch.history && !fullscreenSearch) {
+      // #region agent log
+      agentIngestLog(
+        location: 'trade_purchases_provider.dart:build',
+        message: 'history_list_deferred_branch_gate',
+        hypothesisId: 'H4',
+        data: <String, Object?>{
+          'branch': branch,
+          'fullscreenSearch': fullscreenSearch,
+        },
+      );
+      // #endregion agent log
       // Defer full list until the History tab is active (see [ShellScreen] —
       // [shellCurrentBranchProvider] must match [navigationShell.currentIndex] in
       // the same frame so this gate is not briefly true while /purchase is visible).
+      await Completer<TradePurchasesListView>().future;
       return const TradePurchasesListView(rows: [], hasMore: false);
     }
     final primary = ref.watch(purchaseHistoryPrimaryFilterProvider);
@@ -162,6 +183,18 @@ class TradePurchasesListNotifier extends AutoDisposeAsyncNotifier<TradePurchases
           purchaseTo: purchaseTo,
         );
     final hasMore = page.length >= kTradePurchasesHistoryFetchLimit;
+    // #region agent log
+    agentIngestLog(
+      location: 'trade_purchases_provider.dart:build',
+      message: 'history_list_fetched',
+      hypothesisId: 'H4',
+      data: <String, Object?>{
+        'rowCount': page.length,
+        'apiStatus': apiStatus ?? 'null',
+        'branch': branch,
+      },
+    );
+    // #endregion agent log
     return TradePurchasesListView(rows: page, hasMore: hasMore);
   }
 
@@ -219,10 +252,24 @@ final tradePurchasesListProvider =
 final tradePurchasesParsedProvider =
     Provider.autoDispose<AsyncValue<List<TradePurchase>>>((ref) {
   return ref.watch(tradePurchasesListProvider).whenData(
-        (view) => view.rows
-            .map((e) => TradePurchase.fromJson(Map<String, dynamic>.from(e)))
-            .toList(),
-      );
+    (view) {
+      final parsed = <TradePurchase>[];
+      for (final e in view.rows) {
+        try {
+          parsed.add(TradePurchase.fromJson(Map<String, dynamic>.from(e)));
+        } catch (err, st) {
+          FlutterError.reportError(FlutterErrorDetails(
+            exception: err,
+            stack: st,
+            library: 'trade_purchases_provider',
+            context: ErrorDescription('parsing TradePurchase row'),
+            silent: true,
+          ));
+        }
+      }
+      return parsed;
+    },
+  );
 });
 
 /// Counts for dashboard / history banner.

@@ -310,7 +310,9 @@ Future<ReportsPurchasePayload> fetchReportsPurchasesLiveForAnalytics(
 /// SSOT: full `/trade-purchases` rows for Reports (Hive fallback on failure).
 final reportsPurchasesPayloadProvider =
     FutureProvider.autoDispose<ReportsPurchasePayload>((ref) async {
-  ref.keepAlive();
+  final link = ref.keepAlive();
+  final t = Timer(const Duration(minutes: 5), link.close);
+  ref.onDispose(t.cancel);
   final session = ref.watch(sessionProvider);
   ref.watch(analyticsDateRangeProvider);
   final branch = ref.watch(shellCurrentBranchProvider);

@@ -3879,7 +3879,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
             ],
           );
 
-    return Theme(
+    Widget content = Theme(
       data: sheetTheme,
       child: Material(
         color: theme.colorScheme.surface,
@@ -3914,5 +3914,14 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
         ),
       ),
     );
+
+    if (!widget.fullPage) {
+      content = Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+        child: content,
+      );
+    }
+
+    return content;
   }
 }

@@ -177,7 +177,14 @@ bool _hexaFlutterErrorLikelyNonFatal(FlutterErrorDetails details) {
       s.contains('UnmountedRefException') ||
       s.contains('Bad state: Cannot use') ||
       s.contains('TickerFuture') ||
-      s.contains('AnimationController.dispose() called more than once');
+      s.contains('AnimationController.dispose() called more than once') ||
+      s.contains('DioException') ||
+      s.contains('SocketException') ||
+      s.contains('TimeoutException') ||
+      s.contains('FormatException') ||
+      s.contains('type \'Null\' is not') ||
+      s.contains('NoSuchMethodError') ||
+      s.contains('PlatformException');
 }
 
 /// Catches framework errors so the web build can show recovery UI instead of a blank screen.
