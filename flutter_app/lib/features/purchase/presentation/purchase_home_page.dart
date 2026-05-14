@@ -631,6 +631,9 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
   /// Rows patched until list refresh completes after mark paid/delivered.
   final Map<String, TradePurchase> _optimisticPurchasePatches = {};
   String _lastRouteFilter = '';
+  /// Last shell [GoRouterState.matchedLocation] seen here — used to bust a stale
+  /// empty [tradePurchasesListProvider] when returning to `/purchase` (web/shell).
+  String _lastPurchaseShellLocation = '';
   _HistPeriodPreset _preset = _HistPeriodPreset.month;
 
   void _applyPreset(_HistPeriodPreset p) {
@@ -723,7 +726,24 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final raw = GoRouterState.of(context).uri.queryParameters['filter'];
+    final routerState = GoRouterState.of(context);
+    final loc = routerState.matchedLocation;
+    if (loc == '/purchase') {
+      if (ref.read(shellCurrentBranchProvider) != ShellBranch.history) {
+        ref.read(shellCurrentBranchProvider.notifier).state = ShellBranch.history;
+      }
+      if (_lastPurchaseShellLocation != '/purchase') {
+        _lastPurchaseShellLocation = '/purchase';
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          ref.invalidate(tradePurchasesListProvider);
+        });
+      }
+    } else {
+      _lastPurchaseShellLocation = loc;
+    }
+
+    final raw = routerState.uri.queryParameters['filter'];
     final f = (raw == null || raw.isEmpty) ? 'all' : raw.toLowerCase();
     if (f == _lastRouteFilter) return;
     _lastRouteFilter = f;
@@ -1206,7 +1226,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
       body: session == null
           ? _SignInPrompt(onTap: () => context.go('/login'))
           : rows.when(
-              skipLoadingOnReload: true,
+              skipLoadingOnReload: false,
               skipLoadingOnRefresh: true,
               loading: () => const ListSkeleton(),
               error: (_, __) => FriendlyLoadError(
@@ -2209,6 +2229,8 @@ class _PurchaseHistoryFullscreenSearchPageState
   @override
   void initState() {
     super.initState();
+    ref.read(purchaseHistoryFullscreenSearchActiveProvider.notifier).state =
+        true;
     _c = TextEditingController(text: widget.initialSearchText);
     _c.addListener(() {
       ref.read(purchaseHistorySearchProvider.notifier).state = _c.text.trim();
@@ -2222,6 +2244,8 @@ class _PurchaseHistoryFullscreenSearchPageState
 
   @override
   void dispose() {
+    ref.read(purchaseHistoryFullscreenSearchActiveProvider.notifier).state =
+        false;
     _c.dispose();
     super.dispose();
   }
@@ -2412,13 +2436,18 @@ class _PurchaseHistoryFullscreenSearchPageState
         ),
       ),
       body: rows.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        skipLoadingOnReload: false,
+        skipLoadingOnRefresh: true,
+        loading: () => const ListSkeleton(
+          padding: EdgeInsets.fromLTRB(16, 8, 16, 32),
+        ),
         error: (_, __) => Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
-            child: Text(
-              'Could not load purchases.',
-              style: Theme.of(context).textTheme.bodyLarge,
+            child: FriendlyLoadError(
+              message: 'Could not load purchases.',
+              subtitle: kFriendlyLoadNetworkSubtitle,
+              onRetry: () => ref.invalidate(tradePurchasesListProvider),
             ),
           ),
         ),
@@ -2430,13 +2459,57 @@ class _PurchaseHistoryFullscreenSearchPageState
             pendingDeleteIds: const {},
           );
           if (visible.isEmpty) {
-            return Center(
-              child: Text(
-                searchQ.trim().isEmpty
-                    ? 'No purchases in this view.'
-                    : 'No matches.',
-                style: Theme.of(context).textTheme.bodyLarge,
+            final emptyMsg = searchQ.trim().isEmpty
+                ? 'No purchases in this period or filters.'
+                : 'No matches for your search.';
+            return ListView(
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
               ),
+              padding: EdgeInsets.fromLTRB(
+                24,
+                32,
+                24,
+                24 + MediaQuery.viewPaddingOf(context).bottom,
+              ),
+              children: [
+                Icon(
+                  Icons.inbox_outlined,
+                  size: 48,
+                  color: Colors.grey.shade500,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  emptyMsg,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF0F172A),
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Try another period, clear filters, or pull to refresh on the History tab.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey.shade700,
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Align(
+                  child: FilledButton.icon(
+                    onPressed: () =>
+                        ref.invalidate(tradePurchasesListProvider),
+                    icon: const Icon(Icons.refresh_rounded, size: 20),
+                    label: const Text('Retry load'),
+                  ),
+                ),
+              ],
             );
           }
           return ListView.separated(

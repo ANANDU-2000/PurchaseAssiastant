@@ -63,6 +63,13 @@ final purchaseHistoryValueSortProvider = StateProvider<String?>((ref) => null);
 /// Client-side filter only (not sent to list API — avoids refetch per keystroke).
 final purchaseHistorySearchProvider = StateProvider<String>((ref) => '');
 
+/// True while [_PurchaseHistoryFullscreenSearchPage] is mounted so
+/// [tradePurchasesListProvider] still loads the history API even if
+/// [shellCurrentBranchProvider] is not [ShellBranch.history] (IndexedStack
+/// offstage rebuilds, or branch/index briefly out of sync on first frame).
+final purchaseHistoryFullscreenSearchActiveProvider =
+    StateProvider<bool>((ref) => false);
+
 /// Optional secondary filter: `pending` | `overdue` (client-side; paid uses primary).
 final purchaseHistorySecondaryFilterProvider =
     StateProvider<String?>((ref) => null);
@@ -132,7 +139,9 @@ class TradePurchasesListNotifier extends AutoDisposeAsyncNotifier<TradePurchases
       return const TradePurchasesListView(rows: [], hasMore: false);
     }
     final branch = ref.watch(shellCurrentBranchProvider);
-    if (branch != ShellBranch.history) {
+    final fullscreenSearch =
+        ref.watch(purchaseHistoryFullscreenSearchActiveProvider);
+    if (branch != ShellBranch.history && !fullscreenSearch) {
       // Defer full list until the History tab is active (see [ShellScreen] —
       // [shellCurrentBranchProvider] must match [navigationShell.currentIndex] in
       // the same frame so this gate is not briefly true while /purchase is visible).
@@ -160,7 +169,10 @@ class TradePurchasesListNotifier extends AutoDisposeAsyncNotifier<TradePurchases
   Future<void> loadMore() async {
     final cur = state.valueOrNull;
     if (cur == null || !cur.hasMore || _loadMoreBusy) return;
-    if (ref.read(shellCurrentBranchProvider) != ShellBranch.history) return;
+    final branch = ref.read(shellCurrentBranchProvider);
+    final fullscreenSearch =
+        ref.read(purchaseHistoryFullscreenSearchActiveProvider);
+    if (branch != ShellBranch.history && !fullscreenSearch) return;
     final session = ref.read(sessionProvider);
     if (session == null) return;
     final offset = cur.rows.length;
@@ -255,8 +267,11 @@ final purchaseAlertsProvider = Provider.autoDispose<Map<String, int>>((ref) {
 ///
 /// Uses the **same** parsed rows as the history list whenever that list has
 /// resolved ([tradePurchasesParsedProvider]), so KPI chips cannot disagree with
-/// visible cards. While the list is still loading, falls back to the small alerts
-/// fetch so the strip is not blank during the first paint.
+/// visible cards.
+///
+/// While the main list is still loading, we return [PurchaseHistoryMonthStats.empty]
+/// — **not** the small alerts sample. Alerts cap at ~50 rows and can disagree with
+/// the full history API (web users saw rich KPIs with a blank list below).
 final purchaseHistoryMonthStatsProvider =
     Provider.autoDispose<PurchaseHistoryMonthStats>((ref) {
   final range = ref.watch(analyticsDateRangeProvider);
@@ -267,28 +282,8 @@ final purchaseHistoryMonthStatsProvider =
       from: range.from,
       to: range.to,
     ),
-    loading: () {
-      final alerts = ref.watch(tradePurchasesForAlertsParsedProvider);
-      return alerts.maybeWhen(
-        data: (list) => computePurchaseHistoryRangeStats(
-          list,
-          from: range.from,
-          to: range.to,
-        ),
-        orElse: () => PurchaseHistoryMonthStats.empty,
-      );
-    },
-    error: (_, __) {
-      final alerts = ref.watch(tradePurchasesForAlertsParsedProvider);
-      return alerts.maybeWhen(
-        data: (list) => computePurchaseHistoryRangeStats(
-          list,
-          from: range.from,
-          to: range.to,
-        ),
-        orElse: () => PurchaseHistoryMonthStats.empty,
-      );
-    },
+    loading: () => PurchaseHistoryMonthStats.empty,
+    error: (_, __) => PurchaseHistoryMonthStats.empty,
   );
 });
 
