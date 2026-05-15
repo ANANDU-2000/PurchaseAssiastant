@@ -13,6 +13,9 @@ if ! command -v flutter >/dev/null 2>&1; then
   export PATH="${PATH}:${HOME}/flutter/bin"
 fi
 
+# Increase memory for dart2js
+export DART_VM_OPTIONS="--max-old-space-size=3584"
+
 flutter config --no-analytics
 flutter pub get
 
@@ -29,6 +32,7 @@ GOOGLE_ID="${GOOGLE_OAUTH_CLIENT_ID:-}"
 flutter build web --release \
   --no-web-resources-cdn \
   --no-source-maps \
+  --pwa-strategy=none \
   --dart-define=API_BASE_URL="$API_URL" \
   --dart-define=GOOGLE_OAUTH_CLIENT_ID="$GOOGLE_ID"
 
