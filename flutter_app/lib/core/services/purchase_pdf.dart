@@ -239,6 +239,7 @@ Future<bool> printPurchasePdf(TradePurchase p, BusinessProfile biz) async {
     await Printing.layoutPdf(onLayout: (_) async => doc.save());
     return true;
   } catch (e, st) {
+    debugPrint('PDF Print error: $e');
     _logPdfFailure('print', e, st);
     return false;
   }
@@ -281,6 +282,7 @@ Future<bool> sharePurchaseFullInvoicePdf(
       return true;
     }
   } catch (e, st) {
+    debugPrint('PDF Share error: $e');
     _logPdfFailure('shareFull', e, st);
     return false;
   }
