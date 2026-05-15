@@ -454,7 +454,12 @@ class _LoadedPurchaseScaffold extends ConsumerWidget {
           ),
         );
       }
+    } catch (e) {
+      if (!context.mounted) return;
+      showTopSnack(context, 'Export error: $e', isError: true);
+    }
   }
+
 
   Future<void> _runDownloadPdf(BuildContext context, WidgetRef ref) async {
     final biz = ref.read(invoiceBusinessProfileProvider);

@@ -14,7 +14,7 @@ if ! command -v flutter >/dev/null 2>&1; then
 fi
 
 # Increase memory for dart2js
-export DART_VM_OPTIONS="--max-old-space-size=3584"
+export DART_VM_OPTIONS="--max-old-space-size=4096"
 
 flutter config --no-analytics
 flutter pub get
@@ -24,16 +24,13 @@ flutter pub get
 API_URL="${API_BASE_URL:-https://my-purchases-api.onrender.com}"
 GOOGLE_ID="${GOOGLE_OAUTH_CLIENT_ID:-}"
 
-# --no-web-resources-cdn: ship CanvasKit under build/web/canvaskit/ so
-# web/flutter_bootstrap.js (canvasKitBaseUrl: '/canvaskit/') works on static hosts.
-#
-# Note: `flutter build web --web-renderer html` was removed in current Flutter;
-# use `flutter build web --wasm` if you migrate bootstrap to skwasm/canvaskit fallback.
-flutter build web --release \
+# Using --web-renderer html to save memory and improve stability on Vercel.
+flutter build web --release --verbose \
+  --web-renderer html \
   --no-web-resources-cdn \
   --no-source-maps \
-  --pwa-strategy=none \
   --dart-define=API_BASE_URL="$API_URL" \
   --dart-define=GOOGLE_OAUTH_CLIENT_ID="$GOOGLE_ID"
+
 
 echo "Built: $ROOT/flutter_app/build/web"

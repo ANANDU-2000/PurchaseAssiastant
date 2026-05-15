@@ -1238,7 +1238,8 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     );
     if (mounted) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) unawaited(_maybeShowResumeDraftMaterialBanner());
+        // Auto-save handles draft state now.
+
       });
     }
     if (mounted && _wizStep == 2) {

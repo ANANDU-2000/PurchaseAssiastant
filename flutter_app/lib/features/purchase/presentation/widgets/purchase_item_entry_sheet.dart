@@ -55,10 +55,7 @@ mixin PurchaseItemEntrySheetStateMixin {
     return null;
   }
 
-  bool _isWeightUnit(String u) {
-    final l = u.toLowerCase();
-    return l == 'kg' || l == 'kilogram' || l == 'grams' || l == 'gm';
-  }
+
 
   TextInputFormatter _decimalFormatter(int decimalRange) {
     return FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,' + decimalRange.toString() + r'}'));
