@@ -2102,7 +2102,11 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     );
   }
 
-  Widget _wizardFooterChrome(List<Map<String, dynamic>> catalog, bool isEdit) {
+  Widget _wizardFooterChrome(
+    List<Map<String, dynamic>> catalog,
+    bool isEdit, {
+    required double kbInset,
+  }) {
     // [Bug 3 fix] Continue is ALWAYS enabled. Clicking validates the step and
     // shows the exact missing field via [_wizNext]. No silent disables.
     final saveVal = ref.watch(purchaseSaveValidationProvider);
@@ -2229,7 +2233,11 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
                       12,
                       8 + (kbInset > 0 ? kbInset - MediaQuery.paddingOf(ctx).bottom : 0),
                     ),
-                    child: _wizardFooterChrome(catalog, isEdit),
+                    child: _wizardFooterChrome(
+                      catalog,
+                      isEdit,
+                      kbInset: kbInset,
+                    ),
                   ),
                 ),
               ),

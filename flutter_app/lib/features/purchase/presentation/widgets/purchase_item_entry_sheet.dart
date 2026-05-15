@@ -418,8 +418,6 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     _landingFocus.dispose();
     _sellingFocus.dispose();
     _kgManualFocus.dispose();
-    if (_taxFocus != null) _taxFocus!.dispose();
-    if (_discFocus != null) _discFocus!.dispose();
     _qtyCtrl.dispose();
     _unitCtrl.dispose();
     _landingCtrl.dispose();
@@ -2288,101 +2286,17 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                         Expanded(
                           child: FilledButton(
                             onPressed: () {
-          return Scaffold(
-            resizeToAvoidBottomInset: false,
-            body: Padding(
-              padding: MediaQuery.viewInsetsOf(ctx),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: StatefulBuilder(
-                  builder: (ctx2, setModal) {
-                    return SingleChildScrollView(
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                        Text(
-                          'Missing bag weight',
-                          style: Theme.of(ctx2).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w800,
-                              ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Enter kg per bag for "$currentName" so totals calculate correctly. '
-                          'This is saved to the catalog.',
-                          style: TextStyle(color: Colors.grey[700], fontSize: 13),
-                        ),
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: kgCtrl,
-                          autofocus: true,
-                          keyboardType:
-                              const TextInputType.numberWithOptions(decimal: true),
-                          decoration: InputDecoration(
-                            labelText: 'KG per bag',
-                            suffixText: 'kg/bag',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
+                              final kg = double.tryParse(kgCtrl.text.trim());
+                              if (kg != null && kg > 0) {
+                                Navigator.pop(ctx, kg);
+                              }
+                            },
+                            child: const Text('DONE +'),
                           ),
-                          onChanged: (_) => setModal(() {}),
-                        ),
-                        const SizedBox(height: 8),
-                        Builder(
-                          builder: (ctx3) {
-                            final kg = double.tryParse(kgCtrl.text.trim());
-                            if (kg == null || kg <= 0) {
-                              return const SizedBox.shrink();
-                            }
-                            final base = _stripKgSuffixForCatalogDisplay(currentName);
-                            final suffix = (kg - kg.roundToDouble()).abs() < 1e-6
-                                ? '${kg.round()}KG'
-                                : '${kg.toStringAsFixed(1)}KG';
-                            final newName = '$base $suffix'.trim();
-                            return Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE8F5E9),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                'Item will be renamed to:\n"$newName"',
-                                style: const TextStyle(
-                                  color: Color(0xFF1A7A6A),
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: OutlinedButton(
-                                onPressed: () => Navigator.pop(ctx),
-                                child: const Text('Skip'),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: FilledButton(
-                                onPressed: () {
-                                  final kg = double.tryParse(kgCtrl.text.trim());
-                                  if (kg != null && kg > 0) {
-                                    Navigator.pop(ctx, kg);
-                                  }
-                                },
-                                child: const Text('DONE +'),
-                              ),
-                            ),
-                          ],
                         ),
                       ],
+                    ),
+                    ],
                   ),
                 );
               },
@@ -2937,34 +2851,6 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     if (kbd) {
       // In keyboard mode, we return an empty widget and move the logic to the unified footer row.
       return const SizedBox.shrink();
-    }
-      return Container(
-        margin: const EdgeInsets.only(bottom: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF1F5F9),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: const Color(0xFFCBD5E1)),
-        ),
-        child: Row(
-          children: [
-            _CompactLiveMetric(label: 'TOTAL', value: formatRupee(total), isPrimary: true),
-            _MetricDivider(),
-            _CompactLiveMetric(
-              label: 'PROFIT', 
-              value: sell != null && sell > 0 ? formatRupee(profit) : '—',
-              color: profit >= 0 ? const Color(0xFF059669) : const Color(0xFFDC2626),
-            ),
-            _MetricDivider(),
-            _CompactLiveMetric(label: 'GST', value: gst > 1e-6 ? formatRupee(gst) : '—'),
-            const Spacer(),
-            Text(
-              _qtyAndUnitWeightSummaryLine(),
-              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF475569)),
-            ),
-          ],
-        ),
-      );
     }
 
     return Column(
@@ -3928,7 +3814,8 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
             ),
           ),
         ),
-      );
+      ),
+    );
     }
 
     final footer = widget.isEdit
@@ -4062,8 +3949,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
                     Text('PROFIT: ${s != null && s > 0 ? formatRupee(p) : "—"}', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: p >= 0 ? const Color(0xFF059669) : const Color(0xFFDC2626))),
                     const SizedBox(width: 8),
                     Builder(builder: (context) {
-                      final li = _lineToCalc(l);
-                      final taxable = lineTaxableAfterLineDisc(li);
+                      final taxable = lineTaxableAfterLineDisc(l);
                       final tax = t - taxable;
                       return Text('TAX: ${formatRupee(tax)}', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: Color(0xFF64748B)));
                     }),

@@ -262,12 +262,12 @@ class PurchaseReviewTallyStep extends ConsumerWidget {
                     children: [
                       _ReviewStat(
                         label: 'TAX TOTAL',
-                        value: _inr(bd.tax),
+                        value: _inr(bd.taxTotal),
                       ),
                       const _ReviewMetricSep(),
                       _ReviewStat(
                         label: 'CHARGES',
-                        value: _inr(bd.comm + bd.freight),
+                        value: _inr(bd.commission + bd.freight),
                       ),
                       const Spacer(),
                       if (hasRetail)

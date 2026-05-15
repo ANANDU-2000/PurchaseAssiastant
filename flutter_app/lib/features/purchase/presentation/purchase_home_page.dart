@@ -1429,9 +1429,6 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                 selected:
                                     secondary == null && primary == e.$1,
                                 onSelected: (_) => _selectPrimary(e.$1),
-                                visualDensity: VisualDensity.compact,
-                                materialTapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
                               ),
                             ),
                         ],
