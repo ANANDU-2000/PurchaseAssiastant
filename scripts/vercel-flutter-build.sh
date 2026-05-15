@@ -28,6 +28,7 @@ GOOGLE_ID="${GOOGLE_OAUTH_CLIENT_ID:-}"
 # use `flutter build web --wasm` if you migrate bootstrap to skwasm/canvaskit fallback.
 flutter build web --release \
   --no-web-resources-cdn \
+  --no-source-maps \
   --dart-define=API_BASE_URL="$API_URL" \
   --dart-define=GOOGLE_OAUTH_CLIENT_ID="$GOOGLE_ID"
 
