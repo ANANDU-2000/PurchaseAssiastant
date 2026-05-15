@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'purchase_sheet_ui_helpers.dart';
+
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -28,6 +30,45 @@ import '../../../../core/utils/currency_utils.dart';
 String _stripKgSuffixForCatalogDisplay(String name) => name
     .replaceAll(RegExp(r'\s*\d+(\.\d+)?\s*KG\s*$', caseSensitive: false), '')
     .trim();
+
+mixin PurchaseItemEntrySheetStateMixin {
+  double? _parseD(String s) {
+    if (s.trim().isEmpty) return null;
+    final clean = s.replaceAll(',', '').trim();
+    return double.tryParse(clean);
+  }
+
+  String _fmtQty(double d) {
+    if ((d - d.roundToDouble()).abs() < 1e-9) return d.round().toString();
+    return d.toStringAsFixed(2).replaceAll(RegExp(r'\.?0+$'), '');
+  }
+
+  String _fmtMoney(double d) {
+    if (d <= 0) return '';
+    return d.toStringAsFixed(2);
+  }
+
+  double? _numD(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toDouble();
+    if (v is String) return _parseD(v);
+    return null;
+  }
+
+  bool _isWeightUnit(String u) {
+    final l = u.toLowerCase();
+    return l == 'kg' || l == 'kilogram' || l == 'grams' || l == 'gm';
+  }
+
+  TextInputFormatter _decimalFormatter(int decimalRange) {
+    return FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,' + decimalRange.toString() + r'}'));
+  }
+
+  bool _bagQtyIsWhole(double bags) {
+    return (bags - bags.roundToDouble()).abs() < 1e-6;
+  }
+}
+
 
 /// Persist [default_kg_per_bag] (+ optional rename) for catalog items used as bags.
 typedef PersistCatalogBagWeight = Future<void> Function({
@@ -83,7 +124,7 @@ class PurchaseItemEntrySheet extends StatefulWidget {
   State<PurchaseItemEntrySheet> createState() => _PurchaseItemEntrySheetState();
 }
 
-class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
+class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> with PurchaseItemEntrySheetStateMixin {
   // Master rebuild default wholesale mode: inventory is count-only for BOX/TIN.
   // Advanced weight/item tracking for BOX/TIN is intentionally disabled for now.
   static const bool _advancedInventoryEnabled = false;
@@ -909,11 +950,6 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     final raw = _enteredQtyRaw();
     return raw > 0 ? raw : null;
   }
-
-  String _fmtQty(double q) =>
-      StrictDecimal.fromObject(q).format(3, trim: true);
-
-  String _fmtMoney(double q) => StrictDecimal.fromObject(q).format(2);
 
   TextInputFormatter _decimalFormatter(int maxDecimals) {
     return TextInputFormatter.withFunction((oldValue, newValue) {
@@ -2857,7 +2893,7 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (final w in warnings)
-          _WarningPill(message: w),
+          SheetWarningPill(message: w),
         Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
@@ -2870,12 +2906,12 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  _SummaryPill(
+                  SheetSummaryPill(
                     label: 'QTY',
                     value: _qtyAndUnitWeightSummaryLine(),
                     color: const Color(0xFF64748B),
                   ),
-                  _SummaryPill(
+                  SheetSummaryPill(
                     label: 'RATE',
                     value: _purchaseRateLabel(true).replaceFirst(' *', '').replaceFirst('Landing cost ', '').replaceFirst('Purchase Rate ', ''),
                     subtitle: formatRupee(enteredPurchase, decimals: true),
@@ -2890,17 +2926,17 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  _Metric(
+                  SheetMetric(
                     label: 'TAX',
                     value: gst > 1e-6 ? formatRupee(gst, decimals: true) : '—',
                     color: const Color(0xFF64748B),
                   ),
-                  _Metric(
+                  SheetMetric(
                     label: 'PROFIT',
                     value: sell != null && sell > 0 ? formatRupee(profit, decimals: true) : '—',
                     color: (profit >= 0) ? const Color(0xFF10B981) : const Color(0xFFEF4444),
                   ),
-                  _Metric(
+                  SheetMetric(
                     label: 'TOTAL',
                     value: formatRupee(total, decimals: true),
                     isBold: true,
@@ -4000,77 +4036,3 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> {
     );
   }
 }
-
-class _WarningPill extends StatelessWidget {
-  const _WarningPill({required this.message});
-  final String message;
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF7ED),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFFFEDD5)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.warning_amber_rounded, size: 16, color: Color(0xFF9A3412)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              message,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF9A3412),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SummaryPill extends StatelessWidget {
-  const _SummaryPill({required this.label, required this.value, this.subtitle, required this.color});
-  final String label;
-  final String value;
-  final String? subtitle;
-  final Color color;
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.5, color: color.withValues(alpha: 0.7))),
-        const SizedBox(height: 2),
-        Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
-        if (subtitle != null)
-          Text(subtitle!, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
-      ],
-    );
-  }
-}
-
-class _Metric extends StatelessWidget {
-  const _Metric({required this.label, required this.value, required this.color, this.isBold = false});
-  final String label;
-  final String value;
-  final Color color;
-  final bool isBold;
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.5, color: const Color(0xFF64748B).withValues(alpha: 0.7))),
-        const SizedBox(height: 2),
-        Text(value, style: TextStyle(fontSize: 14, fontWeight: isBold ? FontWeight.w900 : FontWeight.w800, color: color)),
-      ],
-    );
-  }
-}
-
