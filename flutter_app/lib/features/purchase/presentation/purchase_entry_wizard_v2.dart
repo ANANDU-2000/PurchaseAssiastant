@@ -227,7 +227,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
         ref.invalidate(catalogItemsListProvider);
       });
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) unawaited(_maybeShowResumeDraftMaterialBanner());
+        // Removed redundant MaterialBanner prompt — user has home page banner
       });
     }
     if (!mounted) return;
@@ -441,63 +441,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
   }
 
-  Future<void> _maybeShowResumeDraftMaterialBanner() async {
-    if (!mounted) return;
-    if (widget.editingId != null && widget.editingId!.isNotEmpty) return;
-    if (widget.resumeDraft || widget.initialDraft != null) return;
-    final k = _draftPrefsKey();
-    final s0 = ref.read(sessionProvider);
-    if (s0 == null || k == null) return;
-    final bid = s0.primaryBusiness.id;
-    String? raw = OfflineStore.getPurchaseWizardDraft(bid);
-    raw ??= ref.read(sharedPreferencesProvider).getString(k);
-    if (raw == null || raw.isEmpty) return;
-    if (OfflineStore.purchaseWizardDraftJsonIsExpired(raw)) {
-      await OfflineStore.clearPurchaseWizardDraft(bid);
-      await ref.read(sharedPreferencesProvider).remove(k);
-      return;
-    }
-    try {
-      final dec = jsonDecode(raw);
-      if (dec is! Map) return;
-      final m = Map<String, dynamic>.from(dec);
-      final meta = m['draftWizardMeta'];
-      if (meta is! Map) return;
-      final at = DateTime.tryParse(meta['savedAt']?.toString() ?? '');
-      if (at == null) return;
-      final items = m['items'] ?? m['lines'];
-      final hasLines = items is List && items.isNotEmpty;
-      final hasSupplier = (m['supplierId'] ?? m['supplier_id'] ?? '')
-          .toString()
-          .trim()
-          .isNotEmpty;
-      if (!hasLines && !hasSupplier) return;
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showMaterialBanner(
-        MaterialBanner(
-          content: const Text(
-            'You have an unsaved purchase draft from the last 24 hours.',
-          ),
-          leading: const Icon(Icons.edit_note_outlined),
-          actions: [
-            TextButton(
-              onPressed: () =>
-                  ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
-              child: const Text('Dismiss'),
-            ),
-            TextButton(
-              onPressed: () async {
-                ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
-                await _maybeRestoreDraft();
-              },
-              child: const Text('Resume'),
-            ),
-          ],
-        ),
-      );
-    } catch (_) {}
-  }
-
   Future<void> _maybeRestoreDraft() async {
     if (widget.editingId != null && widget.editingId!.isNotEmpty) return;
     final k = _draftPrefsKey();
@@ -508,6 +451,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     Future<void> applyMap(Map<String, dynamic> raw) async {
       final o = Map<String, dynamic>.from(raw);
       o.remove('draftWizardMeta');
+      ref.read(purchaseDraftProvider.notifier).applyFromPrefsMap(o);
       if (!mounted) return;
       _syncControllersFromDraft();
       setState(() => _formDirty = true);
@@ -2189,7 +2133,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
                   controller: _wizardBodyScrollController,
                   keyboardDismissBehavior:
                       ScrollViewKeyboardDismissBehavior.manual,
-                  padding: EdgeInsets.fromLTRB(16, 12, 16, kbInset > 0 ? 80 : 100),
+                  padding: EdgeInsets.fromLTRB(16, 12, 16, kbInset > 0 ? 100 : 100),
                   child: stepContent,
                 );
           return Column(

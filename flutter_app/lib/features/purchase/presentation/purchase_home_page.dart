@@ -1700,62 +1700,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
   }
 }
 
-class _HistMetricPill extends StatelessWidget {
-  const _HistMetricPill({
-    required this.label,
-    this.onTap,
-    this.isPrimary = false,
-    this.isError = false,
-  });
 
-  final String label;
-  final VoidCallback? onTap;
-  final bool isPrimary;
-  final bool isError;
-
-  @override
-  Widget build(BuildContext context) {
-    Color bg = Colors.white;
-    Color fg = const Color(0xFF0F172A);
-    Color border = HexaColors.brandBorder;
-
-    if (isPrimary) {
-      bg = HexaColors.brandPrimary.withValues(alpha: 0.1);
-      fg = HexaColors.brandPrimary;
-      border = HexaColors.brandPrimary;
-    } else if (isError) {
-      bg = const Color(0xFFFEF2F2);
-      fg = HexaColors.loss;
-      border = HexaColors.loss.withValues(alpha: 0.3);
-    }
-
-    final child = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: border),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-          color: fg,
-        ),
-      ),
-    );
-    if (onTap == null) return child;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: child,
-      ),
-    );
-  }
-}
 
 class _PurchaseHistoryFiltersSheet extends ConsumerStatefulWidget {
   const _PurchaseHistoryFiltersSheet();

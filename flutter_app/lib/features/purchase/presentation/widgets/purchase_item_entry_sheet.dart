@@ -4073,33 +4073,4 @@ class _Metric extends StatelessWidget {
     );
   }
 }
-class _CompactLiveMetric extends StatelessWidget {
-  const _CompactLiveMetric({required this.label, required this.value, this.color, this.isPrimary = false});
-  final String label;
-  final String value;
-  final Color? color;
-  final bool isPrimary;
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(label, style: TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: isPrimary ? const Color(0xFF17A8A7) : const Color(0xFF64748B))),
-        Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: color ?? const Color(0xFF0F172A))),
-      ],
-    );
-  }
-}
 
-class _MetricDivider extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 1,
-      height: 16,
-      margin: const EdgeInsets.symmetric(horizontal: 8),
-      color: const Color(0xFFCBD5E1),
-    );
-  }
-}

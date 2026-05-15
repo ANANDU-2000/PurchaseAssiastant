@@ -125,6 +125,7 @@ class _HomePageState extends ConsumerState<HomePage>
 
   Future<void> _refresh() async {
     _lastFullInvalidate = DateTime.now();
+    bustHomeDashboardVolatileCaches();
     ref.invalidate(homeDashboardDataProvider);
     ref.invalidate(homeShellReportsProvider);
     invalidateTradePurchaseCaches(ref);
@@ -157,6 +158,7 @@ class _HomePageState extends ConsumerState<HomePage>
   }
 
   void _selectPeriod(HomePeriod p) {
+    bustHomeDashboardVolatileCaches();
     ref.read(homePeriodProvider.notifier).state = p;
     if (p != HomePeriod.custom) {
       ref.read(homeCustomDateRangeProvider.notifier).state = null;
