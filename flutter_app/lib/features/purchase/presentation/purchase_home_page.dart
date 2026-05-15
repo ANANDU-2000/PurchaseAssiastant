@@ -19,6 +19,7 @@ import '../../../core/purchase/delivery_aging.dart';
 import '../../../core/providers/analytics_kpi_provider.dart'
     show analyticsDateRangeProvider;
 import '../../../core/utils/line_display.dart';
+import '../../../core/utils/snack.dart';
 import '../../../core/providers/business_profile_provider.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart'
     show invalidatePurchaseWorkspace;
@@ -856,12 +857,18 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
   void _selectPrimary(String key) {
     ref.read(purchaseHistoryPrimaryFilterProvider.notifier).state = key;
     ref.read(purchaseHistorySecondaryFilterProvider.notifier).state = null;
+    if (key == 'pending_delivery') {
+      ref.read(purchaseHistoryUndeliveredSortProvider.notifier).state = true;
+    } else {
+      ref.read(purchaseHistoryUndeliveredSortProvider.notifier).state = false;
+    }
     context.go(key == 'all' ? '/purchase' : '/purchase?filter=$key');
   }
 
   void _selectSecondary(String key) {
     ref.read(purchaseHistoryPrimaryFilterProvider.notifier).state = 'all';
     ref.read(purchaseHistorySecondaryFilterProvider.notifier).state = key;
+    ref.read(purchaseHistoryUndeliveredSortProvider.notifier).state = false;
     context.go('/purchase?filter=$key');
   }
 
@@ -1033,7 +1040,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
       } catch (_) {}
       if (mounted) {
         setState(() => _optimisticPurchasePatches.remove(p.id));
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Marked paid')));
+        showTopSnack(context, 'Marked as paid ✓');
       }
     } catch (e) {
       if (mounted) {
@@ -1041,14 +1048,12 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
         try {
           await ref.read(tradePurchasesListProvider.future);
         } catch (_) {}
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              e is DioException
-                  ? friendlyApiError(e)
-                  : 'Something went wrong. Please try again.',
-            ),
-          ),
+        showTopSnack(
+          context,
+          e is DioException
+              ? friendlyApiError(e)
+              : 'Something went wrong. Please try again.',
+          isError: true,
         );
       }
     }
@@ -1083,14 +1088,12 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
         try {
           await ref.read(tradePurchasesListProvider.future);
         } catch (_) {}
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              e is DioException
-                  ? friendlyApiError(e)
-                  : 'Something went wrong. Please try again.',
-            ),
-          ),
+        showTopSnack(
+          context,
+          e is DioException
+              ? friendlyApiError(e)
+              : 'Something went wrong. Please try again.',
+          isError: true,
         );
       }
     }
@@ -1378,10 +1381,40 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                 _CompactMetric(label: '${monthStats.purchaseCount} Purch'),
                                 if ((alerts['overdue'] ?? 0) > 0) ...[
                                   _MetricSep(),
-                                  _CompactMetric(
-                                    label: '${alerts['overdue']} Overdue',
-                                    isError: true,
+                                  GestureDetector(
                                     onTap: () => _selectSecondary('overdue'),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 5,
+                                            vertical: 1,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.red.shade600,
+                                            borderRadius: BorderRadius.circular(10),
+                                          ),
+                                          child: Text(
+                                            '${alerts['overdue']}',
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Overdue',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w900,
+                                            color: HexaColors.loss,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ],
                               ],
@@ -1634,22 +1667,22 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                           invalidatePurchaseWorkspace(ref);
                                           return;
                                         }
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            content: const Text(
-                                              'Could not export PDF. Try again.',
-                                            ),
-                                            action: SnackBarAction(
-                                              label: 'Retry',
-                                              onPressed: () => doShare(),
-                                            ),
-                                            duration: const Duration(seconds: 6),
+                                        showTopSnack(
+                                          context,
+                                          'Could not export PDF. Check connection and retry.',
+                                          isError: true,
+                                          duration: const Duration(seconds: 6),
+                                          action: SnackBarAction(
+                                            label: 'Retry',
+                                            onPressed: () => doShare(),
                                           ),
                                         );
                                       } catch (e) {
                                         if (!context.mounted) return;
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text('Failed to export PDF.')),
+                                        showTopSnack(
+                                          context,
+                                          'Failed to export PDF.',
+                                          isError: true,
                                         );
                                       }
                                     }
@@ -2297,9 +2330,7 @@ class _PurchaseHistoryFullscreenSearchPageState
       } catch (_) {}
       if (mounted) {
         setState(() => _optimisticPurchasePatches.remove(p.id));
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Marked paid')),
-        );
+        showTopSnack(context, 'Marked as paid ✓');
       }
     } catch (e) {
       if (mounted) {
@@ -2307,14 +2338,12 @@ class _PurchaseHistoryFullscreenSearchPageState
         try {
           await ref.read(tradePurchasesListProvider.future);
         } catch (_) {}
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              e is DioException
-                  ? friendlyApiError(e)
-                  : 'Something went wrong. Please try again.',
-            ),
-          ),
+        showTopSnack(
+          context,
+          e is DioException
+              ? friendlyApiError(e)
+              : 'Something went wrong. Please try again.',
+          isError: true,
         );
       }
     }
@@ -2349,14 +2378,12 @@ class _PurchaseHistoryFullscreenSearchPageState
         try {
           await ref.read(tradePurchasesListProvider.future);
         } catch (_) {}
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              e is DioException
-                  ? friendlyApiError(e)
-                  : 'Something went wrong. Please try again.',
-            ),
-          ),
+        showTopSnack(
+          context,
+          e is DioException
+              ? friendlyApiError(e)
+              : 'Something went wrong. Please try again.',
+          isError: true,
         );
       }
     }
@@ -2581,22 +2608,22 @@ class _PurchaseHistoryFullscreenSearchPageState
                         invalidatePurchaseWorkspace(ref);
                         return;
                       }
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: const Text(
-                            'Could not export PDF. Try again.',
-                          ),
-                          action: SnackBarAction(
-                            label: 'Retry',
-                            onPressed: () => doShare(),
-                          ),
-                          duration: const Duration(seconds: 6),
+                      showTopSnack(
+                        context,
+                        'Could not export PDF. Check connection and retry.',
+                        isError: true,
+                        duration: const Duration(seconds: 6),
+                        action: SnackBarAction(
+                          label: 'Retry',
+                          onPressed: () => doShare(),
                         ),
                       );
                     } catch (e) {
                       if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Failed to export PDF.')),
+                      showTopSnack(
+                        context,
+                        'Failed to export PDF.',
+                        isError: true,
                       );
                     }
                   }
@@ -2686,11 +2713,11 @@ class _PurchaseRow extends StatelessWidget {
                       const SizedBox(width: 8),
                       Text(
                         _inr(p.totalAmount.round()),
-                        style: HexaDsType.purchaseLineMoney.copyWith(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
-                          color: const Color(0xFF0F172A),
-                          letterSpacing: -0.4,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF111827),
+                          letterSpacing: -0.35,
                           height: 1.0,
                         ),
                       ),
@@ -2710,7 +2737,15 @@ class _PurchaseRow extends StatelessWidget {
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      _CompactDetailLabel(label: pack),
+                      Text(
+                        pack,
+                        style: const TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0D9488),
+                          letterSpacing: 0.1,
+                        ),
+                      ),
                       const _Dot(),
                       _CompactDetailLabel(label: df.format(p.purchaseDate)),
                       const _Dot(),
@@ -2819,19 +2854,21 @@ class _MiniBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: st.color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(2),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: st.color.withValues(alpha: 0.45), width: 1),
       ),
       child: Text(
         _historyPaymentChipLabel(st).toUpperCase(),
         style: TextStyle(
-            fontSize: 9, 
-            fontWeight: FontWeight.w900, 
-            letterSpacing: 0.2,
-            height: 1.1, 
-            color: st.color),
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.2,
+          height: 1.1,
+          color: st.color,
+        ),
       ),
     );
   }

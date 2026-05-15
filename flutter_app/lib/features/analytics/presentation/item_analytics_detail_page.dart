@@ -362,7 +362,7 @@ class _ItemAnalyticsDetailPageState
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '${pos.toStringAsFixed(0)}% in range · Avg ${_inr(avg)}',
+                  '${pos.toStringAsFixed(0)}% in range · Rate ${_inr(avg)}',
                   style: tt.labelSmall?.copyWith(
                     fontSize: 12,
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -389,7 +389,7 @@ class _ItemAnalyticsDetailPageState
                 const SizedBox(height: 10),
                 _MetricTable(
                   rows: [
-                    ('Avg', _inr(avg)),
+                    ('Rate', _inr(avg)),
                     ('Low', _inr(low)),
                     ('High', _inr(high)),
                     ('Last', _inr(last)),
@@ -507,7 +507,7 @@ class _ItemAnalyticsDetailPageState
                       checkmarkColor: HexaColors.primaryDeep,
                     ),
                     FilterChip(
-                      label: const Text('Avg ₹'),
+                      label: const Text('Rate ₹'),
                       selected: _sortColumn == 1,
                       onSelected: (_) => setState(() {
                         if (_sortColumn == 1) {
@@ -688,7 +688,7 @@ class _HomePeriodTradeFactsCard extends StatelessWidget {
                     value: '${lines ?? 0}',
                   ),
                   _ShellTradeFactChip(
-                    label: 'Est. margin',
+                    label: 'Profit/kg',
                     value: profit != null ? inr(profit) : '—',
                   ),
                 ],
@@ -1310,7 +1310,7 @@ class _SupplierCompareTile extends StatelessWidget {
               children: [
                 Expanded(
                   child: _MiniStat(
-                    label: 'Avg',
+                    label: 'Rate',
                     value: inr((row['avg_landing'] as num?)?.toDouble()),
                   ),
                 ),

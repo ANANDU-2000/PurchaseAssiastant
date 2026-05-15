@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/utils/snack.dart';
+
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/auth/session_notifier.dart';
@@ -83,7 +85,7 @@ class _HomePageState extends ConsumerState<HomePage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _poll = Timer.periodic(const Duration(minutes: 10), (_) {
+    _poll = Timer.periodic(const Duration(minutes: 5), (_) {
       if (!mounted) return;
       if (_resumeRefreshDebounce?.isActive == true) return;
       final last = _lastFullInvalidate;
@@ -211,14 +213,11 @@ class _HomePageState extends ConsumerState<HomePage>
         _shownPersistDashboardSnack = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Still having trouble reaching the server. Showing saved data.',
-              ),
-              behavior: SnackBarBehavior.floating,
-              duration: Duration(seconds: 5),
-            ),
+          showTopSnack(
+            context,
+            'Still having trouble reaching the server. Showing saved data.',
+            isError: true,
+            duration: const Duration(seconds: 5),
           );
         });
       },

@@ -6,9 +6,10 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/utils/snack.dart';
 import '../../../core/router/navigation_ext.dart';
 
-/// Download trade purchase backup as ZIP (CSV inside).
+/// Download trade purchase backup as ZIP from the server.
 class BackupPage extends ConsumerStatefulWidget {
   const BackupPage({super.key});
 
@@ -31,9 +32,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
           );
       if (bytes.isEmpty) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Nothing to export for this range.')),
-          );
+          showTopSnack(context, 'Nothing to export for this range.', isError: true);
         }
         return;
       }
@@ -51,9 +50,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
       );
     } on DioException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(friendlyApiError(e))),
-        );
+        showTopSnack(context, friendlyApiError(e), isError: true);
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -76,8 +73,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
         padding: const EdgeInsets.all(20),
         children: [
           Text(
-            'Export trade purchases as a ZIP file containing purchases.csv. '
-            'Use this for your own records or spreadsheets.',
+            'Export trade purchases as a ZIP from the server (contents depend on your workspace backup settings).',
             style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
           ),
           const SizedBox(height: 20),

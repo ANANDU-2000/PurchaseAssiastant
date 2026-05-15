@@ -5,6 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/models/trade_purchase_models.dart';
 
+/// While [markPurchaseDelivered] round-trips, holds target [TradePurchase.isDelivered].
+final tradePurchaseDeliveryOptimisticProvider =
+    StateProvider.autoDispose.family<bool?, String>((ref, _) => null);
+
 /// Hard cap so detail never sits on [DetailSkeleton] indefinitely on slow networks.
 const Duration kTradePurchaseDetailFetchTimeout = Duration(seconds: 15);
 

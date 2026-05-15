@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/utils/snack.dart';
+
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/models/trade_purchase_models.dart';
@@ -123,6 +125,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
   String _debouncedQuery = '';
   Timer? _searchDebounce;
   Timer? _rangeInvalidateDebounce;
+  Timer? _periodPresetDebounce;
   Timer? _stallTimer;
   bool _stallBanner = false;
 
@@ -159,6 +162,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
     _reportsSearchFocus.dispose();
     _searchDebounce?.cancel();
     _rangeInvalidateDebounce?.cancel();
+    _periodPresetDebounce?.cancel();
     _stallTimer?.cancel();
     super.dispose();
   }
@@ -233,7 +237,11 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
       _preset = p;
       _visibleCap = 40;
     });
-    _scheduleReportsReloadForRange();
+    _periodPresetDebounce?.cancel();
+    _periodPresetDebounce = Timer(const Duration(milliseconds: 150), () {
+      if (!mounted) return;
+      _bumpInvalidate();
+    });
   }
 
   void _syncRangeWithHome() {
@@ -296,9 +304,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
       switch (_mainTab) {
         case ReportsMainTab.overview:
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Switch to Items, Suppliers, or Brokers to export rows.')),
-            );
+            showTopSnack(context, 'Switch to Items, Suppliers, or Brokers to export rows.');
           }
           return;
         case ReportsMainTab.items:
@@ -318,9 +324,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
               : rows.where((r) => r.name.toLowerCase().contains(qf)).toList();
           if (filtered.isEmpty) {
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Nothing to export for this view.')),
-              );
+              showTopSnack(context, 'Nothing to export for this view.');
             }
             return;
           }
@@ -342,9 +346,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
               : raw.where((s) => s.name.toLowerCase().contains(qf)).toList();
           if (filtered.isEmpty) {
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Nothing to export for this view.')),
-              );
+              showTopSnack(context, 'Nothing to export for this view.');
             }
             return;
           }
@@ -363,9 +365,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
               : raw.where((b) => b.name.toLowerCase().contains(qf)).toList();
           if (filtered.isEmpty) {
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Nothing to export for this view.')),
-              );
+              showTopSnack(context, 'Nothing to export for this view.');
             }
             return;
           }
@@ -535,7 +535,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
             hasPack
                 ? 'Totals are in the card above (including per-item lines such as sugar when recorded). '
                     'Open Items for the full product list and search by name.'
-                : 'No bag / box / tin weighted lines in this period. '
+                : 'No bag / box / tin lines in this period. '
                     'Check date range, pull to refresh, or confirm purchases use those units.',
             style: tt.bodySmall?.copyWith(color: HexaColors.textBody, height: 1.35),
           ),

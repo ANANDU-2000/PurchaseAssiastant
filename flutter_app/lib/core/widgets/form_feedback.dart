@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../errors/user_facing_errors.dart';
+import '../utils/snack.dart';
 
 /// Confirms destructive or high-impact actions (delete, remove row, etc.).
 Future<bool> confirmDestructiveAction(
@@ -49,14 +50,13 @@ void showRetryableErrorSnackBar(
   if (!context.mounted) return;
   logSilencedApiError(error);
   final text = message ?? userFacingError(error);
-  ScaffoldMessenger.of(context).hideCurrentSnackBar();
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(text),
-      action: SnackBarAction(
-        label: 'Retry',
-        onPressed: onRetry,
-      ),
+  showTopSnack(
+    context,
+    text,
+    isError: true,
+    action: SnackBarAction(
+      label: 'Retry',
+      onPressed: onRetry,
     ),
   );
 }

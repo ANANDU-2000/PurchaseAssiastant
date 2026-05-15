@@ -19,6 +19,7 @@ import '../../../core/services/purchase_invoice_pdf_layout.dart'
     show tradeCalcRequestFromTradePurchase;
 import '../../../core/services/purchase_pdf.dart';
 import '../../../core/utils/line_display.dart';
+import '../../../core/utils/snack.dart';
 import '../../../core/utils/trade_purchase_commission.dart';
 import '../../../core/utils/trade_purchase_rate_display.dart';
 import '../../../core/theme/hexa_colors.dart';
@@ -403,14 +404,14 @@ class _LoadedPurchaseScaffold extends ConsumerWidget {
       invalidatePurchaseWorkspace(ref);
       ref.invalidate(tradePurchaseDetailProvider(p.id));
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
+      showTopSnack(context, 'Deleted');
       context.popOrGo('/purchase');
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e is DioException ? friendlyApiError(e) : 'Could not delete'),
-        ),
+      showTopSnack(
+        context,
+        e is DioException ? friendlyApiError(e) : 'Could not delete',
+        isError: true,
       );
     }
   }
@@ -420,13 +421,14 @@ class _LoadedPurchaseScaffold extends ConsumerWidget {
     final ok = await printPurchasePdf(p, biz);
     if (!context.mounted) return;
     if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Could not print PDF. Try again.'),
-          action: SnackBarAction(
-            label: 'Retry',
-            onPressed: () => _runPrintPdf(context, ref),
-          ),
+      showTopSnack(
+        context,
+        'Could not print PDF. Try again.',
+        isError: true,
+        action: SnackBarAction(
+          label: 'Retry',
+          textColor: Colors.white,
+          onPressed: () => _runPrintPdf(context, ref),
         ),
       );
       return;
@@ -439,26 +441,23 @@ class _LoadedPurchaseScaffold extends ConsumerWidget {
       final ok = await sharePurchasePdf(p, biz);
       if (!context.mounted) return;
       if (!ok) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Could not export PDF. Try again.'),
-            action: SnackBarAction(
-              label: 'Retry',
-              onPressed: () => _runSharePdf(context, ref),
-            ),
+        showTopSnack(
+          context,
+          'Could not export PDF. Check connection and retry.',
+          isError: true,
+          action: SnackBarAction(
+            label: 'Retry',
+            onPressed: () => _runSharePdf(context, ref),
           ),
         );
         return;
       }
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to export PDF.')),
-      );
+      showTopSnack(context, 'Failed to export PDF.', isError: true);
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('PDF ready to share')),
-    );
+    if (!context.mounted) return;
+    showTopSnack(context, 'PDF ready to share');
   }
 
   Future<void> _runDownloadPdf(BuildContext context, WidgetRef ref) async {
@@ -466,36 +465,34 @@ class _LoadedPurchaseScaffold extends ConsumerWidget {
     final ok = await downloadPurchasePdf(p, biz);
     if (!context.mounted) return;
     if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Could not open PDF. Try again.'),
-          action: SnackBarAction(
-            label: 'Retry',
-            onPressed: () => _runDownloadPdf(context, ref),
-          ),
+      showTopSnack(
+        context,
+        'Could not open PDF. Try again.',
+        isError: true,
+        action: SnackBarAction(
+          label: 'Retry',
+          onPressed: () => _runDownloadPdf(context, ref),
         ),
       );
       return;
     }
     if (kIsWeb) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Use the browser print/save dialog to download PDF'),
-        ),
+      showTopSnack(
+        context,
+        'Use the browser print/save dialog to download PDF',
       );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Use Save as PDF or share from the dialog to save the file',
-          ),
-        ),
+      showTopSnack(
+        context,
+        'Use Save as PDF or share from the dialog to save the file',
       );
     }
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final optim = ref.watch(tradePurchaseDeliveryOptimisticProvider(p.id));
+    final displayP = optim == null ? p : p.withDelivered(optim);
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
@@ -573,7 +570,7 @@ class _LoadedPurchaseScaffold extends ConsumerWidget {
               ),
             ),
           ],
-          Expanded(child: _PurchaseDetailBody(p: p)),
+          Expanded(child: _PurchaseDetailBody(p: displayP)),
         ],
       ),
     );
@@ -597,24 +594,33 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
   ) async {
     final session = ref.read(sessionProvider);
     if (session == null) return;
+    final newDelivered = !p.isDelivered;
+    ref.read(tradePurchaseDeliveryOptimisticProvider(p.id).notifier).state =
+        newDelivered;
+    showTopSnack(
+      context,
+      newDelivered ? '✅ Marked as delivered' : 'Marked as pending delivery',
+    );
     try {
       await ref.read(hexaApiProvider).markPurchaseDelivered(
             businessId: session.primaryBusiness.id,
             purchaseId: p.id,
-            isDelivered: !p.isDelivered,
+            isDelivered: newDelivered,
           );
       invalidatePurchaseWorkspace(ref);
       ref.invalidate(tradePurchaseDetailProvider(p.id));
+      ref.read(tradePurchaseDeliveryOptimisticProvider(p.id).notifier).state =
+          null;
     } catch (e) {
+      ref.read(tradePurchaseDeliveryOptimisticProvider(p.id).notifier).state =
+          null;
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              e is DioException
-                  ? friendlyApiError(e)
-                  : 'Could not update delivery status. Try again.',
-            ),
-          ),
+        showTopSnack(
+          context,
+          e is DioException
+              ? friendlyApiError(e)
+              : 'Could not update delivery status. Try again.',
+          isError: true,
         );
       }
     }
@@ -738,38 +744,51 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
                             ),
                       ),
                     ),
-                    Card(
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 0,
-                        vertical: 4,
-                      ),
-                      child: ListTile(
-                        leading: Icon(
-                          p.isDelivered
-                              ? Icons.check_circle
-                              : Icons.local_shipping,
-                          color: p.isDelivered ? Colors.green : Colors.orange,
-                        ),
-                        title: Text(
-                          p.isDelivered
-                              ? 'Received at warehouse'
-                              : 'Pending delivery',
-                        ),
-                        subtitle: p.deliveredAt != null
-                            ? Text(
-                                'Received on ${DateFormat('MMM d, y').format(p.deliveredAt!)}',
-                              )
-                            : const Text(
-                                'Not yet confirmed as received',
-                              ),
-                        trailing: TextButton(
-                          onPressed: () =>
-                              _toggleDelivery(context, ref, p),
-                          child: Text(
-                            p.isDelivered
-                                ? 'Mark Pending'
-                                : 'Mark Received',
+                    Material(
+                      color: p.isDelivered
+                          ? Colors.green.shade50
+                          : Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: p.isDelivered
+                                ? Colors.green.shade300
+                                : Colors.orange.shade400,
+                            width: p.isDelivered ? 1 : 2.5,
                           ),
+                        ),
+                        child: ListTile(
+                            leading: Icon(
+                              p.isDelivered
+                                  ? Icons.check_circle
+                                  : Icons.local_shipping,
+                              color: p.isDelivered
+                                  ? Colors.green.shade700
+                                  : Colors.orange.shade800,
+                            ),
+                            title: Text(
+                              p.isDelivered
+                                  ? 'Received at warehouse'
+                                  : 'Pending delivery',
+                            ),
+                            subtitle: p.deliveredAt != null
+                                ? Text(
+                                    'Received on ${DateFormat('MMM d, y').format(p.deliveredAt!)}',
+                                  )
+                                : const Text(
+                                    'Not yet confirmed as received',
+                                  ),
+                            trailing: TextButton(
+                              onPressed: () =>
+                                  _toggleDelivery(context, ref, p),
+                              child: Text(
+                                p.isDelivered
+                                    ? 'Mark Pending'
+                                    : 'Mark Received',
+                              ),
+                            ),
                         ),
                       ),
                     ),
@@ -1195,27 +1214,24 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
         final ok = await sharePurchasePdf(p, biz);
         if (!context.mounted) return;
         if (!ok) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Could not export PDF. Try again.'),
-              action: SnackBarAction(
-                label: 'Retry',
-                onPressed: () => share(),
-              ),
-              duration: const Duration(seconds: 6),
+          showTopSnack(
+            context,
+            'Could not export PDF. Check connection and retry.',
+            isError: true,
+            duration: const Duration(seconds: 6),
+            action: SnackBarAction(
+              label: 'Retry',
+              onPressed: () => share(),
             ),
           );
           return;
         }
       } catch (e) {
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to export PDF.')),
-        );
+        showTopSnack(context, 'Failed to export PDF.', isError: true);
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('PDF ready to share')),
-      );
+      if (!context.mounted) return;
+      showTopSnack(context, 'PDF ready to share');
     }
 
     Future<void> printPdf() async {
@@ -1223,13 +1239,13 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
       final ok = await printPurchasePdf(p, biz);
       if (!context.mounted) return;
       if (!ok) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Could not print PDF. Try again.'),
-            action: SnackBarAction(
-              label: 'Retry',
-              onPressed: () => printPdf(),
-            ),
+        showTopSnack(
+          context,
+          'Could not print PDF. Try again.',
+          isError: true,
+          action: SnackBarAction(
+            label: 'Retry',
+            onPressed: () => printPdf(),
           ),
         );
       }
@@ -1240,30 +1256,26 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
       final ok = await downloadPurchasePdf(p, biz);
       if (!context.mounted) return;
       if (!ok) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Could not open PDF. Try again.'),
-            action: SnackBarAction(
-              label: 'Retry',
-              onPressed: () => downloadPdf(),
-            ),
+        showTopSnack(
+          context,
+          'Could not open PDF. Try again.',
+          isError: true,
+          action: SnackBarAction(
+            label: 'Retry',
+            onPressed: () => downloadPdf(),
           ),
         );
         return;
       }
       if (kIsWeb) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Use the browser print/save dialog to download PDF'),
-          ),
+        showTopSnack(
+          context,
+          'Use the browser print/save dialog to download PDF',
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Use Save as PDF or share from the dialog to save the file',
-            ),
-          ),
+        showTopSnack(
+          context,
+          'Use Save as PDF or share from the dialog to save the file',
         );
       }
     }

@@ -19,6 +19,7 @@ import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/widgets/form_field_scroll.dart';
 import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/utils/currency_utils.dart';
+import '../../../core/utils/snack.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart'
     show invalidatePurchaseWorkspace, invalidateWorkspaceSeedData;
 import '../../../core/providers/catalog_providers.dart';
@@ -512,9 +513,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
       _syncControllersFromDraft();
       setState(() => _formDirty = true);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Restored your unsaved purchase draft')),
-        );
+        showTopSnack(context, 'Draft restored ✓');
       }
     }
 
@@ -582,9 +581,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     _draftDebounce?.cancel();
     _flushDraftToPrefs();
     if (!mounted || widget.editingId != null) return;
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      const SnackBar(content: Text('Draft saved')),
-    );
+    showTopSnack(context, 'Draft saved ✓');
   }
 
   Future<void> _clearDraftInPrefs() async {
@@ -760,12 +757,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
 
   void _partyStepSnack(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    showTopSnack(context, message);
   }
 
   void _reportWizardNonFatal(String context, Object error, StackTrace stack) {
@@ -2200,7 +2192,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
               : SingleChildScrollView(
                   controller: _wizardBodyScrollController,
                   keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
+                      ScrollViewKeyboardDismissBehavior.manual,
                   padding: EdgeInsets.fromLTRB(16, 12, 16, kbInset > 0 ? 12 : 100),
                   child: stepContent,
                 );
@@ -2231,7 +2223,10 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
                       12,
                       8,
                       12,
-                      8 + (kbInset > 0 ? kbInset - MediaQuery.paddingOf(ctx).bottom : 0),
+                      8 + (kbInset > 0
+                          ? (kbInset - MediaQuery.paddingOf(ctx).bottom)
+                              .clamp(0.0, 500.0)
+                          : 0),
                     ),
                     child: _wizardFooterChrome(
                       catalog,

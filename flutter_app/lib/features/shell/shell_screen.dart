@@ -6,19 +6,30 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/design_system/hexa_ds_tokens.dart';
 import '../../core/providers/connectivity_provider.dart';
+import '../../core/providers/home_breakdown_tab_providers.dart';
+import '../../core/providers/home_dashboard_provider.dart';
+import '../../core/providers/reports_provider.dart';
+import '../../core/providers/trade_purchases_provider.dart'
+    show invalidateTradePurchaseCaches;
+import '../../core/design_system/hexa_ds_tokens.dart';
 import '../../core/theme/hexa_colors.dart';
 import 'shell_branch_provider.dart';
 
 /// Shell: Home | Reports | History | Search in one row, then [+] (no overlap).
-class ShellScreen extends ConsumerWidget {
+class ShellScreen extends ConsumerStatefulWidget {
   const ShellScreen({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ShellScreen> createState() => _ShellScreenState();
+}
+
+class _ShellScreenState extends ConsumerState<ShellScreen> {
+  @override
+  Widget build(BuildContext context) {
+    final navigationShell = widget.navigationShell;
     final idx = navigationShell.currentIndex;
     final prevBranch = ref.read(shellCurrentBranchProvider);
     // Apply in the same frame as [navigationShell.currentIndex]. A post-frame
@@ -27,6 +38,23 @@ class ShellScreen extends ConsumerWidget {
     // purchase list / loading UI stayed blank despite a 200 from the API.
     if (prevBranch != idx) {
       ref.read(shellCurrentBranchProvider.notifier).state = idx;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        switch (idx) {
+          case ShellBranch.home:
+            ref.invalidate(homeDashboardDataProvider);
+            ref.invalidate(homeShellReportsProvider);
+            break;
+          case ShellBranch.history:
+            invalidateTradePurchaseCaches(ref);
+            break;
+          case ShellBranch.reports:
+            ref.invalidate(reportsPurchasesPayloadProvider);
+            break;
+          default:
+            break;
+        }
+      });
     }
     final routePath = GoRouterState.of(context).uri.path;
     final conn = ref.watch(connectivityResultsProvider);

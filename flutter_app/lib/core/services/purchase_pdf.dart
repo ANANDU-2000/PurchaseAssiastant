@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../calc_engine.dart' show lineMoney;
 import '../models/business_profile.dart';
@@ -190,10 +191,16 @@ Future<pw.Document> buildPurchaseDoc(TradePurchase p, BusinessProfile biz) async
 }
 
 void _logPdfFailure(String op, Object e, StackTrace st) {
-  assert(() {
-    debugPrint('[purchase_pdf:$op] $e\n$st');
-    return true;
-  }());
+  debugPrint('PDF $op FAILED: $e\n$st');
+  FlutterError.reportError(
+    FlutterErrorDetails(
+      exception: e,
+      stack: st,
+      library: 'purchase_pdf',
+      context: ErrorDescription('PDF $op failed'),
+      silent: true,
+    ),
+  );
 }
 
 /// Returns `true` if the share sheet completed without throwing.
@@ -201,11 +208,25 @@ void _logPdfFailure(String op, Object e, StackTrace st) {
 Future<bool> sharePurchasePdf(TradePurchase p, BusinessProfile biz) async {
   try {
     final doc = await buildPurchaseDoc(p, biz);
-    await Printing.sharePdf(
-      bytes: await doc.save(),
-      filename: buildPurchaseSharePdfFileName(p),
-    );
-    return true;
+    final bytes = await doc.save();
+    final filename = buildPurchaseSharePdfFileName(p);
+    try {
+      await Printing.sharePdf(bytes: bytes, filename: filename);
+      return true;
+    } catch (printingError) {
+      debugPrint('Printing.sharePdf failed ($printingError), trying share_plus');
+      await Share.shareXFiles(
+        [
+          XFile.fromData(
+            bytes,
+            mimeType: 'application/pdf',
+            name: filename,
+          ),
+        ],
+        subject: '${p.supplierName ?? 'Purchase'} — ${p.humanId}',
+      );
+      return true;
+    }
   } catch (e, st) {
     _logPdfFailure('share', e, st);
     return false;
@@ -240,11 +261,25 @@ Future<bool> sharePurchaseFullInvoicePdf(
 ) async {
   try {
     final doc = await buildPurchaseDoc(p, biz);
-    await Printing.sharePdf(
-      bytes: await doc.save(),
-      filename: buildPurchaseSharePdfFileName(p, fullInvoice: true),
-    );
-    return true;
+    final bytes = await doc.save();
+    final filename = buildPurchaseSharePdfFileName(p, fullInvoice: true);
+    try {
+      await Printing.sharePdf(bytes: bytes, filename: filename);
+      return true;
+    } catch (printingError) {
+      debugPrint('Printing.sharePdf failed ($printingError), trying share_plus');
+      await Share.shareXFiles(
+        [
+          XFile.fromData(
+            bytes,
+            mimeType: 'application/pdf',
+            name: filename,
+          ),
+        ],
+        subject: '${p.supplierName ?? 'Purchase'} — ${p.humanId}',
+      );
+      return true;
+    }
   } catch (e, st) {
     _logPdfFailure('shareFull', e, st);
     return false;

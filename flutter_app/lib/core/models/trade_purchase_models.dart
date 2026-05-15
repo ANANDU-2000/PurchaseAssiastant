@@ -236,14 +236,21 @@ class TradePurchaseLine {
     return qty * landing;
   }
 
-  /// Gross selling when [sellingCost] is set (per-kg when weight line).
+  /// Gross selling value for the line.
+  /// Uses direct per-unit multiplication when selling rate is per-bag/box/unit.
+  /// Only multiplies by [kgPerUnit] when the rate is clearly per-kg scale
+  /// (similar magnitude to [landingCostPerKg], not per-bag scale).
   double get sellingGross {
     final rate = sellingRate ?? sellingCost;
     if (rate == null) return 0;
     if (kgPerUnit != null &&
+        kgPerUnit! > 0 &&
         landingCostPerKg != null &&
-        kgPerUnit! > 0) {
-      return qty * kgPerUnit! * rate;
+        landingCostPerKg! > 0) {
+      final directRatio = rate / landingCostPerKg!;
+      if (directRatio >= 0.5 && directRatio <= 2.0) {
+        return qty * kgPerUnit! * rate;
+      }
     }
     return qty * rate;
   }
@@ -488,6 +495,54 @@ extension TradePurchaseOptimisticPatch on TradePurchase {
       hasMissingDetails: hasMissingDetails,
       isDelivered: true,
       deliveredAt: deliveredAt ?? DateTime.now(),
+      deliveryNotes: deliveryNotes,
+    );
+  }
+
+  /// Optimistic delivery toggle (detail screen) before GET refresh.
+  TradePurchase withDelivered(bool delivered) {
+    return TradePurchase(
+      id: id,
+      humanId: humanId,
+      invoiceNumber: invoiceNumber,
+      purchaseDate: purchaseDate,
+      supplierId: supplierId,
+      brokerId: brokerId,
+      paymentDays: paymentDays,
+      dueDate: dueDate,
+      paidAmount: paidAmount,
+      paidAt: paidAt,
+      totalAmount: totalAmount,
+      storedStatus: storedStatus,
+      derivedStatus: derivedStatus,
+      remaining: remaining,
+      itemsCount: itemsCount,
+      supplierName: supplierName,
+      brokerName: brokerName,
+      supplierGst: supplierGst,
+      supplierAddress: supplierAddress,
+      supplierPhone: supplierPhone,
+      supplierWhatsapp: supplierWhatsapp,
+      brokerPhone: brokerPhone,
+      brokerLocation: brokerLocation,
+      brokerImageUrl: brokerImageUrl,
+      discount: discount,
+      commissionMode: commissionMode,
+      commissionPercent: commissionPercent,
+      commissionMoney: commissionMoney,
+      deliveredRate: deliveredRate,
+      billtyRate: billtyRate,
+      freightAmount: freightAmount,
+      freightType: freightType,
+      lines: lines,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      totalLandingSubtotal: totalLandingSubtotal,
+      totalSellingSubtotal: totalSellingSubtotal,
+      totalLineProfit: totalLineProfit,
+      hasMissingDetails: hasMissingDetails,
+      isDelivered: delivered,
+      deliveredAt: delivered ? (deliveredAt ?? DateTime.now()) : null,
       deliveryNotes: deliveryNotes,
     );
   }
