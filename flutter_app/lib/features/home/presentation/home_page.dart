@@ -161,6 +161,9 @@ class _HomePageState extends ConsumerState<HomePage>
     if (p != HomePeriod.custom) {
       ref.read(homeCustomDateRangeProvider.notifier).state = null;
     }
+    // Invalidate dashboard data to force re-fetch for the new period
+    ref.invalidate(homeDashboardDataProvider);
+    ref.invalidate(homeShellReportsProvider);
   }
 
   @override

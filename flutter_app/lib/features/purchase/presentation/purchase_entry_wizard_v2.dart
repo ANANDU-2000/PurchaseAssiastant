@@ -508,13 +508,9 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     Future<void> applyMap(Map<String, dynamic> raw) async {
       final o = Map<String, dynamic>.from(raw);
       o.remove('draftWizardMeta');
-      ref.read(purchaseDraftProvider.notifier).applyFromPrefsMap(o);
       if (!mounted) return;
       _syncControllersFromDraft();
       setState(() => _formDirty = true);
-      if (mounted) {
-        showTopSnack(context, 'Draft restored ✓');
-      }
     }
 
     if (fromHive != null && fromHive.isNotEmpty) {
@@ -581,7 +577,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     _draftDebounce?.cancel();
     _flushDraftToPrefs();
     if (!mounted || widget.editingId != null) return;
-    showTopSnack(context, 'Draft saved ✓');
+    // Auto-save is silent — no snackbar distraction
   }
 
   Future<void> _clearDraftInPrefs() async {
@@ -2193,7 +2189,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
                   controller: _wizardBodyScrollController,
                   keyboardDismissBehavior:
                       ScrollViewKeyboardDismissBehavior.manual,
-                  padding: EdgeInsets.fromLTRB(16, 12, 16, kbInset > 0 ? 12 : 100),
+                  padding: EdgeInsets.fromLTRB(16, 12, 16, kbInset > 0 ? 80 : 100),
                   child: stepContent,
                 );
           return Column(

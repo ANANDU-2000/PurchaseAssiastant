@@ -440,7 +440,10 @@ class _LoadedPurchaseScaffold extends ConsumerWidget {
     try {
       final ok = await sharePurchasePdf(p, biz);
       if (!context.mounted) return;
-      if (!ok) {
+      if (ok) {
+        if (!context.mounted) return;
+        showTopSnack(context, 'PDF ready to share');
+      } else {
         showTopSnack(
           context,
           'Could not export PDF. Check connection and retry.',
@@ -450,14 +453,7 @@ class _LoadedPurchaseScaffold extends ConsumerWidget {
             onPressed: () => _runSharePdf(context, ref),
           ),
         );
-        return;
       }
-    } catch (e) {
-      if (!context.mounted) return;
-      showTopSnack(context, 'Failed to export PDF.', isError: true);
-    }
-    if (!context.mounted) return;
-    showTopSnack(context, 'PDF ready to share');
   }
 
   Future<void> _runDownloadPdf(BuildContext context, WidgetRef ref) async {

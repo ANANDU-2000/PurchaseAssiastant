@@ -412,9 +412,10 @@ ThemeData buildHexaTheme(Brightness brightness) {
     ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
-      backgroundColor: isDark ? HexaColors.surfaceElevated : Colors.white,
+      backgroundColor: isDark ? HexaColors.surfaceElevated : const Color(0xFF1E293B),
       contentTextStyle:
-          textTheme.bodyMedium?.copyWith(color: baseScheme.onSurface),
+          textTheme.bodyMedium?.copyWith(color: Colors.white),
+      actionTextColor: const Color(0xFF5EEAD4),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       elevation: 6,
     ),
