@@ -24,9 +24,7 @@ flutter pub get
 API_URL="${API_BASE_URL:-https://my-purchases-api.onrender.com}"
 GOOGLE_ID="${GOOGLE_OAUTH_CLIENT_ID:-}"
 
-# Using --web-renderer html to save memory and improve stability on Vercel.
 flutter build web --release --verbose \
-  --web-renderer html \
   --no-web-resources-cdn \
   --no-source-maps \
   --dart-define=API_BASE_URL="$API_URL" \
