@@ -5,6 +5,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -28,6 +29,7 @@ import 'item_entry/item_entry_payload.dart';
 import 'party_inline_suggest_field.dart';
 import '../../pricing/purchase_tax_prefs.dart';
 import '../../../../core/utils/currency_utils.dart';
+import '../../../../core/providers/stock_providers.dart';
 
 String _stripKgSuffixForCatalogDisplay(String name) => name
     .replaceAll(RegExp(r'\s*\d+(\.\d+)?\s*KG\s*$', caseSensitive: false), '')
@@ -78,7 +80,7 @@ typedef PersistCatalogBagWeight = Future<void> Function({
 
 /// One purchase line: catalog search, qty/unit, landing, selling, optional
 /// tax/discount (per kg for bag with a catalog kg snapshot, else per unit).
-class PurchaseItemEntrySheet extends StatefulWidget {
+class PurchaseItemEntrySheet extends ConsumerStatefulWidget {
   const PurchaseItemEntrySheet({
     super.key,
     required this.catalog,
@@ -120,10 +122,12 @@ class PurchaseItemEntrySheet extends StatefulWidget {
   final SharedPreferences? gstPrefs;
 
   @override
-  State<PurchaseItemEntrySheet> createState() => _PurchaseItemEntrySheetState();
+  ConsumerState<PurchaseItemEntrySheet> createState() =>
+      _PurchaseItemEntrySheetState();
 }
 
-class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> with PurchaseItemEntrySheetStateMixin {
+class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
+    with PurchaseItemEntrySheetStateMixin {
   // Master rebuild default wholesale mode: inventory is count-only for BOX/TIN.
   // Advanced weight/item tracking for BOX/TIN is intentionally disabled for now.
   static const bool _advancedInventoryEnabled = false;
@@ -2990,6 +2994,58 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> with Pu
   }
 
 
+  Widget? _buildStockPreviewBar() {
+    final id = _selectedCatalogItemId;
+    if (id == null || id.isEmpty) return null;
+    final stockAsync = ref.watch(stockItemDetailProvider(id));
+    return stockAsync.when(
+      loading: () => const SizedBox(
+        height: 36,
+        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      ),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (st) {
+        final cur = _numD(st['current_stock']) ?? 0;
+        final unit =
+            (st['unit'] ?? _unitCtrl.text).toString().trim();
+        final addQty = _parseD(_qtyCtrl.text) ?? 0;
+        if (cur == 0 && addQty == 0) return const SizedBox.shrink();
+        final after = cur + addQty;
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF1F8F4),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFF99F6E4)),
+          ),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.inventory_2_outlined,
+                size: 18,
+                color: Color(0xFF2E7D32),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  addQty > 0
+                      ? 'Stock now ${_fmtQty(cur)} $unit · after purchase ~${_fmtQty(after)} $unit'
+                      : 'Stock now ${_fmtQty(cur)} $unit',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -3168,6 +3224,17 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> with Pu
                     ),
                   ),
                 ),
+              if (_selectedCatalogItemId != null &&
+                  _selectedCatalogItemId!.isNotEmpty) ...[
+                SizedBox(height: gapField),
+                ListenableBuilder(
+                  listenable: _qtyCtrl,
+                  builder: (context, _) {
+                    final bar = _buildStockPreviewBar();
+                    return bar ?? const SizedBox.shrink();
+                  },
+                ),
+              ],
               SizedBox(height: gapField),
               if (widget.fullPage)
                 _fpShell(

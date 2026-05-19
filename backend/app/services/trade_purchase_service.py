@@ -24,6 +24,7 @@ from app.schemas.trade_purchases import (
     TradePurchaseCreateRequest,
     TradePurchaseLineIn,
     TradePurchaseLineOut,
+    StockUpdateOut,
     TradePurchaseOut,
     TradePurchaseDeliveryPatch,
     TradePurchasePaymentPatch,
@@ -905,8 +906,9 @@ async def create_trade_purchase(
             )
         )
     await _sync_purchase_memory(db, business_id, body, trade_purchase_id=tp.id)
+    stock_updates: list[dict] = []
     if initial_status == "confirmed":
-        await apply_confirmed_purchase_stock(
+        stock_updates = await apply_confirmed_purchase_stock(
             db,
             business_id,
             user_id,
@@ -921,7 +923,7 @@ async def create_trade_purchase(
         .options(*_trade_purchase_load_opts())
     )
     loaded = res.scalar_one()
-    return trade_purchase_to_out(loaded)
+    return trade_purchase_to_out(loaded, stock_updates=stock_updates)
 
 
 async def update_trade_purchase(
@@ -1046,8 +1048,9 @@ async def update_trade_purchase(
         tp.paid_amount = dp.money(total_dec)
     tp.updated_at = utcnow()
     await _sync_purchase_memory(db, business_id, body, trade_purchase_id=tp.id)
+    stock_updates: list[dict] = []
     if new_status == "confirmed" and prev_status not in ("confirmed",):
-        await apply_confirmed_purchase_stock(
+        stock_updates = await apply_confirmed_purchase_stock(
             db,
             business_id,
             tp.user_id,
@@ -1061,7 +1064,7 @@ async def update_trade_purchase(
         .where(TradePurchase.id == tp.id)
         .options(*_trade_purchase_load_opts())
     )
-    return trade_purchase_to_out(res2.scalar_one())
+    return trade_purchase_to_out(res2.scalar_one(), stock_updates=stock_updates)
 
 
 async def patch_trade_purchase_payment(
@@ -1325,7 +1328,11 @@ def _line_selling_gross_db(li: TradePurchaseLine) -> Decimal:
     return dp.total(_dec(li.qty) * _dec(selling))
 
 
-def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
+def trade_purchase_to_out(
+    tp: TradePurchase,
+    *,
+    stock_updates: list[dict] | None = None,
+) -> TradePurchaseOut:
     lines = []
     sum_land = Decimal("0")
     sum_sell = Decimal("0")
@@ -1497,6 +1504,17 @@ def trade_purchase_to_out(tp: TradePurchase) -> TradePurchaseOut:
         is_delivered=bool(getattr(tp, "is_delivered", False)),
         delivered_at=getattr(tp, "delivered_at", None),
         delivery_notes=getattr(tp, "delivery_notes", None),
+        stock_updates=[
+            StockUpdateOut(
+                catalog_item_id=u["catalog_item_id"],
+                name=u["name"],
+                unit=u.get("unit"),
+                old_qty=dp.qty(u["old_qty"]),
+                new_qty=dp.qty(u["new_qty"]),
+                delta=dp.qty(u["delta"]),
+            )
+            for u in (stock_updates or [])
+        ],
     )
 
 

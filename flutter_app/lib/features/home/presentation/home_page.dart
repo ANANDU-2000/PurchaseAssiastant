@@ -18,10 +18,14 @@ import '../../../core/providers/home_owner_dashboard_providers.dart'
         homeRecentPurchasesCompactProvider,
         homeTodayDashboardDataProvider,
         stockAlertCountsProvider,
-        stockAuditRecentHomeProvider,
+        stockAuditDayProvider,
         stockCriticalCountProvider,
         stockLowCountProvider,
-        stockLowTopHomeProvider;
+        stockLowTopHomeProvider,
+        stockVariancesTodayProvider;
+import 'widgets/daily_stock_report_sheet.dart';
+import 'widgets/stock_health_score.dart';
+import '../../stock/presentation/widgets/stock_today_feed.dart';
 import '../../../core/providers/purchase_post_save_provider.dart';
 import '../../../core/notifications/local_notifications_service.dart';
 import '../../../core/providers/connectivity_provider.dart';
@@ -48,6 +52,11 @@ String _inr(num n) =>
 bool _sessionIsOwner(Session s) {
   final r = s.primaryBusiness.role.toLowerCase();
   return r == 'owner' || r == 'super_admin' || s.isSuperAdmin;
+}
+
+DateTime _todayDate() {
+  final now = DateTime.now();
+  return DateTime(now.year, now.month, now.day);
 }
 
 /// Harisree owner home: quick actions, today stats, stock, audits, recent purchases.
@@ -83,7 +92,8 @@ class _HomePageState extends ConsumerState<HomePage>
       ref.invalidate(homeTodayDashboardDataProvider);
       ref.invalidate(stockAlertCountsProvider);
       ref.invalidate(stockLowTopHomeProvider);
-      ref.invalidate(stockAuditRecentHomeProvider);
+      ref.invalidate(stockAuditDayProvider(_todayDate()));
+      ref.invalidate(stockVariancesTodayProvider);
       ref.invalidate(activeSessionsCountProvider);
       ref.invalidate(homeRecentPurchasesCompactProvider);
     });
@@ -99,7 +109,8 @@ class _HomePageState extends ConsumerState<HomePage>
       ref.invalidate(homeTodayDashboardDataProvider);
       ref.invalidate(stockAlertCountsProvider);
       ref.invalidate(stockLowTopHomeProvider);
-      ref.invalidate(stockAuditRecentHomeProvider);
+      ref.invalidate(stockAuditDayProvider(_todayDate()));
+      ref.invalidate(stockVariancesTodayProvider);
       ref.invalidate(homeRecentPurchasesCompactProvider);
       ref.invalidate(appNotificationUnreadCountProvider);
       _maybePushBackgroundAlert();
@@ -162,7 +173,8 @@ class _HomePageState extends ConsumerState<HomePage>
     ref.invalidate(stockLowCountProvider);
     ref.invalidate(stockCriticalCountProvider);
     ref.invalidate(stockLowTopHomeProvider);
-    ref.invalidate(stockAuditRecentHomeProvider);
+    ref.invalidate(stockAuditDayProvider(_todayDate()));
+    ref.invalidate(stockVariancesTodayProvider);
     ref.invalidate(activeSessionsCountProvider);
     ref.invalidate(homeRecentPurchasesCompactProvider);
     invalidateTradePurchaseCaches(ref);
@@ -184,8 +196,16 @@ class _HomePageState extends ConsumerState<HomePage>
     final critN = ref.watch(stockCriticalCountProvider);
     final sessionsN = ref.watch(activeSessionsCountProvider);
     final lowRows = ref.watch(stockLowTopHomeProvider);
-    final audits = ref.watch(stockAuditRecentHomeProvider);
+    final todayDay = _todayDate();
+    final audits = ref.watch(stockAuditDayProvider(todayDay));
+    final variances = ref.watch(stockVariancesTodayProvider);
     final recentPurch = ref.watch(homeRecentPurchasesCompactProvider);
+    final alertCounts = ref.watch(stockAlertCountsProvider).valueOrNull;
+    final stockHealth = StockHealthScore.compute(
+      lowCount: alertCounts?.low ?? lowN.valueOrNull ?? 0,
+      criticalCount: alertCounts?.critical ?? critN.valueOrNull ?? 0,
+      outCount: 0,
+    );
     final bellCount = ref.watch(notificationsUnreadCountProvider);
     final conn = ref.watch(connectivityResultsProvider);
     final offline =
@@ -282,6 +302,11 @@ class _HomePageState extends ConsumerState<HomePage>
           ],
         ),
         actions: [
+          if (isOwner)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: StockHealthScoreBadge(health: stockHealth, compact: true),
+            ),
           if (session != null)
             PopupMenuButton<String>(
               tooltip: 'Account',
@@ -357,6 +382,9 @@ class _HomePageState extends ConsumerState<HomePage>
                 onReports: () => context.go('/reports'),
                 onBulkPrint: () => context.push('/barcode/bulk-print'),
                 onUsers: () => context.push('/settings/users'),
+                onDailyReport: isOwner
+                    ? () => DailyStockReportSheet.show(context)
+                    : null,
               ),
               const SizedBox(height: 8),
               const _HomeCatalogChips(),
@@ -383,11 +411,91 @@ class _HomePageState extends ConsumerState<HomePage>
                 ),
                 child: _LowStockTable(rowsAsync: lowRows),
               ),
+              variances.when(
+                loading: () => const SizedBox.shrink(),
+                error: (_, __) => const SizedBox.shrink(),
+                data: (rows) {
+                  if (rows.isEmpty) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Material(
+                      color: const Color(0xFFFFF5F5),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: const BorderSide(color: Color(0xFFC62828)),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.warning_amber_rounded,
+                                  color: Color(0xFFC62828),
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Stock variances · ${rows.length} item(s)',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Counted stock does not match purchase qty',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade800,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            for (final v in rows.take(3))
+                              Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 2),
+                                child: Text(
+                                  '${v['item_name'] ?? 'Item'}: expected '
+                                  '${v['expected_qty'] ?? '—'} · found '
+                                  '${v['found_qty'] ?? '—'}',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
               const SizedBox(height: 10),
               OperationalSection(
-                title: 'Recent stock updates',
+                title: "Today's stock movement",
                 dense: true,
-                child: _AuditRecentList(rowsAsync: audits),
+                trailing: TextButton(
+                  onPressed: () => context.push('/stock/today-feed'),
+                  child: const Text('View all', style: TextStyle(fontSize: 12)),
+                ),
+                child: audits.when(
+                  loading: () => const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(12),
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                  error: (_, __) =>
+                      const Text('Could not load stock movement'),
+                  data: (rows) => StockTodayFeed(
+                    rows: rows,
+                    maxRows: 6,
+                  ),
+                ),
               ),
               const SizedBox(height: 10),
               OperationalSection(
@@ -453,7 +561,8 @@ class _HomePageState extends ConsumerState<HomePage>
     c.invalidate(homeTodayDashboardDataProvider);
     c.invalidate(stockAlertCountsProvider);
     c.invalidate(stockLowTopHomeProvider);
-    c.invalidate(stockAuditRecentHomeProvider);
+    c.invalidate(stockAuditDayProvider(_todayDate()));
+    c.invalidate(stockVariancesTodayProvider);
     c.invalidate(activeSessionsCountProvider);
     c.invalidate(homeRecentPurchasesCompactProvider);
   }
@@ -468,6 +577,7 @@ class _CircularQuickActionsRow extends StatelessWidget {
     required this.onReports,
     required this.onBulkPrint,
     required this.onUsers,
+    this.onDailyReport,
   });
 
   final bool isOwner;
@@ -477,6 +587,7 @@ class _CircularQuickActionsRow extends StatelessWidget {
   final VoidCallback onReports;
   final VoidCallback onBulkPrint;
   final VoidCallback onUsers;
+  final VoidCallback? onDailyReport;
 
   @override
   Widget build(BuildContext context) {
@@ -486,6 +597,8 @@ class _CircularQuickActionsRow extends StatelessWidget {
       (label: 'Purchase', icon: Icons.add_shopping_cart_outlined, onTap: onPurchase),
       (label: 'Reports', icon: Icons.bar_chart_outlined, onTap: onReports),
       (label: 'Print', icon: Icons.print_outlined, onTap: onBulkPrint),
+      if (isOwner && onDailyReport != null)
+        (label: 'Daily', icon: Icons.summarize_outlined, onTap: onDailyReport!),
       if (isOwner) (label: 'Users', icon: Icons.group_outlined, onTap: onUsers),
     ];
     return SingleChildScrollView(
@@ -675,64 +788,6 @@ class _LowStockTable extends StatelessWidget {
                   }
                 },
               ),
-              if (i < rows.length - 1)
-                const Divider(height: 1, indent: 12, endIndent: 12),
-            ],
-          ],
-        );
-      },
-    );
-  }
-}
-
-String _auditDelta(Map<String, dynamic> r) {
-  final n = coerceToDouble(r['new_qty']);
-  final o = coerceToDouble(r['old_qty']);
-  final d = n - o;
-  if ((d - d.roundToDouble()).abs() < 1e-6) return d.round().toString();
-  return d.toStringAsFixed(2);
-}
-
-class _AuditRecentList extends StatelessWidget {
-  const _AuditRecentList({required this.rowsAsync});
-
-  final AsyncValue<List<Map<String, dynamic>>> rowsAsync;
-
-  @override
-  Widget build(BuildContext context) {
-    return rowsAsync.when(
-      loading: () => const Center(child: Padding(
-        padding: EdgeInsets.all(12),
-        child: CircularProgressIndicator(strokeWidth: 2),
-      )),
-      error: (_, __) => const Text('Could not load stock audits'),
-      data: (rows) {
-        if (rows.isEmpty) {
-          return Text('No recent adjustments', style: TextStyle(color: Colors.grey.shade600));
-        }
-        return Column(
-          children: [
-            for (var i = 0; i < rows.length; i++) ...[
-              ListTile(
-                dense: true,
-                visualDensity: VisualDensity.compact,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                title: Text(
-                  (rows[i]['adjustment_type'] ?? 'Update').toString(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-                  ),
-                  subtitle: Text(
-                    '${rows[i]['updated_by_name'] ?? '—'} · ${rows[i]['updated_at'] ?? ''}',
-                    maxLines: 2,
-                    style: const TextStyle(fontSize: 11),
-                  ),
-                  trailing: Text(
-                    _auditDelta(rows[i]),
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                ),
               if (i < rows.length - 1)
                 const Divider(height: 1, indent: 12, endIndent: 12),
             ],

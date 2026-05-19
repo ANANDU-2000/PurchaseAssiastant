@@ -130,6 +130,43 @@ Future<String?> showPurchaseSavedSheet(
               style: const TextStyle(color: HexaColors.neutral, fontSize: 13),
             ),
             const Divider(height: 24),
+            if (savedJson['stock_updates'] is List &&
+                (savedJson['stock_updates'] as List).isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Material(
+                  color: const Color(0xFFE8F5E9),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Text(
+                          'Stock updated',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        for (final u in (savedJson['stock_updates'] as List).take(6))
+                          if (u is Map)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2),
+                              child: Text(
+                                '${u['item_name'] ?? u['name'] ?? 'Item'}: '
+                                '${u['old_qty'] ?? '—'} → ${u['new_qty'] ?? '—'} '
+                                '${u['unit'] ?? ''}'.trim(),
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
             if (p.hasMissingDetails)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),

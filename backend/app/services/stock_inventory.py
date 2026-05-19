@@ -37,12 +37,13 @@ async def apply_confirmed_purchase_stock(
     lines: list,
     *,
     purchase_human_id: str | None = None,
-) -> None:
-    """Increment catalog stock when a purchase is confirmed (idempotent per purchase save path)."""
+) -> list[dict]:
+    """Increment catalog stock when a purchase is confirmed; return per-line updates for API."""
     ur = await db.execute(select(User).where(User.id == user_id))
     user = ur.scalar_one_or_none()
     display = (user.name or user.username or user.email) if user else "System"
     reason = f"Purchase received{f' ({purchase_human_id})' if purchase_human_id else ''}"
+    updates: list[dict] = []
 
     for li in lines:
         cid = getattr(li, "catalog_item_id", None)
@@ -63,6 +64,7 @@ async def apply_confirmed_purchase_stock(
             continue
         old_qty = catalog_stock_qty(item)
         new_qty = old_qty + qty
+        unit = item.stock_unit or item.default_unit or item.selling_unit
         db.add(
             StockAdjustmentLog(
                 business_id=business_id,
@@ -78,3 +80,14 @@ async def apply_confirmed_purchase_stock(
         item.current_stock = new_qty
         item.last_stock_updated_at = datetime.now(timezone.utc)
         item.last_stock_updated_by = display
+        updates.append(
+            {
+                "catalog_item_id": item.id,
+                "name": item.name,
+                "unit": unit,
+                "old_qty": old_qty,
+                "new_qty": new_qty,
+                "delta": qty,
+            }
+        )
+    return updates

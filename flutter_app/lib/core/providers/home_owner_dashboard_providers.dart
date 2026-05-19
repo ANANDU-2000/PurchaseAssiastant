@@ -84,6 +84,28 @@ final stockAuditRecentHomeProvider =
       );
 });
 
+/// Stock adjustments for a single calendar day (owner today feed).
+final stockAuditDayProvider = FutureProvider.autoDispose
+    .family<List<Map<String, dynamic>>, DateTime>((ref, day) async {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return [];
+  final d = DateTime(day.year, day.month, day.day);
+  return ref.read(hexaApiProvider).listStockAuditRecent(
+        businessId: session.primaryBusiness.id,
+        limit: 50,
+        on: _apiDate(d),
+      );
+});
+
+final stockVariancesTodayProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return [];
+  return ref.read(hexaApiProvider).listStockVariancesToday(
+        businessId: session.primaryBusiness.id,
+      );
+});
+
 final activeSessionsCountProvider = FutureProvider.autoDispose<int>((ref) async {
   final session = ref.watch(sessionProvider);
   if (session == null) return 0;

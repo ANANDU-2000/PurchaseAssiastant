@@ -57,6 +57,7 @@ import '../../features/barcode/presentation/barcode_scan_page.dart';
 import '../../features/stock/presentation/stock_page.dart';
 import '../../features/stock/presentation/reorder_list_page.dart';
 import '../../features/stock/presentation/stock_history_page.dart';
+import '../../features/stock/presentation/stock_today_feed_page.dart';
 import '../../features/staff/presentation/staff_home_page.dart';
 import '../../features/staff/presentation/staff_shell_screen.dart';
 import '../../features/staff/presentation/staff_activity_page.dart';
@@ -299,6 +300,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
           child: const ReorderListPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/stock/today-feed',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const StockTodayFeedPage(),
         ),
       ),
       GoRoute(

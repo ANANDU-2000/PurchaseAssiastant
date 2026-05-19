@@ -4,11 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/home_owner_dashboard_providers.dart';
 import '../../../core/providers/reorder_list_provider.dart';
 import '../../../core/providers/stock_providers.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
+import '../../home/presentation/widgets/stock_health_score.dart';
+import 'widgets/stock_today_feed.dart';
 import '../../../core/router/navigation_ext.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
@@ -23,16 +26,36 @@ class StockPage extends ConsumerStatefulWidget {
   ConsumerState<StockPage> createState() => _StockPageState();
 }
 
-class _StockPageState extends ConsumerState<StockPage> {
+final stockPageLowListProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return [];
+  final m = await ref.read(hexaApiProvider).listStockLow(
+        businessId: session.primaryBusiness.id,
+        page: 1,
+        perPage: 100,
+      );
+  final items = m['items'];
+  if (items is! List) return [];
+  return [
+    for (final e in items)
+      if (e is Map) Map<String, dynamic>.from(e),
+  ];
+});
+
+class _StockPageState extends ConsumerState<StockPage>
+    with TickerProviderStateMixin {
   final _searchCtrl = TextEditingController();
   final _subcatCtrl = TextEditingController();
   final _scroll = ScrollController();
   Timer? _debounce;
   bool _loadingMore = false;
+  late final TabController _mainTabs;
 
   @override
   void initState() {
     super.initState();
+    _mainTabs = TabController(length: 5, vsync: this);
     _searchCtrl.addListener(_onSearchChanged);
     _subcatCtrl.text = ref.read(stockListQueryProvider).subcategory;
     _scroll.addListener(_onScrollLoadMore);
@@ -72,6 +95,7 @@ class _StockPageState extends ConsumerState<StockPage> {
 
   @override
   void dispose() {
+    _mainTabs.dispose();
     _debounce?.cancel();
     _scroll.dispose();
     _searchCtrl.dispose();
@@ -130,6 +154,18 @@ class _StockPageState extends ConsumerState<StockPage> {
     final lowN = ref.watch(stockLowCountProvider).valueOrNull ?? 0;
     final critN = ref.watch(stockCriticalCountProvider).valueOrNull ?? 0;
     final reorderN = ref.watch(reorderPendingCountProvider).valueOrNull ?? 0;
+    final alertCounts = ref.watch(stockAlertCountsProvider).valueOrNull;
+    final stockHealth = StockHealthScore.compute(
+      lowCount: alertCounts?.low ?? lowN,
+      criticalCount: alertCounts?.critical ?? critN,
+      outCount: 0,
+    );
+    final now = DateTime.now();
+    final todayDay = DateTime(now.year, now.month, now.day);
+    final todayAudits = ref.watch(stockAuditDayProvider(todayDay));
+    final todayCount = todayAudits.valueOrNull?.length ?? 0;
+    final listTotal = listAsync.valueOrNull?['total'] as int? ?? 0;
+    final lowTabCount = lowN + critN;
 
     ref.listen(stockListProvider, (prev, next) {
       if (next.hasValue && _loadingMore) {
@@ -148,6 +184,12 @@ class _StockPageState extends ConsumerState<StockPage> {
               ),
         title: const Text('Stock'),
         actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: Center(
+              child: StockHealthScoreBadge(health: stockHealth, compact: true),
+            ),
+          ),
           IconButton(
             tooltip: 'Reorder list',
             onPressed: () => context.push('/stock/reorder'),
@@ -165,6 +207,56 @@ class _StockPageState extends ConsumerState<StockPage> {
         ],
       ),
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TabBar(
+            controller: _mainTabs,
+            isScrollable: true,
+            tabs: [
+              Tab(text: 'All ($listTotal)'),
+              Tab(text: 'Low ($lowTabCount)'),
+              Tab(text: 'Today ($todayCount)'),
+              const Tab(text: 'Category'),
+              const Tab(text: 'Scan'),
+            ],
+          ),
+          Expanded(
+            child: TabBarView(
+              controller: _mainTabs,
+              children: [
+                _buildAllTab(
+                  theme: theme,
+                  cs: cs,
+                  q: q,
+                  listAsync: listAsync,
+                  catsAsync: catsAsync,
+                  suppliersAsync: suppliersAsync,
+                  lowN: lowN,
+                  critN: critN,
+                ),
+                _buildLowTab(lowN: lowN, critN: critN),
+                _buildTodayTab(todayDay: todayDay, todayAudits: todayAudits),
+                _buildCategoryTab(listAsync: listAsync, theme: theme, cs: cs),
+                _buildScanTab(),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAllTab({
+    required ThemeData theme,
+    required ColorScheme cs,
+    required StockListQuery q,
+    required AsyncValue<Map<String, dynamic>> listAsync,
+    required AsyncValue<List<Map<String, dynamic>>> catsAsync,
+    required AsyncValue<List<Map<String, dynamic>>> suppliersAsync,
+    required int lowN,
+    required int critN,
+  }) {
+    return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
@@ -611,6 +703,216 @@ class _StockPageState extends ConsumerState<StockPage> {
             ),
           ),
         ],
+      );
+  }
+
+  Widget _buildLowTab({required int lowN, required int critN}) {
+    final lowAsync = ref.watch(stockPageLowListProvider);
+    final session = ref.watch(sessionProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Material(
+          color: const Color(0xFFFFF3E0),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: Text(
+              '$lowN low · $critN critical — tap Order to add to reorder list',
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+            ),
+          ),
+        ),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(stockPageLowListProvider);
+              await ref.read(stockPageLowListProvider.future);
+            },
+            child: lowAsync.when(
+              loading: () => const ListSkeleton(),
+              error: (_, __) => FriendlyLoadError(
+                message: 'Could not load low stock',
+                onRetry: () => ref.invalidate(stockPageLowListProvider),
+              ),
+              data: (rows) {
+                if (rows.isEmpty) {
+                  return ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: const [
+                      SizedBox(height: 120),
+                      Center(child: Text('No low-stock items')),
+                    ],
+                  );
+                }
+                return ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  itemCount: rows.length,
+                  itemBuilder: (ctx, i) {
+                    final row = rows[i];
+                    final id = row['id']?.toString() ?? '';
+                    final name = row['name']?.toString() ?? '—';
+                    final cur = _fmtQty(row['current_stock']);
+                    final ro = _fmtQty(row['reorder_level']);
+                    final unit = row['unit']?.toString() ?? '';
+                    return ListTile(
+                      title: Text(name, style: const TextStyle(fontWeight: FontWeight.w800)),
+                      subtitle: Text(
+                        'Stock $cur · Reorder $ro${unit.isNotEmpty ? ' $unit' : ''}',
+                      ),
+                      trailing: OutlinedButton(
+                        onPressed: session == null || id.isEmpty
+                            ? null
+                            : () async {
+                                await ref.read(hexaApiProvider).addItemToReorderList(
+                                      businessId: session.primaryBusiness.id,
+                                      itemId: id,
+                                    );
+                                if (!context.mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Added $name to reorder list')),
+                                );
+                              },
+                        child: const Text('Order'),
+                      ),
+                      onTap: id.isNotEmpty
+                          ? () => context.push('/catalog/item/$id')
+                          : null,
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTodayTab({
+    required DateTime todayDay,
+    required AsyncValue<List<Map<String, dynamic>>> todayAudits,
+  }) {
+    return RefreshIndicator(
+      onRefresh: () async {
+        ref.invalidate(stockAuditDayProvider(todayDay));
+        await ref.read(stockAuditDayProvider(todayDay).future);
+      },
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  "Today's stock movement",
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                ),
+              ),
+              TextButton(
+                onPressed: () => context.push('/stock/today-feed'),
+                child: const Text('Full page'),
+              ),
+            ],
+          ),
+          todayAudits.when(
+            loading: () => const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+            error: (_, __) => const Text('Could not load today\'s activity'),
+            data: (rows) => StockTodayFeed(rows: rows),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryTab({
+    required AsyncValue<Map<String, dynamic>> listAsync,
+    required ThemeData theme,
+    required ColorScheme cs,
+  }) {
+    return listAsync.when(
+      loading: () => const ListSkeleton(),
+      error: (_, __) => FriendlyLoadError(
+        message: 'Could not load stock',
+        onRetry: () => ref.invalidate(stockListProvider),
+      ),
+      data: (data) {
+        final items = (data['items'] as List?) ?? const [];
+        final byCat = <String, List<Map<String, dynamic>>>{};
+        for (final raw in items) {
+          if (raw is! Map) continue;
+          final row = Map<String, dynamic>.from(raw);
+          final cat = (row['category_name'] ?? 'Uncategorized').toString();
+          byCat.putIfAbsent(cat, () => []).add(row);
+        }
+        final keys = byCat.keys.toList()..sort();
+        if (keys.isEmpty) {
+          return Center(
+            child: Text(
+              'No items to group',
+              style: theme.textTheme.bodyLarge?.copyWith(color: cs.onSurfaceVariant),
+            ),
+          );
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          itemCount: keys.length,
+          itemBuilder: (ctx, i) {
+            final cat = keys[i];
+            final rows = byCat[cat]!;
+            return ExpansionTile(
+              title: Text('$cat (${rows.length})',
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
+              children: [
+                for (final row in rows.take(20))
+                  ListTile(
+                    dense: true,
+                    title: Text(row['name']?.toString() ?? '—'),
+                    trailing: Text(_fmtQty(row['current_stock'])),
+                    onTap: () {
+                      final id = row['id']?.toString();
+                      if (id != null && id.isNotEmpty) {
+                        context.push('/catalog/item/$id');
+                      }
+                    },
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildScanTab() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.qr_code_scanner_rounded,
+                size: 64, color: HexaColors.brandPrimary.withValues(alpha: 0.8)),
+            const SizedBox(height: 16),
+            const Text(
+              'Scan barcode to look up or update stock',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: () => context.push('/barcode/scan'),
+              icon: const Icon(Icons.qr_code_scanner_rounded),
+              label: const Text('Open scanner'),
+            ),
+          ],
+        ),
       ),
     );
   }

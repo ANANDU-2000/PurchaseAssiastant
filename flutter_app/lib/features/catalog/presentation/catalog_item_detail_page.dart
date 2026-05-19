@@ -35,6 +35,7 @@ import '../../../shared/widgets/trade_intel_cards.dart';
 import '../../../shared/widgets/search_picker_sheet.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
 import '../../stock/presentation/update_stock_sheet.dart';
+import '../../stock/presentation/widgets/stock_today_feed.dart';
 
 class CatalogItemDetailPage extends ConsumerStatefulWidget {
   const CatalogItemDetailPage({super.key, required this.itemId});
@@ -1068,22 +1069,59 @@ class _CatalogItemStockHistorySection extends ConsumerWidget {
                   : diff < 0
                       ? cs.error
                       : cs.outline;
+              final expected = r['expected_qty'];
+              final found = r['found_qty'];
+              final reason = r['reason']?.toString().trim();
+              String? varianceLine;
+              if (expected != null && found != null) {
+                varianceLine =
+                    'Variance: expected $expected · found $found';
+              } else if (reason != null &&
+                  reason.isNotEmpty &&
+                  reason.toLowerCase().contains('variance')) {
+                varianceLine = reason;
+              }
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
                       width: 8,
                       height: 8,
+                      margin: const EdgeInsets.only(top: 5),
                       decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: Text(
-                        '${diff >= 0 ? '+' : ''}${diff == diff.roundToDouble() ? diff.toInt() : diff.toStringAsFixed(1)} '
-                        '(${oldQ.toStringAsFixed(0)} → ${newQ.toStringAsFixed(0)}) · '
-                        '${r['adjustment_type'] ?? ''}',
-                        style: theme.textTheme.bodySmall,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  '${diff >= 0 ? '+' : ''}${diff == diff.roundToDouble() ? diff.toInt() : diff.toStringAsFixed(1)} '
+                                  '(${oldQ.toStringAsFixed(0)} → ${newQ.toStringAsFixed(0)})',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              StockAdjustmentSourceBadge(
+                                adjustmentType: r['adjustment_type']?.toString(),
+                              ),
+                            ],
+                          ),
+                          if (varianceLine != null)
+                            Text(
+                              varianceLine,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: cs.error,
+                                fontSize: 11,
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ],

@@ -5,18 +5,22 @@ alwaysApply: true
 
 # Purchase Assistant — MASTER agent rules
 
+**Session start:** Read `CURRENT_CONTEXT.md`, `PROGRESS_LOG.md`, and `docs/harisree/MASTER_REFERENCE.md` before coding (Harisree product truth: infra, UX, pages, deploy). Index: `docs/harisree/README.md`.
+
 Read and follow (in order when trade-offs arise):
 
-1. `context/rules/MASTER_CURSOR_RULES.md` — business + ERP non‑negotiables (matching, units, reports, delete parity).
-2. `context/rules/AUTONOMOUS_CURSOR_EXECUTION_RULES.md` — execution: trace dependents, validate, update trackers.
-3. `context/rules/MASTER_AGENT_RULES.md` — legacy/agent baseline (still applies where not superseded).
-4. `context/rules/CURSOR_AGENT_EXECUTION_PROMPT.md`
-5. `context/rules/AI_SCANNER_SYSTEM_PROMPT.md`
+1. `docs/harisree/MASTER_REFERENCE.md` — Harisree infra, UX system, page matrix, priorities, Render Step 0.
+2. `context/rules/MASTER_CURSOR_RULES.md` — business + ERP non‑negotiables (matching, units, reports, delete parity).
+3. `context/rules/AUTONOMOUS_CURSOR_EXECUTION_RULES.md` — execution: trace dependents, validate, update trackers.
+4. `context/rules/MASTER_AGENT_RULES.md` — legacy/agent baseline (still applies where not superseded).
+5. `context/rules/CURSOR_AGENT_EXECUTION_PROMPT.md`
+6. `context/rules/AI_SCANNER_SYSTEM_PROMPT.md`
 
 **Implementation note:** Purchase bills use **OpenAI Vision → strict JSON** on the backend. Policy docs may say “OCR/raw extraction”; that means **extracted text fields**, not third‑party OCR SDKs. Never add parallel client‑side “financial truth.”
 
 ## Trackers (update after meaningful changes)
 
+- Harisree docs: `docs/harisree/` (`MASTER_REFERENCE.md`, `FEATURES_DEEP_PLAN.md`, `README.md`)
 - Root: `PROJECT_STATUS.md`, `CURRENT_CONTEXT.md`, `BUGS.md`, `TASKS.md`, `TRACK.md`, `SCAN_ENGINE.md`, `MATCH_ENGINE.md`, `REPORT_ENGINE.md`, `PROGRESS_LOG.md`, `ARCHITECTURE_STATE.md`
 
 ## Non‑negotiables

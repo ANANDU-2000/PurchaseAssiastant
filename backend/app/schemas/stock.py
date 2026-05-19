@@ -51,14 +51,30 @@ class StockDetailOut(StockListItemOut):
 
 class StockAdjustmentOut(BaseModel):
     id: uuid.UUID
+    item_id: uuid.UUID | None = None
+    item_name: str | None = None
+    item_code: str | None = None
+    unit: str | None = None
     old_qty: Decimal
     new_qty: Decimal
     adjustment_type: str
     reason: str | None
     updated_by_name: str | None
     updated_at: datetime
+    variance_expected_qty: Decimal | None = None
+    variance_delta: Decimal | None = None
 
     model_config = {"from_attributes": True}
+
+
+class StockVarianceOut(BaseModel):
+    item_id: uuid.UUID
+    item_name: str
+    expected_qty: Decimal
+    found_qty: Decimal
+    variance_delta: Decimal
+    unit: str | None = None
+    updated_at: datetime | None = None
 
 
 class BarcodeLookupOut(BaseModel):

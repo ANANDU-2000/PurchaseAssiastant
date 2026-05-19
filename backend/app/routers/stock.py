@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timezone
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -29,6 +29,7 @@ from app.schemas.stock import (
     BarcodeLabelOut,
     BarcodeLookupOut,
     StockAdjustmentOut,
+    StockVarianceOut,
     StockDetailOut,
     StockListItemOut,
     StockListOut,
@@ -39,6 +40,10 @@ from app.schemas.stock import (
     ReorderListPatchIn,
 )
 from app.services.stock_inventory import catalog_reorder, catalog_stock_qty, stock_status
+from app.services.stock_variance_notifications import (
+    _last_purchase_expected_qty,
+    maybe_notify_stock_variance,
+)
 
 router = APIRouter(prefix="/v1/businesses/{business_id}/stock", tags=["stock"])
 
@@ -296,20 +301,111 @@ async def barcode_lookup(
     )
 
 
+async def _adjustments_to_out(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    logs: list[StockAdjustmentLog],
+) -> list[StockAdjustmentOut]:
+    if not logs:
+        return []
+    item_ids = {log.item_id for log in logs}
+    ir = await db.execute(
+        select(CatalogItem).where(
+            CatalogItem.business_id == business_id,
+            CatalogItem.id.in_(item_ids),
+        )
+    )
+    items = {i.id: i for i in ir.scalars().all()}
+    out: list[StockAdjustmentOut] = []
+    for log in logs:
+        item = items.get(log.item_id)
+        var_exp: Decimal | None = None
+        var_delta: Decimal | None = None
+        if log.adjustment_type in ("verification", "correction", "manual"):
+            exp = await _last_purchase_expected_qty(db, business_id, log.item_id)
+            if exp is not None:
+                var_exp = exp
+                var_delta = log.new_qty - exp
+        out.append(
+            StockAdjustmentOut(
+                id=log.id,
+                item_id=log.item_id,
+                item_name=item.name if item else None,
+                item_code=item.item_code if item else None,
+                unit=(item.stock_unit or item.default_unit) if item else None,
+                old_qty=log.old_qty,
+                new_qty=log.new_qty,
+                adjustment_type=log.adjustment_type,
+                reason=log.reason,
+                updated_by_name=log.updated_by_name,
+                updated_at=log.updated_at,
+                variance_expected_qty=var_exp,
+                variance_delta=var_delta,
+            )
+        )
+    return out
+
+
 @router.get("/audit/recent", response_model=list[StockAdjustmentOut])
 async def recent_adjustments_all(
     business_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
     _m: Annotated[Membership, Depends(require_membership)],
-    limit: int = Query(5, ge=1, le=50),
+    limit: int = Query(5, ge=1, le=100),
+    on: date | None = Query(None, description="Filter to calendar day (UTC) YYYY-MM-DD"),
 ):
-    r = await db.execute(
-        select(StockAdjustmentLog)
-        .where(StockAdjustmentLog.business_id == business_id)
-        .order_by(desc(StockAdjustmentLog.updated_at))
-        .limit(limit)
+    stmt = select(StockAdjustmentLog).where(
+        StockAdjustmentLog.business_id == business_id,
     )
-    return [StockAdjustmentOut.model_validate(x) for x in r.scalars().all()]
+    if on is not None:
+        start = datetime.combine(on, time.min, tzinfo=timezone.utc)
+        end = datetime.combine(on, time.max, tzinfo=timezone.utc)
+        stmt = stmt.where(
+            StockAdjustmentLog.updated_at >= start,
+            StockAdjustmentLog.updated_at <= end,
+        )
+    r = await db.execute(stmt.order_by(desc(StockAdjustmentLog.updated_at)).limit(limit))
+    return await _adjustments_to_out(db, business_id, list(r.scalars().all()))
+
+
+@router.get("/variances/today", response_model=list[StockVarianceOut])
+async def variances_today(
+    business_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+):
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    start = datetime.combine(date.fromisoformat(day), time.min, tzinfo=timezone.utc)
+    r = await db.execute(
+        select(AppNotification)
+        .where(
+            AppNotification.business_id == business_id,
+            AppNotification.kind == "stock_variance",
+            AppNotification.created_at >= start,
+        )
+        .order_by(desc(AppNotification.created_at))
+        .limit(50)
+    )
+    rows: list[StockVarianceOut] = []
+    seen: set[str] = set()
+    for n in r.scalars().all():
+        p = n.payload or {}
+        iid = p.get("item_id")
+        if not iid or iid in seen:
+            continue
+        seen.add(iid)
+        rows.append(
+            StockVarianceOut(
+                item_id=uuid.UUID(str(iid)),
+                item_name=str(p.get("item_name") or "Item"),
+                expected_qty=Decimal(str(p.get("expected_qty", 0))),
+                found_qty=Decimal(str(p.get("found_qty", 0))),
+                variance_delta=Decimal(str(p.get("variance_delta", 0))),
+                unit=p.get("unit"),
+                updated_at=n.created_at,
+            )
+        )
+    return rows
 
 
 @router.get("/audit/{item_id}", response_model=list[StockAdjustmentOut])
@@ -328,7 +424,7 @@ async def audit_for_item(
         .order_by(desc(StockAdjustmentLog.updated_at))
         .limit(50)
     )
-    return [StockAdjustmentOut.model_validate(x) for x in r.scalars().all()]
+    return await _adjustments_to_out(db, business_id, list(r.scalars().all()))
 
 
 async def _barcode_label(
@@ -494,6 +590,13 @@ async def patch_stock_item(
     item.last_stock_updated_at = datetime.now(timezone.utc)
     item.last_stock_updated_by = display
     db.add(log)
+    await maybe_notify_stock_variance(
+        db,
+        business_id=business_id,
+        item_id=item_id,
+        adjustment_type=body.adjustment_type,
+        new_qty=new_qty,
+    )
     await db.commit()
     await db.refresh(item)
 

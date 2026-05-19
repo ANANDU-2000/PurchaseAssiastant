@@ -275,6 +275,15 @@ class TradePurchaseLineOut(DecimalModel):
     )
 
 
+class StockUpdateOut(DecimalModel):
+    catalog_item_id: uuid.UUID
+    name: str
+    unit: str | None = None
+    old_qty: Decimal
+    new_qty: Decimal
+    delta: Decimal
+
+
 class TradePurchaseOut(DecimalModel):
     id: uuid.UUID
     human_id: str
@@ -321,6 +330,7 @@ class TradePurchaseOut(DecimalModel):
     is_delivered: bool = False
     delivered_at: datetime | None = None
     delivery_notes: str | None = None
+    stock_updates: list[StockUpdateOut] = Field(default_factory=list)
 
 
 class TradePurchaseDeliveryPatch(DecimalModel):

@@ -1874,10 +1874,31 @@ class HexaApi {
   Future<List<Map<String, dynamic>>> listStockAuditRecent({
     required String businessId,
     int limit = 12,
+    /// Calendar day filter (YYYY-MM-DD). Omit for latest across all days.
+    String? on,
   }) async {
     final res = await _dio.get<dynamic>(
       '/v1/businesses/$businessId/stock/audit/recent',
-      queryParameters: {'limit': limit},
+      queryParameters: {
+        'limit': limit,
+        if (on != null && on.isNotEmpty) 'on': on,
+      },
+    );
+    final data = res.data;
+    if (data is! List) return [];
+    return [
+      for (final e in data)
+        if (e is Map<String, dynamic>) e
+        else if (e is Map) Map<String, dynamic>.from(e),
+    ];
+  }
+
+  /// Today's stock count variances (purchase qty vs verification).
+  Future<List<Map<String, dynamic>>> listStockVariancesToday({
+    required String businessId,
+  }) async {
+    final res = await _dio.get<dynamic>(
+      '/v1/businesses/$businessId/stock/variances/today',
     );
     final data = res.data;
     if (data is! List) return [];
