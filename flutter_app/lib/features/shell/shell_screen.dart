@@ -55,7 +55,7 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
             break;
           case ShellBranch.stock:
             ref.invalidate(stockListProvider);
-            ref.invalidate(stockLowCountProvider);
+            ref.invalidate(stockAlertCountsProvider);
             break;
           default:
             break;

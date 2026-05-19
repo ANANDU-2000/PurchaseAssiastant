@@ -34,6 +34,9 @@ from app.schemas.stock import (
     StockListOut,
     StockPatchIn,
     RecentPurchaseOut,
+    ReorderListEntryOut,
+    ReorderListOut,
+    ReorderListPatchIn,
 )
 from app.services.stock_inventory import catalog_reorder, catalog_stock_qty, stock_status
 
@@ -610,3 +613,107 @@ async def add_item_to_reorder_list(
         )
     await db.commit()
     return {"ok": True, "item_id": str(item_id), "status": "pending"}
+
+
+@router.get("/reorder", response_model=ReorderListOut)
+async def list_reorder_entries(
+    business_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+    status: str = "pending",
+):
+    st = (status or "pending").strip().lower()
+    if st not in ("pending", "ordered", "done", "all"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid status filter")
+
+    q = (
+        select(ReorderListEntry, CatalogItem)
+        .join(CatalogItem, CatalogItem.id == ReorderListEntry.item_id)
+        .where(
+            ReorderListEntry.business_id == business_id,
+            CatalogItem.deleted_at.is_(None),
+        )
+        .order_by(ReorderListEntry.created_at.desc())
+    )
+    if st != "all":
+        q = q.where(ReorderListEntry.status == st)
+    rows = (await db.execute(q)).all()
+    items: list[ReorderListEntryOut] = []
+    for entry, item in rows:
+        cur = catalog_stock_qty(item)
+        ro = catalog_reorder(item)
+        items.append(
+            ReorderListEntryOut(
+                id=entry.id,
+                item_id=item.id,
+                item_name=item.name,
+                item_code=item.item_code,
+                current_stock=cur,
+                reorder_level=ro,
+                unit=item.default_unit,
+                status=entry.status,
+                added_by_name=entry.added_by_name,
+                created_at=entry.created_at,
+                updated_at=entry.updated_at,
+            )
+        )
+    return ReorderListOut(items=items, total=len(items))
+
+
+@router.patch("/reorder/{entry_id}", response_model=ReorderListEntryOut)
+async def patch_reorder_entry(
+    business_id: uuid.UUID,
+    entry_id: uuid.UUID,
+    body: ReorderListPatchIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+):
+    r = await db.execute(
+        select(ReorderListEntry, CatalogItem)
+        .join(CatalogItem, CatalogItem.id == ReorderListEntry.item_id)
+        .where(
+            ReorderListEntry.id == entry_id,
+            ReorderListEntry.business_id == business_id,
+        )
+    )
+    row = r.first()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Reorder entry not found")
+    entry, item = row
+    entry.status = body.status
+    entry.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(entry)
+    return ReorderListEntryOut(
+        id=entry.id,
+        item_id=item.id,
+        item_name=item.name,
+        item_code=item.item_code,
+        current_stock=catalog_stock_qty(item),
+        reorder_level=catalog_reorder(item),
+        unit=item.default_unit,
+        status=entry.status,
+        added_by_name=entry.added_by_name,
+        created_at=entry.created_at,
+        updated_at=entry.updated_at,
+    )
+
+
+@router.delete("/reorder/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_reorder_entry(
+    business_id: uuid.UUID,
+    entry_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+):
+    r = await db.execute(
+        select(ReorderListEntry).where(
+            ReorderListEntry.id == entry_id,
+            ReorderListEntry.business_id == business_id,
+        )
+    )
+    entry = r.scalar_one_or_none()
+    if entry is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Reorder entry not found")
+    await db.delete(entry)
+    await db.commit()

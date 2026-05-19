@@ -89,3 +89,26 @@ class BarcodeBatchIn(BaseModel):
 
 class BarcodeBatchOut(BaseModel):
     labels: list[BarcodeLabelOut]
+
+
+class ReorderListEntryOut(BaseModel):
+    id: uuid.UUID
+    item_id: uuid.UUID
+    item_name: str
+    item_code: str | None
+    current_stock: Decimal
+    reorder_level: Decimal
+    unit: str | None
+    status: str
+    added_by_name: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ReorderListOut(BaseModel):
+    items: list[ReorderListEntryOut]
+    total: int
+
+
+class ReorderListPatchIn(BaseModel):
+    status: str = Field(pattern="^(pending|ordered|done)$")

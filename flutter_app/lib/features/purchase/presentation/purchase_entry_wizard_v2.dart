@@ -1167,8 +1167,12 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
                       tid.isEmpty) {
                     return null;
                   }
+                  final supId = draft.supplierId?.trim();
+                  final q = supId != null && supId.isNotEmpty
+                      ? '?defaultSupplierId=${Uri.encodeComponent(supId)}'
+                      : '';
                   final res = await ctx.push<Map<String, dynamic>?>(
-                    '/catalog/category/$catId/type/$tid/add-item',
+                    '/catalog/category/$catId/type/$tid/add-item$q',
                   );
                   if (!ctx.mounted) return null;
                   if (res != null &&

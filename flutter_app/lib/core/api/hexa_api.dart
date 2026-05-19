@@ -1946,6 +1946,41 @@ class HexaApi {
     );
   }
 
+  Future<List<Map<String, dynamic>>> listReorderEntries({
+    required String businessId,
+    String status = 'pending',
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/stock/reorder',
+      queryParameters: {'status': status},
+    );
+    final data = res.data;
+    final items = data?['items'];
+    if (items is! List) return [];
+    return [for (final e in items) if (e is Map) Map<String, dynamic>.from(e)];
+  }
+
+  Future<Map<String, dynamic>> patchReorderEntry({
+    required String businessId,
+    required String entryId,
+    required String status,
+  }) async {
+    final res = await _dio.patch<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/stock/reorder/$entryId',
+      data: {'status': status},
+    );
+    return Map<String, dynamic>.from(res.data ?? {});
+  }
+
+  Future<void> deleteReorderEntry({
+    required String businessId,
+    required String entryId,
+  }) async {
+    await _dio.delete<void>(
+      '/v1/businesses/$businessId/stock/reorder/$entryId',
+    );
+  }
+
   /// Authoritative stock adjustment (audit logged on server).
   Future<List<Map<String, dynamic>>> listStockAuditForItem({
     required String businessId,

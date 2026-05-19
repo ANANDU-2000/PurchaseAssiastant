@@ -55,6 +55,7 @@ import '../../features/barcode/presentation/barcode_print_page.dart';
 import '../../features/barcode/presentation/bulk_barcode_print_page.dart';
 import '../../features/barcode/presentation/barcode_scan_page.dart';
 import '../../features/stock/presentation/stock_page.dart';
+import '../../features/stock/presentation/reorder_list_page.dart';
 import '../../features/stock/presentation/stock_history_page.dart';
 import '../../features/staff/presentation/staff_home_page.dart';
 import '../../features/staff/presentation/staff_shell_screen.dart';
@@ -292,6 +293,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             child: CatalogItemDetailPage(itemId: id),
           );
         },
+      ),
+      GoRoute(
+        path: '/stock/reorder',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const ReorderListPage(),
+        ),
       ),
       GoRoute(
         path: '/stock/:itemId/history',

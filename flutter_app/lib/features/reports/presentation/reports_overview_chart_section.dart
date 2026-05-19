@@ -227,52 +227,185 @@ class ReportsOverviewChartSection extends StatelessWidget {
     final mix = _packMixSlices(agg);
     final t = agg.totals;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Center(
-        child: RepaintBoundary(
-          child: SpendRingChart(
-            diameter: diameter,
-            strokeWidth: math.max(7.0, diameter * 0.045),
-            values: mix.values,
-            colors: mix.colors,
-            centerChild: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Purchase mix',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.grey.shade700,
-                    letterSpacing: 0.2,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _inr0(t.inr.round()),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 16,
-                    color: Color(0xFF0F172A),
-                  ),
-                ),
-                if (t.deals > 0)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey.shade200),
+            boxShadow: [
+              BoxShadow(
+                blurRadius: 4,
+                color: Colors.black.withValues(alpha: 0.06),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
                     child: Text(
-                      '${t.deals} classified deals',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey.shade600,
+                      _inr0(t.inr.round()),
+                      style: const TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        color: HexaColors.brandPrimary,
                       ),
                     ),
                   ),
-              ],
+                  TextButton.icon(
+                    onPressed: onMatchHome,
+                    icon: const Icon(Icons.compare_arrows_rounded, size: 16),
+                    label: const Text('Match home'),
+                  ),
+                ],
+              ),
+              Text(
+                _packSummaryLine(agg),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: _MetricTile(
+                      label: 'PURCHASES',
+                      value: '${agg.purchasesIncluded.length}',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _MetricTile(
+                      label: 'ITEMS',
+                      value: '${agg.itemsAll.length}',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _MetricTile(
+                      label: 'SUPPLIERS',
+                      value: '${agg.suppliers.length}',
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Center(
+            child: RepaintBoundary(
+              child: SpendRingChart(
+                diameter: diameter,
+                strokeWidth: math.max(7.0, diameter * 0.045),
+                values: mix.values,
+                colors: mix.colors,
+                centerChild: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Purchase mix',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.grey.shade700,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _inr0(t.inr.round()),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                    if (t.deals > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          '${t.deals} classified deals',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
+      ],
+    );
+  }
+}
+
+String _packSummaryLine(TradeReportAgg agg) {
+  final t = agg.totals;
+  final parts = <String>[];
+  if (t.bags > 0.5) {
+    parts.add('${t.bags.round()} ${t.bags == 1 ? 'BAG' : 'BAGS'}');
+  }
+  if (t.boxes > 0.5) {
+    parts.add('${t.boxes.round()} ${t.boxes == 1 ? 'BOX' : 'BOXES'}');
+  }
+  if (t.kg > 0.5) {
+    parts.add('${t.kg.round()} KG');
+  }
+  if (parts.isEmpty) return 'No pack totals';
+  return parts.join(' • ');
+}
+
+class _MetricTile extends StatelessWidget {
+  const _MetricTile({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              color: Colors.grey.shade600,
+              letterSpacing: 0.3,
+            ),
+          ),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+        ],
       ),
     );
   }

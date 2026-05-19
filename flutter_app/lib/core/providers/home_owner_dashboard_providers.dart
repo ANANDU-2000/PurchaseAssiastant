@@ -29,28 +29,31 @@ final homeTodayDashboardDataProvider =
   return homeDashboardDataFromApiSnapshot(HomePeriod.today, snap);
 });
 
-final stockLowCountProvider = FutureProvider.autoDispose<int>((ref) async {
+/// Single parallel fetch for low + critical counts (avoids duplicate sequential home polls).
+final stockAlertCountsProvider =
+    FutureProvider.autoDispose<({int low, int critical})>((ref) async {
   final session = ref.watch(sessionProvider);
-  if (session == null) return 0;
-  final m = await ref.read(hexaApiProvider).listStock(
-        businessId: session.primaryBusiness.id,
-        page: 1,
-        perPage: 1,
-        status: 'low',
-      );
-  return coerceToInt(m['total']);
+  if (session == null) return (low: 0, critical: 0);
+  final api = ref.read(hexaApiProvider);
+  final bid = session.primaryBusiness.id;
+  final results = await Future.wait([
+    api.listStock(businessId: bid, page: 1, perPage: 1, status: 'low'),
+    api.listStock(businessId: bid, page: 1, perPage: 1, status: 'critical'),
+  ]);
+  return (
+    low: coerceToInt(results[0]['total']),
+    critical: coerceToInt(results[1]['total']),
+  );
+});
+
+final stockLowCountProvider = FutureProvider.autoDispose<int>((ref) async {
+  final c = await ref.watch(stockAlertCountsProvider.future);
+  return c.low;
 });
 
 final stockCriticalCountProvider = FutureProvider.autoDispose<int>((ref) async {
-  final session = ref.watch(sessionProvider);
-  if (session == null) return 0;
-  final m = await ref.read(hexaApiProvider).listStock(
-        businessId: session.primaryBusiness.id,
-        page: 1,
-        perPage: 1,
-        status: 'critical',
-      );
-  return coerceToInt(m['total']);
+  final c = await ref.watch(stockAlertCountsProvider.future);
+  return c.critical;
 });
 
 /// Top low-stock rows (server sorts by stock vs reorder).

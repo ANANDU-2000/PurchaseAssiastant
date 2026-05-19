@@ -50,6 +50,8 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
   int _historyRangeDays = kDefaultItemHistoryRangeDays;
   static const int _kMaxHistoryRows = 200;
   final _histSearchCtrl = TextEditingController();
+  bool _inlineEditing = false;
+  late final TextEditingController _inlineNameCtrl = TextEditingController();
 
   String _inr(num? n) {
     if (n == null) return '—';
@@ -213,12 +215,6 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
     }
   }
 
-  @override
-  void dispose() {
-    _histSearchCtrl.dispose();
-    super.dispose();
-  }
-
   Future<void> _refresh() async {
     ref.invalidate(catalogItemDetailProvider(widget.itemId));
     ref.invalidate(stockItemDetailProvider(widget.itemId));
@@ -304,6 +300,38 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
   }
 
   @override
+  void dispose() {
+    _histSearchCtrl.dispose();
+    _inlineNameCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveInlineEdit(Map<String, dynamic> item) async {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    final name = _inlineNameCtrl.text.trim();
+    if (name.isEmpty) return;
+    try {
+      await ref.read(hexaApiProvider).updateCatalogItem(
+            businessId: session.primaryBusiness.id,
+            itemId: widget.itemId,
+            name: name,
+          );
+      if (!mounted) return;
+      ref.invalidate(catalogItemDetailProvider(widget.itemId));
+      setState(() => _inlineEditing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Item updated')),
+      );
+    } on DioException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(friendlyApiError(e))),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     ref.listen<int>(businessDataWriteRevisionProvider, (prev, next) {
       if (prev != null && next > prev) {
@@ -319,35 +347,83 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
     final purchasesAsync =
         ref.watch(tradePurchasesCatalogIntelParsedProvider);
 
+    final itemCodeTitle = itemAsync.valueOrNull?['item_code']?.toString().trim();
+
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.popOrGo('/catalog'),
+          onPressed: () {
+            if (_inlineEditing) {
+              setState(() => _inlineEditing = false);
+            } else {
+              context.popOrGo('/catalog');
+            }
+          },
         ),
-        title: itemAsync.when(
-          data: (m) => Text(
-            m['name']?.toString() ?? 'Item',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          loading: () => const Text('Item'),
-          error: (_, __) => const Text('Catalog item'),
+        title: Text(
+          _inlineEditing
+              ? 'Editing ${itemCodeTitle?.isNotEmpty == true ? itemCodeTitle! : 'item'}'
+              : (itemCodeTitle?.isNotEmpty == true
+                  ? itemCodeTitle!
+                  : (itemAsync.valueOrNull?['name']?.toString() ?? 'Item')),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: itemCodeTitle?.isNotEmpty == true && !_inlineEditing
+              ? const TextStyle(fontFamily: 'monospace', fontSize: 15)
+              : null,
         ),
         actions: [
-          IconButton(
-            tooltip: 'Item ledger & statement',
-            icon: const Icon(Icons.picture_as_pdf_outlined),
-            onPressed: () =>
-                context.push('/catalog/item/${widget.itemId}/ledger'),
-          ),
-          IconButton(
-            tooltip: 'Purchase history',
-            icon: const Icon(Icons.receipt_long_outlined),
-            onPressed: () => context.push(
-              '/catalog/item/${widget.itemId}/purchase-history',
+          if (_inlineEditing) ...[
+            TextButton(
+              onPressed: () => setState(() => _inlineEditing = false),
+              child: const Text('Cancel'),
             ),
-          ),
+            TextButton(
+              onPressed: itemAsync.valueOrNull == null
+                  ? null
+                  : () => _saveInlineEdit(itemAsync.valueOrNull!),
+              child: const Text('Save'),
+            ),
+          ] else ...[
+            if ((itemAsync.valueOrNull?['item_code']?.toString().trim().isNotEmpty) ??
+                false)
+              IconButton(
+                tooltip: 'Print label',
+                icon: const Icon(Icons.print_rounded),
+                onPressed: () => context.push(
+                  '/barcode/print/${Uri.encodeComponent(widget.itemId)}',
+                ),
+              ),
+            IconButton(
+              tooltip: 'Item ledger & statement',
+              icon: const Icon(Icons.picture_as_pdf_outlined),
+              onPressed: () =>
+                  context.push('/catalog/item/${widget.itemId}/ledger'),
+            ),
+            PopupMenuButton<String>(
+              onSelected: (v) {
+                final it = itemAsync.valueOrNull;
+                if (it == null) return;
+                switch (v) {
+                  case 'edit':
+                    _inlineNameCtrl.text = it['name']?.toString() ?? '';
+                    setState(() => _inlineEditing = true);
+                  case 'history':
+                    context.push(
+                      '/catalog/item/${widget.itemId}/purchase-history',
+                    );
+                }
+              },
+              itemBuilder: (ctx) => [
+                const PopupMenuItem(value: 'edit', child: Text('Quick edit')),
+                const PopupMenuItem(
+                  value: 'history',
+                  child: Text('Purchase history'),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
       body: itemAsync.when(
@@ -437,26 +513,29 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                           item['type_name']?.toString(),
                         ].whereType<String>().where((s) => s.isNotEmpty).join(' · '),
                       ),
-                      data: (st) => Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _ItemWarehouseHeroHeader(
-                            item: item,
-                            stock: st.isEmpty ? null : st,
-                            categoryLabel: [
-                              if (catName != null && catName.isNotEmpty) catName,
-                              item['type_name']?.toString(),
-                            ].whereType<String>().where((s) => s.isNotEmpty).join(' · '),
-                          ),
-                          if (st.isNotEmpty) ...[
-                            const SizedBox(height: 12),
-                            _WarehouseStockCard(stock: st),
-                          ],
-                        ],
+                      data: (st) => _ItemWarehouseHeroHeader(
+                        item: item,
+                        stock: st.isEmpty ? null : st,
+                        categoryLabel: [
+                          if (catName != null && catName.isNotEmpty) catName,
+                          item['type_name']?.toString(),
+                        ].whereType<String>().where((s) => s.isNotEmpty).join(' · '),
                       ),
                     );
                   },
                 ),
+                if (_inlineEditing) ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _inlineNameCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Item name',
+                      border: OutlineInputBorder(),
+                    ),
+                    textCapitalization: TextCapitalization.words,
+                    autofocus: true,
+                  ),
+                ],
                 const SizedBox(height: 12),
                 Builder(
                   builder: (context) {
@@ -467,84 +546,58 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                         st['stock_status']?.toString() ?? 'healthy';
                     final showNotifyOwner = isStaff &&
                         (stockStatus == 'low' || stockStatus == 'critical');
-                    return Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    FilledButton.icon(
-                      onPressed: () => context.push(
-                        '/purchase/new?catalogItemId=${Uri.encodeComponent(widget.itemId)}',
-                      ),
-                      icon: const Icon(Icons.add_shopping_cart_rounded),
-                      label: const Text('New purchase'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF17A8A7),
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        final st = await ref.read(
-                          stockItemDetailProvider(widget.itemId).future,
-                        );
-                        if (!context.mounted) return;
-                        await showUpdateStockSheet(
-                          context: context,
-                          ref: ref,
-                          itemId: widget.itemId,
-                          itemName: item['name']?.toString() ?? 'Item',
-                          stockRow: st.isEmpty ? null : st,
-                        );
-                      },
-                      icon: const Icon(Icons.inventory_2_outlined),
-                      label: const Text('Update stock'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: () => context.push('/barcode/scan'),
-                      icon: const Icon(Icons.qr_code_scanner_rounded),
-                      label: const Text('Scan'),
-                    ),
-                    if ((item['item_code']?.toString().trim().isNotEmpty) ?? false)
-                      OutlinedButton.icon(
-                        onPressed: () => context.push(
-                          '/barcode/print/${Uri.encodeComponent(widget.itemId)}',
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _ItemQuickActionGrid(
+                          onNewPurchase: () => context.push(
+                            '/purchase/new?catalogItemId=${Uri.encodeComponent(widget.itemId)}',
+                          ),
+                          onUpdateStock: () async {
+                            final row = await ref.read(
+                              stockItemDetailProvider(widget.itemId).future,
+                            );
+                            if (!context.mounted) return;
+                            await showUpdateStockSheet(
+                              context: context,
+                              ref: ref,
+                              itemId: widget.itemId,
+                              itemName: item['name']?.toString() ?? 'Item',
+                              stockRow: row.isEmpty ? null : row,
+                            );
+                          },
+                          onHistory: () {
+                            final name = item['name']?.toString() ?? 'Item';
+                            final q = '?name=${Uri.encodeComponent(name)}';
+                            context.push('/stock/${widget.itemId}/history$q');
+                          },
+                          onReorderList: () => _addToReorderList(
+                            widget.itemId,
+                            item['name']?.toString() ?? 'Item',
+                          ),
                         ),
-                        icon: const Icon(Icons.print_rounded),
-                        label: const Text('Print label'),
-                      ),
-                    OutlinedButton.icon(
-                      onPressed: () {
-                        final name = item['name']?.toString() ?? 'Item';
-                        final q = '?name=${Uri.encodeComponent(name)}';
-                        context.push('/stock/${widget.itemId}/history$q');
-                      },
-                      icon: const Icon(Icons.history_rounded),
-                      label: const Text('History'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: () => _editItemDefaults(item),
-                      icon: const Icon(Icons.edit_outlined),
-                      label: const Text('Quick edit'),
-                    ),
-                    if (showNotifyOwner)
-                      OutlinedButton.icon(
-                        onPressed: () => _notifyOwner(
-                          widget.itemId,
-                          item['name']?.toString() ?? 'Item',
+                        if (showNotifyOwner) ...[
+                          const SizedBox(height: 8),
+                          OutlinedButton.icon(
+                            onPressed: () => _notifyOwner(
+                              widget.itemId,
+                              item['name']?.toString() ?? 'Item',
+                            ),
+                            icon: const Icon(Icons.notifications_active_outlined),
+                            label: const Text('Notify owner'),
+                          ),
+                        ],
+                        const SizedBox(height: 4),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: () => _editItemDefaults(item),
+                            icon: const Icon(Icons.tune_outlined, size: 18),
+                            label: const Text('Full defaults editor'),
+                          ),
                         ),
-                        icon: const Icon(Icons.notifications_active_outlined),
-                        label: const Text('Notify owner'),
-                      ),
-                    OutlinedButton.icon(
-                      onPressed: () => _addToReorderList(
-                        widget.itemId,
-                        item['name']?.toString() ?? 'Item',
-                      ),
-                      icon: const Icon(Icons.playlist_add_rounded),
-                      label: const Text('Reorder list'),
-                    ),
-                  ],
-                );
+                      ],
+                    );
                   },
                 ),
                 const SizedBox(height: 12),
@@ -808,143 +861,6 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
     );
   }
 
-}
-
-
-class _WarehouseStockCard extends StatelessWidget {
-  const _WarehouseStockCard({required this.stock});
-
-  final Map<String, dynamic> stock;
-
-  static String _fmtQty(dynamic v) {
-    if (v == null) return '—';
-    if (v is num) {
-      return v == v.roundToDouble() ? v.toInt().toString() : v.toString();
-    }
-    return '$v';
-  }
-
-  static (String label, Color fg, Color bg) _badge(
-    String st,
-    ColorScheme cs,
-  ) {
-    switch (st) {
-      case 'out':
-        return ('Out of stock', cs.onErrorContainer, cs.errorContainer);
-      case 'critical':
-        return ('Critical', const Color(0xFFB71C1C), const Color(0xFFFFEBEE));
-      case 'low':
-        return ('Low', const Color(0xFFE65100), const Color(0xFFFFF3E0));
-      case 'healthy':
-        return ('In stock', const Color(0xFF1B5E20), const Color(0xFFE8F5E9));
-      default:
-        return (st, cs.onSurfaceVariant, cs.surfaceContainerHighest);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    final st = stock['stock_status']?.toString() ?? 'healthy';
-    final badge = _badge(st, cs);
-    final unit = (stock['unit'] ?? '').toString().trim();
-    final rack = (stock['rack_location'] ?? '').toString().trim();
-    final qty = _fmtQty(stock['current_stock']);
-    final ro = _fmtQty(stock['reorder_level']);
-    final updated = stock['last_stock_updated_at']?.toString();
-    final by = stock['last_stock_updated_by']?.toString();
-
-    return Material(
-      color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
-      borderRadius: BorderRadius.circular(14),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.warehouse_outlined, color: cs.primary, size: 26),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Warehouse',
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
-                      if (rack.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            'Rack / bin: $rack',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: badge.$3,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    badge.$1,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: badge.$2,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '$qty${unit.isNotEmpty ? ' $unit' : ''} on hand',
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w900,
-                height: 1.1,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Reorder at $ro${unit.isNotEmpty ? ' $unit' : ''}',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: cs.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            if (updated != null && updated.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(
-                'Last update: ${_shortWhen(updated)}${(by != null && by.isNotEmpty) ? ' · $by' : ''}',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: cs.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  static String _shortWhen(String iso) {
-    final d = DateTime.tryParse(iso);
-    if (d == null) return iso.split('T').first;
-    return DateFormat('d MMM yyyy, h:mm a').format(d.toLocal());
-  }
 }
 
 class _CatalogItemInfoGrid extends ConsumerWidget {
@@ -1302,6 +1218,58 @@ class _CatalogItemBarcodeSection extends StatelessWidget {
   }
 }
 
+class _ItemQuickActionGrid extends StatelessWidget {
+  const _ItemQuickActionGrid({
+    required this.onNewPurchase,
+    required this.onUpdateStock,
+    required this.onHistory,
+    required this.onReorderList,
+  });
+
+  final VoidCallback onNewPurchase;
+  final VoidCallback onUpdateStock;
+  final VoidCallback onHistory;
+  final VoidCallback onReorderList;
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 8,
+      crossAxisSpacing: 8,
+      childAspectRatio: 2.6,
+      children: [
+        FilledButton.icon(
+          onPressed: onNewPurchase,
+          icon: const Icon(Icons.add_shopping_cart_rounded, size: 18),
+          label: const Text('Purchase'),
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFF17A8A7),
+            foregroundColor: Colors.white,
+          ),
+        ),
+        OutlinedButton.icon(
+          onPressed: onUpdateStock,
+          icon: const Icon(Icons.inventory_2_outlined, size: 18),
+          label: const Text('Stock'),
+        ),
+        OutlinedButton.icon(
+          onPressed: onHistory,
+          icon: const Icon(Icons.history_rounded, size: 18),
+          label: const Text('History'),
+        ),
+        OutlinedButton.icon(
+          onPressed: onReorderList,
+          icon: const Icon(Icons.playlist_add_rounded, size: 18),
+          label: const Text('Reorder'),
+        ),
+      ],
+    );
+  }
+}
+
 class _ItemWarehouseHeroHeader extends StatelessWidget {
   const _ItemWarehouseHeroHeader({
     required this.item,
@@ -1313,11 +1281,18 @@ class _ItemWarehouseHeroHeader extends StatelessWidget {
   final Map<String, dynamic>? stock;
   final String categoryLabel;
 
+  static String _fmtQty(dynamic v) {
+    if (v == null) return '—';
+    if (v is num) {
+      return v == v.roundToDouble() ? v.toInt().toString() : v.toString();
+    }
+    return '$v';
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final name = item['name']?.toString() ?? 'Item';
-    final code = item['item_code']?.toString().trim() ?? '';
     final st = stock?['stock_status']?.toString() ?? 'healthy';
     final statusLabel = switch (st) {
       'out' => 'Out',
@@ -1331,54 +1306,42 @@ class _ItemWarehouseHeroHeader extends StatelessWidget {
       'low' => const Color(0xFFE65100),
       _ => const Color(0xFF2E7D32),
     };
+    final unit = (stock?['unit'] ?? item['default_unit'] ?? '').toString().trim();
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Container(
-          width: 80,
-          height: 80,
-          decoration: BoxDecoration(
-            color: HexaColors.primaryLight,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: HexaColors.brandBorder),
-          ),
-          child: Icon(
-            Icons.inventory_2_outlined,
-            size: 36,
-            color: HexaColors.brandPrimary,
-          ),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(name, style: HexaDsType.catalogItemHeroName),
-              if (categoryLabel.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  categoryLabel,
-                  style: HexaDsType.body(13, color: HexaDsColors.textMuted),
-                ),
-              ],
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: HexaColors.primaryLight,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: HexaColors.brandBorder),
+              ),
+              child: Icon(
+                Icons.inventory_2_outlined,
+                size: 32,
+                color: HexaColors.brandPrimary,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (code.isNotEmpty)
-                    Chip(
-                      label: Text(
-                        code,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 12,
-                        ),
-                      ),
-                      visualDensity: VisualDensity.compact,
-                      padding: EdgeInsets.zero,
+                  Text(name, style: HexaDsType.catalogItemHeroName),
+                  if (categoryLabel.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      categoryLabel,
+                      style: HexaDsType.body(13, color: HexaDsColors.textMuted),
                     ),
+                  ],
+                  const SizedBox(height: 6),
                   Chip(
                     label: Text(
                       statusLabel,
@@ -1394,10 +1357,93 @@ class _ItemWarehouseHeroHeader extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
+          ],
+        ),
+        if (stock != null && stock!.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _ItemStatBox(
+                  label: 'On hand',
+                  value: _fmtQty(stock!['current_stock']),
+                  sub: unit.isNotEmpty ? unit : null,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _ItemStatBox(
+                  label: 'Reorder',
+                  value: _fmtQty(stock!['reorder_level']),
+                  sub: unit.isNotEmpty ? unit : null,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _ItemStatBox(
+                  label: 'Rack',
+                  value: (stock!['rack_location']?.toString().trim().isNotEmpty ==
+                          true)
+                      ? stock!['rack_location'].toString()
+                      : '—',
+                ),
+              ),
             ],
           ),
-        ),
+        ],
       ],
+    );
+  }
+}
+
+class _ItemStatBox extends StatelessWidget {
+  const _ItemStatBox({
+    required this.label,
+    required this.value,
+    this.sub,
+  });
+
+  final String label;
+  final String value;
+  final String? sub;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label.toUpperCase(),
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.4,
+              color: cs.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+          ),
+          if (sub != null && sub!.isNotEmpty)
+            Text(
+              sub!,
+              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+            ),
+        ],
+      ),
     );
   }
 }

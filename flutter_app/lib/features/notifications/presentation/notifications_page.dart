@@ -80,13 +80,15 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
     final items = [...serverRows, ...cloudItems, ...maintItems, ...tradeAlerts, ...manual];
     final filtered = items.where(_matchesFilter).toList();
     final q = _textSearch.text.trim().toLowerCase();
-    final visible = q.isEmpty
-        ? filtered
-        : filtered
-            .where((n) =>
-                '${n.title} ${n.subtitle}'.toLowerCase().contains(q))
-            .toList();
+    final visible = (q.isEmpty
+            ? filtered
+            : filtered
+                .where((n) =>
+                    '${n.title} ${n.subtitle}'.toLowerCase().contains(q))
+                .toList())
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     final rel = DateFormat.Hm();
+    final hasUnread = visible.any((n) => !n.isRead);
     final filterEmptyButHasItems =
         items.isNotEmpty && filtered.isEmpty && q.isEmpty;
 
@@ -105,6 +107,11 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
           onPressed: () => context.popOrGo('/home'),
         ),
         actions: [
+          if (hasUnread)
+            TextButton(
+              onPressed: () => _markAllVisibleRead(visible),
+              child: const Text('Mark all read'),
+            ),
           IconButton(
             tooltip: 'Notification settings',
             icon: Icon(Icons.tune_rounded,
@@ -294,13 +301,94 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                       ),
                     ],
                   )
-                : ListView.builder(
+                : ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                    itemCount: visible.length,
-                    itemBuilder: (context, i) {
-                      final n = visible[i];
-                      final color = switch (n.type) {
+                    children: _buildGroupedNotificationTiles(
+                      context: context,
+                      ref: ref,
+                      visible: visible,
+                      rel: rel,
+                      tt: tt,
+                    ),
+                  ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _markAllVisibleRead(List<NotificationItem> visible) async {
+    final session = ref.read(sessionProvider);
+    final api = ref.read(hexaApiProvider);
+    for (final n in visible) {
+      if (n.isRead) continue;
+      final sid = n.serverNotificationId;
+      if (sid != null && sid.isNotEmpty && session != null) {
+        try {
+          await api.patchAppNotificationRead(
+            businessId: session.primaryBusiness.id,
+            notificationId: sid,
+          );
+        } catch (_) {}
+      } else if (!n.id.startsWith('pur_')) {
+        ref.read(notificationsProvider.notifier).markRead(n.id);
+      }
+    }
+    ref.invalidate(appNotificationsListProvider);
+    ref.invalidate(appNotificationUnreadCountProvider);
+    if (mounted) setState(() {});
+  }
+
+  List<Widget> _buildGroupedNotificationTiles({
+    required BuildContext context,
+    required WidgetRef ref,
+    required List<NotificationItem> visible,
+    required DateFormat rel,
+    required TextTheme tt,
+  }) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    String? lastHeader;
+    final widgets = <Widget>[];
+
+    for (final n in visible) {
+      final day = DateTime(
+        n.createdAt.year,
+        n.createdAt.month,
+        n.createdAt.day,
+      );
+      final header = day == today
+          ? 'Today'
+          : day == yesterday
+              ? 'Yesterday'
+              : 'Earlier';
+      if (header != lastHeader) {
+        widgets.add(_NotificationDateHeader(label: header));
+        lastHeader = header;
+      }
+      widgets.add(_notificationTile(
+        context: context,
+        ref: ref,
+        n: n,
+        rel: rel,
+        tt: tt,
+      ));
+    }
+    return widgets;
+  }
+
+  Widget _notificationTile({
+    required BuildContext context,
+    required WidgetRef ref,
+    required NotificationItem n,
+    required DateFormat rel,
+    required TextTheme tt,
+  }) {
+    final onSurf = Theme.of(context).colorScheme.onSurface;
+    final color = switch (n.type) {
                         NotificationType.priceAlert => HexaColors.warning,
                         NotificationType.profitLow => HexaColors.loss,
                         NotificationType.reminder => HexaColors.primaryMid,
@@ -316,8 +404,8 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                         NotificationType.system => Theme.of(context)
                             .colorScheme
                             .onSurfaceVariant,
-                      };
-                      final icon = switch (n.type) {
+    };
+    final icon = switch (n.type) {
                         NotificationType.priceAlert =>
                           Icons.warning_amber_rounded,
                         NotificationType.profitLow =>
@@ -334,8 +422,8 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                             ? Icons.inventory_2_outlined
                             : Icons.notifications_active_outlined,
                         NotificationType.system => Icons.info_outline_rounded,
-                      };
-                      return Padding(
+    };
+    return Padding(
                         padding: const EdgeInsets.only(bottom: 10),
                         child: Material(
                           color: context.adaptiveCard,
@@ -475,11 +563,27 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                           ),
                         ),
                       );
-                    },
-                  ),
-            ),
-          ),
-        ],
+  }
+}
+
+class _NotificationDateHeader extends StatelessWidget {
+  const _NotificationDateHeader({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12, bottom: 8),
+      child: Text(
+        label.toUpperCase(),
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.6,
+          color: cs.onSurfaceVariant,
+        ),
       ),
     );
   }

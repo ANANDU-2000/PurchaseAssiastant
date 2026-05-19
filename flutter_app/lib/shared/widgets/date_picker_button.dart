@@ -34,31 +34,38 @@ class DatePickerButton extends StatelessWidget {
     final first = firstDate ?? DateTime(2020);
     final last = lastDate ?? now.add(const Duration(days: 365));
 
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: initialDate.isAfter(last)
-          ? last
-          : (initialDate.isBefore(first) ? first : initialDate),
-      firstDate: first,
-      lastDate: last,
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.light(
-              primary: HexaColors.brandPrimary,
-              onPrimary: Colors.white,
-              onSurface: HexaDsColors.textPrimary,
+    final picked = await Navigator.of(context).push<DateTime>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (ctx) {
+          var selected = initialDate.isAfter(last)
+              ? last
+              : (initialDate.isBefore(first) ? first : initialDate);
+          return Scaffold(
+            appBar: AppBar(
+              title: Text(label),
+              leading: IconButton(
+                icon: const Icon(Icons.close_rounded),
+                onPressed: () => Navigator.pop(ctx),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, selected),
+                  child: const Text('Done'),
+                ),
+              ],
             ),
-            textButtonTheme: TextButtonThemeData(
-              style: TextButton.styleFrom(
-                foregroundColor: HexaColors.brandPrimary,
-                textStyle: HexaDsType.label(14),
+            body: SafeArea(
+              child: CalendarDatePicker(
+                initialDate: selected,
+                firstDate: first,
+                lastDate: last,
+                onDateChanged: (d) => selected = d,
               ),
             ),
-          ),
-          child: child!,
-        );
-      },
+          );
+        },
+      ),
     );
 
     if (picked != null) {

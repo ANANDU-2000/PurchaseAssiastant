@@ -34,6 +34,9 @@ import '../../../core/widgets/friendly_load_error.dart'
     show FriendlyLoadError, kFriendlyLoadNetworkSubtitle;
 import '../../../core/widgets/list_skeleton.dart';
 import '../../../core/widgets/focused_search_chrome.dart';
+import '../../../shared/widgets/fullscreen_date_range_picker.dart';
+import '../../../shared/widgets/operational_ui.dart';
+import 'widgets/purchase_history_grouping.dart';
 
 enum _HistPeriodPreset { today, week, month, year, custom }
 
@@ -725,11 +728,12 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
   Future<void> _pickCustomRange() async {
     final now = DateTime.now();
     final range = ref.read(analyticsDateRangeProvider);
-    final picked = await showDateRangePicker(
-      context: context,
+    final picked = await showFullscreenDateRangePicker(
+      context,
+      initialStart: range.from,
+      initialEnd: range.to,
       firstDate: DateTime(now.year - 5),
       lastDate: DateTime(now.year + 1, 12, 31),
-      initialDateRange: DateTimeRange(start: range.from, end: range.to),
     );
     if (picked == null || !mounted) return;
     ref.read(analyticsDateRangeProvider.notifier).state =
@@ -1604,7 +1608,11 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                     context.go('/purchase');
                                   },
                                 ))
-                          : ListView.separated(
+                          : Builder(
+                              builder: (context) {
+                                final grouped =
+                                    buildGroupedPurchaseHistory(visible);
+                                return ListView.builder(
                               keyboardDismissBehavior:
                                   ScrollViewKeyboardDismissBehavior.onDrag,
                               physics: const AlwaysScrollableScrollPhysics(
@@ -1612,22 +1620,24 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                               key: PageStorageKey<String>('hist_${primary}_${secondary ?? ''}_${ref.watch(purchaseHistorySearchProvider)}'),
                               controller: _scroll,
                               padding: EdgeInsets.fromLTRB(
-                                16,
+                                0,
                                 8,
-                                16,
+                                0,
                                 96 + MediaQuery.viewPaddingOf(context).bottom,
                               ),
-                      itemCount: visible.length + (showLocalWipRow ? 1 : 0),
-                      separatorBuilder: (_, __) => const SizedBox(height: 4),
+                      itemCount: grouped.length + (showLocalWipRow ? 1 : 0),
                               itemBuilder: (context, i) {
                                 if (showLocalWipRow && i == 0) {
                                   return _LocalWipDraftHistoryRow(vm: localWip);
                                 }
-                                final idx = i - (showLocalWipRow ? 1 : 0);
-                                final p = visible[idx];
+                                final e = grouped[i - (showLocalWipRow ? 1 : 0)];
+                                if (e is PurchaseHistoryDateHeader) {
+                                  return OperationalDateHeader(e.label);
+                                }
+                                final p = (e as PurchaseHistoryPurchaseRow).purchase;
                                 return _PurchaseRow(
                                   p: p,
-                                  serial: idx + 1,
+                                  serial: visible.indexOf(p) + 1,
                                   selectMode: _selectMode,
                                   selected: _selected.contains(p.id),
                                   onLongPress: () {
@@ -1692,6 +1702,8 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                   },
                                 );
                               },
+                            );
+                              },
                             ),
                     ),
                   ],
@@ -1740,67 +1752,45 @@ class _PurchaseHistoryFiltersSheetState
         ? ref.read(purchaseHistoryDateFromProvider)
         : ref.read(purchaseHistoryDateToProvider);
     final now = DateTime.now();
+    final first = DateTime(now.year - 5, 1, 1);
+    final last = DateTime(now.year + 1, 12, 31);
+    var initial = cur ?? now;
+    if (initial.isBefore(first)) initial = first;
+    if (initial.isAfter(last)) initial = last;
 
-    if (Theme.of(context).platform == TargetPlatform.iOS) {
-      var picked = cur ?? now;
-      final ok = await showCupertinoModalPopup<bool>(
-        context: context,
-        builder: (ctx) => Material(
-          color: Colors.transparent,
-          child: SafeArea(
-            top: false,
-            child: Container(
-              height: 320,
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+    final d = await Navigator.of(context).push<DateTime>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (ctx) {
+          var selected = initial;
+          return Scaffold(
+            appBar: AppBar(
+              title: Text(isFrom ? 'From date' : 'To date'),
+              leading: IconButton(
+                icon: const Icon(Icons.close_rounded),
+                onPressed: () => Navigator.pop(ctx),
               ),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      CupertinoButton(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        child: const Text('Cancel'),
-                      ),
-                      CupertinoButton(
-                        onPressed: () => Navigator.pop(ctx, true),
-                        child: const Text('Done'),
-                      ),
-                    ],
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(
+                    ctx,
+                    DateTime(selected.year, selected.month, selected.day),
                   ),
-                  const Divider(height: 1),
-                  Expanded(
-                    child: CupertinoDatePicker(
-                      mode: CupertinoDatePickerMode.date,
-                      initialDateTime: picked,
-                      minimumDate: DateTime(now.year - 5, 1, 1),
-                      maximumDate: DateTime(now.year + 1, 12, 31),
-                      onDateTimeChanged: (d) => picked = d,
-                    ),
-                  ),
-                ],
+                  child: const Text('Done'),
+                ),
+              ],
+            ),
+            body: SafeArea(
+              child: CalendarDatePicker(
+                initialDate: selected,
+                firstDate: first,
+                lastDate: last,
+                onDateChanged: (v) => selected = v,
               ),
             ),
-          ),
-        ),
-      );
-      if (ok != true || !mounted) return;
-      final d = DateTime(picked.year, picked.month, picked.day);
-      if (isFrom) {
-        ref.read(purchaseHistoryDateFromProvider.notifier).state = d;
-      } else {
-        ref.read(purchaseHistoryDateToProvider.notifier).state = d;
-      }
-      return;
-    }
-
-    final d = await showDatePicker(
-      context: context,
-      initialDate: cur ?? now,
-      firstDate: DateTime(now.year - 5),
-      lastDate: DateTime(now.year + 1, 12, 31),
+          );
+        },
+      ),
     );
     if (d == null || !mounted) return;
     if (isFrom) {
@@ -2171,11 +2161,12 @@ class _PurchaseHistoryFullscreenSearchPageState
   Future<void> _pickCustomRange() async {
     final now = DateTime.now();
     final range = ref.read(analyticsDateRangeProvider);
-    final picked = await showDateRangePicker(
-      context: context,
+    final picked = await showFullscreenDateRangePicker(
+      context,
+      initialStart: range.from,
+      initialEnd: range.to,
       firstDate: DateTime(now.year - 5),
       lastDate: DateTime(now.year + 1, 12, 31),
-      initialDateRange: DateTimeRange(start: range.from, end: range.to),
     );
     if (picked == null || !mounted) return;
     ref.read(analyticsDateRangeProvider.notifier).state =
@@ -2515,25 +2506,29 @@ class _PurchaseHistoryFullscreenSearchPageState
               ],
             );
           }
-          return ListView.separated(
+          final grouped = buildGroupedPurchaseHistory(visible);
+          return ListView.builder(
             keyboardDismissBehavior:
                 ScrollViewKeyboardDismissBehavior.onDrag,
             physics: const AlwaysScrollableScrollPhysics(
               parent: BouncingScrollPhysics(),
             ),
             padding: EdgeInsets.fromLTRB(
-              16,
+              0,
               8,
-              16,
+              0,
               96 + MediaQuery.viewPaddingOf(context).bottom,
             ),
-            itemCount: visible.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 4),
+            itemCount: grouped.length,
             itemBuilder: (ctx, i) {
-              final p = visible[i];
+              final e = grouped[i];
+              if (e is PurchaseHistoryDateHeader) {
+                return OperationalDateHeader(e.label);
+              }
+              final p = (e as PurchaseHistoryPurchaseRow).purchase;
               return _PurchaseRow(
                 p: p,
-                serial: i + 1,
+                serial: visible.indexOf(p) + 1,
                 selectMode: false,
                 selected: false,
                 onLongPress: () {},

@@ -2123,9 +2123,9 @@ class _PurchaseItemEntrySheetState extends State<PurchaseItemEntrySheet> with Pu
 
   Widget _buildTaxModeChips(ThemeData theme) {
     String chipLabel(TaxMode m) => switch (m) {
-          TaxMode.exclusive => 'Exclusive',
-          TaxMode.inclusive => 'Inclusive',
-          TaxMode.none => 'None',
+          TaxMode.exclusive => 'Base + GST',
+          TaxMode.inclusive => 'Incl. GST',
+          TaxMode.none => 'No Tax',
         };
 
     Future<void> onPick(TaxMode m) async {

@@ -12,7 +12,16 @@ import '../../../core/models/session.dart';
 import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/providers/home_dashboard_provider.dart'
     show HomeDashboardData, bustHomeDashboardVolatileCaches, homeDashboardDataProvider;
-import '../../../core/providers/home_owner_dashboard_providers.dart';
+import '../../../core/providers/home_owner_dashboard_providers.dart'
+    show
+        activeSessionsCountProvider,
+        homeRecentPurchasesCompactProvider,
+        homeTodayDashboardDataProvider,
+        stockAlertCountsProvider,
+        stockAuditRecentHomeProvider,
+        stockCriticalCountProvider,
+        stockLowCountProvider,
+        stockLowTopHomeProvider;
 import '../../../core/providers/purchase_post_save_provider.dart';
 import '../../../core/notifications/local_notifications_service.dart';
 import '../../../core/providers/connectivity_provider.dart';
@@ -20,11 +29,14 @@ import '../../../core/providers/notifications_provider.dart'
     show notificationsUnreadCountProvider;
 import '../../../core/providers/prefs_provider.dart';
 import '../../../core/providers/server_notifications_provider.dart';
+import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/stock_providers.dart';
+import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/providers/reports_provider.dart';
 import '../../../core/providers/trade_purchases_provider.dart'
     show invalidateTradePurchaseCaches, invalidateTradePurchaseCachesFromContainer;
 import '../../../core/theme/hexa_colors.dart';
+import '../../../shared/widgets/operational_ui.dart';
 import '../../../shared/widgets/shell_quick_ref_actions.dart';
 import '../../purchase/presentation/widgets/purchase_saved_sheet.dart';
 import '../../purchase/presentation/widgets/resume_purchase_draft_banner.dart';
@@ -69,8 +81,7 @@ class _HomePageState extends ConsumerState<HomePage>
       bustHomeDashboardVolatileCaches();
       invalidateTradePurchaseCaches(ref);
       ref.invalidate(homeTodayDashboardDataProvider);
-      ref.invalidate(stockLowCountProvider);
-      ref.invalidate(stockCriticalCountProvider);
+      ref.invalidate(stockAlertCountsProvider);
       ref.invalidate(stockLowTopHomeProvider);
       ref.invalidate(stockAuditRecentHomeProvider);
       ref.invalidate(activeSessionsCountProvider);
@@ -86,8 +97,7 @@ class _HomePageState extends ConsumerState<HomePage>
       ref.invalidate(stockListProvider);
       invalidateTradePurchaseCaches(ref);
       ref.invalidate(homeTodayDashboardDataProvider);
-      ref.invalidate(stockLowCountProvider);
-      ref.invalidate(stockCriticalCountProvider);
+      ref.invalidate(stockAlertCountsProvider);
       ref.invalidate(stockLowTopHomeProvider);
       ref.invalidate(stockAuditRecentHomeProvider);
       ref.invalidate(homeRecentPurchasesCompactProvider);
@@ -335,11 +345,11 @@ class _HomePageState extends ConsumerState<HomePage>
         child: RefreshIndicator(
           onRefresh: _refresh,
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 20),
             children: [
               const ResumePurchaseDraftBanner(),
-              const SizedBox(height: 8),
-              _QuickActionGrid(
+              const SizedBox(height: 6),
+              _CircularQuickActionsRow(
                 isOwner: isOwner,
                 onScan: () => context.push('/barcode/scan'),
                 onAddStock: () => context.go('/stock'),
@@ -348,34 +358,54 @@ class _HomePageState extends ConsumerState<HomePage>
                 onBulkPrint: () => context.push('/barcode/bulk-print'),
                 onUsers: () => context.push('/settings/users'),
               ),
-              const SizedBox(height: 14),
-              _StatsRow(
+              const SizedBox(height: 8),
+              const _HomeCatalogChips(),
+              const SizedBox(height: 10),
+              OperationalSection(
+                title: 'Low stock',
+                dense: true,
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextButton(
+                      onPressed: () => context.push('/stock/reorder'),
+                      child: const Text('Reorder', style: TextStyle(fontSize: 12)),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        ref.read(stockListQueryProvider.notifier).state =
+                            const StockListQuery(status: 'low', sort: 'stock_asc');
+                        context.go('/stock');
+                      },
+                      child: const Text('All', style: TextStyle(fontSize: 12)),
+                    ),
+                  ],
+                ),
+                child: _LowStockTable(rowsAsync: lowRows),
+              ),
+              const SizedBox(height: 10),
+              OperationalSection(
+                title: 'Recent stock updates',
+                dense: true,
+                child: _AuditRecentList(rowsAsync: audits),
+              ),
+              const SizedBox(height: 10),
+              OperationalSection(
+                title: "Today's purchases",
+                dense: true,
+                trailing: TextButton(
+                  onPressed: () => context.go('/purchase'),
+                  child: const Text('History', style: TextStyle(fontSize: 12)),
+                ),
+                child: _RecentPurchasesCompact(rowsAsync: recentPurch),
+              ),
+              const SizedBox(height: 10),
+              _CompactStatsRow(
                 todayAsync: todayAsync,
                 lowN: lowN,
                 critN: critN,
                 sessionsN: sessionsN,
               ),
-              const SizedBox(height: 16),
-              Text(
-                'Low stock',
-                style: HexaDsType.heading(16, color: HexaDsColors.textPrimary),
-              ),
-              const SizedBox(height: 8),
-              _LowStockTable(rowsAsync: lowRows),
-              const SizedBox(height: 20),
-              Text(
-                'Recent stock updates',
-                style: HexaDsType.heading(16, color: HexaDsColors.textPrimary),
-              ),
-              const SizedBox(height: 8),
-              _AuditRecentList(rowsAsync: audits),
-              const SizedBox(height: 20),
-              Text(
-                "Today's purchases",
-                style: HexaDsType.heading(16, color: HexaDsColors.textPrimary),
-              ),
-              const SizedBox(height: 8),
-              _RecentPurchasesCompact(rowsAsync: recentPurch),
             ],
           ),
         ),
@@ -421,8 +451,7 @@ class _HomePageState extends ConsumerState<HomePage>
 
   void _invalidateOwnerCachesFromContainer(ProviderContainer c) {
     c.invalidate(homeTodayDashboardDataProvider);
-    c.invalidate(stockLowCountProvider);
-    c.invalidate(stockCriticalCountProvider);
+    c.invalidate(stockAlertCountsProvider);
     c.invalidate(stockLowTopHomeProvider);
     c.invalidate(stockAuditRecentHomeProvider);
     c.invalidate(activeSessionsCountProvider);
@@ -430,8 +459,8 @@ class _HomePageState extends ConsumerState<HomePage>
   }
 }
 
-class _QuickActionGrid extends StatelessWidget {
-  const _QuickActionGrid({
+class _CircularQuickActionsRow extends StatelessWidget {
+  const _CircularQuickActionsRow({
     required this.isOwner,
     required this.onScan,
     required this.onAddStock,
@@ -451,60 +480,104 @@ class _QuickActionGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tiles = <({String label, IconData icon, VoidCallback onTap})>[
+    final actions = <({String label, IconData icon, VoidCallback onTap})>[
       (label: 'Scan', icon: Icons.qr_code_scanner_rounded, onTap: onScan),
-      (label: 'Add stock', icon: Icons.inventory_2_outlined, onTap: onAddStock),
+      (label: 'Stock', icon: Icons.inventory_2_outlined, onTap: onAddStock),
       (label: 'Purchase', icon: Icons.add_shopping_cart_outlined, onTap: onPurchase),
       (label: 'Reports', icon: Icons.bar_chart_outlined, onTap: onReports),
-      (label: 'Bulk print', icon: Icons.print_outlined, onTap: onBulkPrint),
-      if (isOwner)
-        (label: 'Users', icon: Icons.group_outlined, onTap: onUsers),
+      (label: 'Print', icon: Icons.print_outlined, onTap: onBulkPrint),
+      if (isOwner) (label: 'Users', icon: Icons.group_outlined, onTap: onUsers),
     ];
-    return GridView.count(
-      crossAxisCount: 3,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 10,
-      crossAxisSpacing: 10,
-      childAspectRatio: 1.05,
-      children: [
-        for (final t in tiles)
-          Material(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(12),
-              onTap: t.onTap,
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(t.icon, color: HexaColors.brandPrimary, size: 26),
-                    const SizedBox(height: 6),
-                    Text(
-                      t.label,
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 11.5,
-                        color: Color(0xFF0F172A),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: Row(
+        children: [
+          for (var i = 0; i < actions.length; i++) ...[
+            if (i > 0) const SizedBox(width: 4),
+            CircularQuickAction(
+              icon: actions[i].icon,
+              label: actions[i].label,
+              onTap: actions[i].onTap,
             ),
-          ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _HomeCatalogChips extends ConsumerWidget {
+  const _HomeCatalogChips();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final catsAsync = ref.watch(itemCategoriesListProvider);
+    final suppliersAsync = ref.watch(suppliersListProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        catsAsync.when(
+          loading: () => const SizedBox(height: 34),
+          error: (_, __) => const SizedBox.shrink(),
+          data: (cats) {
+            final names = [
+              for (final c in cats)
+                if ((c['name'] ?? '').toString().trim().isNotEmpty)
+                  c['name'].toString().trim(),
+            ];
+            if (names.isEmpty) return const SizedBox.shrink();
+            return OperationalPillRow(
+              labels: names.take(12).toList(),
+              onSelected: (name) {
+                ref.read(stockListQueryProvider.notifier).state =
+                    StockListQuery(category: name, page: 1);
+                context.go('/stock');
+              },
+            );
+          },
+        ),
+        const SizedBox(height: 6),
+        suppliersAsync.when(
+          loading: () => const SizedBox.shrink(),
+          error: (_, __) => const SizedBox.shrink(),
+          data: (rows) {
+            final names = [
+              for (final s in rows)
+                if ((s['name'] ?? '').toString().trim().isNotEmpty)
+                  s['name'].toString().trim(),
+            ];
+            if (names.isEmpty) return const SizedBox.shrink();
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(left: 12, bottom: 4),
+                  child: Text(
+                    'Suppliers',
+                    style: HexaDsType.label(11, color: HexaDsColors.textMuted),
+                  ),
+                ),
+                OperationalPillRow(
+                  labels: names.take(10).toList(),
+                  onSelected: (name) {
+                    ref.read(stockListQueryProvider.notifier).state =
+                        StockListQuery(q: name, page: 1);
+                    context.go('/stock');
+                  },
+                ),
+              ],
+            );
+          },
+        ),
       ],
     );
   }
 }
 
-class _StatsRow extends StatelessWidget {
-  const _StatsRow({
+class _CompactStatsRow extends StatelessWidget {
+  const _CompactStatsRow({
     required this.todayAsync,
     required this.lowN,
     required this.critN,
@@ -521,92 +594,31 @@ class _StatsRow extends StatelessWidget {
     final today = todayAsync.valueOrNull;
     final purchaseToday = today?.totalPurchase ?? 0;
     final countToday = today?.purchaseCount ?? 0;
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          _StatPill(
-            label: 'Today',
-            value: todayAsync.isLoading ? '…' : _inr(purchaseToday),
-            sub: todayAsync.isLoading ? 'loading' : '$countToday bills',
-          ),
-          const SizedBox(width: 8),
-          _StatPill(
-            label: 'Low',
-            value: lowN.isLoading ? '…' : '${lowN.valueOrNull ?? 0}',
-            sub: 'SKU',
-          ),
-          const SizedBox(width: 8),
-          _StatPill(
-            label: 'Critical',
-            value: critN.isLoading ? '…' : '${critN.valueOrNull ?? 0}',
-            sub: 'SKU',
-          ),
-          const SizedBox(width: 8),
-          _StatPill(
-            label: 'Active',
-            value: sessionsN.isLoading ? '…' : '${sessionsN.valueOrNull ?? 0}',
-            sub: 'sessions',
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatPill extends StatelessWidget {
-  const _StatPill({
-    required this.label,
-    required this.value,
-    required this.sub,
-  });
-
-  final String label;
-  final String value;
-  final String sub;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 118,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: HexaColors.brandBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-              color: Colors.grey.shade600,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF0F172A),
-            ),
-          ),
-          Text(
-            sub,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey.shade600,
-            ),
-          ),
-        ],
-      ),
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        OperationalStatChip(
+          label: 'Today',
+          value: todayAsync.isLoading
+              ? '…'
+              : '${_inr(purchaseToday)} · $countToday',
+        ),
+        OperationalStatChip(
+          label: 'Low',
+          value: lowN.isLoading ? '…' : '${lowN.valueOrNull ?? 0}',
+          tint: const Color(0xFFE65100),
+        ),
+        OperationalStatChip(
+          label: 'Critical',
+          value: critN.isLoading ? '…' : '${critN.valueOrNull ?? 0}',
+          tint: const Color(0xFFC62828),
+        ),
+        OperationalStatChip(
+          label: 'Sessions',
+          value: sessionsN.isLoading ? '…' : '${sessionsN.valueOrNull ?? 0}',
+        ),
+      ],
     );
   }
 }
@@ -631,42 +643,42 @@ class _LowStockTable extends StatelessWidget {
             style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w600),
           );
         }
-        return Card(
-          margin: EdgeInsets.zero,
-          child: Column(
-            children: [
-              for (var i = 0; i < rows.length; i++) ...[
-                ListTile(
-                  dense: true,
-                  title: Text(
-                    rows[i]['name']?.toString() ?? '—',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-                  ),
-                  subtitle: Text(
-                    '${rows[i]['current_stock'] ?? '—'} / ${rows[i]['reorder_level'] ?? '—'} ${rows[i]['unit'] ?? ''}',
-                    style: const TextStyle(fontSize: 11),
-                  ),
-                  trailing: Text(
-                    (rows[i]['stock_status'] ?? '').toString(),
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: HexaColors.brandPrimary,
-                    ),
-                  ),
-                  onTap: () {
-                    final id = rows[i]['id']?.toString();
-                    if (id != null && id.isNotEmpty) {
-                      context.push('/catalog/item/$id');
-                    }
-                  },
+        return Column(
+          children: [
+            for (var i = 0; i < rows.length; i++) ...[
+              ListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                title: Text(
+                  rows[i]['name']?.toString() ?? '—',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
                 ),
-                if (i < rows.length - 1) const Divider(height: 1),
-              ],
+                subtitle: Text(
+                  '${rows[i]['current_stock'] ?? '—'} / ${rows[i]['reorder_level'] ?? '—'} ${rows[i]['unit'] ?? ''}',
+                  style: const TextStyle(fontSize: 11),
+                ),
+                trailing: Text(
+                  (rows[i]['stock_status'] ?? '').toString(),
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: HexaColors.brandPrimary,
+                  ),
+                ),
+                onTap: () {
+                  final id = rows[i]['id']?.toString();
+                  if (id != null && id.isNotEmpty) {
+                    context.push('/catalog/item/$id');
+                  }
+                },
+              ),
+              if (i < rows.length - 1)
+                const Divider(height: 1, indent: 12, endIndent: 12),
             ],
-          ),
+          ],
         );
       },
     );
@@ -698,15 +710,15 @@ class _AuditRecentList extends StatelessWidget {
         if (rows.isEmpty) {
           return Text('No recent adjustments', style: TextStyle(color: Colors.grey.shade600));
         }
-        return Card(
-          margin: EdgeInsets.zero,
-          child: Column(
-            children: [
-              for (var i = 0; i < rows.length; i++) ...[
-                ListTile(
-                  dense: true,
-                  title: Text(
-                    (rows[i]['adjustment_type'] ?? 'Update').toString(),
+        return Column(
+          children: [
+            for (var i = 0; i < rows.length; i++) ...[
+              ListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                title: Text(
+                  (rows[i]['adjustment_type'] ?? 'Update').toString(),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
@@ -721,10 +733,10 @@ class _AuditRecentList extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
                 ),
-                if (i < rows.length - 1) const Divider(height: 1),
-              ],
+              if (i < rows.length - 1)
+                const Divider(height: 1, indent: 12, endIndent: 12),
             ],
-          ),
+          ],
         );
       },
     );
@@ -748,15 +760,15 @@ class _RecentPurchasesCompact extends StatelessWidget {
         if (rows.isEmpty) {
           return Text('No purchases today', style: TextStyle(color: Colors.grey.shade600));
         }
-        return Card(
-          margin: EdgeInsets.zero,
-          child: Column(
-            children: [
-              for (var i = 0; i < rows.length; i++) ...[
-                ListTile(
-                  dense: true,
-                  title: Text(
-                    rows[i]['supplier_name']?.toString() ?? rows[i]['bill_no']?.toString() ?? 'Purchase',
+        return Column(
+          children: [
+            for (var i = 0; i < rows.length; i++) ...[
+              ListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                title: Text(
+                  rows[i]['supplier_name']?.toString() ?? rows[i]['bill_no']?.toString() ?? 'Purchase',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
@@ -776,10 +788,10 @@ class _RecentPurchasesCompact extends StatelessWidget {
                     }
                   },
                 ),
-                if (i < rows.length - 1) const Divider(height: 1),
-              ],
+              if (i < rows.length - 1)
+                const Divider(height: 1, indent: 12, endIndent: 12),
             ],
-          ),
+          ],
         );
       },
     );

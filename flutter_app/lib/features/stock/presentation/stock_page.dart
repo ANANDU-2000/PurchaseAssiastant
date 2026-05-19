@@ -4,12 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/providers/catalog_providers.dart';
+import '../../../core/providers/home_owner_dashboard_providers.dart';
+import '../../../core/providers/reorder_list_provider.dart';
 import '../../../core/providers/stock_providers.dart';
+import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/router/navigation_ext.dart';
+import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../core/widgets/list_skeleton.dart';
+import '../../../shared/widgets/operational_ui.dart';
 import 'update_stock_sheet.dart';
 
 class StockPage extends ConsumerStatefulWidget {
@@ -22,13 +26,31 @@ class StockPage extends ConsumerStatefulWidget {
 class _StockPageState extends ConsumerState<StockPage> {
   final _searchCtrl = TextEditingController();
   final _subcatCtrl = TextEditingController();
+  final _scroll = ScrollController();
   Timer? _debounce;
+  bool _loadingMore = false;
 
   @override
   void initState() {
     super.initState();
     _searchCtrl.addListener(_onSearchChanged);
     _subcatCtrl.text = ref.read(stockListQueryProvider).subcategory;
+    _scroll.addListener(_onScrollLoadMore);
+  }
+
+  void _onScrollLoadMore() {
+    if (!_scroll.hasClients || _loadingMore) return;
+    if (_scroll.position.extentAfter > 200) return;
+    final q = ref.read(stockListQueryProvider);
+    final data = ref.read(stockListProvider).valueOrNull;
+    if (data == null) return;
+    final total = (data['total'] as num?)?.toInt() ?? 0;
+    final perPage = (data['per_page'] as num?)?.toInt() ?? q.perPage;
+    final page = (data['page'] as num?)?.toInt() ?? 1;
+    final pages = (total / perPage).ceil().clamp(1, 99999);
+    if (page >= pages) return;
+    setState(() => _loadingMore = true);
+    ref.read(stockListQueryProvider.notifier).state = q.copyWith(page: page + 1);
   }
 
   bool _isShellStockRoot(BuildContext context) {
@@ -51,9 +73,19 @@ class _StockPageState extends ConsumerState<StockPage> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _scroll.dispose();
     _searchCtrl.dispose();
     _subcatCtrl.dispose();
     super.dispose();
+  }
+
+  String _timeAgo(dynamic raw) {
+    final at = raw is String ? DateTime.tryParse(raw) : null;
+    if (at == null) return '';
+    final diff = DateTime.now().difference(at.toLocal());
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
   }
 
   String _fmtQty(dynamic v) {
@@ -79,21 +111,6 @@ class _StockPageState extends ConsumerState<StockPage> {
     }
   }
 
-  String _statusLabel(String st) {
-    switch (st) {
-      case 'out':
-        return 'Out';
-      case 'critical':
-        return 'Critical';
-      case 'low':
-        return 'Low';
-      case 'healthy':
-        return 'OK';
-      default:
-        return st;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -101,6 +118,7 @@ class _StockPageState extends ConsumerState<StockPage> {
     final q = ref.watch(stockListQueryProvider);
     final listAsync = ref.watch(stockListProvider);
     final catsAsync = ref.watch(itemCategoriesListProvider);
+    final suppliersAsync = ref.watch(suppliersListProvider);
 
     ref.listen<StockListQuery>(stockListQueryProvider, (prev, next) {
       if (prev?.subcategory != next.subcategory) {
@@ -109,6 +127,15 @@ class _StockPageState extends ConsumerState<StockPage> {
     });
 
     final shellStock = _isShellStockRoot(context);
+    final lowN = ref.watch(stockLowCountProvider).valueOrNull ?? 0;
+    final critN = ref.watch(stockCriticalCountProvider).valueOrNull ?? 0;
+    final reorderN = ref.watch(reorderPendingCountProvider).valueOrNull ?? 0;
+
+    ref.listen(stockListProvider, (prev, next) {
+      if (next.hasValue && _loadingMore) {
+        setState(() => _loadingMore = false);
+      }
+    });
 
     return Scaffold(
       appBar: AppBar(
@@ -121,6 +148,15 @@ class _StockPageState extends ConsumerState<StockPage> {
               ),
         title: const Text('Stock'),
         actions: [
+          IconButton(
+            tooltip: 'Reorder list',
+            onPressed: () => context.push('/stock/reorder'),
+            icon: Badge(
+              isLabelVisible: reorderN > 0,
+              label: Text('$reorderN'),
+              child: const Icon(Icons.playlist_add_check_rounded),
+            ),
+          ),
           IconButton(
             tooltip: 'Scan barcode',
             icon: const Icon(Icons.qr_code_scanner_rounded),
@@ -219,72 +255,107 @@ class _StockPageState extends ConsumerState<StockPage> {
               ],
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           catsAsync.when(
             loading: () => const SizedBox.shrink(),
             error: (_, __) => const SizedBox.shrink(),
             data: (cats) {
+              final names = [
+                'All',
+                for (final c in cats)
+                  if ((c['name'] ?? '').toString().trim().isNotEmpty)
+                    c['name'].toString().trim(),
+              ];
+              if (names.length <= 1) return const SizedBox.shrink();
+              return OperationalPillRow(
+                labels: names,
+                selected: q.category.isEmpty ? 'All' : q.category,
+                onSelected: (name) {
+                  ref.read(stockListQueryProvider.notifier).state =
+                      ref.read(stockListQueryProvider).copyWith(
+                            category: name == 'All' ? '' : name,
+                            subcategory: '',
+                            page: 1,
+                          );
+                  _subcatCtrl.text = '';
+                },
+              );
+            },
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            child: TextField(
+              controller: _subcatCtrl,
+              decoration: const InputDecoration(
+                hintText: 'Subcategory / type filter',
+                isDense: true,
+                prefixIcon: Icon(Icons.filter_list_rounded, size: 20),
+                border: OutlineInputBorder(),
+              ),
+              textInputAction: TextInputAction.search,
+              onSubmitted: (v) {
+                ref.read(stockListQueryProvider.notifier).state =
+                    ref.read(stockListQueryProvider).copyWith(
+                          subcategory: v.trim(),
+                          page: 1,
+                        );
+              },
+            ),
+          ),
+          suppliersAsync.when(
+            loading: () => const SizedBox.shrink(),
+            error: (_, __) => const SizedBox.shrink(),
+            data: (rows) {
+              final names = [
+                for (final s in rows)
+                  if ((s['name'] ?? '').toString().trim().isNotEmpty)
+                    s['name'].toString().trim(),
+              ];
+              if (names.isEmpty) return const SizedBox.shrink();
               return Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        key: ValueKey<String>('stock_cat_${q.category}'),
-                        initialValue:
-                            q.category.isEmpty ? null : q.category,
-                        decoration: const InputDecoration(
-                          labelText: 'Category',
-                          isDense: true,
-                          border: OutlineInputBorder(),
-                        ),
-                        items: [
-                          const DropdownMenuItem<String>(
-                            value: null,
-                            child: Text('All categories'),
-                          ),
-                          for (final c in cats)
-                            DropdownMenuItem<String>(
-                              value: c['name']?.toString() ?? '',
-                              child: Text(c['name']?.toString() ?? ''),
-                            ),
-                        ],
-                        onChanged: (v) {
-                          ref.read(stockListQueryProvider.notifier).state =
-                              ref.read(stockListQueryProvider).copyWith(
-                                    category: v ?? '',
-                                    subcategory: '',
-                                    page: 1,
-                                  );
-                          _subcatCtrl.text = '';
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextField(
-                        controller: _subcatCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Subcategory',
-                          hintText: 'Filter by type name',
-                          isDense: true,
-                          border: OutlineInputBorder(),
-                        ),
-                        textInputAction: TextInputAction.search,
-                        onSubmitted: (v) {
-                          ref.read(stockListQueryProvider.notifier).state =
-                              ref.read(stockListQueryProvider).copyWith(
-                                    subcategory: v.trim(),
-                                    page: 1,
-                                  );
-                        },
-                      ),
-                    ),
-                  ],
+                padding: const EdgeInsets.only(top: 4),
+                child: OperationalPillRow(
+                  labels: names.take(12).toList(),
+                  selected: q.q.isNotEmpty ? q.q : null,
+                  onSelected: (name) {
+                    ref.read(stockListQueryProvider.notifier).state =
+                        ref.read(stockListQueryProvider).copyWith(
+                              q: q.q == name ? '' : name,
+                              page: 1,
+                            );
+                    if (q.q != name) _searchCtrl.text = name;
+                  },
                 ),
               );
             },
           ),
+          if (q.status == 'low' || q.status == 'critical')
+            Material(
+              color: const Color(0xFFFFF3E0),
+              child: InkWell(
+                onTap: () => context.push('/stock/reorder'),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded, color: Color(0xFFE65100)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '$lowN low · $critN critical — tap for reorder list',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right_rounded),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          const SizedBox(height: 4),
           Expanded(
             child: RefreshIndicator(
               onRefresh: () async {
@@ -324,188 +395,170 @@ class _StockPageState extends ConsumerState<StockPage> {
 
                 return Column(
                   children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Showing ${items.length} / $total · '
+                              '🟠 $lowN low · 🔴 $critN critical',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                          ),
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF2E7D32),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'LIVE',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const _StockTableHeader(),
                     Expanded(
                       child: Scrollbar(
                         child: ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                          itemCount: items.length,
+                          controller: _scroll,
+                          padding: EdgeInsets.zero,
+                          itemCount: items.length + (_loadingMore ? 1 : 0),
                           itemBuilder: (ctx, i) {
+                            if (_loadingMore && i == items.length) {
+                              return const Padding(
+                                padding: EdgeInsets.all(16),
+                                child: Center(
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                              );
+                            }
                             final row = Map<String, dynamic>.from(
                               items[i] as Map,
                             );
                             final id = row['id']?.toString() ?? '';
                             final name = row['name']?.toString() ?? '';
-                            final st =
-                                row['stock_status']?.toString() ?? 'healthy';
-                            final unit = row['unit']?.toString() ?? '';
-                            final cur = _fmtQty(row['current_stock']);
-                            final ro = _fmtQty(row['reorder_level']);
-                            void openUpdate() {
-                              if (id.isEmpty) return;
-                              showUpdateStockSheet(
-                                context: context,
-                                ref: ref,
-                                itemId: id,
-                                itemName: name,
-                                stockRow: row,
-                              );
-                            }
+                            final updatedBy =
+                                row['last_stock_updated_by']?.toString();
+                            final updatedAgo = _timeAgo(
+                              row['last_stock_updated_at'],
+                            );
 
-                            Widget card = Card(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              child: InkWell(
-                                onTap: id.isEmpty
-                                    ? null
-                                    : () => context.push('/catalog/item/$id'),
-                                onLongPress: id.isEmpty
-                                    ? null
-                                    : () {
-                                        showModalBottomSheet<void>(
-                                          context: context,
-                                          showDragHandle: true,
-                                          builder: (ctx) => SafeArea(
-                                            child: Column(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                ListTile(
-                                                  leading: const Icon(Icons.inventory_2_outlined),
-                                                  title: const Text('Update stock'),
-                                                  onTap: () {
-                                                    Navigator.pop(ctx);
-                                                    openUpdate();
-                                                  },
-                                                ),
-                                                ListTile(
-                                                  leading: const Icon(Icons.history_rounded),
-                                                  title: const Text('Stock history'),
-                                                  onTap: () {
-                                                    Navigator.pop(ctx);
-                                                    context.push(
-                                                      '/stock/$id/history?name=${Uri.encodeComponent(name)}',
-                                                    );
-                                                  },
-                                                ),
-                                                ListTile(
-                                                  leading: const Icon(Icons.print_rounded),
-                                                  title: const Text('Print barcode'),
-                                                  onTap: () {
-                                                    Navigator.pop(ctx);
-                                                    context.push('/barcode/print/$id');
-                                                  },
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                borderRadius: BorderRadius.circular(12),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              name,
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.w800,
-                                                fontSize: 15,
-                                              ),
-                                            ),
-                                          ),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 8,
-                                              vertical: 4,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: _statusColor(st, cs)
-                                                  .withValues(alpha: 0.12),
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                            ),
-                                            child: Text(
-                                              _statusLabel(st),
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w800,
-                                                color: _statusColor(st, cs),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        [
-                                          if ((row['category_name'] ?? '')
-                                              .toString()
-                                              .isNotEmpty)
-                                            row['category_name'],
-                                          if ((row['subcategory_name'] ?? '')
-                                              .toString()
-                                              .isNotEmpty)
-                                            row['subcategory_name'],
-                                        ].join(' · '),
-                                        style: theme.textTheme.bodySmall
-                                            ?.copyWith(
-                                          color: cs.onSurfaceVariant,
-                                          fontWeight: FontWeight.w600,
+                            Widget line = _StockTableRow(
+                              row: row,
+                              fmtQty: _fmtQty,
+                              statusColor: (st) => _statusColor(st, cs),
+                              updatedSubtitle: updatedBy != null &&
+                                      updatedBy.isNotEmpty
+                                  ? 'by $updatedBy · $updatedAgo'
+                                  : null,
+                              onTap: () {
+                                final id = row['id']?.toString() ?? '';
+                                if (id.isNotEmpty) {
+                                  context.push('/catalog/item/$id');
+                                }
+                              },
+                              onLongPress: () {
+                                if (id.isEmpty) return;
+                                showModalBottomSheet<void>(
+                                  context: context,
+                                  showDragHandle: true,
+                                  builder: (ctx) => SafeArea(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        ListTile(
+                                          leading: const Icon(Icons.inventory_2_outlined),
+                                          title: const Text('Update stock'),
+                                          onTap: () {
+                                            Navigator.pop(ctx);
+                                            showUpdateStockSheet(
+                                              context: context,
+                                              ref: ref,
+                                              itemId: id,
+                                              itemName: name,
+                                              stockRow: row,
+                                            );
+                                          },
                                         ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        'On hand: $cur${unit.isNotEmpty ? ' $unit' : ''} · Reorder at $ro',
-                                        style: HexaDsType.purchaseQtyUnit
-                                            .copyWith(fontSize: 13),
-                                      ),
-                                      if ((row['rack_location'] ?? '')
-                                          .toString()
-                                          .trim()
-                                          .isNotEmpty)
-                                        Padding(
-                                          padding: const EdgeInsets.only(top: 4),
-                                          child: Text(
-                                            'Rack: ${row['rack_location']}',
-                                            style: theme.textTheme.labelSmall
-                                                ?.copyWith(
-                                              color: cs.onSurfaceVariant,
-                                            ),
-                                          ),
+                                        ListTile(
+                                          leading: const Icon(Icons.history_rounded),
+                                          title: const Text('Stock history'),
+                                          onTap: () {
+                                            Navigator.pop(ctx);
+                                            context.push(
+                                              '/stock/$id/history?name=${Uri.encodeComponent(name)}',
+                                            );
+                                          },
                                         ),
-                                    ],
+                                        ListTile(
+                                          leading: const Icon(Icons.print_rounded),
+                                          title: const Text('Print barcode'),
+                                          onTap: () {
+                                            Navigator.pop(ctx);
+                                            context.push('/barcode/print/$id');
+                                          },
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                ),
-                              ),
+                                );
+                              },
                             );
 
                             if (id.isNotEmpty) {
-                              card = Dismissible(
-                                key: ValueKey('stock_row_$id'),
+                              line = Dismissible(
+                                key: ValueKey('stock_swipe_$id'),
                                 direction: DismissDirection.startToEnd,
-                                background: Container(
-                                  alignment: Alignment.centerLeft,
-                                  padding: const EdgeInsets.only(left: 20),
-                                  margin: const EdgeInsets.only(bottom: 8),
-                                  decoration: BoxDecoration(
-                                    color: cs.primaryContainer,
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Icon(Icons.inventory_2_outlined, color: cs.primary),
-                                ),
                                 confirmDismiss: (_) async {
-                                  openUpdate();
+                                  await showUpdateStockSheet(
+                                    context: context,
+                                    ref: ref,
+                                    itemId: id,
+                                    itemName: name,
+                                    stockRow: row,
+                                  );
                                   return false;
                                 },
-                                child: card,
+                                background: Container(
+                                  color: HexaColors.brandPrimary
+                                      .withValues(alpha: 0.15),
+                                  alignment: Alignment.centerLeft,
+                                  padding: const EdgeInsets.only(left: 20),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.inventory_2_outlined,
+                                        color: HexaColors.brandPrimary,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Update',
+                                        style: TextStyle(
+                                          color: HexaColors.brandPrimary,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                child: line,
                               );
                             }
-                            return card;
+                            return line;
                           },
                         ),
                       ),
@@ -558,6 +611,168 @@ class _StockPageState extends ConsumerState<StockPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _StockTableHeader extends StatelessWidget {
+  const _StockTableHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    const style = TextStyle(
+      fontSize: 11,
+      fontWeight: FontWeight.w900,
+      letterSpacing: 0.2,
+      color: Colors.white,
+    );
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: const BoxDecoration(
+        color: Color(0xFF37474F),
+        border: Border(bottom: BorderSide(color: HexaColors.brandBorder)),
+      ),
+      child: const Row(
+        children: [
+          Expanded(flex: 5, child: Text('Item', style: style)),
+          Expanded(flex: 2, child: Text('Stock', style: style, textAlign: TextAlign.end)),
+          Expanded(flex: 2, child: Text('Low', style: style, textAlign: TextAlign.end)),
+          Expanded(flex: 3, child: Text('Supplier', style: style, textAlign: TextAlign.end)),
+        ],
+      ),
+    );
+  }
+}
+
+class _StockTableRow extends StatelessWidget {
+  const _StockTableRow({
+    required this.row,
+    required this.fmtQty,
+    required this.statusColor,
+    this.updatedSubtitle,
+    required this.onTap,
+    required this.onLongPress,
+  });
+
+  final Map<String, dynamic> row;
+  final String Function(dynamic) fmtQty;
+  final Color Function(String) statusColor;
+  final String? updatedSubtitle;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = row['name']?.toString() ?? '—';
+    final st = row['stock_status']?.toString() ?? 'healthy';
+    final unit = row['unit']?.toString() ?? '';
+    final cur = fmtQty(row['current_stock']);
+    final ro = fmtQty(row['reorder_level']);
+    final sup = row['supplier_name']?.toString() ?? '—';
+    final sub = [
+      if ((row['category_name'] ?? '').toString().isNotEmpty)
+        row['category_name'],
+      if ((row['subcategory_name'] ?? '').toString().isNotEmpty)
+        row['subcategory_name'],
+    ].join(' · ');
+
+    return Material(
+      color: Colors.white,
+      child: InkWell(
+        onTap: onTap,
+        onLongPress: onLongPress,
+        child: Container(
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: HexaColors.brandBorder)),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 5,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                        height: 1.15,
+                      ),
+                    ),
+                    if (sub.isNotEmpty)
+                      Text(
+                        sub,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    if (updatedSubtitle != null && updatedSubtitle!.isNotEmpty)
+                      Text(
+                        updatedSubtitle!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '$cur${unit.isNotEmpty ? ' $unit' : ''}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                        color: statusColor(st),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: Text(
+                  ro,
+                  textAlign: TextAlign.end,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Expanded(
+                flex: 3,
+                child: Text(
+                  sup,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.end,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

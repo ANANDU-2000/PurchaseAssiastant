@@ -899,6 +899,57 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ),
           const SizedBox(height: 20),
+          Text('Operations',
+              style: tt.titleSmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          Card(
+            color: context.adaptiveCard,
+            child: Column(
+              children: [
+                ListTile(
+                  leading: Icon(Icons.playlist_add_check_rounded, color: cs.primary),
+                  title: const Text('Reorder list'),
+                  subtitle: const Text('Items flagged for reorder'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => context.push('/stock/reorder'),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: Icon(Icons.print_outlined, color: cs.primary),
+                  title: const Text('Print barcodes (bulk)'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => context.push('/barcode/bulk-print'),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: Icon(Icons.qr_code_scanner_rounded, color: cs.primary),
+                  title: const Text('Scan item'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => context.push('/barcode/scan'),
+                ),
+              ],
+            ),
+          ),
+          if (session?.isSuperAdmin == true) ...[
+            const SizedBox(height: 20),
+            Text('Admin',
+                style: tt.titleSmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            Card(
+              color: context.adaptiveCard,
+              child: ListTile(
+                leading: Icon(Icons.admin_panel_settings_outlined, color: cs.primary),
+                title: const Text('Super admin'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => context.push('/admin'),
+              ),
+            ),
+          ],
+          const SizedBox(height: 20),
           Text('Data',
               style: tt.titleSmall?.copyWith(
                   color: cs.onSurfaceVariant,
