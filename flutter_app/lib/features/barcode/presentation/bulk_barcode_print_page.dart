@@ -26,8 +26,8 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
   LabelSize _size = LabelSize.medium;
   int _copies = 1;
   int _perRow = 2;
-  String _filterCategory = '';
-  String _filterStatus = 'all';
+  /// When true, narrow the loaded "all status" list to low + critical only (client-side).
+  bool _lowStockOnly = false;
   String _searchText = '';
   bool _busy = false;
   bool _denseA4 = true;
@@ -38,8 +38,9 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      final cur = ref.read(stockListQueryProvider);
       ref.read(stockListQueryProvider.notifier).state =
-          ref.read(stockListQueryProvider).copyWith(perPage: 100, page: 1);
+          cur.copyWith(perPage: 2000, page: 1);
     });
   }
 
@@ -159,6 +160,35 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
     }
   }
 
+  Future<void> _downloadPdf() async {
+    if (_selected.isEmpty || _busy) return;
+    setState(() => _busy = true);
+    try {
+      final pdf = await _buildPdf();
+      if (pdf == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No printable labels')),
+        );
+        return;
+      }
+      await Printing.sharePdf(
+        bytes: pdf,
+        filename: 'bulk_barcodes.pdf',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(userFacingError(e)),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   List<Map<String, dynamic>> _filterItems(List<Map<String, dynamic>> items) {
     final q = _searchText.trim().toLowerCase();
     return [
@@ -169,23 +199,30 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
   }
 
   bool _matches(Map<String, dynamic> it, String q) {
-    if (_filterCategory.isNotEmpty) {
-      final cat = it['category_name']?.toString() ?? '';
-      if (cat != _filterCategory) return false;
-    }
     final st = it['stock_status']?.toString() ?? 'healthy';
-    if (_filterStatus == 'low' && st != 'low' && st != 'critical') {
+    if (_lowStockOnly && st != 'low' && st != 'critical') {
       return false;
     }
-    if (_filterStatus == 'out' && st != 'out') return false;
     if (q.isEmpty) return true;
     final name = it['name']?.toString().toLowerCase() ?? '';
     final code = it['item_code']?.toString().toLowerCase() ?? '';
     return name.contains(q) || code.contains(q);
   }
 
+  String? _categoryIdForName(List<Map<String, dynamic>> cats, String name) {
+    final t = name.trim();
+    if (t.isEmpty) return null;
+    for (final c in cats) {
+      if ((c['name']?.toString().trim() ?? '') == t) {
+        return c['id']?.toString();
+      }
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final listQ = ref.watch(stockListQueryProvider);
     final listAsync = ref.watch(stockListProvider);
     final catsAsync = ref.watch(itemCategoriesListProvider);
 
@@ -223,7 +260,10 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
           ),
           const SizedBox(height: 6),
           catsAsync.when(
-            loading: () => const SizedBox.shrink(),
+            loading: () => const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12),
+              child: LinearProgressIndicator(minHeight: 2),
+            ),
             error: (_, __) => const SizedBox.shrink(),
             data: (cats) {
               final names = [
@@ -232,46 +272,129 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
                   if ((c['name'] ?? '').toString().trim().isNotEmpty)
                     c['name'].toString().trim(),
               ];
-              return SizedBox(
-                height: 40,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  itemCount: names.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 6),
-                  itemBuilder: (ctx, i) {
-                    final name = names[i];
-                    return FilterChip(
-                      label: Text(name, style: const TextStyle(fontSize: 12)),
-                      selected: name == 'All'
-                          ? _filterCategory.isEmpty
-                          : _filterCategory == name,
-                      onSelected: (_) => setState(() {
-                        _filterCategory = name == 'All' ? '' : name;
-                      }),
-                    );
-                  },
+              final cid = _categoryIdForName(cats, listQ.category);
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final name in names)
+                          FilterChip(
+                            label: Text(
+                              name,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            selected: name == 'All'
+                                ? listQ.category.isEmpty
+                                : listQ.category == name,
+                            onSelected: (_) {
+                              final cur = ref.read(stockListQueryProvider);
+                              final n = ref.read(stockListQueryProvider.notifier);
+                              if (name == 'All') {
+                                n.state = cur.copyWith(category: '', subcategory: '');
+                              } else {
+                                n.state = cur.copyWith(category: name, subcategory: '');
+                              }
+                            },
+                          ),
+                      ],
+                    ),
+                    if (cid != null && cid.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      ref.watch(categoryTypesListProvider(cid)).when(
+                            loading: () => const LinearProgressIndicator(
+                              minHeight: 2,
+                            ),
+                            error: (_, __) => const SizedBox.shrink(),
+                            data: (types) {
+                              final typeNames = [
+                                for (final t in types)
+                                  if ((t['name'] ?? '')
+                                      .toString()
+                                      .trim()
+                                      .isNotEmpty)
+                                    t['name'].toString().trim(),
+                              ];
+                              return Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: [
+                                  FilterChip(
+                                    label: const Text(
+                                      'All types',
+                                      style: TextStyle(fontSize: 12),
+                                    ),
+                                    selected: listQ.subcategory.isEmpty,
+                                    onSelected: (_) {
+                                      final cur = ref.read(stockListQueryProvider);
+                                      ref.read(stockListQueryProvider.notifier).state =
+                                          cur.copyWith(subcategory: '');
+                                    },
+                                  ),
+                                  for (final sub in typeNames)
+                                    FilterChip(
+                                      label: Text(
+                                        sub,
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
+                                      selected: listQ.subcategory == sub,
+                                      onSelected: (_) {
+                                        final cur =
+                                            ref.read(stockListQueryProvider);
+                                        ref
+                                                .read(stockListQueryProvider.notifier)
+                                                .state =
+                                            cur.copyWith(subcategory: sub);
+                                      },
+                                    ),
+                                ],
+                              );
+                            },
+                          ),
+                    ],
+                  ],
                 ),
               );
             },
           ),
-          SizedBox(
-            height: 40,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              itemCount: 3,
-              separatorBuilder: (_, __) => const SizedBox(width: 6),
-              itemBuilder: (ctx, i) {
-                final labels = ['All', 'Low stock', 'Out of stock'];
-                final values = ['all', 'low', 'out'];
-                return FilterChip(
-                  label: Text(labels[i], style: const TextStyle(fontSize: 12)),
-                  selected: _filterStatus == values[i],
-                  onSelected: (_) =>
-                      setState(() => _filterStatus = values[i]),
-                );
-              },
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                FilterChip(
+                  label: const Text('All', style: TextStyle(fontSize: 12)),
+                  selected: listQ.status == 'all' && !_lowStockOnly,
+                  onSelected: (_) {
+                    ref.read(stockListQueryProvider.notifier).state =
+                        ref.read(stockListQueryProvider).copyWith(status: 'all');
+                    setState(() => _lowStockOnly = false);
+                  },
+                ),
+                FilterChip(
+                  label: const Text('Low stock', style: TextStyle(fontSize: 12)),
+                  selected: listQ.status == 'all' && _lowStockOnly,
+                  onSelected: (_) {
+                    ref.read(stockListQueryProvider.notifier).state =
+                        ref.read(stockListQueryProvider).copyWith(status: 'all');
+                    setState(() => _lowStockOnly = true);
+                  },
+                ),
+                FilterChip(
+                  label: const Text('Out of stock', style: TextStyle(fontSize: 12)),
+                  selected: listQ.status == 'out',
+                  onSelected: (_) {
+                    ref.read(stockListQueryProvider.notifier).state =
+                        ref.read(stockListQueryProvider).copyWith(status: 'out');
+                    setState(() => _lowStockOnly = false);
+                  },
+                ),
+              ],
             ),
           ),
           Expanded(
@@ -289,17 +412,22 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
                     if (e is Map) Map<String, dynamic>.from(e),
                 ];
                 final visible = _filterItems(items);
+                final totalRaw = data['total'];
+                final total = totalRaw is num ? totalRaw.toInt() : null;
                 return Column(
                   children: [
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Row(
                         children: [
-                          Text(
-                            '${_selected.length} selected · ${visible.length} shown',
-                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          Expanded(
+                            child: Text(
+                              '${_selected.length} selected · '
+                              '${visible.length} shown'
+                              '${total != null ? ' · $total match filter' : ''}',
+                              style: const TextStyle(fontWeight: FontWeight.w800),
+                            ),
                           ),
-                          const Spacer(),
                           TextButton(
                             onPressed: visible.isEmpty
                                 ? null
@@ -476,6 +604,16 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
                                 (_selected.isEmpty || _busy) ? null : _preview,
                             icon: const Icon(Icons.preview_outlined),
                             label: const Text('Preview'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: (_selected.isEmpty || _busy)
+                                ? null
+                                : _downloadPdf,
+                            icon: const Icon(Icons.picture_as_pdf_outlined),
+                            label: const Text('PDF'),
                           ),
                         ),
                         const SizedBox(width: 8),

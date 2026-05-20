@@ -38,6 +38,7 @@
 | FIX-08 | Verify | Item entry sheet + overlay fix (device QA) |
 | FIX-09 | Done | Staff stock update invalidates activity + alert counts |
 | FIX-10 | Done | Barcode lookup 10s timeout + friendly slow message |
+| FIX-11 | Done | Web: `GET /stock/reorder` before `/{id}` (422 fix); `_HexaErrorBoundary` post-frame `setState`; bulk barcode print `per_page` cap + `Wrap` chips + PDF download + list summary |
 | UX-03 | Done | Compact 4-col report tabs; ring summary card; PDF actions sheet; `hideTopStatRow` on overview; ~48dp item rows |
 | UX-04 | Done | Item detail collapsible sections |
 | UX-05 | Done | A4 dense barcode grid (margins/gaps + dynamic cols/rows); `Isolate.run` / web path; bulk dense toggle + progress; `run_web_dev.ps1 -WebPort` |

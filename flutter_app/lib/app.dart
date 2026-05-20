@@ -173,6 +173,10 @@ bool _hexaFlutterErrorLikelyNonFatal(FlutterErrorDetails details) {
       s.contains('Incorrect use of ParentDataWidget') ||
       s.contains('Cannot hit test a render box that has never been laid out') ||
       s.contains('Looking up a deactivated widget') ||
+      s.contains('setState() or markNeedsBuild() called during build') ||
+      s.contains('wrong build scope') ||
+      s.contains('Cannot get renderObject of inactive element') ||
+      s.contains('inactive element') ||
       s.contains('setState() called after dispose()') ||
       s.contains('UnmountedRefException') ||
       s.contains('Bad state: Cannot use') ||
@@ -216,7 +220,11 @@ class _HexaErrorBoundaryState extends State<_HexaErrorBoundary> {
         FlutterError.dumpErrorToConsole(details);
         return;
       }
-      setState(() => _error = details.exception);
+      // Never call setState from inside another widget's build / focus callbacks.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() => _error = details.exception);
+      });
     };
   }
 
@@ -226,7 +234,12 @@ class _HexaErrorBoundaryState extends State<_HexaErrorBoundary> {
     super.dispose();
   }
 
-  void _clearError() => setState(() => _error = null);
+  void _clearError() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() => _error = null);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
