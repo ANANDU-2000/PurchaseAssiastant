@@ -3,14 +3,112 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/auth/session_notifier.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/providers/notifications_provider.dart';
 import '../../../core/providers/staff_home_providers.dart';
 import '../../../core/providers/stock_providers.dart';
+import '../../../core/providers/trade_purchases_provider.dart';
+import '../../../core/utils/line_display.dart';
+import '../../../core/utils/unit_utils.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../core/widgets/list_skeleton.dart';
 import '../../stock/presentation/update_stock_sheet.dart';
+
+String _staffInitials(String name) {
+  final parts = name.trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty);
+  final list = parts.take(2).toList();
+  if (list.isEmpty) return 'S';
+  return list.map((w) => w[0].toUpperCase()).join();
+}
+
+Future<void> _showStaffProfileSheet(BuildContext context, WidgetRef ref) async {
+  final session = ref.read(sessionProvider);
+  final nameAsync = ref.read(staffDisplayNameProvider);
+  final name = nameAsync.valueOrNull ?? 'Staff';
+  final biz = session?.primaryBusiness.effectiveDisplayTitle ?? 'Workspace';
+
+  await showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (ctx) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 28,
+                  backgroundColor: HexaColors.brandPrimary.withValues(alpha: 0.15),
+                  child: Text(
+                    _staffInitials(name),
+                    style: HexaDsType.heading(18, color: HexaColors.brandPrimary),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(name, style: HexaDsType.heading(18)),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Role: Staff · $biz',
+                        style: HexaDsType.body(13, color: HexaDsColors.textMuted),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Theme.of(ctx).colorScheme.error,
+                side: BorderSide(color: Theme.of(ctx).colorScheme.error),
+                minimumSize: const Size.fromHeight(48),
+              ),
+              onPressed: () async {
+                Navigator.pop(ctx);
+                final ok = await showDialog<bool>(
+                  context: context,
+                  builder: (dCtx) => AlertDialog(
+                    title: const Text('Log out of Harisree?'),
+                    content: const Text('You will need to sign in again to continue.'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(dCtx, false),
+                        child: const Text('Cancel'),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(dCtx, true),
+                        child: const Text('Logout'),
+                      ),
+                    ],
+                  ),
+                );
+                if (ok == true) {
+                  await ref.read(sessionProvider.notifier).logout();
+                }
+              },
+              icon: const Icon(Icons.logout_rounded),
+              label: const Text('Logout'),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
 
 /// Staff shell home — scan-first dashboard (FEAT-5).
 class StaffHomePage extends ConsumerWidget {
@@ -20,10 +118,14 @@ class StaffHomePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final nameAsync = ref.watch(staffDisplayNameProvider);
     final name = nameAsync.valueOrNull ?? 'Staff';
+    final initials = _staffInitials(name);
     final bellCount = ref.watch(notificationsUnreadCountProvider);
     final activityAsync = ref.watch(staffTodaySummaryProvider);
     final lowAsync = ref.watch(staffLowStockAlertsProvider);
     final recentAsync = ref.watch(staffRecentScansProvider);
+    final missingCount = ref.watch(staffMissingCodeCountProvider);
+    final missingAsync = ref.watch(missingCodeItemsProvider);
+    final todayPurchases = ref.watch(staffTodayPurchasesProvider);
 
     return Scaffold(
       backgroundColor: HexaColors.brandBackground,
@@ -33,6 +135,8 @@ class StaffHomePage extends ConsumerWidget {
             ref.invalidate(staffTodayActivityProvider);
             ref.invalidate(staffLowStockAlertsProvider);
             ref.invalidate(staffRecentScansProvider);
+            ref.invalidate(missingCodeItemsProvider);
+            ref.invalidate(tradePurchasesListProvider);
           },
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
@@ -83,6 +187,20 @@ class StaffHomePage extends ConsumerWidget {
                         style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
                       ),
                       child: const Icon(Icons.notifications_outlined),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Account',
+                    onPressed: () => _showStaffProfileSheet(context, ref),
+                    icon: CircleAvatar(
+                      radius: 16,
+                      backgroundColor:
+                          HexaColors.brandPrimary.withValues(alpha: 0.12),
+                      child: Text(
+                        initials,
+                        style: HexaDsType.label(12, color: HexaColors.brandPrimary)
+                            .copyWith(fontWeight: FontWeight.w900),
+                      ),
                     ),
                   ),
                 ],
@@ -149,6 +267,16 @@ class StaffHomePage extends ConsumerWidget {
                     onTap: () => context.go('/staff/stock'),
                   ),
                   _StaffActionTile(
+                    label: 'History',
+                    icon: Icons.receipt_long_outlined,
+                    onTap: () => context.go('/staff/purchase-history'),
+                  ),
+                  _StaffActionTile(
+                    label: 'Print',
+                    icon: Icons.print_outlined,
+                    onTap: () => context.push('/barcode/bulk-print'),
+                  ),
+                  _StaffActionTile(
                     label: 'Low stock',
                     icon: Icons.warning_amber_rounded,
                     onTap: () {
@@ -159,6 +287,25 @@ class StaffHomePage extends ConsumerWidget {
                   ),
                 ],
               ),
+              if (missingAsync.isLoading && missingCount == 0)
+                const SizedBox.shrink()
+              else if (missingCount > 0) ...[
+                const SizedBox(height: 16),
+                Card(
+                  color: HexaColors.loss.withValues(alpha: 0.08),
+                  child: ListTile(
+                    leading: Icon(Icons.warning_amber_rounded, color: HexaColors.loss),
+                    title: Text(
+                      '$missingCount items missing barcode codes',
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    trailing: TextButton(
+                      onPressed: () => context.push('/catalog/missing-codes'),
+                      child: const Text('Fix now'),
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 20),
               Row(
                 children: [
@@ -219,14 +366,58 @@ class StaffHomePage extends ConsumerWidget {
                     const SizedBox(width: 8),
                     Expanded(
                       child: _ActivityCard(
-                        label: 'Items',
-                        value: '${s.itemsCreated}',
-                        icon: Icons.add_circle_outline,
+                        label: 'Orders',
+                        value: '${s.purchases}',
+                        icon: Icons.receipt_long_outlined,
                       ),
                     ),
                   ],
                 ),
               ),
+              if (todayPurchases.isNotEmpty) ...[
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Text(
+                      'Stock received today',
+                      style: HexaDsType.heading(16, color: HexaDsColors.textPrimary),
+                    ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: () => context.go('/staff/purchase-history'),
+                      child: const Text('View all'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ...todayPurchases.take(4).map((p) {
+                  final sup = p.supplierName ?? 'Supplier';
+                  final summary = p.lines
+                      .take(2)
+                      .map((l) => '${l.itemName} · ${formatLineQtyWeightFromTradeLine(l)}')
+                      .join(' · ');
+                  final status = p.isDelivered ? 'Delivered' : 'Pending';
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: ListTile(
+                      dense: true,
+                      title: Text(
+                        '${p.humanId} · $sup',
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        summary.isEmpty ? status : '$summary · $status',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: HexaDsType.body(12, color: HexaDsColors.textMuted),
+                      ),
+                      onTap: () => context.push('/staff/purchase-history/${p.id}'),
+                    ),
+                  );
+                }),
+              ],
               const SizedBox(height: 20),
               Text(
                 'Recent scans',
@@ -287,7 +478,14 @@ class StaffHomePage extends ConsumerWidget {
                       ...rows.take(6).map((r) {
                         final id = r['id']?.toString() ?? '';
                         final nm = r['name']?.toString() ?? '';
-                        final cur = r['current_stock'];
+                        final curN = (r['current_stock'] as num?)?.toDouble() ?? 0;
+                        final unit =
+                            (r['default_unit'] ?? r['unit'])?.toString() ?? 'bag';
+                        final kgBag = (r['default_kg_per_bag'] as num?)?.toDouble();
+                        final kgTin = (r['default_weight_per_tin'] as num?)?.toDouble();
+                        final primary = stockDisplayPrimary(curN, unit);
+                        final secondary =
+                            stockDisplaySecondary(curN, unit, kgBag, kgTin);
                         final ro = r['reorder_level'];
                         return Card(
                           margin: const EdgeInsets.only(bottom: 8),
@@ -298,7 +496,11 @@ class StaffHomePage extends ConsumerWidget {
                               nm,
                               style: const TextStyle(fontWeight: FontWeight.w800),
                             ),
-                            subtitle: Text('On hand: $cur · Reorder: $ro'),
+                            subtitle: Text(
+                              secondary == null
+                                  ? 'On hand: $primary · Reorder: $ro'
+                                  : 'On hand: $primary\n$secondary · Reorder: $ro',
+                            ),
                             trailing: const Icon(Icons.chevron_right_rounded),
                             onTap: id.isEmpty
                                 ? null

@@ -977,6 +977,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => context.push('/catalog'),
                 ),
+                ListTile(
+                  leading: Icon(Icons.tune_rounded, color: cs.primary),
+                  title: const Text('Set reorder levels'),
+                  subtitle: const Text('Thresholds for low-stock alerts'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => context.push('/catalog/setup-reorder-levels'),
+                ),
+                ListTile(
+                  leading: Icon(Icons.qr_code_2_outlined, color: cs.primary),
+                  title: const Text('Missing item codes'),
+                  subtitle: const Text('Assign codes and print barcodes'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => context.push('/catalog/missing-codes'),
+                ),
                 const Divider(height: 1),
                 ListTile(
                   leading: Icon(Icons.folder_zip_outlined, color: cs.primary),

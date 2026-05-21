@@ -257,7 +257,7 @@ class _HexaErrorBoundaryState extends State<_HexaErrorBoundary> {
                     size: 48, color: Colors.orange),
                 const SizedBox(height: 16),
                 const Text(
-                  'Something went wrong loading the app.',
+                  'Could not load the app. Check your connection and try again.',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),

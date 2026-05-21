@@ -14,6 +14,7 @@ import '../../../core/models/trade_purchase_models.dart'
 import '../../../core/router/navigation_ext.dart';
 import '../../../core/units/dynamic_unit_label_engine.dart' as unit_lbl;
 import '../../../core/utils/trade_purchase_rate_display.dart';
+import '../../../core/utils/unit_utils.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/auth/auth_error_messages.dart';
@@ -74,6 +75,90 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Owner notified about $itemName')),
+      );
+    } on DioException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(friendlyApiError(e))),
+      );
+    }
+  }
+
+  Future<void> _editReorderLevel(
+    Map<String, dynamic> item,
+    Map<String, dynamic>? stock,
+  ) async {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    final name = item['name']?.toString() ?? 'Item';
+    final unit =
+        (stock?['unit'] ?? item['default_unit'])?.toString().trim() ?? 'bag';
+    final current = (stock?['reorder_level'] as num?)?.toDouble() ?? 0;
+    final ctrl = TextEditingController(
+      text: current > 0 ? current.toString() : '',
+    );
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(
+          20,
+          8,
+          20,
+          20 + MediaQuery.viewInsetsOf(ctx).bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Set reorder level — $name',
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: 'Reorder at',
+                hintText: 'e.g. 20',
+                suffixText: unit.toUpperCase(),
+                border: const OutlineInputBorder(),
+              ),
+              autofocus: true,
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    final text = ctrl.text.trim();
+    ctrl.dispose();
+    if (saved != true || !mounted) return;
+    final v = double.tryParse(text);
+    if (v == null || v < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid number')),
+      );
+      return;
+    }
+    try {
+      await ref.read(hexaApiProvider).updateCatalogItem(
+            businessId: session.primaryBusiness.id,
+            itemId: widget.itemId,
+            patchReorderLevel: true,
+            reorderLevel: v,
+          );
+      ref.invalidate(catalogItemDetailProvider(widget.itemId));
+      ref.invalidate(stockItemDetailProvider(widget.itemId));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Reorder level set to $v ${unit.toUpperCase()}')),
       );
     } on DioException catch (e) {
       if (!mounted) return;
@@ -572,6 +657,10 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                           if (catName != null && catName.isNotEmpty) catName,
                           item['type_name']?.toString(),
                         ].whereType<String>().where((s) => s.isNotEmpty).join(' · '),
+                        onReorderTap: () => _editReorderLevel(
+                          item,
+                          st.isEmpty ? null : st,
+                        ),
                       ),
                     );
                   },
@@ -588,45 +677,6 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                     autofocus: true,
                   ),
                 ],
-                const SizedBox(height: 12),
-                _CatalogItemBarcodeSection(
-                  itemCode: item['item_code']?.toString(),
-                  itemName: item['name']?.toString() ?? 'Item',
-                  itemId: widget.itemId,
-                ),
-                const SizedBox(height: 12),
-                _CollapsibleDetailSection(
-                  title: 'Item details',
-                  icon: Icons.info_outline_rounded,
-                  child: _CatalogItemCatalogInfoSection(item: item),
-                ),
-                _CatalogItemStockSection(
-                  itemId: widget.itemId,
-                  item: item,
-                ),
-                _CollapsibleDetailSection(
-                  title: 'Last purchase',
-                  icon: Icons.receipt_long_outlined,
-                  child: Builder(
-                    builder: (ctx) {
-                      final enriched = _CatalogItemDetailPageState
-                          ._itemWithLastTradeLine(
-                        item,
-                        purchasesAsync.valueOrNull,
-                        widget.itemId,
-                      );
-                      return _CatalogItemLastPurchaseSection(
-                        item: enriched,
-                        inr: _inr,
-                      );
-                    },
-                  ),
-                ),
-                _CatalogItemSuppliersSection(
-                  itemId: widget.itemId,
-                  item: item,
-                  purchases: purchasesAsync.valueOrNull,
-                ),
                 const SizedBox(height: 12),
                 Builder(
                   builder: (context) {
@@ -679,15 +729,27 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                     );
                   },
                 ),
+                _CatalogItemStockSection(
+                  itemId: widget.itemId,
+                  item: item,
+                ),
                 _CollapsibleDetailSection(
-                  title: 'Stock history',
-                  icon: Icons.history_rounded,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _RecentStockPurchasesSection(itemId: widget.itemId),
-                      _CatalogItemStockHistorySection(itemId: widget.itemId),
-                    ],
+                  title: 'Last purchase',
+                  icon: Icons.receipt_long_outlined,
+                  child: Builder(
+                    builder: (ctx) {
+                      final enriched = _CatalogItemDetailPageState
+                          ._itemWithLastTradeLine(
+                        item,
+                        purchasesAsync.valueOrNull,
+                        widget.itemId,
+                      );
+                      return _CatalogItemLastPurchaseSection(
+                        item: enriched,
+                        inr: _inr,
+                        hideFinancials: isStaff,
+                      );
+                    },
                   ),
                 ),
                 _CollapsibleDetailSection(
@@ -818,6 +880,7 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                             fmtDate: _fmtDate,
                             fmtNum: _fmtNum,
                             inr: _inr,
+                            hideFinancials: isStaff,
                           ),
                         const SizedBox(height: 12),
                         OutlinedButton.icon(
@@ -837,6 +900,33 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                     );
                   },
                 ),
+                ),
+                _CollapsibleDetailSection(
+                  title: 'Stock history',
+                  icon: Icons.history_rounded,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _RecentStockPurchasesSection(itemId: widget.itemId),
+                      _CatalogItemStockHistorySection(itemId: widget.itemId),
+                    ],
+                  ),
+                ),
+                _CollapsibleDetailSection(
+                  title: 'Item details',
+                  icon: Icons.info_outline_rounded,
+                  child: _CatalogItemCatalogInfoSection(item: item),
+                ),
+                _CatalogItemSuppliersSection(
+                  itemId: widget.itemId,
+                  item: item,
+                  purchases: purchasesAsync.valueOrNull,
+                ),
+                const SizedBox(height: 12),
+                _CompactCatalogBarcodeRow(
+                  itemCode: item['item_code']?.toString(),
+                  itemName: item['name']?.toString() ?? 'Item',
+                  itemId: widget.itemId,
                 ),
                 const SizedBox(height: 16),
 
@@ -1026,15 +1116,17 @@ class _CatalogItemLastPurchaseSection extends StatelessWidget {
   const _CatalogItemLastPurchaseSection({
     required this.item,
     required this.inr,
+    this.hideFinancials = false,
   });
 
   final Map<String, dynamic> item;
   final String Function(num? n) inr;
+  final bool hideFinancials;
 
   @override
   Widget build(BuildContext context) {
     final qty = tradeIntelQtySummaryLine(item);
-    final rates = tradeIntelRatePairLine(item);
+    final rates = tradeIntelRatePairLine(item, hideFinancials: hideFinancials);
     final rawPd = item['last_purchase_date']?.toString() ?? '';
     DateTime? parsedPd;
     if (rawPd.length >= 10) {
@@ -1369,6 +1461,81 @@ class _CatalogItemStockHistorySection extends ConsumerWidget {
   }
 }
 
+class _CompactCatalogBarcodeRow extends StatelessWidget {
+  const _CompactCatalogBarcodeRow({
+    this.itemCode,
+    required this.itemName,
+    required this.itemId,
+  });
+
+  final String? itemCode;
+  final String itemName;
+  final String itemId;
+
+  void _openPreview(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        child: _CatalogItemBarcodeSection(
+          itemCode: itemCode,
+          itemName: itemName,
+          itemId: itemId,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final code = itemCode?.trim() ?? '';
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: cs.surfaceContainerHighest.withValues(alpha: 0.35),
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            IconButton(
+              tooltip: 'View barcode',
+              visualDensity: VisualDensity.compact,
+              onPressed: code.isEmpty ? null : () => _openPreview(context),
+              icon: const Icon(Icons.qr_code_2_rounded),
+            ),
+            Expanded(
+              child: Text(
+                code.isEmpty ? 'No barcode code assigned' : 'Barcode: $code',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Print label',
+              visualDensity: VisualDensity.compact,
+              onPressed: code.isEmpty
+                  ? null
+                  : () => context.push(
+                        '/barcode/print/${Uri.encodeComponent(itemId)}',
+                      ),
+              icon: const Icon(Icons.print_outlined, size: 20),
+            ),
+            IconButton(
+              tooltip: 'Bulk print',
+              visualDensity: VisualDensity.compact,
+              onPressed: () => context.push('/barcode/bulk-print'),
+              icon: const Icon(Icons.layers_outlined, size: 20),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _CatalogItemBarcodeSection extends StatelessWidget {
   const _CatalogItemBarcodeSection({
     this.itemCode,
@@ -1541,11 +1708,13 @@ class _ItemWarehouseHeroHeader extends StatelessWidget {
     required this.item,
     this.stock,
     this.categoryLabel = '',
+    this.onReorderTap,
   });
 
   final Map<String, dynamic> item;
   final Map<String, dynamic>? stock;
   final String categoryLabel;
+  final VoidCallback? onReorderTap;
 
   static String _fmtQty(dynamic v) {
     if (v == null) return '—';
@@ -1573,6 +1742,13 @@ class _ItemWarehouseHeroHeader extends StatelessWidget {
       _ => const Color(0xFF2E7D32),
     };
     final unit = (stock?['unit'] ?? item['default_unit'] ?? '').toString().trim();
+    final curN = (stock?['current_stock'] as num?)?.toDouble() ?? 0;
+    final kgBag = (item['default_kg_per_bag'] as num?)?.toDouble();
+    final kgTin = (item['default_weight_per_tin'] as num?)?.toDouble();
+    final unitForDisplay = unit.isEmpty ? 'bag' : unit;
+    final onHandPrimary = stockDisplayPrimary(curN, unitForDisplay);
+    final onHandSecondary =
+        stockDisplaySecondary(curN, unitForDisplay, kgBag, kgTin);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1633,8 +1809,8 @@ class _ItemWarehouseHeroHeader extends StatelessWidget {
               Expanded(
                 child: _ItemStatBox(
                   label: 'On hand',
-                  value: _fmtQty(stock!['current_stock']),
-                  sub: unit.isNotEmpty ? unit : null,
+                  value: onHandPrimary,
+                  sub: onHandSecondary ?? (unit.isNotEmpty ? unit.toUpperCase() : null),
                 ),
               ),
               const SizedBox(width: 8),
@@ -1643,6 +1819,7 @@ class _ItemWarehouseHeroHeader extends StatelessWidget {
                   label: 'Reorder',
                   value: _fmtQty(stock!['reorder_level']),
                   sub: unit.isNotEmpty ? unit : null,
+                  onTap: onReorderTap,
                 ),
               ),
               const SizedBox(width: 8),
@@ -1668,16 +1845,18 @@ class _ItemStatBox extends StatelessWidget {
     required this.label,
     required this.value,
     this.sub,
+    this.onTap,
   });
 
   final String label;
   final String value;
   final String? sub;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Container(
+    final child = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
@@ -1709,6 +1888,15 @@ class _ItemStatBox extends StatelessWidget {
               style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
             ),
         ],
+      ),
+    );
+    if (onTap == null) return child;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: child,
       ),
     );
   }
@@ -1821,6 +2009,7 @@ class _TradeHistoryLedgerTable extends StatelessWidget {
     required this.fmtDate,
     required this.fmtNum,
     required this.inr,
+    this.hideFinancials = false,
   });
 
   final List<ItemTradeHistoryRow> rows;
@@ -1828,6 +2017,7 @@ class _TradeHistoryLedgerTable extends StatelessWidget {
   final String Function(String raw) fmtDate;
   final String Function(double n) fmtNum;
   final String Function(num? n) inr;
+  final bool hideFinancials;
 
   @override
   Widget build(BuildContext context) {
@@ -1854,13 +2044,19 @@ class _TradeHistoryLedgerTable extends StatelessWidget {
                   ),
                   child: Table(
                     border: border,
-                    columnWidths: const {
-                      0: FixedColumnWidth(56),
-                      1: FlexColumnWidth(2.0),
-                      2: FlexColumnWidth(1.1),
-                      3: FixedColumnWidth(80),
-                      4: FixedColumnWidth(80),
-                    },
+                    columnWidths: hideFinancials
+                        ? const {
+                            0: FixedColumnWidth(56),
+                            1: FlexColumnWidth(2.0),
+                            2: FlexColumnWidth(1.1),
+                          }
+                        : const {
+                            0: FixedColumnWidth(56),
+                            1: FlexColumnWidth(2.0),
+                            2: FlexColumnWidth(1.1),
+                            3: FixedColumnWidth(80),
+                            4: FixedColumnWidth(80),
+                          },
                     defaultVerticalAlignment: TableCellVerticalAlignment.middle,
                     children: [
                       TableRow(
@@ -1871,8 +2067,10 @@ class _TradeHistoryLedgerTable extends StatelessWidget {
                           _thCell('Date', h(), padEnd: 4),
                           _thCell('Supplier', h()),
                           _thCell('Qty', h()),
-                          _thCell('Rate', h(), align: TextAlign.end, padStart: 4),
-                          _thCell('Total', h(), align: TextAlign.end, padStart: 4),
+                          if (!hideFinancials) ...[
+                            _thCell('Rate', h(), align: TextAlign.end, padStart: 4),
+                            _thCell('Total', h(), align: TextAlign.end, padStart: 4),
+                          ],
                         ],
                       ),
                       for (final r in rows)
@@ -1907,26 +2105,28 @@ class _TradeHistoryLedgerTable extends StatelessWidget {
                                     .copyWith(fontSize: 12),
                               ),
                             ),
-                            _tdCell(
-                              Text(
-                                r.rateLabel(),
-                                textAlign: TextAlign.end,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
+                            if (!hideFinancials) ...[
+                              _tdCell(
+                                Text(
+                                  r.rateLabel(),
+                                  textAlign: TextAlign.end,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
-                            ),
-                            _tdCell(
-                              Text(
-                                inr(r.lineTotal),
-                                textAlign: TextAlign.end,
-                                style: HexaDsType.purchaseLineMoney
-                                    .copyWith(fontSize: 13),
+                              _tdCell(
+                                Text(
+                                  inr(r.lineTotal),
+                                  textAlign: TextAlign.end,
+                                  style: HexaDsType.purchaseLineMoney
+                                      .copyWith(fontSize: 13),
+                                ),
                               ),
-                            ),
+                            ],
                           ],
                         ),
                     ],

@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
@@ -34,6 +35,8 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
   DateTime? _lastAt;
   List<BarcodeRecentScan> _recent = [];
   late final AnimationController _scanLineCtrl;
+  bool _cameraDenied = false;
+  bool _cameraPermanent = false;
 
   @override
   void initState() {
@@ -44,12 +47,39 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
     )..repeat(reverse: true);
     unawaited(_loadRecent());
     if (!kIsWeb) {
-      _camera = MobileScannerController(
-        detectionSpeed: DetectionSpeed.normal,
-        facing: CameraFacing.back,
-        formats: const [BarcodeFormat.code128, BarcodeFormat.qrCode],
-      );
+      unawaited(_initCamera());
     }
+  }
+
+  Future<void> _initCamera() async {
+    final status = await Permission.camera.status;
+    if (status.isDenied) {
+      final req = await Permission.camera.request();
+      if (!req.isGranted) {
+        if (mounted) {
+          setState(() {
+            _cameraDenied = true;
+            _cameraPermanent = req.isPermanentlyDenied;
+          });
+        }
+        return;
+      }
+    } else if (status.isPermanentlyDenied) {
+      if (mounted) {
+        setState(() {
+          _cameraDenied = true;
+          _cameraPermanent = true;
+        });
+      }
+      return;
+    }
+    if (!mounted) return;
+    _camera = MobileScannerController(
+      detectionSpeed: DetectionSpeed.normal,
+      facing: CameraFacing.back,
+      formats: const [BarcodeFormat.code128, BarcodeFormat.qrCode],
+    );
+    setState(() {});
   }
 
   Future<void> _loadRecent() async {
@@ -278,8 +308,8 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'Camera scan is not available in the browser. '
-                          'Enter the item code below or open the app on your phone to scan.',
+                          'Barcode scanning requires the mobile app. '
+                          'Enter the item code below, or install the app on your phone to use the camera.',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             fontWeight: FontWeight.w600,
                             height: 1.35,
@@ -291,16 +321,54 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
                 ),
               ),
             )
+          else if (_cameraDenied)
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                children: [
+                  Icon(Icons.videocam_off_outlined,
+                      size: 48, color: theme.colorScheme.error),
+                  const SizedBox(height: 12),
+                  Text(
+                    _cameraPermanent
+                        ? 'Please allow camera access in Settings to scan barcodes.'
+                        : 'Camera permission is needed to scan barcodes.',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 16),
+                  if (_cameraPermanent)
+                    FilledButton(
+                      onPressed: openAppSettings,
+                      child: const Text('Open Settings'),
+                    )
+                  else
+                    FilledButton(
+                      onPressed: () {
+                        setState(() {
+                          _cameraDenied = false;
+                          _cameraPermanent = false;
+                        });
+                        unawaited(_initCamera());
+                      },
+                      child: const Text('Allow camera'),
+                    ),
+                ],
+              ),
+            )
           else
             SizedBox(
               height: cameraH,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  MobileScanner(
-                    controller: _camera,
-                    onDetect: _onDetect,
-                  ),
+                  if (_camera != null)
+                    MobileScanner(
+                      controller: _camera,
+                      onDetect: _onDetect,
+                    )
+                  else
+                    const Center(child: CircularProgressIndicator()),
                   Center(
                     child: Container(
                       width: 280,

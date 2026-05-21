@@ -57,6 +57,14 @@ class StockListQuery {
 final stockListQueryProvider =
     StateProvider<StockListQuery>((_) => const StockListQuery());
 
+final stockTotalsProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return {};
+  return ref.read(hexaApiProvider).getStockTotals(
+        businessId: session.primaryBusiness.id,
+      );
+});
+
 final stockListProvider = FutureProvider.autoDispose((ref) async {
   final session = ref.watch(sessionProvider);
   final query = ref.watch(stockListQueryProvider);

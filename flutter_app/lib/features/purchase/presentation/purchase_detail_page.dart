@@ -15,6 +15,7 @@ import '../../../core/providers/business_aggregates_invalidation.dart'
     show invalidatePurchaseWorkspace;
 import '../../../core/providers/business_profile_provider.dart';
 import '../../../core/router/navigation_ext.dart';
+import '../../../core/router/post_auth_route.dart';
 import '../../../core/services/purchase_invoice_pdf_layout.dart'
     show tradeCalcRequestFromTradePurchase;
 import '../../../core/services/purchase_pdf.dart';
@@ -487,6 +488,9 @@ class _LoadedPurchaseScaffold extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final session = ref.watch(sessionProvider);
+    final hideFinancials =
+        session != null && !sessionCanSeeFinancials(session);
     final optim = ref.watch(tradePurchaseDeliveryOptimisticProvider(p.id));
     final displayP = optim == null ? p : p.withDelivered(optim);
     return Scaffold(
@@ -500,29 +504,31 @@ class _LoadedPurchaseScaffold extends ConsumerWidget {
         backgroundColor: Colors.transparent,
         foregroundColor: HexaColors.brandPrimary,
         actions: [
-          IconButton(
-            tooltip: 'Edit',
-            icon: const Icon(Icons.edit_outlined),
-            onPressed: p.statusEnum == PurchaseStatus.cancelled
-                ? null
-                : () => context.push('/purchase/edit/${p.id}'),
-          ),
-          IconButton(
-            tooltip: 'Share',
-            icon: const Icon(Icons.share_outlined),
-            onPressed: () => _runSharePdf(context, ref),
-          ),
-          IconButton(
-            tooltip: 'Print',
-            icon: const Icon(Icons.print_outlined),
-            onPressed: () => _runPrintPdf(context, ref),
-          ),
-          IconButton(
-            tooltip: 'PDF',
-            icon: const Icon(Icons.picture_as_pdf_outlined),
-            onPressed: () => _runDownloadPdf(context, ref),
-          ),
-          if (p.statusEnum != PurchaseStatus.cancelled)
+          if (!hideFinancials) ...[
+            IconButton(
+              tooltip: 'Edit',
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: p.statusEnum == PurchaseStatus.cancelled
+                  ? null
+                  : () => context.push('/purchase/edit/${p.id}'),
+            ),
+            IconButton(
+              tooltip: 'Share',
+              icon: const Icon(Icons.share_outlined),
+              onPressed: () => _runSharePdf(context, ref),
+            ),
+            IconButton(
+              tooltip: 'Print',
+              icon: const Icon(Icons.print_outlined),
+              onPressed: () => _runPrintPdf(context, ref),
+            ),
+            IconButton(
+              tooltip: 'PDF',
+              icon: const Icon(Icons.picture_as_pdf_outlined),
+              onPressed: () => _runDownloadPdf(context, ref),
+            ),
+          ],
+          if (p.statusEnum != PurchaseStatus.cancelled && !hideFinancials)
             PopupMenuButton<String>(
               tooltip: 'More',
               onSelected: (v) {
@@ -566,7 +572,12 @@ class _LoadedPurchaseScaffold extends ConsumerWidget {
               ),
             ),
           ],
-          Expanded(child: _PurchaseDetailBody(p: displayP)),
+          Expanded(
+            child: _PurchaseDetailBody(
+              p: displayP,
+              hideFinancials: hideFinancials,
+            ),
+          ),
         ],
       ),
     );
@@ -574,9 +585,13 @@ class _LoadedPurchaseScaffold extends ConsumerWidget {
 }
 
 class _PurchaseDetailBody extends ConsumerStatefulWidget {
-  const _PurchaseDetailBody({required this.p});
+  const _PurchaseDetailBody({
+    required this.p,
+    this.hideFinancials = false,
+  });
 
   final TradePurchase p;
+  final bool hideFinancials;
 
   @override
   ConsumerState<_PurchaseDetailBody> createState() => _PurchaseDetailBodyState();
@@ -699,6 +714,7 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
   @override
   Widget build(BuildContext context) {
     final p = widget.p;
+    final hideFinancials = widget.hideFinancials;
     final agg = _buildAgg(p);
     final cs = Theme.of(context).colorScheme;
     final st = p.statusEnum;
@@ -727,8 +743,11 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
                   children: [
                     if (p.hasMissingDetails) _pendingDetailsChip(context, p, cs),
                     _compactMeta(context, p, st, paidPending, cs),
-                    const SizedBox(height: 18),
-                    _buildSummaryStrip(context, agg, cs),
+                    if (!hideFinancials) ...[
+                      const SizedBox(height: 18),
+                      _buildSummaryStrip(context, agg, cs),
+                    ] else
+                      const SizedBox(height: 12),
                     Padding(
                       padding: const EdgeInsets.only(top: 8, bottom: 4),
                       child: Text(
@@ -797,9 +816,16 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
                           ),
                     ),
                     const SizedBox(height: 10),
-                    ..._itemsAsCards(context, p, cs),
-                    const SizedBox(height: 18),
-                    _chargesAndBalanceCollapsible(context, p, agg, cs),
+                    ..._itemsAsCards(
+                      context,
+                      p,
+                      cs,
+                      hideFinancials: hideFinancials,
+                    ),
+                    if (!hideFinancials) ...[
+                      const SizedBox(height: 18),
+                      _chargesAndBalanceCollapsible(context, p, agg, cs),
+                    ],
                   ],
                 ),
               ),
@@ -1049,13 +1075,17 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
       formatLineQtyWeightFromTradeLine(l);
 
   List<Widget> _itemsAsCards(
-      BuildContext context, TradePurchase p, ColorScheme cs) {
+    BuildContext context,
+    TradePurchase p,
+    ColorScheme cs, {
+    bool hideFinancials = false,
+  }) {
     final out = <Widget>[];
     var i = 0;
     for (final l in p.lines) {
       i++;
-      final pr = _effectiveLineProfit(l);
-      final rates = _lineRateLabels(l);
+      final pr = hideFinancials ? null : _effectiveLineProfit(l);
+      final rates = hideFinancials ? null : _lineRateLabels(l);
       final profitColor =
           pr == null ? cs.onSurfaceVariant : (pr >= 0 ? const Color(0xFF0F766E) : HexaColors.loss);
       out.add(
@@ -1107,25 +1137,29 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
                   color: cs.onSurfaceVariant,
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                'P: ${rates.purchase}  ·  S: ${rates.selling}',
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Line total',
-                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                  ),
-                  SelectableText(
-                    _inr(_lineInclusive(l)),
-                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
-                  ),
-                ],
-              ),
+              if (rates != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'P: ${rates.purchase}  ·  S: ${rates.selling}',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+              ],
+              if (!hideFinancials) ...[
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Line total',
+                      style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                    ),
+                    SelectableText(
+                      _inr(_lineInclusive(l)),
+                      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                    ),
+                  ],
+                ),
+              ],
               if (pr != null) ...[
                 const SizedBox(height: 4),
                 Row(

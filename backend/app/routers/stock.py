@@ -4,7 +4,7 @@ from decimal import Decimal
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import desc, func, or_, select
+from sqlalchemy import case, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -40,7 +40,9 @@ from app.schemas.stock import (
     ReorderListOut,
     ReorderListPatchIn,
     InventorySummaryOut,
+    StockTotalsOut,
 )
+from app.services.staff_view import should_redact_financials
 from app.services.stock_inventory import (
     catalog_reorder,
     catalog_stock_qty,
@@ -178,6 +180,73 @@ async def stock_inventory_summary(
     del _m
     payload = await compute_inventory_summary(db, business_id)
     return InventorySummaryOut(**payload)
+
+
+@router.get("/totals", response_model=StockTotalsOut)
+async def stock_totals(
+    business_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+) -> StockTotalsOut:
+    """Sum on-hand stock by unit for owner home movement card."""
+    del _m
+    base = CatalogItem.business_id == business_id
+    if hasattr(CatalogItem, "deleted_at"):
+        base = base & CatalogItem.deleted_at.is_(None)
+    r = await db.execute(
+        select(
+            func.count(CatalogItem.id),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (CatalogItem.default_unit == "bag", CatalogItem.current_stock),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            CatalogItem.default_unit == "bag",
+                            CatalogItem.current_stock
+                            * func.coalesce(CatalogItem.default_kg_per_bag, 0),
+                        ),
+                        (CatalogItem.default_unit == "kg", CatalogItem.current_stock),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (CatalogItem.default_unit == "box", CatalogItem.current_stock),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (CatalogItem.default_unit == "tin", CatalogItem.current_stock),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+        ).where(base)
+    )
+    row = r.one()
+    return StockTotalsOut(
+        total_items=int(row[0] or 0),
+        total_bags=float(row[1] or 0),
+        total_kg=float(row[2] or 0),
+        total_boxes=float(row[3] or 0),
+        total_tins=float(row[4] or 0),
+    )
 
 
 @router.get("/list", response_model=StockListOut)
@@ -669,6 +738,11 @@ async def get_stock_item(
     sup = await _supplier_name(db, item)
     base = _item_to_list_row(item, cat_name, type_name, sup)
     purchases = await _recent_purchases(db, item_id)
+    if should_redact_financials(_m.role):
+        purchases = [
+            p.model_copy(update={"rate": None}) if hasattr(p, "model_copy") else p
+            for p in purchases
+        ]
     return StockDetailOut(**base.model_dump(), recent_purchases=purchases)
 
 

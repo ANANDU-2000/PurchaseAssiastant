@@ -19,6 +19,8 @@ import '../../features/catalog/presentation/catalog_page.dart';
 import '../../features/catalog/presentation/catalog_type_items_page.dart';
 import '../../features/catalog/presentation/quick_add_catalog_item_page.dart';
 import '../../features/catalog/presentation/batch_item_create_page.dart';
+import '../../features/catalog/presentation/catalog_missing_codes_page.dart';
+import '../../features/catalog/presentation/catalog_setup_reorder_levels_page.dart';
 import '../../features/auth/presentation/forgot_password_page.dart';
 import '../../features/auth/presentation/login_page.dart';
 import '../../features/auth/presentation/reset_password_page.dart';
@@ -61,6 +63,8 @@ import '../../features/stock/presentation/stock_history_page.dart';
 import '../../features/stock/presentation/stock_today_feed_page.dart';
 import '../../features/staff/presentation/staff_shell_screen.dart';
 import '../../features/staff/presentation/staff_activity_page.dart';
+import '../../features/staff/presentation/staff_purchase_history_page.dart';
+import '../../features/staff/presentation/staff_purchase_order_detail_page.dart';
 import '../../features/shell/shell_screen.dart';
 import '../../features/splash/presentation/splash_page.dart';
 import '../../features/admin/presentation/super_admin_page.dart';
@@ -245,6 +249,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
           child: const BulkBarcodePrintPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/catalog/missing-codes',
+        name: 'catalog_missing_codes',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const CatalogMissingCodesPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/catalog/setup-reorder-levels',
+        name: 'catalog_setup_reorder_levels',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const CatalogSetupReorderLevelsPage(),
         ),
       ),
       GoRoute(
@@ -505,6 +525,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
           child: const StaffActivityPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/staff/purchase-history/:purchaseId',
+        name: 'staff_purchase_detail',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: StaffPurchaseOrderDetailPage(
+            purchaseId: state.pathParameters['purchaseId']!,
+          ),
         ),
       ),
       GoRoute(
@@ -788,6 +818,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 path: '/staff/scan',
                 name: 'staff_scan',
                 builder: (context, state) => const BarcodeScanPage(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/staff/purchase-history',
+                name: 'staff_purchase_history',
+                builder: (context, state) =>
+                    const StaffPurchaseHistoryPage(),
               ),
             ],
           ),

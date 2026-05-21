@@ -85,6 +85,7 @@ class BarcodePdfService {
     LabelSize size = LabelSize.medium,
     int copies = 1,
     bool showLastPurchase = true,
+    bool hideFinancials = false,
   }) async {
     final doc = pw.Document();
     final fmt = _pageFormat(size);
@@ -98,6 +99,7 @@ class BarcodePdfService {
               data: data,
               size: size,
               showLastPurchase: showLastPurchase,
+              hideFinancials: hideFinancials,
             ),
           ),
         ),
@@ -111,6 +113,7 @@ class BarcodePdfService {
     LabelSize size = LabelSize.medium,
     int copiesPerItem = 1,
     bool showLastPurchase = true,
+    bool hideFinancials = false,
     int labelsPerRow = 1,
   }) async {
     final expanded = <BarcodeLabelData>[];
@@ -138,6 +141,7 @@ class BarcodePdfService {
                 data: data,
                 size: size,
                 showLastPurchase: showLastPurchase,
+                hideFinancials: hideFinancials,
               ),
             ),
           ),
@@ -175,6 +179,7 @@ class BarcodePdfService {
                         data: d,
                         size: size,
                         showLastPurchase: showLastPurchase,
+                        hideFinancials: hideFinancials,
                       ),
                     ),
                   ),
@@ -196,6 +201,7 @@ class BarcodePdfService {
     LabelSize size = LabelSize.medium,
     int copiesPerItem = 1,
     bool showLastPurchase = true,
+    bool hideFinancials = false,
   }) async {
     final expanded = <BarcodeLabelData>[];
     for (final data in items) {
@@ -210,6 +216,7 @@ class BarcodePdfService {
       'labels': [for (final e in expanded) e.toJson()],
       'size': size.index,
       'showLastPurchase': showLastPurchase,
+      'hideFinancials': hideFinancials,
     };
     if (kIsWeb) {
       return _barcodeA4DenseFromPayload(payload);
@@ -233,6 +240,7 @@ class BarcodePdfService {
     final sizeIdx = (payload['size'] as int?) ?? 1;
     final size = LabelSize.values[sizeIdx.clamp(0, LabelSize.values.length - 1)];
     final showLastPurchase = payload['showLastPurchase'] as bool? ?? true;
+    final hideFinancials = payload['hideFinancials'] as bool? ?? false;
 
     final mm = PdfPageFormat.mm;
     const margin = 5.0 * PdfPageFormat.mm;
@@ -286,6 +294,7 @@ class BarcodePdfService {
                               data: chunk[idx],
                               size: size,
                               showLastPurchase: showLastPurchase,
+                              hideFinancials: hideFinancials,
                             ),
                           ),
                         ),
@@ -339,6 +348,7 @@ class BarcodePdfService {
     required BarcodeLabelData data,
     required LabelSize size,
     required bool showLastPurchase,
+    bool hideFinancials = false,
   }) {
     final code = data.itemCode.trim().isEmpty ? data.itemName : data.itemCode;
     final bc = Barcode.code128();
@@ -383,7 +393,12 @@ class BarcodePdfService {
       ]);
     }
 
-    final lastLine = _lastPurchaseLine(data, showLastPurchase: showLastPurchase, size: size);
+    final lastLine = _lastPurchaseLine(
+      data,
+      showLastPurchase: showLastPurchase,
+      size: size,
+      hideFinancials: hideFinancials,
+    );
     if (lastLine != null) {
       children.add(pw.SizedBox(height: 2));
       children.add(
@@ -405,6 +420,7 @@ class BarcodePdfService {
     BarcodeLabelData data, {
     required bool showLastPurchase,
     required LabelSize size,
+    bool hideFinancials = false,
   }) {
     if (!showLastPurchase || size == LabelSize.small) return null;
     if (data.lastPurchaseDate == null) return 'No purchase yet';
@@ -416,7 +432,7 @@ class BarcodePdfService {
         ? ''
         : (qty == qty.roundToDouble() ? '${qty.round()}' : qty.toStringAsFixed(1));
     final u = data.lastPurchaseUnit ?? data.unit ?? '';
-    final rate = data.lastPurchaseRate != null
+    final rate = !hideFinancials && data.lastPurchaseRate != null
         ? '₹${data.lastPurchaseRate!.toStringAsFixed(0)}'
         : '';
     return 'Last: $ds  $qtyStr $u  $rate'.trim();

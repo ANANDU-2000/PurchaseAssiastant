@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/utils/line_display.dart';
+import '../../core/utils/unit_utils.dart';
 import '../../core/utils/phone_launch.dart';
 
 double? tradeIntelToDouble(dynamic v) {
@@ -103,14 +104,22 @@ String tradeIntelPeriodVolumeLine(Map<String, dynamic> m) {
 }
 
 /// Period line amount (confirmed trade) for category rows.
-String tradeIntelPeriodAmountLine(Map<String, dynamic> m) {
+String tradeIntelPeriodAmountLine(
+  Map<String, dynamic> m, {
+  bool hideFinancials = false,
+}) {
+  if (hideFinancials) return '';
   final a = tradeIntelToDouble(m['period_line_total']);
   if (a == null || a <= 1e-6) return '';
   return 'Total amount: ${tradeIntelFormatInr(a)}';
 }
 
 /// Last purchase → last selling (confirmed [last_selling_rate] only — no catalog defaults).
-String tradeIntelRatePairLine(Map<String, dynamic> m) {
+String tradeIntelRatePairLine(
+  Map<String, dynamic> m, {
+  bool hideFinancials = false,
+}) {
+  if (hideFinancials) return '';
   final buy = tradeIntelToDouble(m['last_purchase_price']);
   final sell = tradeIntelToDouble(m['last_selling_rate']);
   if ((buy == null || buy <= 0) && (sell == null || sell <= 0)) {
@@ -135,10 +144,18 @@ String tradeIntelLastPurchaseBagsLabel(Map<String, dynamic> m) {
   final kg = tradeIntelToDouble(m['last_line_weight_kg']);
   if (qty != null && qty > 1e-6) {
     if (unit == 'bag' || unit == 'sack') {
-      return '${tradeIntelFormatQty(qty)} bags';
+      final kgPer = tradeIntelToDouble(m['kg_per_unit']);
+      final primary = stockDisplayPrimary(qty, unit);
+      final sec = stockDisplaySecondary(qty, unit, kgPer, null);
+      return sec == null ? primary : '$primary · $sec';
     }
     if (unit == 'box') return '${tradeIntelFormatQty(qty)} box';
-    if (unit == 'tin') return '${tradeIntelFormatQty(qty)} tin';
+    if (unit == 'tin') {
+      final kgTin = tradeIntelToDouble(m['kg_per_unit']);
+      final primary = stockDisplayPrimary(qty, 'tin');
+      final sec = stockDisplaySecondary(qty, 'tin', null, kgTin);
+      return sec == null ? primary : '$primary · $sec';
+    }
     if (unit == 'kg') return '${tradeIntelFormatQty(qty)} kg';
   }
   if (kg != null && kg > 1e-6) {
@@ -148,8 +165,12 @@ String tradeIntelLastPurchaseBagsLabel(Map<String, dynamic> m) {
 }
 
 /// Confirmed last-purchase facts only (no catalog guide / default rates).
-String tradeIntelSearchCatalogSubtitle(Map<String, dynamic> m) {
+String tradeIntelSearchCatalogSubtitle(
+  Map<String, dynamic> m, {
+  bool hideFinancials = false,
+}) {
   final parts = <String>[];
+  if (!hideFinancials) {
   final buy = tradeIntelToDouble(m['last_purchase_price']);
   final sell = tradeIntelToDouble(m['last_selling_rate']);
   if (buy != null && buy > 0) {
@@ -162,6 +183,7 @@ String tradeIntelSearchCatalogSubtitle(Map<String, dynamic> m) {
   } else if (sell != null && sell > 0) {
     parts.add('Last sell ${tradeIntelFormatInr(sell)}');
   }
+  }
   final bags = tradeIntelLastPurchaseBagsLabel(m);
   if (bags.isNotEmpty) parts.add(bags);
   final hid = (m['last_purchase_human_id'] ?? '').toString().trim();
@@ -173,8 +195,9 @@ String tradeIntelSearchCatalogSubtitle(Map<String, dynamic> m) {
 /// Rich fact line for unified-search catalog tiles (qty / bill id emphasized).
 Widget tradeIntelCatalogSearchFactRichText(
   BuildContext context,
-  Map<String, dynamic> m,
-) {
+  Map<String, dynamic> m, {
+  bool hideFinancials = false,
+}) {
   final tt = Theme.of(context).textTheme;
   final cs = Theme.of(context).colorScheme;
   final base = tt.bodySmall?.copyWith(
@@ -198,32 +221,34 @@ Widget tradeIntelCatalogSearchFactRichText(
     spans.add(TextSpan(text: ' · ', style: base));
   }
 
-  final buy = tradeIntelToDouble(m['last_purchase_price']);
-  final sell = tradeIntelToDouble(m['last_selling_rate']);
-  if (buy != null && buy > 0) {
-    if (sell != null && sell > 0) {
+  if (!hideFinancials) {
+    final buy = tradeIntelToDouble(m['last_purchase_price']);
+    final sell = tradeIntelToDouble(m['last_selling_rate']);
+    if (buy != null && buy > 0) {
+      if (sell != null && sell > 0) {
+        spans.add(
+          TextSpan(
+            text:
+                'Last buy ${tradeIntelFormatInr(buy)} · Last sell ${tradeIntelFormatInr(sell)}',
+            style: base,
+          ),
+        );
+      } else {
+        spans.add(
+          TextSpan(
+            text: 'Last buy ${tradeIntelFormatInr(buy)}',
+            style: base,
+          ),
+        );
+      }
+    } else if (sell != null && sell > 0) {
       spans.add(
         TextSpan(
-          text:
-              'Last buy ${tradeIntelFormatInr(buy)} · Last sell ${tradeIntelFormatInr(sell)}',
-          style: base,
-        ),
-      );
-    } else {
-      spans.add(
-        TextSpan(
-          text: 'Last buy ${tradeIntelFormatInr(buy)}',
+          text: 'Last sell ${tradeIntelFormatInr(sell)}',
           style: base,
         ),
       );
     }
-  } else if (sell != null && sell > 0) {
-    spans.add(
-      TextSpan(
-        text: 'Last sell ${tradeIntelFormatInr(sell)}',
-        style: base,
-      ),
-    );
   }
   final bags = tradeIntelLastPurchaseBagsLabel(m);
   if (bags.isNotEmpty) {
@@ -371,12 +396,15 @@ class TradeIntelCatalogSearchTile extends StatelessWidget {
     required this.item,
     required this.onTap,
     this.fuzzyNameMatch = false,
+    this.hideFinancials = false,
   });
 
   final Map<String, dynamic> item;
   final VoidCallback? onTap;
   /// When true, hide numeric last-buy/sell lines (approximate title match).
   final bool fuzzyNameMatch;
+  /// Staff / privacy: hide purchase rates and amounts.
+  final bool hideFinancials;
 
   @override
   Widget build(BuildContext context) {
@@ -417,10 +445,17 @@ class TradeIntelCatalogSearchTile extends StatelessWidget {
                     ),
                   ],
                   if (!fuzzyNameMatch &&
-                      tradeIntelSearchCatalogSubtitle(item).isNotEmpty) ...[
+                      tradeIntelSearchCatalogSubtitle(
+                        item,
+                        hideFinancials: hideFinancials,
+                      ).isNotEmpty) ...[
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
-                      child: tradeIntelCatalogSearchFactRichText(context, item),
+                      child: tradeIntelCatalogSearchFactRichText(
+                        context,
+                        item,
+                        hideFinancials: hideFinancials,
+                      ),
                     ),
                   ],
                   if (!fuzzyNameMatch && item['last_purchase_date'] != null) ...[

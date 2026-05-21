@@ -48,6 +48,16 @@ class InventorySummaryOut(BaseModel):
     item_count: int = 0
 
 
+class StockTotalsOut(BaseModel):
+    """Aggregated on-hand quantities by default unit (warehouse movement view)."""
+
+    total_bags: float = 0.0
+    total_kg: float = 0.0
+    total_boxes: float = 0.0
+    total_tins: float = 0.0
+    total_items: int = 0
+
+
 class RecentPurchaseOut(BaseModel):
     purchase_date: datetime | None
     qty: Decimal | None

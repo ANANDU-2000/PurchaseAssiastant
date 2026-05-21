@@ -125,7 +125,11 @@ Map<String, dynamic>? _pickPurchaseLine(Map<String, dynamic> p, String q) {
   return null;
 }
 
-Widget _purchaseLineSummaryRich(BuildContext context, Map<String, dynamic> line) {
+Widget _purchaseLineSummaryRich(
+  BuildContext context,
+  Map<String, dynamic> line, {
+  bool hideFinancials = false,
+}) {
   final nm = line['item_name']?.toString() ?? 'Line';
   final qty = _fmtQty(line['qty']);
   final unit = line['unit']?.toString().trim().toLowerCase();
@@ -133,9 +137,9 @@ Widget _purchaseLineSummaryRich(BuildContext context, Map<String, dynamic> line)
   final pr = line['purchase_rate'];
   final lc = line['landing_cost'];
   final prN = _toD(pr);
-  final rate = prN != null && prN > 0
+  final rate = !hideFinancials && prN != null && prN > 0
       ? 'Rate ${_fmtInr(pr)}'
-      : 'Landing ${_fmtInr(lc)}';
+      : (!hideFinancials ? 'Landing ${_fmtInr(lc)}' : '');
   final tw = _toD(line['total_weight_kg'] ?? line['total_weight']);
   final tt = Theme.of(context).textTheme;
   final cs = Theme.of(context).colorScheme;
@@ -160,7 +164,7 @@ Widget _purchaseLineSummaryRich(BuildContext context, Map<String, dynamic> line)
           const TextSpan(text: ' · '),
           TextSpan(text: '${_fmtQty(tw)} kg', style: qtyStyle),
         ],
-        TextSpan(text: ' · $rate', style: base),
+        if (rate.isNotEmpty) TextSpan(text: ' · $rate', style: base),
       ],
     ),
   );
@@ -386,6 +390,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
         ? ref.watch(unifiedSearchProvider(_debounced))
         : const AsyncValue<Map<String, dynamic>>.data({});
     final recents = ref.watch(recentUnifiedSearchQueriesProvider);
+    final session = ref.watch(sessionProvider);
+    final hideFinancials =
+        session != null && !sessionCanSeeFinancials(session);
 
     final listPadding = EdgeInsets.fromLTRB(
       16,
@@ -553,17 +560,19 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                         ln['total_weight_kg'] ?? ln['total_weight'];
                     next['kg_per_unit'] =
                         ln['kg_per_unit'] ?? ln['default_kg_per_bag'];
-                    next['purchase_rate_dim'] =
-                        (ln['landing_cost_per_kg'] != null ||
-                                ln['kg_per_unit'] != null)
-                            ? 'kg'
-                            : (ln['unit'] ?? '');
-                    next['last_purchase_price'] = ln['landing_cost_per_kg'] ??
-                        ln['purchase_rate'] ??
-                        ln['landing_cost'];
-                    next['last_selling_rate'] =
-                        ln['selling_rate'] ?? ln['selling_cost'];
-                    next['selling_rate_dim'] = next['purchase_rate_dim'];
+                    if (!hideFinancials) {
+                      next['purchase_rate_dim'] =
+                          (ln['landing_cost_per_kg'] != null ||
+                                  ln['kg_per_unit'] != null)
+                              ? 'kg'
+                              : (ln['unit'] ?? '');
+                      next['last_purchase_price'] = ln['landing_cost_per_kg'] ??
+                          ln['purchase_rate'] ??
+                          ln['landing_cost'];
+                      next['last_selling_rate'] =
+                          ln['selling_rate'] ?? ln['selling_cost'];
+                      next['selling_rate_dim'] = next['purchase_rate_dim'];
+                    }
                   }
 
                   if (ln != null) {
@@ -612,8 +621,11 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                         child: Text(
                           [
                             if (fuzzyItems)
-                              'No exact item title match — showing close catalog matches. '
-                                  'Do not trust rates until you open the item.',
+                              hideFinancials
+                                  ? 'No exact item title match — showing close catalog matches. '
+                                      'Open the item to confirm qty and supplier.'
+                                  : 'No exact item title match — showing close catalog matches. '
+                                      'Do not trust rates until you open the item.',
                             if (fuzzySup)
                               'No exact supplier name match — showing close supplier matches.',
                             if (fuzzyBro)
@@ -841,6 +853,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                           return TradeIntelCatalogSearchTile(
                             item: m,
                             fuzzyNameMatch: fuzzyItems,
+                            hideFinancials: hideFinancials,
                             onTap: id.isEmpty
                                 ? null
                                 : () => context.push('/catalog/item/$id'),
@@ -933,6 +946,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                                     child: _purchaseLineSummaryRich(
                                       context,
                                       line,
+                                      hideFinancials: hideFinancials,
                                     ),
                                   ),
                               ],

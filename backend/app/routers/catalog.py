@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 import uuid
 from datetime import date
@@ -31,6 +32,11 @@ from app.models.contacts import Broker, Supplier
 from app.models.supplier_item_default import SupplierItemDefault
 from app.services import trade_query as tq
 from app.services.fuzzy_catalog import rank_ids_by_token_sort
+from app.services.staff_view import (
+    redact_catalog_item_out_model,
+    redact_catalog_line_row_model,
+    should_redact_financials,
+)
 from app.services.unit_resolution_service import (
     merge_unit_resolution_into_catalog_row,
     resolve_for_catalog_item,
@@ -223,6 +229,7 @@ class CatalogItemUpdate(BaseModel):
     default_selling_cost: float | None = Field(default=None, ge=0)
     default_supplier_ids: list[uuid.UUID] | None = None
     default_broker_ids: list[uuid.UUID] | None = None
+    reorder_level: float | None = Field(default=None, ge=0)
 
     @field_validator("name", "hsn_code", "item_code", mode="before")
     @classmethod
@@ -669,6 +676,12 @@ def _catalog_item_out(
         last_purchase_delivered=last_purchase_delivered,
         unit_resolution=unit_res,
     )
+
+
+def _maybe_redact_catalog_out(out: CatalogItemOut, role: str) -> CatalogItemOut:
+    if should_redact_financials(role):
+        return redact_catalog_item_out_model(out)
+    return out
 
 
 async def _assert_supplier_ids_in_business(
@@ -1407,7 +1420,6 @@ async def list_catalog_items(
     category_id: uuid.UUID | None = Query(None, description="Filter by category"),
     type_id: uuid.UUID | None = Query(None, description="Filter by category type"),
 ):
-    del _m
 
     async def _read() -> list[CatalogItemOut]:
         has_type_col = await catalog_items_has_type_id_column(db)
@@ -1508,7 +1520,30 @@ async def list_catalog_items(
         category_id,
         type_id,
     )
+    if should_redact_financials(_m.role):
+        return [_maybe_redact_catalog_out(x, _m.role) for x in out]
     return out
+
+
+_ITM_CODE_RE = re.compile(r"^ITM-(\d+)$", re.IGNORECASE)
+
+
+async def _next_item_code(db: AsyncSession, business_id: uuid.UUID) -> str:
+    """Next sequential ITM-#### for this business (SQLite + Postgres safe)."""
+    result = await db.execute(
+        select(CatalogItem.item_code).where(
+            CatalogItem.business_id == business_id,
+            CatalogItem.item_code.isnot(None),
+            CatalogItem.item_code.like("ITM-%"),
+        )
+    )
+    max_n = 0
+    for (code,) in result.all():
+        raw = (code or "").strip()
+        m = _ITM_CODE_RE.match(raw)
+        if m:
+            max_n = max(max_n, int(m.group(1)))
+    return f"ITM-{max_n + 1:04d}"
 
 
 @router.post("/catalog-items", response_model=CatalogItemOut, status_code=status.HTTP_201_CREATED)
@@ -1563,6 +1598,10 @@ async def create_catalog_item(
     await _assert_supplier_ids_in_business(db, business_id, supplier_ids)
     await _assert_broker_ids_in_business(db, business_id, broker_ids)
 
+    final_item_code = (body.item_code or "").strip() or None
+    if final_item_code is None:
+        final_item_code = await _next_item_code(db, business_id)
+
     i = CatalogItem(
         business_id=business_id,
         category_id=body.category_id,
@@ -1575,7 +1614,7 @@ async def create_catalog_item(
         default_purchase_unit=purchase_u,
         default_sale_unit=body.default_sale_unit,
         hsn_code=(body.hsn_code or "").strip() or None,
-        item_code=(body.item_code or "").strip() or None,
+        item_code=final_item_code,
         tax_percent=body.tax_percent,
         default_landing_cost=body.default_landing_cost,
         default_selling_cost=body.default_selling_cost,
@@ -1762,7 +1801,6 @@ async def get_catalog_item(
     _m: Annotated[Membership, Depends(require_membership)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    del _m
     try:
         has_type_col = await catalog_items_has_type_id_column(db)
         if has_type_col:
@@ -1783,7 +1821,8 @@ async def get_catalog_item(
             lsn, lbn = await _last_party_names_for_catalog_items(db, business_id, [i])
             lp = await _max_purchase_date_for_catalog_item(db, business_id, i.id)
             ld = await _last_purchase_delivered_for_snapshot(db, business_id, i.last_trade_purchase_id)
-            return _catalog_item_out(
+            return _maybe_redact_catalog_out(
+                _catalog_item_out(
                 i,
                 tn,
                 default_supplier_ids=sup_m.get(i.id, []),
@@ -1793,6 +1832,8 @@ async def get_catalog_item(
                 category_name=str(cat_n) if cat_n else None,
                 last_purchase_date=lp,
                 last_purchase_delivered=ld,
+            ),
+                _m.role,
             )
 
         r = await db.execute(
@@ -1817,7 +1858,8 @@ async def get_catalog_item(
         lsn, lbn = await _last_party_names_for_catalog_items(db, business_id, [i])
         lp = await _max_purchase_date_for_catalog_item(db, business_id, i.id)
         ld = await _last_purchase_delivered_for_snapshot(db, business_id, i.last_trade_purchase_id)
-        return _catalog_item_out(
+        return _maybe_redact_catalog_out(
+            _catalog_item_out(
             i,
             None,
             type_id=None,
@@ -1828,10 +1870,66 @@ async def get_catalog_item(
             category_name=str(cat_n) if cat_n else None,
             last_purchase_date=lp,
             last_purchase_delivered=ld,
+        ),
+            _m.role,
         )
     except SQLAlchemyError:
         logger.exception("get_catalog_item failed business_id=%s item_id=%s", business_id, item_id)
         raise
+
+
+@router.post("/catalog-items/{item_id}/generate-code", response_model=CatalogItemOut)
+async def generate_catalog_item_code(
+    business_id: uuid.UUID,
+    item_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    r = await db.execute(
+        select(CatalogItem).where(
+            CatalogItem.id == item_id,
+            CatalogItem.business_id == business_id,
+        )
+    )
+    i = r.scalar_one_or_none()
+    if i is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")
+    existing = (i.item_code or "").strip()
+    if existing:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={"message": "Item already has a code", "item_code": existing},
+        )
+    i.item_code = await _next_item_code(db, business_id)
+    await db.commit()
+    await db.refresh(i)
+    tr = await db.execute(select(CategoryType.name).where(CategoryType.id == i.type_id))
+    tn = tr.scalar_one_or_none()
+    crn = await db.execute(
+        select(ItemCategory.name).where(
+            ItemCategory.id == i.category_id,
+            ItemCategory.business_id == business_id,
+        )
+    )
+    cat_n = crn.scalar_one_or_none()
+    sup_m, br_m = await _default_supplier_broker_ids_for_items(db, business_id, [i.id])
+    lsn, lbn = await _last_party_names_for_catalog_items(db, business_id, [i])
+    lp = await _max_purchase_date_for_catalog_item(db, business_id, i.id)
+    ld = await _last_purchase_delivered_for_snapshot(db, business_id, i.last_trade_purchase_id)
+    return _maybe_redact_catalog_out(
+        _catalog_item_out(
+            i,
+            tn,
+            default_supplier_ids=sup_m.get(i.id, []),
+            default_broker_ids=br_m.get(i.id, []),
+            last_supplier_name=lsn.get(i.last_supplier_id) if i.last_supplier_id else None,
+            last_broker_name=lbn.get(i.last_broker_id) if i.last_broker_id else None,
+            category_name=str(cat_n) if cat_n else None,
+            last_purchase_date=lp,
+            last_purchase_delivered=ld,
+        ),
+        _m.role,
+    )
 
 
 @router.get(
@@ -2103,7 +2201,6 @@ async def catalog_item_lines(
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
 ):
-    del _m
     ir = await db.execute(
         select(CatalogItem.id).where(CatalogItem.id == item_id, CatalogItem.business_id == business_id)
     )
@@ -2188,7 +2285,10 @@ async def catalog_item_lines(
         )
 
     trade_rows.sort(key=lambda r: (r.entry_date, r.entry_id), reverse=True)
-    return trade_rows[offset : offset + limit]
+    page = trade_rows[offset : offset + limit]
+    if should_redact_financials(_m.role):
+        return [redact_catalog_line_row_model(r) for r in page]
+    return page
 
 
 @router.get("/item-categories/{category_id}/insights", response_model=CategoryInsightsOut)
@@ -2392,6 +2492,11 @@ async def update_catalog_item(
         i.default_landing_cost = data["default_landing_cost"]
     if "default_selling_cost" in data:
         i.default_selling_cost = data["default_selling_cost"]
+    if "reorder_level" in data:
+        from decimal import Decimal as D
+
+        rl = data["reorder_level"]
+        i.reorder_level = D(str(rl)) if rl is not None else D("0")
     _sync_item_unit_extras(i)
     unit_touched = any(
         k in data

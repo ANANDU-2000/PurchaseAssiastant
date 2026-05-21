@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/router/post_auth_route.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/stock_providers.dart';
 import '../../../core/theme/hexa_colors.dart';
@@ -30,6 +31,9 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
 
   /// When true, narrow the loaded "all status" list to low + critical only (client-side).
   bool _lowStockOnly = false;
+
+  /// When true, show only catalog rows with no item_code (needs label setup).
+  bool _missingCodeOnly = false;
   String _searchText = '';
   bool _busy = false;
   bool _denseA4 = true;
@@ -75,12 +79,16 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
       return null;
     }
     setState(() => _pdfStatus = 'Generating PDF…');
+    final session = ref.read(sessionProvider);
+    final hideFinancials =
+        session != null && !sessionCanSeeFinancials(session);
     try {
       if (_denseA4) {
         return BarcodePdfService.generateBatchA4Dense(
           items: batch,
           size: _size,
           copiesPerItem: _copies,
+          hideFinancials: hideFinancials,
         );
       }
       return BarcodePdfService.generateBatch(
@@ -88,6 +96,7 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
         size: _size,
         copiesPerItem: _copies,
         labelsPerRow: _perRow,
+        hideFinancials: hideFinancials,
       );
     } finally {
       if (mounted) setState(() => _pdfStatus = null);
@@ -207,17 +216,23 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
     if (_lowStockOnly && st != 'low' && st != 'critical') {
       return false;
     }
+    final code = it['item_code']?.toString().trim() ?? '';
+    if (_missingCodeOnly && code.isNotEmpty) {
+      return false;
+    }
     if (q.isEmpty) return true;
     final name = it['name']?.toString().toLowerCase() ?? '';
-    final code = it['item_code']?.toString().toLowerCase() ?? '';
-    return name.contains(q) || code.contains(q);
+    final codeQ = it['item_code']?.toString().toLowerCase() ?? '';
+    return name.contains(q) || codeQ.contains(q);
   }
 
   String _bulkBarcodeFilename() {
     final q = ref.read(stockListQueryProvider);
     final raw = q.category.trim().isNotEmpty
         ? q.category.trim()
-        : (_lowStockOnly ? 'low_stock' : 'all_items');
+        : (_missingCodeOnly
+            ? 'missing_code'
+            : (_lowStockOnly ? 'low_stock' : 'all_items'));
     final category = raw
         .replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '_')
         .replaceAll(RegExp(r'_+'), '_')
@@ -393,23 +408,47 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
               children: [
                 FilterChip(
                   label: const Text('All', style: TextStyle(fontSize: 12)),
-                  selected: listQ.status == 'all' && !_lowStockOnly,
+                  selected: listQ.status == 'all' &&
+                      !_lowStockOnly &&
+                      !_missingCodeOnly,
                   onSelected: (_) {
                     ref.read(stockListQueryProvider.notifier).state = ref
                         .read(stockListQueryProvider)
                         .copyWith(status: 'all');
-                    setState(() => _lowStockOnly = false);
+                    setState(() {
+                      _lowStockOnly = false;
+                      _missingCodeOnly = false;
+                    });
                   },
                 ),
                 FilterChip(
                   label:
                       const Text('Low stock', style: TextStyle(fontSize: 12)),
-                  selected: listQ.status == 'all' && _lowStockOnly,
+                  selected: listQ.status == 'all' &&
+                      _lowStockOnly &&
+                      !_missingCodeOnly,
                   onSelected: (_) {
                     ref.read(stockListQueryProvider.notifier).state = ref
                         .read(stockListQueryProvider)
                         .copyWith(status: 'all');
-                    setState(() => _lowStockOnly = true);
+                    setState(() {
+                      _lowStockOnly = true;
+                      _missingCodeOnly = false;
+                    });
+                  },
+                ),
+                FilterChip(
+                  label: const Text('Missing code',
+                      style: TextStyle(fontSize: 12)),
+                  selected: _missingCodeOnly,
+                  onSelected: (_) {
+                    ref.read(stockListQueryProvider.notifier).state = ref
+                        .read(stockListQueryProvider)
+                        .copyWith(status: 'all');
+                    setState(() {
+                      _missingCodeOnly = true;
+                      _lowStockOnly = false;
+                    });
                   },
                 ),
                 FilterChip(
@@ -420,7 +459,10 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
                     ref.read(stockListQueryProvider.notifier).state = ref
                         .read(stockListQueryProvider)
                         .copyWith(status: 'out');
-                    setState(() => _lowStockOnly = false);
+                    setState(() {
+                      _lowStockOnly = false;
+                      _missingCodeOnly = false;
+                    });
                   },
                 ),
               ],
@@ -505,7 +547,9 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
-                            subtitle: Text('$code · $st'),
+                            subtitle: Text(
+                              code.isEmpty ? 'No code · $st' : '$code · $st',
+                            ),
                             secondary: Text(
                               stock,
                               style: TextStyle(

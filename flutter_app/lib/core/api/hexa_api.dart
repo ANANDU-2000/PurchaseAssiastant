@@ -1917,6 +1917,16 @@ class HexaApi {
         .toList();
   }
 
+  Future<Map<String, dynamic>> generateCatalogItemCode({
+    required String businessId,
+    required String itemId,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/catalog-items/$itemId/generate-code',
+    );
+    return res.data ?? {};
+  }
+
   Future<Map<String, dynamic>> createCatalogItem({
     required String businessId,
     required String categoryId,
@@ -2011,6 +2021,15 @@ class HexaApi {
       {required String businessId, required String itemId}) async {
     final res = await _dio.get<Map<String, dynamic>>(
         '/v1/businesses/$businessId/catalog-items/$itemId');
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> getStockTotals({
+    required String businessId,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/stock/totals',
+    );
     return res.data ?? {};
   }
 
@@ -2308,6 +2327,8 @@ class HexaApi {
     double? defaultSellingCost,
     List<String>? defaultSupplierIds,
     List<String>? defaultBrokerIds,
+    bool patchReorderLevel = false,
+    double? reorderLevel,
   }) async {
     final data = <String, dynamic>{
       if (categoryId != null) 'category_id': categoryId,
@@ -2351,6 +2372,9 @@ class HexaApi {
     }
     if (defaultBrokerIds != null) {
       data['default_broker_ids'] = defaultBrokerIds;
+    }
+    if (patchReorderLevel) {
+      data['reorder_level'] = reorderLevel;
     }
     final res = await _dio.patch<Map<String, dynamic>>(
       '/v1/businesses/$businessId/catalog-items/$itemId',

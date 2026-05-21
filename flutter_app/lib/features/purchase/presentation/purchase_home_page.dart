@@ -955,7 +955,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
           content: Text(
             e is DioException
                 ? friendlyApiError(e)
-                : 'Something went wrong. Please try again.',
+                : 'Could not delete this purchase. Check your connection and try again.',
           ),
         ),
       );
@@ -1074,7 +1074,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
           context,
           e is DioException
               ? friendlyApiError(e)
-              : 'Something went wrong. Please try again.',
+              : 'Could not mark purchase as paid. Try again.',
           isError: true,
         );
       }
@@ -1114,7 +1114,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
           context,
           e is DioException
               ? friendlyApiError(e)
-              : 'Something went wrong. Please try again.',
+              : 'Could not update delivery status. Try again.',
           isError: true,
         );
       }
@@ -2311,7 +2311,7 @@ class _PurchaseHistoryFullscreenSearchPageState
           context,
           e is DioException
               ? friendlyApiError(e)
-              : 'Something went wrong. Please try again.',
+              : 'Could not mark purchase as paid. Try again.',
           isError: true,
         );
       }
@@ -2351,7 +2351,7 @@ class _PurchaseHistoryFullscreenSearchPageState
           context,
           e is DioException
               ? friendlyApiError(e)
-              : 'Something went wrong. Please try again.',
+              : 'Could not update delivery status. Try again.',
           isError: true,
         );
       }
@@ -2401,7 +2401,7 @@ class _PurchaseHistoryFullscreenSearchPageState
           content: Text(
             e is DioException
                 ? friendlyApiError(e)
-                : 'Something went wrong. Please try again.',
+                : 'Could not delete this purchase. Check your connection and try again.',
           ),
         ),
       );

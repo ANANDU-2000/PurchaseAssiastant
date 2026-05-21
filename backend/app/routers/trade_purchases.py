@@ -8,6 +8,7 @@ from datetime import date
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -30,6 +31,11 @@ from app.schemas.trade_purchases import (
     TradePurchaseValidateOut,
 )
 from app.services import trade_purchase_service as tps
+from app.services.staff_view import (
+    should_redact_financials,
+    trade_purchase_to_staff_dict,
+    trade_purchases_to_staff_dicts,
+)
 from app.services.trade_preview_service import (
     build_trade_purchase_preview,
     build_trade_purchase_validate,
@@ -40,6 +46,22 @@ router = APIRouter(prefix="/v1/businesses/{business_id}/trade-purchases", tags=[
 _log = logging.getLogger(__name__)
 
 _ALLOWED_TRADE_LIST_STATUSES = frozenset({"draft", "due_soon", "overdue", "paid"})
+
+
+def _purchase_list_response(
+    role: str, rows: list[TradePurchaseOut]
+) -> list[TradePurchaseOut] | JSONResponse:
+    if should_redact_financials(role):
+        return JSONResponse(trade_purchases_to_staff_dicts(rows))
+    return rows
+
+
+def _purchase_detail_response(
+    role: str, out: TradePurchaseOut
+) -> TradePurchaseOut | JSONResponse:
+    if should_redact_financials(role):
+        return JSONResponse(trade_purchase_to_staff_dict(out))
+    return out
 
 
 def _normalize_trade_list_status(status: str | None) -> str | None:
@@ -169,7 +191,6 @@ async def list_trade_purchases(
         None, description="Inclusive upper bound on purchase_date (calendar date)"
     ),
 ):
-    del user
     limit_v = max(1, min(limit, 50))
     offset_v = max(0, min(offset, 10_000))
     status_norm = _normalize_trade_list_status(status)
@@ -182,7 +203,7 @@ async def list_trade_purchases(
         status_norm,
         (q or "").strip()[:80] or None,
     )
-    return await execute_with_retry(
+    rows = await execute_with_retry(
         lambda: tps.list_trade_purchases(
         db,
         business_id,
@@ -197,6 +218,7 @@ async def list_trade_purchases(
         purchase_to=purchase_to,
     ),
     )
+    return _purchase_list_response(_m.role, rows)
 
 
 @router.get("/last-defaults")
@@ -370,10 +392,9 @@ async def get_trade_purchase(
     db: Annotated[AsyncSession, Depends(get_db)],
     _m: Annotated[Membership, Depends(require_membership)],
 ):
-    del user
     out = await execute_with_retry(
         lambda: tps.get_trade_purchase(db, business_id, purchase_id),
     )
     if not out:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Purchase not found")
-    return out
+    return _purchase_detail_response(_m.role, out)

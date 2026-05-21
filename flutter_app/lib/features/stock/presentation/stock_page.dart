@@ -15,6 +15,7 @@ import '../../home/presentation/widgets/stock_health_score.dart';
 import 'widgets/stock_today_feed.dart';
 import '../../../core/router/navigation_ext.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/utils/unit_utils.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../core/widgets/list_skeleton.dart';
 import '../../../shared/widgets/operational_ui.dart';
@@ -943,9 +944,30 @@ class _StockPageState extends ConsumerState<StockPage>
           itemBuilder: (ctx, i) {
             final cat = keys[i];
             final rows = byCat[cat]!;
+            final withReorder = rows
+                .where((r) => ((r['reorder_level'] as num?)?.toDouble() ?? 0) > 0)
+                .length;
+            final pct = rows.isEmpty ? 0.0 : withReorder / rows.length;
             return ExpansionTile(
               title: Text('$cat (${rows.length})',
                   style: const TextStyle(fontWeight: FontWeight.w800)),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$withReorder/${rows.length} items have reorder threshold',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  LinearProgressIndicator(
+                    value: pct,
+                    minHeight: 4,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ],
+              ),
               children: [
                 for (final row in rows.take(20))
                   ListTile(
@@ -1055,7 +1077,16 @@ class _StockTableRow extends StatelessWidget {
     final name = row['name']?.toString() ?? '—';
     final st = row['stock_status']?.toString() ?? 'healthy';
     final unit = row['unit']?.toString() ?? '';
-    final cur = fmtQty(row['current_stock']);
+    final curN = double.tryParse(row['current_stock']?.toString() ?? '') ?? 0;
+    final kgPerBag = double.tryParse(
+      row['default_kg_per_bag']?.toString() ?? '',
+    );
+    final secondary = stockDisplaySecondary(
+      curN,
+      unit,
+      kgPerBag,
+      double.tryParse(row['default_weight_per_tin']?.toString() ?? ''),
+    );
     final statusLabel = switch (st) {
       'out' => 'Out',
       'critical' => 'Crit',
@@ -1151,13 +1182,22 @@ class _StockTableRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      '$cur${unit.isNotEmpty ? ' $unit' : ''}',
+                      stockDisplayPrimary(curN, unit),
                       style: HexaDsType.bodyPrimary(context).copyWith(
                         fontSize: 12,
                         fontWeight: FontWeight.w900,
                         color: stockQtyColor(st, row['current_stock']),
                       ),
                     ),
+                    if (secondary != null)
+                      Text(
+                        secondary,
+                        style: HexaDsType.bodySm(context).copyWith(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: HexaColors.brandPrimary,
+                        ),
+                      ),
                   ],
                 ),
               ),

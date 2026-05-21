@@ -36,6 +36,7 @@ import 'widgets/home_low_stock_section.dart';
 import 'widgets/home_operational_alert_banner.dart';
 import 'widgets/home_period_filter_row.dart';
 import 'widgets/home_quick_actions_grid.dart';
+import 'widgets/home_stock_totals_card.dart';
 import 'widgets/home_recent_changes_section.dart';
 import 'widgets/home_stock_movement_section.dart';
 
@@ -355,6 +356,8 @@ class _HomePageState extends ConsumerState<HomePage>
               const SizedBox(height: 12),
               if (isOwner) ...[
                 const HomeOperationalAlertBanner(),
+                const SizedBox(height: 12),
+                const HomeStockTotalsCard(),
                 const SizedBox(height: 12),
                 const HomeAnalyticsCard(),
                 const SizedBox(height: 12),

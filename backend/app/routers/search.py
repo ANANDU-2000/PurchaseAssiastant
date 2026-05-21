@@ -33,6 +33,11 @@ from app.models import (
 )
 from app.schemas.entries import EntryLineOut, EntryOut
 from app.services import trade_purchase_service as tps
+from app.services.staff_view import (
+    redact_catalog_items,
+    redact_trade_purchase_dict,
+    should_redact_financials,
+)
 from app.services.fuzzy_catalog import rank_ids_by_token_sort
 from app.services.trade_query import trade_purchase_status_in_reports
 
@@ -472,7 +477,7 @@ async def unified_search(
         ),
     ),
 ):
-    del _m
+    redact = should_redact_financials(_m.role)
 
     try:
         needle = q.strip().lower()
@@ -878,6 +883,10 @@ async def unified_search(
                 )
             )
             recent_purchases_out = [r.model_dump(mode="json") for r in recent_rows]
+            if redact:
+                recent_purchases_out = [
+                    redact_trade_purchase_dict(p) for p in recent_purchases_out
+                ]
         except Exception:
             logger.exception(
                 "unified_search recent_purchases failed business_id=%s q=%s",
@@ -885,8 +894,10 @@ async def unified_search(
                 q,
             )
 
+        catalog_out = redact_catalog_items(catalog_items) if redact else catalog_items
+
         return UnifiedSearchOut(
-            catalog_items=catalog_items,
+            catalog_items=catalog_out,
             suppliers=suppliers,
             brokers=brokers,
             entries=entries_out,

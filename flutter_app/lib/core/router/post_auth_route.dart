@@ -3,6 +3,9 @@ import '../models/session.dart';
 bool sessionIsStaff(Session session) =>
     session.primaryBusiness.role.toLowerCase() == 'staff';
 
+/// Owner, admin, and manager may see purchase rates, totals, and margins.
+bool sessionCanSeeFinancials(Session session) => !sessionIsStaff(session);
+
 /// Owner / manager / platform super-admin may view the user list.
 bool sessionCanManageUsers(Session session) {
   final r = session.primaryBusiness.role.toLowerCase();

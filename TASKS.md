@@ -23,6 +23,27 @@
 
 ---
 
+## Sprint 9 — Staff privacy + UX critical (v16, May 21 2026)
+
+| ID | Priority | Status | Summary |
+|----|----------|--------|---------|
+| STAFF-01 | P0 | Done | Backend redaction + Flutter hide financials (search, item detail, purchase detail, trade_intel) |
+| STAFF-02 | P0 | Done | Staff home avatar → logout sheet |
+| STAFF-03 | P1 | Done | 5th tab History + staff purchase list/detail routes |
+| CODE-01 | P0 | Done | Auto `ITM-####` on catalog create + `POST …/generate-code` |
+| CODE-02 | P1 | Done | Item code field on quick-add + post-create print SnackBar |
+| ITEM-01 | P1 | Done | Compact barcode row at bottom of item detail |
+| UNIT-01 | P1 | Done | `unit_utils` + bag/KG secondary on stock rows |
+| SCAN-01 | P1 | Done | Camera permission UI + web scan message |
+| BULK-01 | P2 | Done | Missing-code filter + staff-safe label PDF lines |
+| REORDER-01 | P2 | Done | Inline reorder edit, setup page, stock category progress |
+| ERROR-01 | P1 | Done | Purchase home action errors use specific messages |
+| OWNER-HOME-01 | P2 | Done | `GET /stock/totals` + home movement/variance card |
+| STAFF-HOME-01 | P1 | Done | Missing-code alert, today purchases, Orders tile |
+| CODE-02-batch | P1 | Done | Batch create shows assigned ITM codes + print first |
+
+---
+
 ## May 20 screenshot pass (critical fixes + UX)
 
 | ID | Status | Notes |

@@ -212,6 +212,16 @@ class _StaffShellBottomBar extends StatelessWidget {
                     ),
                     Expanded(
                       child: _StaffNavTile(
+                        selected: selectedIndex == StaffShellBranch.history,
+                        icon: Icons.receipt_long_outlined,
+                        selectedIcon: Icons.receipt_long_rounded,
+                        label: 'History',
+                        onTap: () =>
+                            onDestinationSelected(StaffShellBranch.history),
+                      ),
+                    ),
+                    Expanded(
+                      child: _StaffNavTile(
                         selected: selectedIndex == StaffShellBranch.search,
                         icon: Icons.search_rounded,
                         selectedIcon: Icons.manage_search_rounded,

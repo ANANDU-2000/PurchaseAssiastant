@@ -141,14 +141,40 @@ class _BatchItemCreatePageState extends ConsumerState<BatchItemCreatePage> {
           );
       final created = out['created'];
       final skipped = out['skipped'];
+      final itemsOut = out['items'];
+      final codes = <String>[];
+      String? firstId;
+      if (itemsOut is List) {
+        for (final raw in itemsOut) {
+          if (raw is! Map) continue;
+          final m = Map<String, dynamic>.from(raw);
+          final code = m['item_code']?.toString().trim() ?? '';
+          if (code.isNotEmpty) codes.add(code);
+          firstId ??= m['id']?.toString();
+        }
+      }
       ref.invalidate(catalogItemsListProvider);
       if (mounted) {
+        final codeHint = codes.isEmpty
+            ? ''
+            : codes.length <= 3
+                ? ' · ${codes.join(', ')}'
+                : ' · ${codes.take(3).join(', ')} +${codes.length - 3} more';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               'Created ${created ?? payload.length} item(s)'
-              '${skipped != null ? ' · skipped $skipped' : ''}.',
+              '${skipped != null ? ' · skipped $skipped' : ''}'
+              '$codeHint',
             ),
+            action: firstId != null && firstId.isNotEmpty
+                ? SnackBarAction(
+                    label: 'Print first',
+                    onPressed: () => context.push(
+                      '/barcode/print/${Uri.encodeComponent(firstId!)}',
+                    ),
+                  )
+                : null,
           ),
         );
         context.pop();

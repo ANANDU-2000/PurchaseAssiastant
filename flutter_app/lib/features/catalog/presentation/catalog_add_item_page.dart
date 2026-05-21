@@ -403,6 +403,22 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
       ref.invalidate(catalogItemsListProvider);
       invalidateBusinessAggregates(ref);
       if (mounted) {
+        final code = created['item_code']?.toString() ?? '';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${_name.text.trim()} created${code.isNotEmpty ? ' · $code' : ''}',
+            ),
+            action: nid.isNotEmpty
+                ? SnackBarAction(
+                    label: 'Print label',
+                    onPressed: () => context.push(
+                      '/barcode/print/${Uri.encodeComponent(nid)}',
+                    ),
+                  )
+                : null,
+          ),
+        );
         context.pop(<String, dynamic>{'id': nid, 'name': _name.text.trim()});
       }
     } on DioException catch (e) {
@@ -865,6 +881,38 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
                   setState(() {});
                   _scheduleDupCheck();
                 },
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _itemCode,
+                textCapitalization: TextCapitalization.characters,
+                decoration: InputDecoration(
+                  labelText: 'Item code',
+                  hintText: 'e.g. ITM-0023 (auto-assigned if blank)',
+                  helperText: 'A barcode will be auto-generated from this code',
+                  helperStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontStyle: FontStyle.italic,
+                        fontSize: 12,
+                      ),
+                  suffixIcon: Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Chip(
+                      label: Text(
+                        _itemCode.text.trim().isEmpty ? 'AUTO' : 'CUSTOM',
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      visualDensity: VisualDensity.compact,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+                  contentPadding: _fieldPad,
+                  border: _fieldBorder(context),
+                  enabledBorder: _fieldBorder(context),
+                ),
+                onChanged: (_) => setState(() {}),
               ),
               if (detectedUnit != null &&
                   detectedUnit.isNotEmpty &&
