@@ -70,3 +70,29 @@ jobs:
         run: flutter analyze
       - name: Test
         run: flutter test
+
+  flutter-web:
+    name: Flutter web release build (Vercel parity)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flutter_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Get packages
+        run: flutter pub get
+      - name: Build web
+        env:
+          BUILD_MAX_WORKERS_PER_TASK: "1"
+          DART_VM_OPTIONS: "--max-old-space-size=3072"
+        run: |
+          flutter build web --release \
+            --no-web-resources-cdn \
+            --no-source-maps \
+            --no-wasm-dry-run \
+            --dart-define=API_BASE_URL=https://my-purchases-api.onrender.com \
+            --dart-define=GOOGLE_OAUTH_CLIENT_ID=
