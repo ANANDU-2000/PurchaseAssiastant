@@ -4,6 +4,7 @@ import '../auth/session_notifier.dart';
 import '../services/offline_store.dart';
 import 'home_breakdown_tab_providers.dart';
 import 'home_dashboard_provider.dart';
+import 'home_owner_dashboard_providers.dart';
 import 'cloud_expense_provider.dart';
 import 'analytics_breakdown_providers.dart';
 import 'business_write_revision.dart';
@@ -18,6 +19,7 @@ import 'home_insights_provider.dart';
 import 'reports_prior_period_provider.dart';
 import 'suppliers_list_provider.dart';
 import 'trade_purchases_provider.dart';
+import 'business_users_provider.dart';
 
 // Debounce guard: prevent stampede when called from multiple sources within 400ms.
 Timer? _invalidateDebounce;
@@ -78,6 +80,7 @@ void _doInvalidateBusinessAggregates(dynamic ref) {
   ref.invalidate(dashboardProvider);
   ref.invalidate(homeDashboardDataProvider);
   ref.invalidate(homeShellReportsProvider);
+  ref.invalidate(homeInventorySummaryProvider);
   ref.invalidate(cloudCostProvider);
   ref.invalidate(homeInsightsProvider);
   ref.invalidate(contactsSuppliersEnrichedProvider);
@@ -91,6 +94,7 @@ void _doInvalidateBusinessAggregates(dynamic ref) {
   ref.invalidate(itemCategoriesListProvider);
   ref.invalidate(catalogItemsListProvider);
   invalidateTradePurchaseCaches(ref);
+  invalidateUserManagementCaches(ref);
   // Open ledger / item-insight screens use local or family providers — nudge
   // them to refetch after any aggregate-invalidating write.
   bumpBusinessDataWriteRevision(ref);

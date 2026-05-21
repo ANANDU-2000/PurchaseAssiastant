@@ -521,7 +521,7 @@ ROUTE                          PAGE FILE                          ROLE    STATUS
 /forgot-password               forgot_password_page.dart          anon    ✅ done
 
 ── OWNER / MANAGER SHELL ──────────────────────────────────────────────────────
-/home                          home_page.dart                     owner   ✅ done (2026-05-21 pie analytics: inventory summary API, ring+breakdown card, alert banner, collapsible feeds)
+/home                          home_page.dart                     owner   ✅ done (analytics card: on-hand strip + period purchased strip, ring/tabs sync, collapse; `shell_bundle` adds `stock_in_hand`/`purchased` on home-overview)
 /stock                         stock_page.dart                    all     ✅ done (5-tab, swipe, who-edited, health badge)
 /reports                       reports_page.dart                  owner   ✅ done (KEEP RING CHART)
 /purchase                      purchase_home_page.dart            all     ✅ done

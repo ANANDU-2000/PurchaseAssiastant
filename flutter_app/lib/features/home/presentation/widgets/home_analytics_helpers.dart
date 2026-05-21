@@ -46,6 +46,64 @@ String inventoryUnitsLine(HomeInventorySummary inv) {
   return parts.isEmpty ? 'No stock on hand' : parts.join(' · ');
 }
 
+/// Period-scoped purchase unit totals from dashboard snapshot.
+String purchasedUnitsLine(HomeDashboardData dash) {
+  final parts = <String>[];
+  if (dash.totalBags > 0) {
+    parts.add(
+      '${homeFmtQty(dash.totalBags)} ${homePackUnitWord('BAG', dash.totalBags)}',
+    );
+  }
+  if (dash.totalBoxes > 0) {
+    parts.add(
+      '${homeFmtQty(dash.totalBoxes)} ${homePackUnitWord('BOX', dash.totalBoxes)}',
+    );
+  }
+  if (dash.totalTins > 0) {
+    parts.add(
+      '${homeFmtQty(dash.totalTins)} ${homePackUnitWord('TIN', dash.totalTins)}',
+    );
+  }
+  if (dash.totalKg > 0) parts.add('${homeFmtQty(dash.totalKg)} KG');
+  if (parts.isNotEmpty) return parts.join(' · ');
+  if (dash.purchaseCount > 0) return '${dash.purchaseCount} purchases';
+  return 'No purchases in period';
+}
+
+bool _sliceHasActivity({required double amount, required double qty}) =>
+    amount > 0 || qty > 0;
+
+List<HomeAnalyticsSlice> _slicesFromItemMaps(
+  List<Map<String, dynamic>> rows,
+  List<Color> palette,
+) {
+  final out = <HomeAnalyticsSlice>[];
+  for (var i = 0; i < rows.length && i < 8; i++) {
+    final r = rows[i];
+    final amount = coerceToDouble(
+      r['total_purchase'] ?? r['total_amount'] ?? r['amount'],
+    );
+    final qty = coerceToDouble(r['total_qty'] ?? r['qty']);
+    if (!_sliceHasActivity(amount: amount, qty: qty)) continue;
+    final name = r['item_name']?.toString().trim() ??
+        r['name']?.toString().trim() ??
+        '—';
+    final unit = r['unit']?.toString() ?? '';
+    final sub = qty > 0 && unit.isNotEmpty
+        ? '${homeFmtQty(qty)} ${unit.toUpperCase()}'
+        : (qty > 0 ? homeFmtQty(qty) : unit);
+    out.add(
+      HomeAnalyticsSlice(
+        title: name,
+        subtitle: sub,
+        amount: amount > 0 ? amount : qty,
+        color: palette[out.length % palette.length],
+      ),
+    );
+  }
+  return out;
+}
+
 String _categoryQtyLine(CategoryStat c) {
   final parts = <String>[];
   if (c.units.bags > 0) {
@@ -89,7 +147,9 @@ List<HomeAnalyticsSlice> homeAnalyticsSlicesForTab({
 
   switch (tab) {
     case HomeBreakdownTab.category:
-      final rows = dash.categories.where((c) => c.totalAmount > 0).toList()
+      final rows = dash.categories
+          .where((c) => _sliceHasActivity(amount: c.totalAmount, qty: c.totalQty))
+          .toList()
         ..sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
       for (var i = 0; i < rows.length && i < 8; i++) {
         final c = rows[i];
@@ -108,12 +168,15 @@ List<HomeAnalyticsSlice> homeAnalyticsSlicesForTab({
           ..sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
         for (var i = 0; i < rows.length && i < 8; i++) {
           final s = rows[i];
+          if (!_sliceHasActivity(amount: s.totalAmount, qty: s.totalQty)) {
+            continue;
+          }
           out.add(
             HomeAnalyticsSlice(
               title: s.label,
               subtitle: homeFmtQty(s.totalQty),
-              amount: s.totalAmount,
-              color: palette[i % palette.length],
+              amount: s.totalAmount > 0 ? s.totalAmount : s.totalQty,
+              color: palette[out.length % palette.length],
             ),
           );
         }
@@ -125,6 +188,9 @@ List<HomeAnalyticsSlice> homeAnalyticsSlicesForTab({
           );
         for (var i = 0; i < rows.length && i < 8; i++) {
           final r = rows[i];
+          final amount = coerceToDouble(r['total_purchase'] ?? r['total_amount']);
+          final qty = coerceToDouble(r['total_qty'] ?? r['qty']);
+          if (!_sliceHasActivity(amount: amount, qty: qty)) continue;
           final label = r['type_name']?.toString().trim() ??
               r['label']?.toString() ??
               '—';
@@ -132,8 +198,8 @@ List<HomeAnalyticsSlice> homeAnalyticsSlicesForTab({
             HomeAnalyticsSlice(
               title: label,
               subtitle: _mapQtyLine(r),
-              amount: coerceToDouble(r['total_purchase'] ?? r['total_amount']),
-              color: palette[i % palette.length],
+              amount: amount > 0 ? amount : qty,
+              color: palette[out.length % palette.length],
             ),
           );
         }
@@ -147,20 +213,26 @@ List<HomeAnalyticsSlice> homeAnalyticsSlicesForTab({
         );
       for (var i = 0; i < rows.length && i < 8; i++) {
         final r = rows[i];
+        final amount = coerceToDouble(r['total_purchase']);
+        final qty = coerceToDouble(r['total_qty'] ?? r['qty']);
+        if (!_sliceHasActivity(amount: amount, qty: qty)) continue;
         out.add(
           HomeAnalyticsSlice(
             title: r['supplier_name']?.toString() ?? '—',
             subtitle: _mapQtyLine(r),
-            amount: coerceToDouble(r['total_purchase']),
-            color: palette[i % palette.length],
+            amount: amount > 0 ? amount : qty,
+            color: palette[out.length % palette.length],
           ),
         );
       }
     case HomeBreakdownTab.items:
-      final rows = List<ItemSliceStat>.from(dash.itemSlices)
+      final itemRows = List<ItemSliceStat>.from(dash.itemSlices)
         ..sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
-      for (var i = 0; i < rows.length && i < 8; i++) {
-        final it = rows[i];
+      for (var i = 0; i < itemRows.length && out.length < 8; i++) {
+        final it = itemRows[i];
+        if (!_sliceHasActivity(amount: it.totalAmount, qty: it.totalQty)) {
+          continue;
+        }
         final sub = it.totalQty > 0
             ? '${homeFmtQty(it.totalQty)} ${it.unit.trim().toUpperCase()}'
             : it.unit;
@@ -168,13 +240,33 @@ List<HomeAnalyticsSlice> homeAnalyticsSlicesForTab({
           HomeAnalyticsSlice(
             title: it.name,
             subtitle: sub,
-            amount: it.totalAmount,
-            color: palette[i % palette.length],
+            amount: it.totalAmount > 0 ? it.totalAmount : it.totalQty,
+            color: palette[out.length % palette.length],
           ),
         );
       }
+      if (out.isEmpty && shell != null && shell.items.isNotEmpty) {
+        final shellRows = List<Map<String, dynamic>>.from(shell.items)
+          ..sort(
+            (a, b) => coerceToDouble(b['total_purchase'])
+                .compareTo(coerceToDouble(a['total_purchase'])),
+          );
+        out.addAll(_slicesFromItemMaps(shellRows, palette));
+      }
   }
   return out;
+}
+
+String homeAnalyticsEmptyHint(HomeBreakdownTab tab, HomeDashboardData dash) {
+  if (dash.purchaseCount > 0) {
+    return switch (tab) {
+      HomeBreakdownTab.category => 'No category breakdown for this period',
+      HomeBreakdownTab.subcategory => 'No subcategory breakdown for this period',
+      HomeBreakdownTab.supplier => 'No supplier breakdown for this period',
+      HomeBreakdownTab.items => 'No item breakdown for this period',
+    };
+  }
+  return 'No item movement in this view';
 }
 
 String homeBreakdownTabQuery(HomeBreakdownTab tab) {

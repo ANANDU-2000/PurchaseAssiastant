@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.deps import get_current_user, require_membership, require_permission
+from app.services.staff_audit import log_staff_activity
 from app.models import (
     CatalogItem,
     CategoryType,
@@ -678,9 +679,8 @@ async def patch_stock_item(
     body: StockPatchIn,
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
-    membership: Annotated[Membership, Depends(require_permission("stock_edit"))],
+    _membership: Annotated[Membership, Depends(require_permission("stock_edit"))],
 ):
-    del membership
     r = await db.execute(
         select(CatalogItem)
         .options(selectinload(CatalogItem.category))
@@ -712,6 +712,16 @@ async def patch_stock_item(
     item.last_stock_updated_by = display
     item.updated_by_user_id = user.id
     db.add(log)
+    await log_staff_activity(
+        db,
+        business_id=business_id,
+        user=user,
+        action_type="STOCK_UPDATE",
+        item_id=item_id,
+        item_name=item.name,
+        before_data={"qty": float(old_qty)},
+        after_data={"qty": float(new_qty), "type": body.adjustment_type},
+    )
     await maybe_notify_stock_variance(
         db,
         business_id=business_id,
@@ -722,7 +732,7 @@ async def patch_stock_item(
     await db.commit()
     await db.refresh(item)
 
-    return await get_stock_item(business_id, item_id, db, membership)
+    return await get_stock_item(business_id, item_id, db, _membership)
 
 
 @router.post("/{item_id}/notify-owner", status_code=status.HTTP_201_CREATED)

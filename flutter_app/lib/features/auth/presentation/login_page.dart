@@ -98,16 +98,16 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   }
 
   bool get _isFormValid {
-    final id = _loginEmail.text.trim();
+    final email = _loginEmail.text.trim();
     final p = _loginPass.text;
-    return id.length >= 3 && p.length >= 6;
+    return email.contains('@') && email.length >= 5 && p.length >= 6;
   }
 
-  String? _identifierError() {
+  String? _emailError() {
     if (!_showValidation) return null;
     final s = _loginEmail.text.trim();
-    if (s.isEmpty || s.length < 3) {
-      return 'Enter username or phone (min 3 characters)';
+    if (s.isEmpty || !s.contains('@')) {
+      return 'Enter a valid email address';
     }
     return null;
   }
@@ -193,7 +193,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     });
     try {
       await ref.read(sessionProvider.notifier).login(
-            identifier: _loginEmail.text.trim(),
+            email: _loginEmail.text.trim(),
             password: _loginPass.text,
           );
       if (mounted) _goPostAuth();
@@ -209,7 +209,19 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       final sc = e.response?.statusCode;
       if (sc == 401) {
         setState(() {
-          _inlineAuthError = 'Wrong username, phone, or password. Try again.';
+          _inlineAuthError = 'Invalid email or password. Try again.';
+        });
+        return;
+      }
+      if (sc == 403) {
+        final detail = e.response?.data;
+        final msg = detail is Map ? detail['detail']?.toString() : null;
+        setState(() {
+          _inlineAuthError = msg?.toLowerCase().contains('blocked') == true
+              ? 'This account is blocked. Contact your owner.'
+              : (msg?.toLowerCase().contains('inactive') == true
+                  ? 'This account is inactive.'
+                  : 'Sign-in not allowed for this account.');
         });
         return;
       }
@@ -244,7 +256,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    final eErr = _identifierError();
+    final eErr = _emailError();
     final pErr = _passError();
 
     return Scaffold(
@@ -306,17 +318,17 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     TextField(
                       controller: _loginEmail,
                       focusNode: _emailFocus,
-                      keyboardType: TextInputType.text,
+                      keyboardType: TextInputType.emailAddress,
                       textInputAction: TextInputAction.next,
-                      autofillHints: const [AutofillHints.username],
+                      autofillHints: const [AutofillHints.email],
                       style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w500,
                       ),
                       onSubmitted: (_) => _passFocus.requestFocus(),
                       decoration: authFilledDecoration(
-                        'Username or phone',
-                        icon: Icons.person_outline_rounded,
+                        'Email',
+                        icon: Icons.email_outlined,
                         err: eErr != null,
                       ),
                     ),

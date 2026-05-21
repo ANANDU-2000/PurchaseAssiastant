@@ -9,18 +9,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import get_current_user, require_membership, require_role
-from app.models import Business, CatalogItem, Membership, TradePurchase, User
+from app.models import Business, CatalogItem, ItemCategory, Membership, TradePurchase, User
+from app.models.contacts import Supplier
 from app.models.stock_adjustment import StockAdjustmentLog
 from app.models.user_session import StaffActivityLog, UserSession
 from app.schemas.users import (
     ActivityLogIn,
     ActivityLogOut,
+    CreatedItemOut,
     LedgerEntryOut,
+    LedgerGroupedOut,
     PermissionsOut,
     PermissionsPatchIn,
+    ProfileStatsOut,
     ResetPasswordOut,
     StockAdjustmentOut,
     TodayStatsOut,
+    UserBulkIn,
+    UserBulkOut,
     UserCreateIn,
     UserCreateOut,
     UserListOut,
@@ -31,11 +37,12 @@ from app.schemas.users import (
 from app.services.passwords import hash_password
 from app.services.permissions import (
     PERMISSION_KEYS,
+    actor_can_manage_target,
     effective_permissions,
     membership_permissions,
 )
 from app.services.readable_password import generate_readable_password
-from app.services.staff_audit import log_password_reset
+from app.services.staff_audit import log_password_reset, log_user_lifecycle
 from app.services.user_username import allocate_username
 
 router = APIRouter(prefix="/v1/businesses/{business_id}/users", tags=["users"])
@@ -43,6 +50,66 @@ router = APIRouter(prefix="/v1/businesses/{business_id}/users", tags=["users"])
 
 def _phone_digits(phone: str) -> str:
     return re.sub(r"\D", "", phone)
+
+
+def _guard_actor_target(actor: Membership, target: Membership, *, current_user: User) -> None:
+    if current_user.is_super_admin:
+        return
+    if not actor_can_manage_target(actor.role, target.role):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="You cannot modify this user",
+        )
+    if target.role == "owner" and actor.role != "owner":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Owner account is protected")
+
+
+async def _profile_stats(
+    db: AsyncSession, business_id: uuid.UUID, user_id: uuid.UUID
+) -> ProfileStatsOut:
+    async def count_activity(action: str) -> int:
+        r = await db.execute(
+            select(func.count())
+            .select_from(StaffActivityLog)
+            .where(
+                StaffActivityLog.business_id == business_id,
+                StaffActivityLog.user_id == user_id,
+                StaffActivityLog.action_type == action,
+            )
+        )
+        return int(r.scalar_one())
+
+    stock_r = await db.execute(
+        select(func.count())
+        .select_from(StockAdjustmentLog)
+        .where(
+            StockAdjustmentLog.business_id == business_id,
+            StockAdjustmentLog.updated_by == user_id,
+        )
+    )
+    pur_r = await db.execute(
+        select(func.count())
+        .select_from(TradePurchase)
+        .where(
+            TradePurchase.business_id == business_id,
+            TradePurchase.user_id == user_id,
+        )
+    )
+    items_r = await db.execute(
+        select(func.count())
+        .select_from(CatalogItem)
+        .where(
+            CatalogItem.business_id == business_id,
+            CatalogItem.created_by_user_id == user_id,
+            CatalogItem.deleted_at.is_(None),
+        )
+    )
+    return ProfileStatsOut(
+        stock_edits_total=int(stock_r.scalar_one()),
+        purchases_total=int(pur_r.scalar_one()),
+        scans_total=await count_activity("SCAN"),
+        items_created_total=int(items_r.scalar_one()),
+    )
 
 
 async def _activity_count_7d(db: AsyncSession, business_id: uuid.UUID, user_id: uuid.UUID) -> int:
@@ -106,6 +173,7 @@ async def _user_row(
         username=user.username,
         role=membership.role,
         is_active=user.is_active,
+        is_blocked=getattr(user, "is_blocked", False),
         last_login_at=user.last_login_at,
         last_active_at=user.last_active_at,
         today_stats=stats,
@@ -135,11 +203,13 @@ async def _user_row(
             StockAdjustmentLog.updated_at >= start7,
         )
     )
+    pstats = await _profile_stats(db, business_id, user.id)
     return UserProfileOut(
         **base.model_dump(),
         login_email=user.email,
         purchases_7d=int(pur_r.scalar_one()),
         stock_updates_7d=int(stock_r.scalar_one()),
+        stats=pstats,
     )
 
 
@@ -152,18 +222,19 @@ async def create_user(
     business_id: uuid.UUID,
     body: UserCreateIn,
     db: Annotated[AsyncSession, Depends(get_db)],
-    actor: Annotated[Membership, Depends(require_role("owner", "super_admin"))],
+    actor: Annotated[Membership, Depends(require_role("owner", "admin", "super_admin"))],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    del actor
+    if actor.role == "admin" and body.role == "owner":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Cannot create owner accounts")
     digits = _phone_digits(body.phone)
     if len(digits) < 6:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid phone")
-    email = f"{digits}@staff.harisree.local"
+    email = body.email
     try:
         username = await allocate_username(
             db,
-            requested=body.username,
+            requested=None,
             phone_digits=digits,
             full_name=body.full_name,
         )
@@ -171,15 +242,16 @@ async def create_user(
         raise HTTPException(status.HTTP_409_CONFLICT, detail="Username already taken") from None
 
     ex = await db.execute(
-        select(User.id).where(
-            or_(User.email == email, User.username == username),
-            _active_user_filter(),
-        )
+        select(User.id).where(User.email == email, _active_user_filter())
     )
     if ex.first():
-        raise HTTPException(status.HTTP_409_CONFLICT, detail="User with this phone already exists")
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="Email already registered")
 
-    plain = body.password.strip() if body.password and body.password.strip() else generate_readable_password()
+    plain = (
+        body.password.strip()
+        if body.password and body.password.strip()
+        else generate_readable_password(body.full_name)
+    )
     user = User(
         email=email,
         username=username,
@@ -187,6 +259,7 @@ async def create_user(
         phone=body.phone.strip(),
         name=body.full_name.strip(),
         is_active=body.is_active,
+        is_blocked=False,
         notes=body.notes.strip() if body.notes else None,
         created_by=current_user.id,
     )
@@ -199,13 +272,20 @@ async def create_user(
         permissions_json=effective_permissions(body.role, None),
     )
     db.add(mem)
+    await log_user_lifecycle(
+        db,
+        business_id=business_id,
+        actor=current_user,
+        target=user,
+        action_type="USER_CREATE",
+        after_data={"role": body.role, "email": email},
+    )
     await db.commit()
     await db.refresh(user)
     row = await _user_row(db, business_id, user, mem)
     return UserCreateOut(
         user=row,
         generated_password=plain if not body.password else None,
-        login_username=username,
         login_email=email,
     )
 
@@ -214,7 +294,7 @@ async def create_user(
 async def list_users(
     business_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    _m: Annotated[Membership, Depends(require_role("owner", "manager", "super_admin"))],
+    _m: Annotated[Membership, Depends(require_role("owner", "admin", "manager", "super_admin"))],
     include_inactive: bool = Query(False),
 ):
     clauses = [Membership.business_id == business_id, _active_user_filter()]
@@ -272,12 +352,77 @@ async def _load_user_membership(
     return row if row else None
 
 
+@router.post("/bulk", response_model=UserBulkOut)
+async def bulk_users(
+    business_id: uuid.UUID,
+    body: UserBulkIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[Membership, Depends(require_role("owner", "admin", "super_admin"))],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    updated = 0
+    failed: list[str] = []
+    for uid in body.user_ids:
+        row = await _load_user_membership(db, business_id, uid)
+        if not row:
+            failed.append(str(uid))
+            continue
+        user, mem = row
+        try:
+            _guard_actor_target(actor, mem, current_user=current_user)
+        except HTTPException:
+            failed.append(str(uid))
+            continue
+        if user.id == current_user.id and body.action in ("deactivate", "delete", "block"):
+            failed.append(str(uid))
+            continue
+        if body.action == "activate":
+            user.is_active = True
+            user.deleted_at = None
+            user.is_blocked = False
+        elif body.action == "deactivate":
+            user.is_active = False
+        elif body.action == "block":
+            user.is_blocked = True
+            await log_user_lifecycle(
+                db,
+                business_id=business_id,
+                actor=current_user,
+                target=user,
+                action_type="USER_BLOCK",
+            )
+        elif body.action == "unblock":
+            user.is_blocked = False
+        elif body.action == "delete":
+            user.is_active = False
+            user.deleted_at = datetime.now(timezone.utc)
+            await log_user_lifecycle(
+                db,
+                business_id=business_id,
+                actor=current_user,
+                target=user,
+                action_type="USER_DELETE",
+            )
+        elif body.action == "set_role":
+            if not body.role:
+                failed.append(str(uid))
+                continue
+            if actor.role == "admin" and body.role == "owner":
+                failed.append(str(uid))
+                continue
+            mem.role = body.role
+            mem.permissions_json = effective_permissions(body.role, mem.permissions_json)
+        updated += 1
+    await db.commit()
+    return UserBulkOut(updated=updated, failed=failed)
+
+
 @router.get("/{user_id}", response_model=UserProfileOut)
 async def get_user(
     business_id: uuid.UUID,
     user_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    _m: Annotated[Membership, Depends(require_role("owner", "manager", "super_admin"))],
+    _m: Annotated[Membership, Depends(require_role("owner", "admin", "manager", "super_admin"))],
 ):
     row = await _load_user_membership(db, business_id, user_id)
     if not row:
@@ -292,25 +437,49 @@ async def patch_user(
     user_id: uuid.UUID,
     body: UserPatchIn,
     db: Annotated[AsyncSession, Depends(get_db)],
-    _m: Annotated[Membership, Depends(require_role("owner", "super_admin"))],
+    actor: Annotated[Membership, Depends(require_role("owner", "admin", "super_admin"))],
+    current_user: Annotated[User, Depends(get_current_user)],
 ):
     row = await _load_user_membership(db, business_id, user_id)
     if not row:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="User not found")
     user, mem = row
+    _guard_actor_target(actor, mem, current_user=current_user)
     if body.full_name is not None:
         user.name = body.full_name.strip()
+    if body.email is not None:
+        ex = await db.execute(
+            select(User.id).where(
+                User.email == body.email,
+                User.id != user.id,
+                _active_user_filter(),
+            )
+        )
+        if ex.first():
+            raise HTTPException(status.HTTP_409_CONFLICT, detail="Email already registered")
+        user.email = body.email
     if body.phone is not None:
         user.phone = body.phone.strip()
     if body.role is not None:
+        if actor.role == "admin" and body.role == "owner":
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Cannot assign owner role")
         mem.role = body.role
         mem.permissions_json = effective_permissions(body.role, mem.permissions_json)
     if body.is_active is not None:
         user.is_active = body.is_active
         if body.is_active:
             user.deleted_at = None
-        else:
-            user.deleted_at = datetime.now(timezone.utc)
+            user.is_blocked = False
+    if body.is_blocked is not None:
+        user.is_blocked = body.is_blocked
+        if body.is_blocked:
+            await log_user_lifecycle(
+                db,
+                business_id=business_id,
+                actor=current_user,
+                target=user,
+                action_type="USER_BLOCK",
+            )
     if body.notes is not None:
         user.notes = body.notes.strip() or None
     await db.commit()
@@ -318,25 +487,53 @@ async def patch_user(
     return await _user_row(db, business_id, user, mem)
 
 
-@router.post("/{user_id}/reset-password", response_model=ResetPasswordOut)
-async def reset_password(
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(
     business_id: uuid.UUID,
     user_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    _m: Annotated[Membership, Depends(require_role("owner", "super_admin"))],
+    actor: Annotated[Membership, Depends(require_role("owner", "admin", "super_admin"))],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     row = await _load_user_membership(db, business_id, user_id)
     if not row:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="User not found")
-    user, _mem = row
-    plain = generate_readable_password()
+    user, mem = row
+    _guard_actor_target(actor, mem, current_user=current_user)
+    if user.id == current_user.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Cannot delete your own account")
+    user.is_active = False
+    user.deleted_at = datetime.now(timezone.utc)
+    await log_user_lifecycle(
+        db,
+        business_id=business_id,
+        actor=current_user,
+        target=user,
+        action_type="USER_DELETE",
+    )
+    await db.commit()
+
+
+@router.post("/{user_id}/reset-password", response_model=ResetPasswordOut)
+async def reset_password(
+    business_id: uuid.UUID,
+    user_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[Membership, Depends(require_role("owner", "admin", "super_admin"))],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    row = await _load_user_membership(db, business_id, user_id)
+    if not row:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="User not found")
+    user, mem = row
+    _guard_actor_target(actor, mem, current_user=current_user)
+    plain = generate_readable_password(user.name)
     user.password_hash = hash_password(plain)
     await log_password_reset(
         db, business_id=business_id, actor=current_user, target=user
     )
     await db.commit()
-    return ResetPasswordOut(new_password=plain, login_username=user.username)
+    return ResetPasswordOut(new_password=plain, login_email=user.email)
 
 
 @router.get("/{user_id}/credentials", response_model=dict)
@@ -344,7 +541,7 @@ async def user_credentials(
     business_id: uuid.UUID,
     user_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    _m: Annotated[Membership, Depends(require_role("owner", "super_admin"))],
+    _m: Annotated[Membership, Depends(require_role("owner", "admin", "super_admin"))],
 ):
     row = await _load_user_membership(db, business_id, user_id)
     if not row:
@@ -356,6 +553,40 @@ async def user_credentials(
         "phone": user.phone,
         "note": "Passwords cannot be retrieved. Use reset-password to issue a new one.",
     }
+
+
+@router.get("/{user_id}/created-items", response_model=list[CreatedItemOut])
+async def user_created_items(
+    business_id: uuid.UUID,
+    user_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_role("owner", "admin", "manager", "super_admin"))],
+    limit: int = Query(50, ge=1, le=200),
+):
+    r = await db.execute(
+        select(CatalogItem, ItemCategory.name)
+        .outerjoin(ItemCategory, ItemCategory.id == CatalogItem.category_id)
+        .where(
+            CatalogItem.business_id == business_id,
+            CatalogItem.created_by_user_id == user_id,
+            CatalogItem.deleted_at.is_(None),
+        )
+        .order_by(desc(CatalogItem.created_at))
+        .limit(limit)
+    )
+    out: list[CreatedItemOut] = []
+    for item, cat_name in r.all():
+        out.append(
+            CreatedItemOut(
+                id=item.id,
+                name=item.name,
+                barcode=item.item_code,
+                category=cat_name,
+                reorder_level=float(item.reorder_level) if item.reorder_level is not None else None,
+                updated_at=item.last_stock_updated_at or item.created_at,
+            )
+        )
+    return out
 
 
 @router.get("/{user_id}/stock-adjustments", response_model=list[StockAdjustmentOut])
@@ -398,11 +629,12 @@ async def user_purchases(
     business_id: uuid.UUID,
     user_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    _m: Annotated[Membership, Depends(require_role("owner", "manager", "super_admin"))],
+    _m: Annotated[Membership, Depends(require_role("owner", "admin", "manager", "super_admin"))],
     limit: int = Query(50, ge=1, le=100),
 ):
     r = await db.execute(
-        select(TradePurchase)
+        select(TradePurchase, Supplier.name)
+        .outerjoin(Supplier, Supplier.id == TradePurchase.supplier_id)
         .where(
             TradePurchase.business_id == business_id,
             TradePurchase.user_id == user_id,
@@ -411,8 +643,9 @@ async def user_purchases(
         .limit(limit)
     )
     out: list[UserPurchaseBrief] = []
-    for p in r.scalars().all():
+    for p, supplier_name in r.all():
         total = getattr(p, "grand_total", None) or getattr(p, "total_amount", None)
+        line_count = len(getattr(p, "lines", None) or [])
         out.append(
             UserPurchaseBrief(
                 id=p.id,
@@ -420,18 +653,21 @@ async def user_purchases(
                 purchase_date=getattr(p, "purchase_date", None) or p.created_at,
                 status=getattr(p, "status", None),
                 total_amount=float(total) if total is not None else None,
+                supplier_name=supplier_name,
+                item_count=line_count or None,
             )
         )
     return out
 
 
-@router.get("/{user_id}/ledger", response_model=list[LedgerEntryOut])
+@router.get("/{user_id}/ledger", response_model=list[LedgerEntryOut] | LedgerGroupedOut)
 async def user_ledger(
     business_id: uuid.UUID,
     user_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    _m: Annotated[Membership, Depends(require_role("owner", "manager", "super_admin"))],
+    _m: Annotated[Membership, Depends(require_role("owner", "admin", "manager", "super_admin"))],
     limit: int = Query(80, ge=1, le=200),
+    grouped: bool = Query(False),
 ):
     entries: list[LedgerEntryOut] = []
     act = await db.execute(
@@ -477,7 +713,23 @@ async def user_ledger(
             )
         )
     entries.sort(key=lambda e: e.at, reverse=True)
-    return entries[:limit]
+    trimmed = entries[:limit]
+    if not grouped:
+        return trimmed
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    yesterday_start = today_start - timedelta(days=1)
+    week_start = today_start - timedelta(days=7)
+    out = LedgerGroupedOut()
+    for e in trimmed:
+        at = e.at
+        if at >= today_start:
+            out.today.append(e)
+        elif at >= yesterday_start:
+            out.yesterday.append(e)
+        elif at >= week_start:
+            out.this_week.append(e)
+    return out
 
 
 @router.get("/{user_id}/permissions", response_model=PermissionsOut)
@@ -485,7 +737,7 @@ async def get_permissions(
     business_id: uuid.UUID,
     user_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    _m: Annotated[Membership, Depends(require_role("owner", "super_admin"))],
+    _m: Annotated[Membership, Depends(require_role("owner", "admin", "super_admin"))],
 ):
     row = await _load_user_membership(db, business_id, user_id)
     if not row:
@@ -501,7 +753,7 @@ async def patch_permissions(
     user_id: uuid.UUID,
     body: PermissionsPatchIn,
     db: Annotated[AsyncSession, Depends(get_db)],
-    _m: Annotated[Membership, Depends(require_role("owner", "super_admin"))],
+    _m: Annotated[Membership, Depends(require_role("owner", "admin", "super_admin"))],
 ):
     row = await _load_user_membership(db, business_id, user_id)
     if not row:

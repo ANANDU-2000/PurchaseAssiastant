@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/providers/business_users_provider.dart';
+import '../../../core/router/post_auth_route.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/router/navigation_ext.dart';
@@ -84,6 +86,30 @@ final userPermissionsProvider =
   },
 );
 
+final userCreatedItemsProvider =
+    FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>(
+  (ref, userId) async {
+    final session = ref.watch(sessionProvider);
+    if (session == null) return [];
+    return ref.read(hexaApiProvider).listUserCreatedItems(
+          businessId: session.primaryBusiness.id,
+          userId: userId,
+        );
+  },
+);
+
+final userLedgerGroupedProvider =
+    FutureProvider.autoDispose.family<Map<String, dynamic>, String>(
+  (ref, userId) async {
+    final session = ref.watch(sessionProvider);
+    if (session == null) return {};
+    return ref.read(hexaApiProvider).listUserLedgerGrouped(
+          businessId: session.primaryBusiness.id,
+          userId: userId,
+        );
+  },
+);
+
 /// Tabbed user profile for owners/managers.
 class UserProfilePage extends ConsumerStatefulWidget {
   const UserProfilePage({super.key, required this.userId});
@@ -119,7 +145,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
             userId: widget.userId,
           );
       final pwd = out['new_password']?.toString() ?? '';
-      final user = out['login_username']?.toString();
+      final email = out['login_email']?.toString() ?? '';
       if (!mounted) return;
       await showDialog<void>(
         context: context,
@@ -129,8 +155,8 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (user != null) Text('Username: $user'),
-              SelectableText(pwd),
+              if (email.isNotEmpty) SelectableText('Email: $email'),
+              SelectableText('Password: $pwd'),
             ],
           ),
           actions: [
@@ -180,7 +206,12 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
         ),
       ),
       body: profileAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: CircularProgressIndicator(),
+          ),
+        ),
         error: (e, _) => HexaErrorCard.fromError(
           error: e,
           title: 'Could not load user',
@@ -232,10 +263,15 @@ class _HeaderCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final session = ref.watch(sessionProvider);
+    final canAdmin = session != null && sessionCanAdminUsers(session);
     final name = user['name']?.toString() ?? '—';
     final role = user['role']?.toString() ?? '';
-    final active = user['is_active'] == true;
+    final blocked = user['is_blocked'] == true;
+    final active = user['is_active'] == true && !blocked;
+    final email = user['email']?.toString() ?? user['login_email']?.toString() ?? '';
     final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
+    final lastLogin = DateTime.tryParse(user['last_login_at']?.toString() ?? '');
 
     return Card(
       margin: const EdgeInsets.all(16),
@@ -267,11 +303,17 @@ class _HeaderCard extends ConsumerWidget {
                             visualDensity: VisualDensity.compact,
                           ),
                           Chip(
-                            label: Text(active ? 'Active' : 'Disabled',
-                                style: HexaDsType.body(12)),
-                            backgroundColor: active
-                                ? Colors.teal.withValues(alpha: 0.12)
-                                : Colors.grey.withValues(alpha: 0.12),
+                            label: Text(
+                              blocked
+                                  ? 'Blocked'
+                                  : (active ? 'Active' : 'Inactive'),
+                              style: HexaDsType.body(12),
+                            ),
+                            backgroundColor: blocked
+                                ? Colors.red.withValues(alpha: 0.12)
+                                : (active
+                                    ? Colors.teal.withValues(alpha: 0.12)
+                                    : Colors.grey.withValues(alpha: 0.12)),
                             visualDensity: VisualDensity.compact,
                           ),
                         ],
@@ -282,52 +324,88 @@ class _HeaderCard extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: 8),
+            if (email.isNotEmpty)
+              Text('Email: $email', style: HexaDsType.body(14)),
             Text('Phone: ${user['phone'] ?? '—'}', style: HexaDsType.body(14)),
-            Text('Username: ${user['username'] ?? '—'}', style: HexaDsType.body(14)),
+            if (lastLogin != null)
+              Text(
+                'Last login: ${DateFormat.yMMMd().add_jm().format(lastLogin.toLocal())}',
+                style: HexaDsType.body(14),
+              ),
             if (user['warehouse_name'] != null)
               Text('Warehouse: ${user['warehouse_name']}', style: HexaDsType.body(14)),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: onReset,
-                  icon: const Icon(Icons.vpn_key_outlined, size: 18),
-                  label: const Text('Reset password'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () {
-                    final u = user['username']?.toString() ?? '';
-                    if (u.isNotEmpty) Clipboard.setData(ClipboardData(text: u));
-                  },
-                  icon: const Icon(Icons.copy_outlined, size: 18),
-                  label: const Text('Copy username'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    final session = ref.read(sessionProvider);
-                    if (session == null) return;
-                    final next = !(user['is_active'] == true);
-                    try {
-                      await ref.read(hexaApiProvider).patchBusinessUser(
-                            businessId: session.primaryBusiness.id,
-                            userId: userId,
-                            isActive: next,
-                          );
-                      ref.invalidate(businessUserProfileProvider(userId));
-                    } catch (e) {
+            if (canAdmin) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: onReset,
+                    icon: const Icon(Icons.vpn_key_outlined, size: 18),
+                    label: const Text('Reset password'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      if (email.isEmpty) return;
+                      await Clipboard.setData(ClipboardData(text: email));
                       if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(userFacingError(e))),
+                        const SnackBar(content: Text('Login email copied')),
                       );
-                    }
-                  },
-                  icon: Icon(active ? Icons.person_off_outlined : Icons.person_outline),
-                  label: Text(active ? 'Deactivate' : 'Activate'),
-                ),
-              ],
-            ),
+                    },
+                    icon: const Icon(Icons.copy_outlined, size: 18),
+                    label: const Text('Copy email'),
+                  ),
+                  if (role != 'owner')
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final s = ref.read(sessionProvider);
+                        if (s == null) return;
+                        try {
+                          await ref.read(hexaApiProvider).patchBusinessUser(
+                                businessId: s.primaryBusiness.id,
+                                userId: userId,
+                                isBlocked: !blocked,
+                              );
+                          ref.invalidate(businessUserProfileProvider(userId));
+                          invalidateUserManagementCaches(ref);
+                        } catch (e) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(userFacingError(e))),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.block_flipped, size: 18),
+                      label: Text(blocked ? 'Unblock' : 'Block'),
+                    ),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final s = ref.read(sessionProvider);
+                      if (s == null) return;
+                      final next = !active;
+                      try {
+                        await ref.read(hexaApiProvider).patchBusinessUser(
+                              businessId: s.primaryBusiness.id,
+                              userId: userId,
+                              isActive: next,
+                            );
+                        ref.invalidate(businessUserProfileProvider(userId));
+                        invalidateUserManagementCaches(ref);
+                      } catch (e) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(userFacingError(e))),
+                        );
+                      }
+                    },
+                    icon: Icon(active ? Icons.person_off_outlined : Icons.person_outline),
+                    label: Text(active ? 'Deactivate' : 'Activate'),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
@@ -344,9 +422,17 @@ class _OverviewTab extends StatelessWidget {
     final stats = user['today_stats'] is Map
         ? Map<String, dynamic>.from(user['today_stats'] as Map)
         : <String, dynamic>{};
+    final totals = user['stats'] is Map
+        ? Map<String, dynamic>.from(user['stats'] as Map)
+        : <String, dynamic>{};
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       children: [
+        _denseTile('Total stock edits', '${totals['stock_edits_total'] ?? 0}'),
+        _denseTile('Total purchases', '${totals['purchases_total'] ?? 0}'),
+        _denseTile('Total scans', '${totals['scans_total'] ?? 0}'),
+        _denseTile('Items created', '${totals['items_created_total'] ?? 0}'),
+        const SizedBox(height: 8),
         _denseTile('7d activity', '${user['activity_count_7d'] ?? 0} events'),
         _denseTile('7d purchases', '${user['purchases_7d'] ?? 0}'),
         _denseTile('7d stock edits', '${user['stock_updates_7d'] ?? 0}'),
@@ -405,9 +491,15 @@ Widget _activityRow(Map<String, dynamic> row) {
       : null;
   String? delta;
   if (details != null) {
-    final o = details['old_qty'];
-    final n = details['new_qty'];
-    if (o != null && n != null) delta = '$o → $n';
+    final before = details['before'];
+    final after = details['after'];
+    if (before is Map && after is Map) {
+      delta = '${before.toString()} → ${after.toString()}';
+    } else {
+      final o = details['old_qty'] ?? (before is Map ? before['qty'] : null);
+      final n = details['new_qty'] ?? (after is Map ? after['qty'] : null);
+      if (o != null && n != null) delta = '$o → $n';
+    }
   }
   return Card(
     margin: const EdgeInsets.only(bottom: 8),
@@ -495,23 +587,26 @@ class _ItemsTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(userActivityFeedProvider(userId));
+    final async = ref.watch(userCreatedItemsProvider(userId));
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => FriendlyLoadError(
-        onRetry: () => ref.invalidate(userActivityFeedProvider(userId)),
+        onRetry: () => ref.invalidate(userCreatedItemsProvider(userId)),
       ),
       data: (rows) {
-        final items = rows
-            .where((r) => r['action_type']?.toString() == 'ITEM_CREATE')
-            .toList();
-        if (items.isEmpty) {
+        if (rows.isEmpty) {
           return const Center(child: Text('No items created yet.'));
         }
         return ListView.builder(
           padding: const EdgeInsets.all(16),
-          itemCount: items.length,
-          itemBuilder: (_, i) => _activityRow(items[i]),
+          itemCount: rows.length,
+          itemBuilder: (_, i) {
+            final it = rows[i];
+            return _denseTile(
+              it['name']?.toString() ?? 'Item',
+              '${it['category'] ?? ''} · reorder ${it['reorder_level'] ?? '—'}',
+            );
+          },
         );
       },
     );
@@ -522,30 +617,44 @@ class _LedgerTab extends ConsumerWidget {
   const _LedgerTab({required this.userId});
   final String userId;
 
+  List<Map<String, dynamic>> _entries(dynamic raw) {
+    if (raw is! List) return [];
+    return raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(userLedgerProvider(userId));
+    final async = ref.watch(userLedgerGroupedProvider(userId));
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => FriendlyLoadError(
-        onRetry: () => ref.invalidate(userLedgerProvider(userId)),
+        onRetry: () => ref.invalidate(userLedgerGroupedProvider(userId)),
       ),
-      data: (rows) {
-        if (rows.isEmpty) {
+      data: (grouped) {
+        final sections = <String, List<Map<String, dynamic>>>{
+          'Today': _entries(grouped['today']),
+          'Yesterday': _entries(grouped['yesterday']),
+          'This week': _entries(grouped['this_week']),
+        };
+        final hasAny = sections.values.any((l) => l.isNotEmpty);
+        if (!hasAny) {
           return const Center(child: Text('No ledger entries.'));
         }
-        return ListView.builder(
+        return ListView(
           padding: const EdgeInsets.all(16),
-          itemCount: rows.length,
-          itemBuilder: (_, i) {
-            final e = rows[i];
-            final at = DateTime.tryParse(e['at']?.toString() ?? '');
-            final time = at != null ? DateFormat('d MMM, HH:mm').format(at.toLocal()) : '';
-            return _denseTile(
-              '${e['kind']}: ${e['title']}',
-              '${e['subtitle'] ?? ''} · $time',
-            );
-          },
+          children: [
+            for (final entry in sections.entries)
+              if (entry.value.isNotEmpty) ...[
+                Text(entry.key, style: HexaDsType.heading(16)),
+                const SizedBox(height: 8),
+                for (final e in entry.value)
+                  _denseTile(
+                    '${e['kind']}: ${e['title']}',
+                    '${e['subtitle'] ?? ''}',
+                  ),
+                const SizedBox(height: 12),
+              ],
+          ],
         );
       },
     );
@@ -599,6 +708,7 @@ class _PermissionsTabState extends ConsumerState<_PermissionsTab> {
                         permissions: draft,
                       );
                   ref.invalidate(userPermissionsProvider(widget.userId));
+                  invalidateUserManagementCaches(ref);
                   if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Permissions saved')),

@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../../core/providers/home_breakdown_tab_providers.dart';
+import '../../../../core/providers/home_dashboard_provider.dart';
 import '../../../../core/theme/hexa_colors.dart';
 import 'home_analytics_helpers.dart';
 import 'home_formatters.dart';
@@ -13,11 +14,13 @@ class HomeAnalyticsRankedList extends StatelessWidget {
     super.key,
     required this.slices,
     required this.tab,
+    required this.dash,
     this.maxRows = 5,
   });
 
   final List<HomeAnalyticsSlice> slices;
   final HomeBreakdownTab tab;
+  final HomeDashboardData dash;
   final int maxRows;
 
   @override
@@ -27,7 +30,7 @@ class HomeAnalyticsRankedList extends StatelessWidget {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Text(
-          'No data for this view in the selected period.',
+          homeAnalyticsEmptyHint(tab, dash),
           style: HexaDsType.bodySm(context),
         ),
       );

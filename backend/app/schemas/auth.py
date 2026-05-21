@@ -34,15 +34,15 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    """Log in with username, phone, or email plus password."""
+    """Warehouse staff login: email + password only."""
 
-    identifier: str = Field(..., min_length=3, max_length=320)
+    email: str = Field(..., min_length=5, max_length=320)
     password: str = Field(..., min_length=1, max_length=128)
 
-    @field_validator("identifier")
+    @field_validator("email")
     @classmethod
-    def identifier_strip(cls, v: str) -> str:
-        return v.strip()
+    def email_lower(cls, v: str) -> str:
+        return v.strip().lower()
 
 
 class TokenPair(BaseModel):

@@ -30,6 +30,7 @@ class User(Base):
     ai_monthly_token_budget: Mapped[int | None] = mapped_column(Integer, nullable=True, default=100_000)
     ai_tokens_used_month: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_blocked: Mapped[bool] = mapped_column(Boolean, default=False)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_active_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     device_info: Mapped[dict | None] = mapped_column(JSON().with_variant(JSONB, "postgresql"), nullable=True)

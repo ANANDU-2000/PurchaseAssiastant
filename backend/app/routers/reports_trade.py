@@ -22,6 +22,7 @@ from app.models.contacts import Supplier
 from app.read_cache_generation import trade_read_cache_generation
 from app.services import trade_mapping as trade_map
 from app.services import trade_query as tq
+from app.services.stock_inventory import compute_inventory_summary
 
 router = APIRouter(prefix="/v1/businesses/{business_id}/reports", tags=["reports-trade"])
 
@@ -236,6 +237,35 @@ def _apply_trade_dashboard_compact(payload: dict[str, Any]) -> None:
     payload["item_slices"] = []
     payload["recommendations"] = []
     payload["consistency"] = {"portfolio_score": None}
+
+
+def _attach_analytics_panel_blocks(
+    payload: dict[str, Any],
+    stock: dict[str, float | int],
+) -> None:
+    """Point-in-time stock + period purchased totals for home analytics strip."""
+    unit_totals = payload.get("unit_totals")
+    if not isinstance(unit_totals, dict):
+        unit_totals = {}
+    summary = payload.get("summary")
+    if not isinstance(summary, dict):
+        summary = {}
+    payload["stock_in_hand"] = {
+        "bags": stock.get("bags", 0),
+        "boxes": stock.get("boxes", 0),
+        "tins": stock.get("tins", 0),
+        "kg": stock.get("kg", 0),
+        "total_value_inr": stock.get("total_value_inr", 0),
+        "item_count": stock.get("item_count", 0),
+    }
+    payload["purchased"] = {
+        "bags": float(unit_totals.get("total_bags") or 0),
+        "boxes": float(unit_totals.get("total_boxes") or 0),
+        "tins": float(unit_totals.get("total_tins") or 0),
+        "kg": float(unit_totals.get("total_kg") or 0),
+        "amount_inr": float(summary.get("total_purchase") or 0),
+        "deals": int(summary.get("deals") or 0),
+    }
 
 
 async def _fetch_trade_items_breakdown_rows(
@@ -683,6 +713,8 @@ async def trade_home_overview(
                 "suppliers": list(out.get("suppliers") or []),
                 "items": list(out.get("item_slices") or []),
             }
+            stock = await compute_inventory_summary(db, business_id)
+            _attach_analytics_panel_blocks(out, stock)
         if compact:
             _apply_trade_dashboard_compact(out)
         if home_shell is not None:

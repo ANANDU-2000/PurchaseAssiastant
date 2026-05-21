@@ -24,7 +24,7 @@ from app.schemas.auth import (
     ResetPasswordRequest,
     TokenPair,
 )
-from app.services.auth_login import resolve_user_by_login_identifier
+from app.services.auth_login import resolve_user_by_email
 from app.services.google_oauth import verify_google_id_token_async
 from app.services.jwt_tokens import create_access_token, create_refresh_token, decode_refresh_token
 from app.services.passwords import hash_password, verify_password
@@ -183,7 +183,7 @@ async def login(
 ):
     try:
         try:
-            user = await resolve_user_by_login_identifier(db, body.identifier)
+            user = await resolve_user_by_email(db, body.email)
         except SQLAlchemyError:
             logger.exception("auth.login database error")
             raise HTTPException(
@@ -198,8 +198,12 @@ async def login(
         ):
             raise HTTPException(
                 status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid username, phone, or password",
+                detail="Invalid email or password",
             )
+        if getattr(user, "deleted_at", None) is not None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Account is inactive")
+        if getattr(user, "is_blocked", False):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Account is blocked")
         if not user.is_active:
             raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Account is inactive")
 

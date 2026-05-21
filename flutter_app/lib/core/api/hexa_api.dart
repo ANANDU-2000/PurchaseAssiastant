@@ -293,12 +293,12 @@ class HexaApi {
   }
 
   Future<({String access, String refresh})> login({
-    required String identifier,
+    required String email,
     required String password,
   }) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/auth/login',
-      data: {'identifier': identifier.trim(), 'password': password},
+      data: {'email': email.trim().toLowerCase(), 'password': password},
     );
     return _tokenPairFromResponse(res);
   }
@@ -454,9 +454,16 @@ class HexaApi {
     return Map<String, dynamic>.from(res.data ?? const {});
   }
 
-  Future<List<Map<String, dynamic>>> listBusinessUsers(
-      {required String businessId}) async {
-    final res = await _dio.get<dynamic>('/v1/businesses/$businessId/users');
+  Future<List<Map<String, dynamic>>> listBusinessUsers({
+    required String businessId,
+    bool includeInactive = false,
+  }) async {
+    final res = await _dio.get<dynamic>(
+      '/v1/businesses/$businessId/users',
+      queryParameters: {
+        if (includeInactive) 'include_inactive': true,
+      },
+    );
     final data = res.data;
     if (data is! List) return [];
     return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
@@ -466,10 +473,10 @@ class HexaApi {
   Future<Map<String, dynamic>> createBusinessUser({
     required String businessId,
     required String fullName,
+    required String email,
     required String phone,
     required String role,
     String? password,
-    String? username,
     String? notes,
     bool isActive = true,
   }) async {
@@ -477,11 +484,11 @@ class HexaApi {
       '/v1/businesses/$businessId/users',
       data: {
         'full_name': fullName.trim(),
+        'email': email.trim().toLowerCase(),
         'phone': phone.trim(),
         'role': role,
         'is_active': isActive,
         if (password != null && password.trim().isNotEmpty) 'password': password.trim(),
-        if (username != null && username.trim().isNotEmpty) 'username': username.trim(),
         if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
       },
     );
@@ -492,20 +499,58 @@ class HexaApi {
     required String businessId,
     required String userId,
     String? fullName,
+    String? email,
     String? phone,
     String? role,
     bool? isActive,
+    bool? isBlocked,
     String? notes,
   }) async {
     final res = await _dio.patch<Map<String, dynamic>>(
       '/v1/businesses/$businessId/users/$userId',
       data: {
         if (fullName != null) 'full_name': fullName.trim(),
+        if (email != null) 'email': email.trim().toLowerCase(),
         if (phone != null) 'phone': phone.trim(),
         if (role != null) 'role': role,
         if (isActive != null) 'is_active': isActive,
+        if (isBlocked != null) 'is_blocked': isBlocked,
         if (notes != null) 'notes': notes.trim(),
       },
+    );
+    return Map<String, dynamic>.from(res.data ?? const {});
+  }
+
+  Future<void> deleteBusinessUser({
+    required String businessId,
+    required String userId,
+  }) async {
+    await _dio.delete<void>('/v1/businesses/$businessId/users/$userId');
+  }
+
+  Future<Map<String, dynamic>> bulkBusinessUsers({
+    required String businessId,
+    required List<String> userIds,
+    required String action,
+    String? role,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/users/bulk',
+      data: {
+        'user_ids': userIds,
+        'action': action,
+        if (role != null) 'role': role,
+      },
+    );
+    return Map<String, dynamic>.from(res.data ?? const {});
+  }
+
+  Future<Map<String, dynamic>> getUserCredentials({
+    required String businessId,
+    required String userId,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/users/$userId/credentials',
     );
     return Map<String, dynamic>.from(res.data ?? const {});
   }
@@ -559,6 +604,32 @@ class HexaApi {
   }) async {
     final res = await _dio.get<dynamic>(
       '/v1/businesses/$businessId/users/$userId/ledger',
+      queryParameters: {'limit': limit},
+    );
+    final data = res.data;
+    if (data is! List) return [];
+    return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  Future<Map<String, dynamic>> listUserLedgerGrouped({
+    required String businessId,
+    required String userId,
+    int limit = 80,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/users/$userId/ledger',
+      queryParameters: {'limit': limit, 'grouped': true},
+    );
+    return Map<String, dynamic>.from(res.data ?? const {});
+  }
+
+  Future<List<Map<String, dynamic>>> listUserCreatedItems({
+    required String businessId,
+    required String userId,
+    int limit = 50,
+  }) async {
+    final res = await _dio.get<dynamic>(
+      '/v1/businesses/$businessId/users/$userId/created-items',
       queryParameters: {'limit': limit},
     );
     final data = res.data;

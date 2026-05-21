@@ -6,13 +6,18 @@ bool sessionIsStaff(Session session) =>
 /// Owner / manager / platform super-admin may view the user list.
 bool sessionCanManageUsers(Session session) {
   final r = session.primaryBusiness.role.toLowerCase();
-  return r == 'owner' || r == 'manager' || session.isSuperAdmin;
+  return r == 'owner' || r == 'admin' || r == 'manager' || session.isSuperAdmin;
 }
 
-/// Only the workspace owner (or platform super-admin) may create staff logins.
+/// Owner, admin, or platform super-admin may create staff logins.
 bool sessionCanCreateUsers(Session session) {
   final r = session.primaryBusiness.role.toLowerCase();
-  return r == 'owner' || session.isSuperAdmin;
+  return r == 'owner' || r == 'admin' || session.isSuperAdmin;
+}
+
+bool sessionCanAdminUsers(Session session) {
+  final r = session.primaryBusiness.role.toLowerCase();
+  return r == 'owner' || r == 'admin' || session.isSuperAdmin;
 }
 
 /// Main tab shell after sign-in / splash (owner vs staff).
