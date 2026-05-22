@@ -205,7 +205,7 @@ Use `flutter_app/lib/core/design_system/hexa_operational_tokens.dart` on **opera
 | `bottomNavMax` | 60dp | Owner shell bottom bar |
 | `fabSize` | 56dp | Center scan FAB |
 
-Owner home: 3×2 quick actions, horizontal `HomeMultiAlertStrip` pills, compact stock totals (Purchased \| Current \| Variance). Scanner: post-scan `scan_stock_result_sheet` (+1/+5). Bulk print: sticky Preview/PDF/Print, Wrap filters, 2-column layout ≥900px width.
+Owner home: 3×2 quick actions, horizontal `HomeMultiAlertStrip` pills, compact stock totals (Purchased \| Current \| Variance). Scanner: post-scan `scan_stock_result_sheet` (+1/+5). Bulk print: sticky Preview/PDF/Print, search + filter icon (no category chip wall), desktop preview panel ≥1100px. Filters: `showOperationalStockFilter` (bottom sheet / 320px side panel). Errors: `barcodeMessageForUser` — never bare "Something went wrong" on barcode/PDF paths.
 
 ### Typography (warehouse-grade, old-person friendly)
 

@@ -162,6 +162,21 @@
 
 ---
 
+## Sprint 17 — Production UX + PDF/print (May 22 2026)
+
+| ID | Priority | Status | Summary |
+|----|----------|--------|---------|
+| PX-01 | P0 | Done | `barcode_operation_errors.dart` + `OperationalAsyncButton`; no generic snackbars on print/scan |
+| PX-02 | P0 | Done | `showOperationalStockFilter` sheet/panel (1100px); stock + bulk: search + filter icon only |
+| PX-03 | P0 | Done | Bulk print rebuild: segmented A4/Thermal/QR, sticky bar, batch partial failure, web print guard |
+| PX-04 | P1 | Done | Desktop ≥1100: list + `BulkBarcodePrintPreviewPanel` |
+| PX-05 | P1 | Done | Scanner: 55% viewport, 3 fallback actions, web `BarcodeDetector` photo path |
+| PX-06 | P1 | Done | `barcode_pdf_service` symbology validation; `barcode_operation_errors_test.dart` |
+
+**E2E:** purchase-assiastant — bulk PDF/preview, filter sheet, scan photo (Chrome), stock list without chip wall.
+
+---
+
 ## Sprint 16 — StockEase UX rescue (May 22 2026)
 
 | ID | Priority | Status | Summary |

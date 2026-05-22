@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:barcode/barcode.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -8,6 +9,7 @@ import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/errors/barcode_operation_errors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/theme/hexa_colors.dart';
@@ -30,6 +32,7 @@ class _BarcodePrintPageState extends ConsumerState<BarcodePrintPage> {
   bool _showLastPurchase = true;
   bool _busy = false;
   bool _loadError = false;
+  String? _loadErrorMessage;
   Map<String, dynamic>? _data;
 
   @override
@@ -54,7 +57,13 @@ class _BarcodePrintPageState extends ConsumerState<BarcodePrintPage> {
       setState(() => _data = j);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _loadError = true);
+      setState(() {
+        _loadError = true;
+        _loadErrorMessage = barcodeMessageForUser(
+          e,
+          ctx: BarcodeOperationContext.singlePrint,
+        );
+      });
     }
   }
 
@@ -84,10 +93,32 @@ class _BarcodePrintPageState extends ConsumerState<BarcodePrintPage> {
         copies: _copies,
         showLastPurchase: _showLastPurchase,
       );
-      await Printing.layoutPdf(
-        name: _singleBarcodeFilename(label),
-        onLayout: (_) async => bytes,
-      );
+      if (kIsWeb) {
+        await Printing.sharePdf(
+          bytes: bytes,
+          filename: _singleBarcodeFilename(label),
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Print unavailable in browser — use downloaded PDF.',
+            ),
+          ),
+        );
+        return;
+      }
+      await guardWebPrint(() => Printing.layoutPdf(
+            name: _singleBarcodeFilename(label),
+            onLayout: (_) async => bytes,
+          ));
+    } on BarcodeOperationException catch (e) {
+      if (!mounted) return;
+      _showSnack(e.message);
+    } catch (e, st) {
+      logBarcodeOperationError(e, st);
+      if (!mounted) return;
+      _showSnack(barcodeMessageForUser(e, ctx: BarcodeOperationContext.singlePrint));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -108,9 +139,25 @@ class _BarcodePrintPageState extends ConsumerState<BarcodePrintPage> {
         bytes: bytes,
         filename: _singleBarcodeFilename(label),
       );
+    } on BarcodeOperationException catch (e) {
+      if (!mounted) return;
+      _showSnack(e.message);
+    } catch (e, st) {
+      logBarcodeOperationError(e, st);
+      if (!mounted) return;
+      _showSnack(barcodeMessageForUser(e, ctx: BarcodeOperationContext.singlePrint));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red.shade700,
+      ),
+    );
   }
 
   @override
@@ -161,7 +208,7 @@ class _BarcodePrintPageState extends ConsumerState<BarcodePrintPage> {
   Widget _buildBody(BarcodeLabelData? label) {
     if (_loadError) {
       return FriendlyLoadError(
-        message: 'Could not load label data',
+        message: _loadErrorMessage ?? 'Could not load label data',
         onRetry: _load,
       );
     }

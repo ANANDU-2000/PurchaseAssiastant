@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:barcode/barcode.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../../core/errors/barcode_operation_errors.dart';
 import '../../../core/json_coerce.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -100,6 +101,36 @@ class BarcodeLabelData {
 }
 
 class BarcodePdfService {
+  static String _symbologyValue(BarcodeLabelData data) {
+    final v = (data.barcode ?? data.itemCode).trim();
+    if (v.isEmpty) {
+      throw BarcodeOperationException(
+        'Barcode image missing for "${data.itemName}".',
+        kind: BarcodeOperationKind.barcodeRender,
+      );
+    }
+    return v;
+  }
+
+  static List<BarcodeLabelData> _requirePrintable(List<BarcodeLabelData> items) {
+    final ok = <BarcodeLabelData>[];
+    for (final d in items) {
+      try {
+        _symbologyValue(d);
+        ok.add(d);
+      } catch (_) {
+        // skip invalid row in batch; caller handles empty
+      }
+    }
+    if (ok.isEmpty) {
+      throw BarcodeOperationException(
+        'No valid barcodes to print. Assign barcodes or item codes first.',
+        kind: BarcodeOperationKind.barcodeRender,
+      );
+    }
+    return ok;
+  }
+
   static Future<Uint8List> generateSingleLabel({
     required BarcodeLabelData data,
     LabelSize size = LabelSize.medium,
@@ -107,6 +138,7 @@ class BarcodePdfService {
     bool showLastPurchase = true,
     bool hideFinancials = false,
   }) async {
+    _symbologyValue(data);
     final doc = pw.Document();
     final fmt = _pageFormat(size);
     for (var c = 0; c < copies; c++) {
@@ -137,16 +169,13 @@ class BarcodePdfService {
     int labelsPerRow = 1,
     BarcodeSymbolMode symbol = BarcodeSymbolMode.code128WithQr,
   }) async {
+    final printable = _requirePrintable(items);
     final expanded = <BarcodeLabelData>[];
-    for (final data in items) {
+    for (final data in printable) {
       for (var c = 0; c < copiesPerItem; c++) {
         expanded.add(data);
       }
     }
-    if (expanded.isEmpty) {
-      return pw.Document().save();
-    }
-
     final perRow = labelsPerRow.clamp(1, 3);
     final doc = pw.Document();
 
@@ -227,14 +256,12 @@ class BarcodePdfService {
     bool hideFinancials = false,
     int columns = 4,
   }) async {
+    final printable = _requirePrintable(items);
     final expanded = <BarcodeLabelData>[];
-    for (final data in items) {
+    for (final data in printable) {
       for (var c = 0; c < copiesPerItem; c++) {
         expanded.add(data);
       }
-    }
-    if (expanded.isEmpty) {
-      return pw.Document().save();
     }
     final payload = <String, dynamic>{
       'labels': [for (final e in expanded) e.toJson()],

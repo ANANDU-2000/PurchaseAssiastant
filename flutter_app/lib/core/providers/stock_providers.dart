@@ -84,6 +84,51 @@ final stockItemIntelligenceProvider = FutureProvider.autoDispose
 final stockListQueryProvider =
     StateProvider<StockListQuery>((_) => const StockListQuery());
 
+/// Client-side filters (missing barcode, unit, eviction) shared by stock + bulk print.
+class StockOperationalFilters {
+  const StockOperationalFilters({
+    this.missingBarcodeOnly = false,
+    this.evictionOnly = false,
+    this.unit = '',
+  });
+
+  final bool missingBarcodeOnly;
+  final bool evictionOnly;
+  /// Empty = all units; else match `unit` field lowercased.
+  final String unit;
+
+  StockOperationalFilters copyWith({
+    bool? missingBarcodeOnly,
+    bool? evictionOnly,
+    String? unit,
+  }) {
+    return StockOperationalFilters(
+      missingBarcodeOnly: missingBarcodeOnly ?? this.missingBarcodeOnly,
+      evictionOnly: evictionOnly ?? this.evictionOnly,
+      unit: unit ?? this.unit,
+    );
+  }
+}
+
+final stockOperationalFiltersProvider =
+    StateProvider<StockOperationalFilters>((_) => const StockOperationalFilters());
+
+/// Selected row for bulk print desktop preview panel.
+final bulkPreviewItemIdProvider = StateProvider<String?>((ref) => null);
+
+int countOperationalActiveFilters(StockListQuery q, StockOperationalFilters op) {
+  var n = 0;
+  if (q.category.isNotEmpty) n++;
+  if (q.subcategory.isNotEmpty) n++;
+  if (q.supplier.isNotEmpty) n++;
+  if (q.status != 'all') n++;
+  if (q.sort != 'name') n++;
+  if (op.missingBarcodeOnly) n++;
+  if (op.evictionOnly) n++;
+  if (op.unit.isNotEmpty) n++;
+  return n;
+}
+
 final stockTotalsProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final session = ref.watch(sessionProvider);
   if (session == null) return {};

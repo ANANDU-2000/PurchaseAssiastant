@@ -6,14 +6,13 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/design_system/hexa_operational_tokens.dart';
 import '../../../core/json_coerce.dart';
-import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/stock_providers.dart';
 import '../../../core/utils/operational_date_format.dart';
 import '../../../core/utils/unit_utils.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../core/widgets/list_skeleton.dart';
+import 'widgets/operational_stock_filter_sheet.dart';
 import 'widgets/stock_bulk_actions_sheet.dart';
-import 'widgets/stock_filter_bottom_sheet.dart';
 import 'widgets/stock_row_actions.dart';
 
 class StockPage extends ConsumerStatefulWidget {
@@ -30,10 +29,6 @@ class _StockPageState extends ConsumerState<StockPage> {
   Timer? _debounce;
   bool _loadingMore = false;
   bool _searchExpanded = false;
-  bool _filterLow = false;
-  bool _filterMissingBarcode = false;
-  bool _filterEviction = false;
-  String? _filterUnit;
 
   @override
   void initState() {
@@ -84,18 +79,15 @@ class _StockPageState extends ConsumerState<StockPage> {
   }
 
   List<Map<String, dynamic>> _clientFilter(List<Map<String, dynamic>> items) {
+    final op = ref.read(stockOperationalFiltersProvider);
     return items.where((it) {
-      if (_filterLow) {
-        final st = it['stock_status']?.toString() ?? '';
-        if (st != 'low' && st != 'critical' && st != 'out') return false;
-      }
-      if (_filterMissingBarcode && it['missing_barcode'] != true) {
+      if (op.missingBarcodeOnly && it['missing_barcode'] != true) {
         return false;
       }
-      if (_filterEviction && it['needs_eviction'] != true) return false;
-      if (_filterUnit != null) {
+      if (op.evictionOnly && it['needs_eviction'] != true) return false;
+      if (op.unit.isNotEmpty) {
         final u = (it['unit']?.toString() ?? '').toLowerCase();
-        if (u != _filterUnit) return false;
+        if (u != op.unit) return false;
       }
       return true;
     }).toList();
@@ -111,7 +103,9 @@ class _StockPageState extends ConsumerState<StockPage> {
       });
     });
     final listAsync = ref.watch(stockListProvider);
-    final categories = ref.watch(itemCategoriesListProvider);
+    final listQ = ref.watch(stockListQueryProvider);
+    final op = ref.watch(stockOperationalFiltersProvider);
+    final filterCount = countOperationalActiveFilters(listQ, op);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F3EE),
@@ -144,12 +138,16 @@ class _StockPageState extends ConsumerState<StockPage> {
             onPressed: () => showStockBulkActionsSheet(context: context, ref: ref),
           ),
           IconButton(
-            icon: const Icon(Icons.tune),
-            onPressed: () => showStockFilterBottomSheet(
+            tooltip: 'Filters',
+            onPressed: () => showOperationalStockFilter(
               context: context,
               ref: ref,
-              initial: ref.read(stockListQueryProvider),
               subcategoryCtrl: _subcatCtrl,
+            ),
+            icon: Badge(
+              isLabelVisible: filterCount > 0,
+              label: Text('$filterCount'),
+              child: const Icon(Icons.tune),
             ),
           ),
           IconButton(
@@ -200,7 +198,7 @@ class _StockPageState extends ConsumerState<StockPage> {
             child: CustomScrollView(
               controller: _scroll,
               slivers: [
-                SliverToBoxAdapter(child: _buildFilterChips(categories)),
+                SliverToBoxAdapter(child: _filterSummaryChip(listQ, op)),
                 if (eviction.isNotEmpty) ...[
                   _sectionHeader('Needs eviction', color: const Color(0xFFA32D2D)),
                   SliverList(
@@ -283,61 +281,30 @@ class _StockPageState extends ConsumerState<StockPage> {
     }
   }
 
-  Widget _buildFilterChips(AsyncValue<List<Map<String, dynamic>>> categoriesAsync) {
-    final cats = categoriesAsync.valueOrNull ?? [];
+  Widget _filterSummaryChip(StockListQuery q, StockOperationalFilters op) {
+    final summary = stockActiveFilterSummary(q, op);
+    if (summary.isEmpty) return const SizedBox(height: 4);
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         HexaOp.pageGutter,
-        8,
+        4,
         HexaOp.pageGutter,
         4,
       ),
       child: Wrap(
         spacing: 8,
-        runSpacing: 8,
         children: [
-          FilterChip(
-            label: const Text('Low stock'),
-            selected: _filterLow,
-            onSelected: (v) => setState(() => _filterLow = v),
-          ),
-          FilterChip(
-            label: const Text('Missing barcode'),
-            selected: _filterMissingBarcode,
-            onSelected: (v) => setState(() => _filterMissingBarcode = v),
-          ),
-          FilterChip(
-            label: const Text('Eviction'),
-            selected: _filterEviction,
-            onSelected: (v) => setState(() => _filterEviction = v),
-          ),
-          for (final u in ['bag', 'box', 'tin', 'kg', 'piece'])
-            FilterChip(
-              label: Text(u.toUpperCase()),
-              selected: _filterUnit == u,
-              onSelected: (v) => setState(() => _filterUnit = v ? u : null),
+          ActionChip(
+            label: Text('Filters: $summary', style: const TextStyle(fontSize: 11)),
+            onPressed: () => showOperationalStockFilter(
+              context: context,
+              ref: ref,
+              subcategoryCtrl: _subcatCtrl,
             ),
-          for (final c in cats.take(12))
-            FilterChip(
-              label: Text(
-                c['name']?.toString() ?? '',
-                overflow: TextOverflow.ellipsis,
-              ),
-              selected: ref.watch(stockListQueryProvider).category ==
-                  (c['name']?.toString() ?? ''),
-              onSelected: (_) {
-                final name = c['name']?.toString() ?? '';
-                final cur = ref.read(stockListQueryProvider).category;
-                ref.read(stockListQueryProvider.notifier).state =
-                    ref.read(stockListQueryProvider).copyWith(
-                          category: cur == name ? '' : name,
-                          page: 1,
-                        );
-              },
-            ),
+          ),
           ActionChip(
             avatar: const Icon(Icons.label_off_outlined, size: 18),
-            label: const Text('Missing codes'),
+            label: const Text('Missing labels'),
             onPressed: () => context.push('/stock/missing-barcodes'),
           ),
         ],

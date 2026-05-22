@@ -1,20 +1,22 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 
-import '../../../core/auth/session_notifier.dart';
 import '../../../core/design_system/hexa_operational_tokens.dart';
-import '../../../core/json_coerce.dart';
-import '../../../core/router/post_auth_route.dart';
-import '../../../core/providers/catalog_providers.dart';
+import '../../../core/errors/barcode_operation_errors.dart';
 import '../../../core/providers/stock_providers.dart';
-import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/widgets/hexa_error_card.dart';
+import '../../stock/presentation/widgets/operational_stock_filter_sheet.dart';
 import '../services/barcode_pdf_service.dart';
+import '../services/bulk_label_batch.dart';
+import 'bulk_barcode_print_controller.dart';
+import 'bulk_barcode_print_preview_panel.dart';
+import 'bulk_barcode_print_toolbar.dart';
 
 class BulkBarcodePrintPage extends ConsumerStatefulWidget {
   const BulkBarcodePrintPage({super.key});
@@ -29,20 +31,19 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
   Timer? _searchDebounce;
   static const LabelSize _thermalSize = LabelSize.medium;
   int _copies = 1;
-  int _perRow = 2;
-
-  /// When true, narrow the loaded "all status" list to low + critical only (client-side).
-  bool _lowStockOnly = false;
-
-  /// When true, show only catalog rows with no item_code (needs label setup).
-  bool _missingCodeOnly = false;
-  String _searchText = '';
+  final int _perRow = 2;
   bool _busy = false;
   bool _denseA4 = true;
-  BarcodeSymbolMode _symbol = BarcodeSymbolMode.code128WithQr;
+  bool _useQr = true;
   String? _pdfStatus;
   int _labelProgressDone = 0;
   int _labelProgressTotal = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchCtrl.text = ref.read(stockListQueryProvider).q;
+  }
 
   @override
   void dispose() {
@@ -67,244 +68,249 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
     _setSelected(next);
   }
 
-  Future<List<BarcodeLabelData>> _fetchLabels() async {
-    final session = ref.read(sessionProvider);
-    final ids = ref.read(bulkBarcodeSelectionProvider).toList();
-    if (session == null || ids.isEmpty) return [];
+  Future<BulkLabelBatchResult> _loadLabels({List<String>? ids}) async {
+    final target = ids ?? ref.read(bulkBarcodeSelectionProvider).toList();
     if (mounted) {
       setState(() {
-        _labelProgressTotal = ids.length;
+        _labelProgressTotal = target.length;
         _labelProgressDone = 0;
       });
     }
-    const chunkSize = 200;
-    final api = ref.read(hexaApiProvider);
-    final batch = <BarcodeLabelData>[];
-    for (var i = 0; i < ids.length; i += chunkSize) {
-      if (!mounted) break;
-      final end = (i + chunkSize < ids.length) ? i + chunkSize : ids.length;
-      if (mounted) {
+    final batch = await fetchBulkLabels(
+      ref: ref,
+      ids: target,
+      onProgress: (done, total) {
+        if (!mounted) return;
         setState(() {
-          _labelProgressDone = end;
-          _pdfStatus = 'Preparing labels… $end / ${ids.length}';
+          _labelProgressDone = done;
+          _labelProgressTotal = total;
+          _pdfStatus = 'Preparing labels… $done / $total';
         });
-      }
-      final labels = await api.barcodeLabelBatch(
-        businessId: session.primaryBusiness.id,
-        itemIds: ids.sublist(i, end),
-      );
-      for (final j in labels) {
-        final label = BarcodeLabelData.fromApiMap(j);
-        if (label != null) batch.add(label);
-      }
-    }
+      },
+    );
     return batch;
   }
 
-  Future<Uint8List?> _buildPdf() async {
-    setState(() => _pdfStatus = 'Fetching labels…');
-    final batch = await _fetchLabels();
-    if (batch.isEmpty) {
-      if (mounted) setState(() => _pdfStatus = null);
-      return null;
-    }
-    setState(() => _pdfStatus = 'Generating PDF…');
-    final session = ref.read(sessionProvider);
-    final hideFinancials =
-        session != null && !sessionCanSeeFinancials(session);
-    try {
-      if (_denseA4) {
-        final cols = MediaQuery.sizeOf(context).width >= 600 ? 4 : 2;
-        return BarcodePdfService.generateBatchA4Dense(
-          items: batch,
-          size: _thermalSize,
-          copiesPerItem: _copies,
-          hideFinancials: hideFinancials,
-          columns: cols,
-        );
-      }
-      return BarcodePdfService.generateBatch(
-        items: batch,
-        size: _thermalSize,
-        copiesPerItem: _copies,
-        labelsPerRow: _perRow,
-        hideFinancials: hideFinancials,
-        symbol: _symbol,
-      );
-    } finally {
-      if (mounted) setState(() => _pdfStatus = null);
-    }
-  }
-
-  Future<void> _preview() async {
+  Future<void> _runPdfFlow({
+    required Future<void> Function(Uint8List pdf) action,
+  }) async {
     if (_selected.isEmpty || _busy) return;
     setState(() => _busy = true);
     try {
-      final pdf = await _buildPdf();
-      if (pdf == null) {
+      var batch = await _loadLabels();
+      if (batch.isTotalFailure) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No printable labels')),
+        _showError(
+          '${batch.failedIds.length} items could not be loaded. '
+          'Check barcodes and try again.',
         );
         return;
       }
+      if (batch.hasPartialFailure) {
+        final cont = await showPartialLabelFailureDialog(context, batch);
+        if (cont != true) return;
+      }
+      setState(() => _pdfStatus = 'Generating PDF…');
+      final symbol = _useQr
+          ? BarcodeSymbolMode.code128WithQr
+          : BarcodeSymbolMode.code128;
+      final pdf = await generateBulkPdfBytes(
+        context: context,
+        ref: ref,
+        batch: batch,
+        denseA4: _denseA4,
+        copies: _copies,
+        perRow: _perRow,
+        symbol: symbol,
+        thermalSize: _thermalSize,
+      );
+      await action(pdf);
+    } on BarcodeOperationException catch (e) {
       if (!mounted) return;
-      final count = _selected.length * _copies;
-      await Navigator.of(context).push<void>(
-        MaterialPageRoute(
-          builder: (ctx) => Scaffold(
-            appBar: AppBar(
-              title: Text('Preview ($count labels)'),
-            ),
-            body: PdfPreview(
-              build: (_) async => pdf,
-              canChangeOrientation: false,
-              canChangePageFormat: false,
-              canDebug: false,
-            ),
+      _showError(e.message);
+    } catch (e, st) {
+      logBarcodeOperationError(e, st);
+      if (!mounted) return;
+      _showError(barcodeMessageForUser(e));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _pdfStatus = null;
+          _labelProgressDone = 0;
+          _labelProgressTotal = 0;
+        });
+      }
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red.shade700,
+        action: SnackBarAction(
+          label: 'Retry',
+          textColor: Colors.white,
+          onPressed: () {},
+        ),
+      ),
+    );
+  }
+
+  Future<void> _preview() => _runPdfFlow(action: (pdf) async {
+    if (!mounted) return;
+    final count = _selected.length * _copies;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (ctx) => Scaffold(
+          appBar: AppBar(title: Text('Preview ($count labels)')),
+          body: PdfPreview(
+            build: (_) async => pdf,
+            canChangeOrientation: false,
+            canChangePageFormat: false,
+            canDebug: false,
           ),
         ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(userFacingError(e)),
-          backgroundColor: Colors.red.shade700,
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
+      ),
+    );
+  });
 
-  Future<void> _print() async {
-    if (_selected.isEmpty || _busy) return;
-    setState(() => _busy = true);
-    try {
-      final pdf = await _buildPdf();
-      if (pdf == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No printable labels')),
-        );
-        return;
-      }
-      await Printing.layoutPdf(
-        name: _bulkBarcodeFilename(),
-        onLayout: (_) async => pdf,
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(userFacingError(e)),
-          backgroundColor: Colors.red.shade700,
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
+  Future<void> _downloadPdf() => _runPdfFlow(action: (pdf) async {
+    await Printing.sharePdf(
+      bytes: pdf,
+      filename: _bulkBarcodeFilename(),
+    );
+  });
 
-  Future<void> _downloadPdf() async {
-    if (_selected.isEmpty || _busy) return;
-    setState(() => _busy = true);
-    try {
-      final pdf = await _buildPdf();
-      if (pdf == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No printable labels')),
-        );
-        return;
-      }
+  Future<void> _print() => _runPdfFlow(action: (pdf) async {
+    if (kIsWeb) {
       await Printing.sharePdf(
         bytes: pdf,
         filename: _bulkBarcodeFilename(),
       );
-    } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(userFacingError(e)),
-          backgroundColor: Colors.red.shade700,
+        const SnackBar(
+          content: Text(
+            'On web, use the downloaded PDF to print from your browser.',
+          ),
         ),
       );
-    } finally {
-      if (mounted) setState(() => _busy = false);
+      return;
     }
-  }
-
-  List<Map<String, dynamic>> _filterItems(List<Map<String, dynamic>> items) {
-    final q = _searchText.trim().toLowerCase();
-    return [
-      for (final it in items)
-        if (_matches(it, q)) it,
-    ];
-  }
-
-  bool _matches(Map<String, dynamic> it, String q) {
-    final st = it['stock_status']?.toString() ?? 'healthy';
-    if (_lowStockOnly && st != 'low' && st != 'critical') {
-      return false;
-    }
-    final barcode = it['barcode']?.toString().trim() ?? '';
-    if (_missingCodeOnly && barcode.isNotEmpty) {
-      return false;
-    }
-    if (q.isEmpty) return true;
-    final name = it['name']?.toString().toLowerCase() ?? '';
-    final codeQ = it['item_code']?.toString().toLowerCase() ?? '';
-    final barcodeQ = it['barcode']?.toString().toLowerCase() ?? '';
-    return name.contains(q) || codeQ.contains(q) || barcodeQ.contains(q);
-  }
+    await guardWebPrint(() => Printing.layoutPdf(
+          name: _bulkBarcodeFilename(),
+          onLayout: (_) async => pdf,
+        ));
+  });
 
   String _bulkBarcodeFilename() {
     final q = ref.read(stockListQueryProvider);
-    final raw = q.category.trim().isNotEmpty
-        ? q.category.trim()
-        : (_missingCodeOnly
-            ? 'missing_code'
-            : (_lowStockOnly ? 'low_stock' : 'all_items'));
+    final raw = q.category.trim().isNotEmpty ? q.category.trim() : 'all_items';
     final category = raw
         .replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '_')
-        .replaceAll(RegExp(r'_+'), '_')
-        .replaceAll(RegExp(r'^_|_$'), '');
+        .replaceAll(RegExp(r'_+'), '_');
     final date = DateFormat('yyyyMMdd').format(DateTime.now());
     return 'harisree_barcodes_${category.isEmpty ? 'all_items' : category}_$date.pdf';
   }
 
-  String? _categoryIdForName(List<Map<String, dynamic>> cats, String name) {
-    final t = name.trim();
-    if (t.isEmpty) return null;
-    for (final c in cats) {
-      if ((c['name']?.toString().trim() ?? '') == t) {
-        return c['id']?.toString();
-      }
+  List<Map<String, dynamic>> _applyClientFilters(List<Map<String, dynamic>> items) {
+    final op = ref.read(stockOperationalFiltersProvider);
+    return [
+      for (final it in items)
+        if (_passesOperational(it, op)) it,
+    ];
+  }
+
+  bool _passesOperational(Map<String, dynamic> it, StockOperationalFilters op) {
+    if (op.missingBarcodeOnly && it['missing_barcode'] != true) return false;
+    if (op.evictionOnly && it['needs_eviction'] != true) return false;
+    if (op.unit.isNotEmpty) {
+      final u = (it['unit']?.toString() ?? '').toLowerCase();
+      if (u != op.unit) return false;
     }
-    return null;
+    return true;
+  }
+
+  Widget _searchRow() {
+    final q = ref.watch(stockListQueryProvider);
+    final op = ref.watch(stockOperationalFiltersProvider);
+    final filterCount = countOperationalActiveFilters(q, op);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        HexaOp.pageGutter,
+        8,
+        HexaOp.pageGutter,
+        4,
+      ),
+      child: TextField(
+        controller: _searchCtrl,
+        decoration: InputDecoration(
+          hintText: 'Search name, code, barcode, category…',
+          prefixIcon: const Icon(Icons.search_rounded),
+          isDense: true,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          suffixIcon: IconButton(
+            tooltip: 'Filters',
+            onPressed: () => showOperationalStockFilter(context: context, ref: ref),
+            icon: Badge(
+              isLabelVisible: filterCount > 0,
+              label: Text('$filterCount'),
+              child: const Icon(Icons.tune_rounded),
+            ),
+          ),
+        ),
+        onChanged: (v) {
+          _searchDebounce?.cancel();
+          _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+            if (!mounted) return;
+            ref.read(stockListQueryProvider.notifier).state =
+                ref.read(stockListQueryProvider).copyWith(q: v.trim(), page: 1);
+          });
+        },
+      ),
+    );
+  }
+
+  Widget _filterSummaryChip() {
+    final q = ref.watch(stockListQueryProvider);
+    final op = ref.watch(stockOperationalFiltersProvider);
+    final summary = stockActiveFilterSummary(q, op);
+    if (summary.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: HexaOp.pageGutter),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: ActionChip(
+          label: Text('Filters: $summary', style: const TextStyle(fontSize: 11)),
+          onPressed: () => showOperationalStockFilter(context: context, ref: ref),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final selected = ref.watch(bulkBarcodeSelectionProvider);
-    final listQ = ref.watch(stockListQueryProvider);
     final listAsync = ref.watch(bulkStockListProvider);
-    final catsAsync = ref.watch(itemCategoriesListProvider);
-
     final progress = _labelProgressTotal > 0
         ? _labelProgressDone / _labelProgressTotal
         : null;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          selected.isEmpty
-              ? 'Bulk print barcodes'
-              : 'Bulk print (${selected.length})',
-        ),
+        title: const Text('Bulk print'),
         actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: Center(
+              child: Text(
+                '${selected.length} selected',
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+              ),
+            ),
+          ),
           if (selected.isNotEmpty)
             TextButton(
               onPressed: () => _setSelected({}),
@@ -312,423 +318,158 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
             ),
         ],
       ),
-      bottomNavigationBar: _buildStickyBar(selected, progress),
+      bottomNavigationBar: BulkBarcodePrintToolbar(
+        selectedCount: selected.length,
+        busy: _busy,
+        denseA4: _denseA4,
+        useQr: _useQr,
+        copies: _copies,
+        progress: progress,
+        statusText: _pdfStatus,
+        onDenseA4Changed: (v) => setState(() => _denseA4 = v),
+        onQrChanged: (v) => setState(() => _useQr = v),
+        onCopiesChanged: (v) => setState(() => _copies = v),
+        onPreview: _preview,
+        onPdf: _downloadPdf,
+        onPrint: _print,
+      ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final wide = constraints.maxWidth >= 900;
-          final filters = <Widget>[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              HexaOp.pageGutter,
-              8,
-              HexaOp.pageGutter,
-              0,
-            ),
-            child: TextField(
-              controller: _searchCtrl,
-              decoration: InputDecoration(
-                hintText: 'Search items…',
-                prefixIcon: const Icon(Icons.search_rounded),
-                isDense: true,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+          final desktop = constraints.maxWidth >= kOperationalDesktopBreakpoint;
+          final listPane = Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _searchRow(),
+              _filterSummaryChip(),
+              Expanded(
+                child: listAsync.when(
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                  error: (e, _) => HexaErrorCard.fromError(
+                    error: e,
+                    title: 'Could not load items',
+                    onRetry: () => ref.invalidate(bulkStockListProvider),
+                  ),
+                  data: (data) => _buildList(data, selected, desktop),
                 ),
               ),
-              onChanged: (v) {
-                _searchDebounce?.cancel();
-                _searchDebounce = Timer(const Duration(milliseconds: 300), () {
-                  if (mounted) setState(() => _searchText = v.trim().toLowerCase());
-                });
-              },
-            ),
-          ),
-          const SizedBox(height: 6),
-          catsAsync.when(
-            loading: () => const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 12),
-              child: LinearProgressIndicator(minHeight: 2),
-            ),
-            error: (_, __) => const SizedBox.shrink(),
-            data: (cats) {
-              final names = [
-                'All',
-                for (final c in cats)
-                  if ((c['name'] ?? '').toString().trim().isNotEmpty)
-                    c['name'].toString().trim(),
-              ];
-              final cid = _categoryIdForName(cats, listQ.category);
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        for (final name in names)
-                          FilterChip(
-                            label: Text(
-                              name,
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                            selected: name == 'All'
-                                ? listQ.category.isEmpty
-                                : listQ.category == name,
-                            onSelected: (_) {
-                              final cur = ref.read(stockListQueryProvider);
-                              final n =
-                                  ref.read(stockListQueryProvider.notifier);
-                              if (name == 'All') {
-                                n.state =
-                                    cur.copyWith(category: '', subcategory: '');
-                              } else {
-                                n.state = cur.copyWith(
-                                    category: name, subcategory: '');
-                              }
-                            },
-                          ),
-                      ],
-                    ),
-                    if (cid != null && cid.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      ref.watch(categoryTypesListProvider(cid)).when(
-                            loading: () => const LinearProgressIndicator(
-                              minHeight: 2,
-                            ),
-                            error: (_, __) => const SizedBox.shrink(),
-                            data: (types) {
-                              final typeNames = [
-                                for (final t in types)
-                                  if ((t['name'] ?? '')
-                                      .toString()
-                                      .trim()
-                                      .isNotEmpty)
-                                    t['name'].toString().trim(),
-                              ];
-                              return Wrap(
-                                spacing: 6,
-                                runSpacing: 6,
-                                children: [
-                                  FilterChip(
-                                    label: const Text(
-                                      'All types',
-                                      style: TextStyle(fontSize: 12),
-                                    ),
-                                    selected: listQ.subcategory.isEmpty,
-                                    onSelected: (_) {
-                                      final cur =
-                                          ref.read(stockListQueryProvider);
-                                      ref
-                                          .read(stockListQueryProvider.notifier)
-                                          .state = cur.copyWith(subcategory: '');
-                                    },
-                                  ),
-                                  for (final sub in typeNames)
-                                    FilterChip(
-                                      label: Text(
-                                        sub,
-                                        style: const TextStyle(fontSize: 12),
-                                      ),
-                                      selected: listQ.subcategory == sub,
-                                      onSelected: (_) {
-                                        final cur =
-                                            ref.read(stockListQueryProvider);
-                                        ref
-                                                .read(stockListQueryProvider
-                                                    .notifier)
-                                                .state =
-                                            cur.copyWith(subcategory: sub);
-                                      },
-                                    ),
-                                ],
-                              );
-                            },
-                          ),
-                    ],
-                  ],
-                ),
-              );
-            },
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
-            child: Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                FilterChip(
-                  label: const Text('All', style: TextStyle(fontSize: 12)),
-                  selected: listQ.status == 'all' &&
-                      !_lowStockOnly &&
-                      !_missingCodeOnly,
-                  onSelected: (_) {
-                    ref.read(stockListQueryProvider.notifier).state = ref
-                        .read(stockListQueryProvider)
-                        .copyWith(status: 'all');
-                    setState(() {
-                      _lowStockOnly = false;
-                      _missingCodeOnly = false;
-                    });
-                  },
-                ),
-                FilterChip(
-                  label:
-                      const Text('Low stock', style: TextStyle(fontSize: 12)),
-                  selected: listQ.status == 'all' &&
-                      _lowStockOnly &&
-                      !_missingCodeOnly,
-                  onSelected: (_) {
-                    ref.read(stockListQueryProvider.notifier).state = ref
-                        .read(stockListQueryProvider)
-                        .copyWith(status: 'all');
-                    setState(() {
-                      _lowStockOnly = true;
-                      _missingCodeOnly = false;
-                    });
-                  },
-                ),
-                FilterChip(
-                  label: const Text('Missing barcode',
-                      style: TextStyle(fontSize: 12)),
-                  selected: _missingCodeOnly,
-                  onSelected: (_) {
-                    ref.read(stockListQueryProvider.notifier).state = ref
-                        .read(stockListQueryProvider)
-                        .copyWith(status: 'all');
-                    setState(() {
-                      _missingCodeOnly = true;
-                      _lowStockOnly = false;
-                    });
-                  },
-                ),
-                FilterChip(
-                  label: const Text('Out of stock',
-                      style: TextStyle(fontSize: 12)),
-                  selected: listQ.status == 'out',
-                  onSelected: (_) {
-                    ref.read(stockListQueryProvider.notifier).state = ref
-                        .read(stockListQueryProvider)
-                        .copyWith(status: 'out');
-                    setState(() {
-                      _lowStockOnly = false;
-                      _missingCodeOnly = false;
-                    });
-                  },
-                ),
-              ],
-            ),
-          ),
-          ];
-          final listPane = listAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => HexaErrorCard.fromError(
-                error: e,
-                title: 'Could not load items',
-                onRetry: () => ref.invalidate(bulkStockListProvider),
-              ),
-              data: (data) {
-                final raw = (data['items'] as List?) ?? const [];
-                final items = [
-                  for (final e in raw)
-                    if (e is Map) Map<String, dynamic>.from(e),
-                ];
-                final visible = _filterItems(items);
-                final total = coerceToIntNullable(data['total']);
-                final loadedRaw = coerceToInt(data['loaded']);
-                final loadedShown =
-                    loadedRaw > 0 ? loadedRaw : items.length;
-                return Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              '${selected.length} selected · '
-                              '${visible.length} shown'
-                              '${total != null ? ' · $loadedShown of $total loaded' : ''}',
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w800),
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: visible.isEmpty
-                                ? null
-                                : () => _setSelected({
-                                      for (final e in visible)
-                                        if (e['id'] != null) e['id'].toString(),
-                                    }),
-                            child: const Text('Select all'),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: ListView.builder(
-                        itemCount: visible.length,
-                        itemBuilder: (context, i) {
-                          final it = visible[i];
-                          final id = it['id']?.toString() ?? '';
-                          final name = it['name']?.toString() ?? '';
-                          final code = it['item_code']?.toString() ?? '';
-                          final barcode = it['barcode']?.toString() ?? '';
-                          final st = it['stock_status']?.toString() ?? '';
-                          final stock = it['current_stock']?.toString() ?? '—';
-                          final sub = barcode.isEmpty
-                              ? (code.isEmpty ? 'No barcode · $st' : '$code · $st')
-                              : (code.isEmpty
-                                  ? '$barcode · $st'
-                                  : '$code · $barcode · $st');
-                          return _BulkPrintRow(
-                            selected: selected.contains(id),
-                            name: name,
-                            subtitle: sub,
-                            stock: stock,
-                            stockHighlight: st == 'low' || st == 'critical',
-                            onChanged: (v) => _toggleSelected(id, v),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                );
-              },
-            );
-          if (wide) {
+            ],
+          );
+
+          if (desktop) {
             return Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                Expanded(child: listPane),
+                const VerticalDivider(width: 1),
                 SizedBox(
-                  width: 300,
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: filters,
-                    ),
+                  width: 380,
+                  child: BulkBarcodePrintPreviewPanel(
+                    denseA4: _denseA4,
+                    useQr: _useQr,
+                    copies: _copies,
+                    selectedCount: selected.length,
+                    onPreviewAll: () => unawaited(_preview()),
                   ),
                 ),
-                const VerticalDivider(width: 1),
-                Expanded(child: listPane),
               ],
             );
           }
-          return Column(
-            children: [
-              ...filters,
-              Expanded(child: listPane),
-            ],
-          );
+          return listPane;
         },
       ),
     );
   }
 
-  Widget _buildStickyBar(Set<String> selected, double? progress) {
-    return Material(
-      elevation: 8,
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            HexaOp.pageGutter,
-            8,
-            HexaOp.pageGutter,
-            8,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+  Widget _buildList(
+    Map<String, dynamic> data,
+    Set<String> selected,
+    bool desktop,
+  ) {
+    final raw = (data['items'] as List?) ?? const [];
+    final items = [
+      for (final e in raw)
+        if (e is Map) Map<String, dynamic>.from(e),
+    ];
+    final visible = _applyClientFilters(items);
+    final total = data['total'];
+    final loaded = items.length;
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: HexaOp.pageGutter),
+          child: Row(
             children: [
-              if (progress != null || _pdfStatus != null) ...[
-                LinearProgressIndicator(
-                  minHeight: 3,
-                  value: progress,
+              Expanded(
+                child: Text(
+                  '${visible.length} shown · $loaded loaded'
+                  '${total != null ? ' · $total total' : ''}',
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
                 ),
-                if (_pdfStatus != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      _pdfStatus!,
-                      style: const TextStyle(fontSize: 11),
-                    ),
-                  ),
-                const SizedBox(height: 8),
-              ],
-              Wrap(
-                spacing: 6,
-                runSpacing: 4,
-                children: [
-                  FilterChip(
-                    label: const Text('A4', style: TextStyle(fontSize: 12)),
-                    selected: _denseA4,
-                    onSelected: _busy ? null : (_) => setState(() => _denseA4 = true),
-                  ),
-                  FilterChip(
-                    label: const Text('Thermal', style: TextStyle(fontSize: 12)),
-                    selected: !_denseA4,
-                    onSelected:
-                        _busy ? null : (_) => setState(() => _denseA4 = false),
-                  ),
-                  DropdownButton<int>(
-                    value: _copies,
-                    isDense: true,
-                    items: [
-                      for (final n in [1, 2, 3, 4, 5])
-                        DropdownMenuItem(value: n, child: Text('$n×')),
-                    ],
-                    onChanged: _busy ? null : (v) => setState(() => _copies = v ?? 1),
-                  ),
-                ],
               ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: selected.isEmpty || _busy ? null : _preview,
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(HexaOp.buttonHeight),
-                      ),
-                      child: const Text('Preview'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: selected.isEmpty || _busy ? null : _downloadPdf,
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(HexaOp.buttonHeight),
-                      ),
-                      child: const Text('PDF'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: selected.isEmpty || _busy ? null : _print,
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(HexaOp.buttonHeight),
-                      ),
-                      child: _busy
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Text('Print'),
-                    ),
-                  ),
-                ],
+              TextButton(
+                onPressed: visible.isEmpty
+                    ? null
+                    : () => _setSelected({
+                          for (final e in visible)
+                            if (e['id'] != null) e['id'].toString(),
+                        }),
+                child: const Text('Select all'),
               ),
             ],
           ),
         ),
-      ),
+        Expanded(
+          child: ListView.builder(
+            itemCount: visible.length,
+            itemBuilder: (context, i) {
+              final it = visible[i];
+              final id = it['id']?.toString() ?? '';
+              final name = it['name']?.toString() ?? '';
+              final code = it['item_code']?.toString() ?? '';
+              final barcode = it['barcode']?.toString() ?? '';
+              final st = it['stock_status']?.toString() ?? '';
+              final stock = it['current_stock']?.toString() ?? '—';
+              final sub = barcode.isEmpty
+                  ? (code.isEmpty ? 'No barcode · $st' : '$code · $st')
+                  : (code.isEmpty ? '$barcode · $st' : '$code · $barcode · $st');
+              return _BulkPrintRow(
+                selected: selected.contains(id),
+                name: name,
+                subtitle: sub,
+                stock: stock,
+                stockHighlight: st == 'low' || st == 'critical',
+                onChanged: (v) => _toggleSelected(id, v),
+                onPreview: id.isEmpty
+                    ? null
+                    : () {
+                        ref.read(bulkPreviewItemIdProvider.notifier).state = id;
+                        if (!desktop) {
+                          showModalBottomSheet<void>(
+                            context: context,
+                            showDragHandle: true,
+                            builder: (_) => SizedBox(
+                              height: 280,
+                              child: BulkBarcodePrintPreviewPanel(
+                                denseA4: _denseA4,
+                                useQr: _useQr,
+                                copies: _copies,
+                                selectedCount: selected.length,
+                                onPreviewAll: () {
+                                  Navigator.pop(context);
+                                  unawaited(_preview());
+                                },
+                              ),
+                            ),
+                          );
+                        }
+                      },
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
@@ -741,6 +482,7 @@ class _BulkPrintRow extends StatelessWidget {
     required this.stock,
     required this.stockHighlight,
     required this.onChanged,
+    this.onPreview,
   });
 
   final bool selected;
@@ -749,6 +491,7 @@ class _BulkPrintRow extends StatelessWidget {
   final String stock;
   final bool stockHighlight;
   final ValueChanged<bool> onChanged;
+  final VoidCallback? onPreview;
 
   @override
   Widget build(BuildContext context) {
@@ -790,6 +533,12 @@ class _BulkPrintRow extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (onPreview != null)
+                  IconButton(
+                    tooltip: 'Preview label',
+                    icon: const Icon(Icons.visibility_outlined, size: 20),
+                    onPressed: onPreview,
+                  ),
                 Text(
                   stock,
                   style: TextStyle(

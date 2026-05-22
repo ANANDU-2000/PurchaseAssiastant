@@ -10,7 +10,8 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-import '../../../core/auth/auth_error_messages.dart';
+import '../../../core/design_system/hexa_operational_tokens.dart';
+import '../../../core/errors/barcode_operation_errors.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/barcode_recent_scans.dart';
 import '../../../core/providers/catalog_providers.dart';
@@ -20,7 +21,7 @@ import '../../stock/presentation/quick_stock_patch_sheet.dart';
 import '../../stock/presentation/stock_undo_snackbar.dart';
 import '../../stock/presentation/widgets/scan_stock_result_sheet.dart';
 import 'barcode_scan_web_stub.dart'
-    if (dart.library.js_interop) 'barcode_scan_web.dart';
+    if (dart.library.html) 'barcode_scan_web.dart';
 
 const _kMaxRecent = 10;
 const _kDebounceMs = 1500;
@@ -80,7 +81,13 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
       await _lookupAndNavigate(code);
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No barcode found in photo')),
+        SnackBar(
+          content: const Text('Barcode image unreadable. Try another photo.'),
+          action: SnackBarAction(
+            label: 'Manual',
+            onPressed: () => _manualFocus.requestFocus(),
+          ),
+        ),
       );
     }
   }
@@ -208,7 +215,7 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(friendlyApiError(e))),
+        SnackBar(content: Text(barcodeMessageForUser(e, ctx: BarcodeOperationContext.scanner))),
       );
       await _resumeScan();
     }
@@ -367,7 +374,7 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(friendlyApiError(e))),
+        SnackBar(content: Text(barcodeMessageForUser(e, ctx: BarcodeOperationContext.scanner))),
       );
       await _resumeScan();
     } finally {
@@ -412,7 +419,7 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final screenH = MediaQuery.sizeOf(context).height;
-    final cameraH = screenH * 0.65;
+    final cameraH = screenH * 0.55;
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -475,17 +482,27 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
                     style: theme.textTheme.titleSmall,
                   ),
                   const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    onPressed: () => _manualFocus.requestFocus(),
-                    icon: const Icon(Icons.keyboard),
-                    label: const Text('Enter barcode manually'),
+                  _FallbackAction(
+                    icon: Icons.qr_code_scanner_rounded,
+                    label: 'Scan with camera',
+                    onPressed: () {
+                      setState(() {
+                        _cameraDenied = false;
+                        _cameraPermanent = false;
+                      });
+                      unawaited(_initCamera());
+                    },
                   ),
-                  if (!kIsWeb)
-                    OutlinedButton.icon(
-                      onPressed: _scanFromImage,
-                      icon: const Icon(Icons.photo_outlined),
-                      label: const Text('Upload barcode photo'),
-                    ),
+                  _FallbackAction(
+                    icon: Icons.photo_outlined,
+                    label: 'Upload barcode photo',
+                    onPressed: _busy ? null : _scanFromImage,
+                  ),
+                  _FallbackAction(
+                    icon: Icons.keyboard,
+                    label: 'Enter manually',
+                    onPressed: () => _manualFocus.requestFocus(),
+                  ),
                   TextButton(
                     onPressed: () {
                       setState(() {
@@ -647,7 +664,7 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
                             controller: _manualCtrl,
                             textCapitalization: TextCapitalization.characters,
                             decoration: InputDecoration(
-                              hintText: 'Enter item code (e.g. ITM1022)',
+                              hintText: 'Search item / barcode / item code',
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
@@ -672,6 +689,34 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _FallbackAction extends StatelessWidget {
+  const _FallbackAction({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: SizedBox(
+        width: double.infinity,
+        height: HexaOp.buttonHeight,
+        child: OutlinedButton.icon(
+          onPressed: onPressed,
+          icon: Icon(icon),
+          label: Text(label),
+        ),
       ),
     );
   }
