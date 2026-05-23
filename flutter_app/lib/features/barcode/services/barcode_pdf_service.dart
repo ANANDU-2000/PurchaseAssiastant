@@ -44,8 +44,8 @@ class BarcodeLabelData {
   /// Value encoded in the barcode image (barcode column, else item_code).
   String get symbologyValue {
     final b = barcode?.trim() ?? '';
-    if (b.isNotEmpty) return b;
-    return itemCode.trim();
+    if (b.isNotEmpty) return BarcodePdfService.sanitizePrintPayload(b);
+    return BarcodePdfService.sanitizePrintPayload(itemCode.trim());
   }
 
   Map<String, dynamic> toJson() => {
@@ -106,15 +106,44 @@ class BarcodeLabelData {
 }
 
 class BarcodePdfService {
+  /// Strip characters that break Code128 / overflow QR on web PDF.
+  static String sanitizePrintPayload(String raw, {bool forQr = false}) {
+    var s = raw.trim();
+    if (s.isEmpty) return '0';
+    if (forQr) {
+      return s.length > 180 ? s.substring(0, 180) : s;
+    }
+    final buf = StringBuffer();
+    for (final unit in s.codeUnits) {
+      if (unit >= 32 && unit <= 126) {
+        buf.writeCharCode(unit);
+      }
+    }
+    final out = buf.toString();
+    if (out.isEmpty) return '0';
+    return out.length > 48 ? out.substring(0, 48) : out;
+  }
+
   static String _symbologyValue(BarcodeLabelData data) {
-    final v = (data.barcode ?? data.itemCode).trim();
-    if (v.isEmpty) {
+    final v = data.symbologyValue;
+    if (v.isEmpty || v == '0') {
       throw BarcodeOperationException(
         'Barcode image missing for "${data.itemName}".',
         kind: BarcodeOperationKind.barcodeRender,
       );
     }
     return v;
+  }
+
+  static List<BarcodeLabelData> dedupeLabels(List<BarcodeLabelData> items) {
+    final seen = <String>{};
+    final out = <BarcodeLabelData>[];
+    for (final d in items) {
+      final key =
+          '${d.itemCode.trim()}|${d.barcode?.trim() ?? ''}|${d.itemName.trim()}';
+      if (seen.add(key)) out.add(d);
+    }
+    return out;
   }
 
   static List<BarcodeLabelData> _requirePrintable(List<BarcodeLabelData> items) {
@@ -264,7 +293,7 @@ class BarcodePdfService {
     int? targetLabelsPerPage,
     BarcodeSymbolMode symbol = BarcodeSymbolMode.code128WithQr,
   }) async {
-    final printable = _requirePrintable(items);
+    final printable = _requirePrintable(dedupeLabels(items));
     final expanded = <BarcodeLabelData>[];
     for (final data in printable) {
       for (var c = 0; c < copiesPerItem; c++) {
@@ -281,10 +310,27 @@ class BarcodePdfService {
         'targetLabelsPerPage': targetLabelsPerPage.clamp(20, 60),
       'symbol': symbol.index,
     };
-    if (kIsWeb) {
-      return _barcodeA4DenseFromPayload(payload);
+    try {
+      if (kIsWeb) {
+        return await _barcodeA4DenseFromPayload(payload);
+      }
+      return await Isolate.run(() => _barcodeA4DenseFromPayload(payload));
+    } catch (e, st) {
+      logBarcodeOperationError(e, st);
+      if (symbol == BarcodeSymbolMode.qrCode) {
+        return await generateBatchA4Dense(
+          items: items,
+          size: size,
+          copiesPerItem: copiesPerItem,
+          showLastPurchase: showLastPurchase,
+          hideFinancials: hideFinancials,
+          columns: columns,
+          targetLabelsPerPage: targetLabelsPerPage,
+          symbol: BarcodeSymbolMode.code128,
+        );
+      }
+      rethrow;
     }
-    return Isolate.run(() => _barcodeA4DenseFromPayload(payload));
   }
 
   static (double wMm, double hMm) a4DenseCellMm(LabelSize size) => switch (size) {
@@ -352,7 +398,11 @@ class BarcodePdfService {
     }
 
     final doc = pw.Document();
+    final compact = targetPerPage != null && targetPerPage > 0;
     for (var base = 0; base < labels.length; base += perPage) {
+      if (kIsWeb && base > 0) {
+        await Future<void>.delayed(Duration.zero);
+      }
       final chunk = labels.sublist(base, math.min(base + perPage, labels.length));
       doc.addPage(
         pw.Page(
@@ -392,6 +442,7 @@ class BarcodePdfService {
                               showLastPurchase: showLastPurchase,
                               hideFinancials: hideFinancials,
                               symbol: symbol,
+                              compact: compact,
                             ),
                           ),
                         ),
@@ -447,53 +498,53 @@ class BarcodePdfService {
     required bool showLastPurchase,
     bool hideFinancials = false,
     BarcodeSymbolMode symbol = BarcodeSymbolMode.code128WithQr,
+    bool compact = false,
   }) {
-    final code = data.symbologyValue.isEmpty ? data.itemName : data.symbologyValue;
+    final code = data.symbologyValue.isEmpty
+        ? sanitizePrintPayload(data.itemName, forQr: symbol == BarcodeSymbolMode.qrCode)
+        : data.symbologyValue;
     final codeLine = data.itemCode.trim().isEmpty ? code : data.itemCode.trim();
     final (titleSize, codeSize, bcHeight, qrSize) = _sizes(size);
+    final titleSz = compact ? math.min(titleSize, 6.0) : titleSize;
+    final codeSz = compact ? math.min(codeSize, 5.0) : codeSize;
+    final bcH = compact ? math.min(bcHeight, 14.0) : bcHeight;
 
     final children = <pw.Widget>[
       pw.Text(
         data.itemName,
-        maxLines: 2,
-        style: pw.TextStyle(fontSize: titleSize, fontWeight: pw.FontWeight.bold),
+        maxLines: compact ? 1 : 2,
+        style: pw.TextStyle(fontSize: titleSz, fontWeight: pw.FontWeight.bold),
       ),
-      pw.SizedBox(height: 3),
+      pw.SizedBox(height: compact ? 1 : 3),
     ];
 
-    if (symbol == BarcodeSymbolMode.qrCode) {
-      final side = qrSize > 0 ? qrSize : bcHeight;
-      children.add(
-        pw.BarcodeWidget(
-          barcode: Barcode.qrCode(),
-          data: code,
-          width: side,
-          height: side,
-        ),
-      );
-    } else {
-      children.add(
-        pw.BarcodeWidget(
-          barcode: Barcode.code128(),
-          data: code,
-          drawText: false,
-          height: bcHeight,
-        ),
-      );
-    }
-    children.add(pw.Text(codeLine, style: pw.TextStyle(fontSize: codeSize)));
-    if (data.barcode != null &&
+    children.add(
+      _safeBarcodeWidget(
+        qr: symbol == BarcodeSymbolMode.qrCode,
+        data: code,
+        height: compact
+            ? (symbol == BarcodeSymbolMode.qrCode ? 22.0 : bcH)
+            : (symbol == BarcodeSymbolMode.qrCode
+                ? (qrSize > 0 ? qrSize : bcHeight)
+                : bcH),
+        width: compact && symbol == BarcodeSymbolMode.qrCode ? 22.0 : (qrSize > 0 ? qrSize : bcH),
+      ),
+    );
+    children.add(pw.Text(codeLine, style: pw.TextStyle(fontSize: codeSz)));
+    if (!compact &&
+        data.barcode != null &&
         data.barcode!.trim().isNotEmpty &&
         data.barcode!.trim() != codeLine) {
       children.add(
         pw.Text(
           'BC ${data.barcode!.trim()}',
-          style: pw.TextStyle(fontSize: codeSize - 1),
+          style: pw.TextStyle(fontSize: codeSz - 1),
         ),
       );
     }
 
-    if (qrSize > 0 &&
+    if (!compact &&
+        qrSize > 0 &&
         symbol == BarcodeSymbolMode.code128WithQr) {
       children.addAll([
         pw.SizedBox(height: 3),
@@ -524,14 +575,15 @@ class BarcodePdfService {
           ? '${rounded.round()}'
           : stockQty.toStringAsFixed(1);
       final u = (data.unit ?? '').trim();
-      children.add(pw.SizedBox(height: 2));
+      children.add(pw.SizedBox(height: compact ? 1 : 2));
       children.add(
         pw.Text(
           'Stock: $stockStr${u.isEmpty ? '' : ' $u'}',
           style: pw.TextStyle(
-            fontSize: codeSize - 1,
+            fontSize: compact ? codeSz - 0.5 : codeSize - 1,
             fontWeight: pw.FontWeight.bold,
           ),
+          maxLines: 1,
         ),
       );
     }
@@ -541,7 +593,7 @@ class BarcodePdfService {
       showLastPurchase: showLastPurchase,
       size: size,
       hideFinancials: hideFinancials,
-      compact: size != LabelSize.large,
+      compact: compact || size != LabelSize.large,
     );
     if (lastLine != null) {
       children.add(pw.SizedBox(height: 1));
@@ -615,6 +667,37 @@ class BarcodePdfService {
       return 'Bags: $n';
     }
     return null;
+  }
+
+  static pw.Widget _safeBarcodeWidget({
+    required bool qr,
+    required String data,
+    required double height,
+    required double width,
+  }) {
+    final payload = sanitizePrintPayload(data, forQr: qr);
+    try {
+      if (qr) {
+        return pw.BarcodeWidget(
+          barcode: Barcode.qrCode(),
+          data: payload,
+          width: width,
+          height: height,
+        );
+      }
+      return pw.BarcodeWidget(
+        barcode: Barcode.code128(),
+        data: payload,
+        drawText: false,
+        height: height,
+      );
+    } catch (_) {
+      return pw.Text(
+        payload,
+        style: pw.TextStyle(fontSize: math.min(6, height)),
+        maxLines: 2,
+      );
+    }
   }
 
   static String _month(int m) {

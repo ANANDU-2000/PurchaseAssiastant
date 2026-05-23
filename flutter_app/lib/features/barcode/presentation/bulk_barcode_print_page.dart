@@ -39,7 +39,7 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
   final int _perRow = 2;
   bool _busy = false;
   bool _denseA4 = true;
-  bool _useQr = true;
+  bool _useQr = false;
   BulkLabelsPerPdfFile _labelsPerPdfFile = BulkLabelsPerPdfFile.n50;
   String? _pdfStatus;
   int _labelProgressDone = 0;
@@ -164,13 +164,26 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
         final cont = await showPartialLabelFailureDialog(context, batch);
         if (cont != true) return;
       }
+      var denseA4 = _denseA4;
+      if (!denseA4 && batch.labels.length > 25) {
+        denseA4 = true;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Switched to A4 sheet — thermal roll is only for small batches.',
+              ),
+            ),
+          );
+        }
+      }
       setState(() => _pdfStatus = 'Generating PDF…');
-      final symbol = bulkPrintSymbolMode(denseA4: _denseA4, useQr: _useQr);
+      final symbol = bulkPrintSymbolMode(denseA4: denseA4, useQr: _useQr);
       final pdfs = await generateBulkPdfParts(
         context: context,
         ref: ref,
         batch: batch,
-        denseA4: _denseA4,
+        denseA4: denseA4,
         copies: _copies,
         perRow: _perRow,
         symbol: symbol,

@@ -12,6 +12,7 @@ import '../services/barcode_pdf_service.dart';
 import '../services/bulk_label_batch.dart';
 import '../services/bulk_label_from_stock.dart';
 import '../services/bulk_pdf_chunks.dart';
+import '../services/barcode_print_codec.dart' show dedupeBarcodeLabels;
 
 /// Resolves symbology for dense A4 cells (no Code128+QR combo — overflows small cells).
 BarcodeSymbolMode bulkPrintSymbolMode({
@@ -69,6 +70,7 @@ Future<BulkLabelBatchResult> fetchBulkLabels({
     onProgress?.call(end, ids.length);
 
     try {
+      final labelsBeforeChunk = labels.length;
       final rows = await api.barcodeLabelBatch(
         businessId: session.primaryBusiness.id,
         itemIds: chunk,
@@ -89,16 +91,23 @@ Future<BulkLabelBatchResult> fetchBulkLabels({
           failuresById[id] = 'Missing barcode and item code';
         }
       }
-      for (final rawId in chunk) {
-        final nid = normalizeItemId(rawId);
-        if (returned.contains(nid)) continue;
-        if (failedIds.contains(rawId)) {
-          tryStockFallback(rawId);
-          continue;
+      final addedThisChunk = labels.length - labelsBeforeChunk;
+      if (addedThisChunk >= chunk.length) {
+        for (final rawId in chunk) {
+          labeledIds.add(normalizeItemId(rawId));
         }
-        failedIds.add(rawId);
-        failuresById[rawId] = 'No label data returned';
-        tryStockFallback(rawId);
+      } else {
+        for (final rawId in chunk) {
+          final nid = normalizeItemId(rawId);
+          if (returned.contains(nid) || labeledIds.contains(nid)) continue;
+          if (failedIds.contains(rawId)) {
+            tryStockFallback(rawId);
+            continue;
+          }
+          failedIds.add(rawId);
+          failuresById[rawId] = 'No label data returned';
+          tryStockFallback(rawId);
+        }
       }
     } on DioException catch (e) {
       final status = e.response?.statusCode;
@@ -147,7 +156,7 @@ Future<BulkLabelBatchResult> fetchBulkLabels({
   }
 
   return BulkLabelBatchResult(
-    labels: labels,
+    labels: dedupeBarcodeLabels(labels),
     failedIds: failedIds,
     failuresById: failuresById,
   );
@@ -241,11 +250,19 @@ Future<List<Uint8List>> generateBulkPdfParts({
       session != null && !sessionCanSeeFinancials(session);
   final perFile = labelsPerFile.clamp(1, 100);
   final copyN = copies.clamp(1, 5);
+  final uniqueLabels = dedupeBarcodeLabels(batch.labels);
+
+  if (!denseA4 && uniqueLabels.length > 25) {
+    throw BarcodeOperationException(
+      'Thermal roll is for small batches. Switch to A4 for ${uniqueLabels.length} labels.',
+      kind: BarcodeOperationKind.pdfGeneration,
+    );
+  }
 
   try {
     if (denseA4) {
       final expanded = <BarcodeLabelData>[];
-      for (final data in batch.labels) {
+      for (final data in uniqueLabels) {
         for (var c = 0; c < copyN; c++) {
           expanded.add(data);
         }
@@ -288,8 +305,11 @@ Future<List<Uint8List>> generateBulkPdfParts({
   } catch (e, st) {
     logBarcodeOperationError(e, st);
     if (e is BarcodeOperationException) rethrow;
+    final detail = e.toString();
+    final short = detail.length > 100 ? '${detail.substring(0, 100)}…' : detail;
     throw BarcodeOperationException(
-      barcodeMessageForUser(e, ctx: BarcodeOperationContext.bulkPrint),
+      'PDF failed for ${uniqueLabels.length} labels. '
+      'Use A4 + Code128, or try 50 items. ($short)',
       kind: BarcodeOperationKind.pdfGeneration,
       cause: e,
     );
