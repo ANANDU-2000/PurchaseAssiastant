@@ -12,6 +12,7 @@ class StockCompactTopBar extends StatelessWidget implements PreferredSizeWidget 
     required this.searchExpanded,
     required this.onToggleSearch,
     required this.onOpenFilters,
+    this.onExportPdf,
     this.isReloading = false,
   });
 
@@ -20,6 +21,7 @@ class StockCompactTopBar extends StatelessWidget implements PreferredSizeWidget 
   final bool searchExpanded;
   final VoidCallback onToggleSearch;
   final VoidCallback onOpenFilters;
+  final VoidCallback? onExportPdf;
   final bool isReloading;
 
   static const double _height = 48;
@@ -84,9 +86,21 @@ class StockCompactTopBar extends StatelessWidget implements PreferredSizeWidget 
                 context.push('/stock/movement');
               case 'add':
                 context.push('/catalog/quick-add');
+              case 'pdf':
+                onExportPdf?.call();
             }
           },
           itemBuilder: (ctx) => [
+            if (onExportPdf != null)
+              const PopupMenuItem(
+                value: 'pdf',
+                child: ListTile(
+                  dense: true,
+                  leading: Icon(Icons.picture_as_pdf_outlined, size: 20),
+                  title: Text('Download stock PDF'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
             const PopupMenuItem(
               value: 'changes',
               child: ListTile(

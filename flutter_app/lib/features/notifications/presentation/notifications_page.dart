@@ -8,12 +8,9 @@ import '../../../core/providers/notifications_provider.dart'
     show
         NotificationItem,
         NotificationType,
-        cloudCostNotificationItemsProvider,
         dismissedPurchaseAlertIdsProvider,
-        maintenanceNotificationItemsProvider,
-        notificationItemFromServerRow,
-        notificationsProvider,
-        purchaseDueAlertItemsProvider;
+        mergedNotificationFeedProvider,
+        notificationsProvider;
 import '../../../core/providers/server_notifications_provider.dart';
 import '../../../core/router/navigation_ext.dart';
 import '../../../core/errors/load_state_error.dart';
@@ -43,7 +40,10 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
         return n.type == NotificationType.priceAlert ||
             n.type == NotificationType.profitLow ||
             (n.type == NotificationType.serverInApp &&
-                n.serverKind == 'low_stock');
+                (n.serverKind == 'low_stock' ||
+                    n.serverKind == 'missing_barcode' ||
+                    n.serverKind == 'missing_code')) ||
+            n.id.startsWith('wh_');
       case 'purchase':
         return n.type == NotificationType.purchaseDue ||
             n.type == NotificationType.purchaseOverdue ||
@@ -65,21 +65,12 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
-    final manual = ref.watch(notificationsProvider);
-    final dismissed = ref.watch(dismissedPurchaseAlertIdsProvider);
     final serverAsync = ref.watch(appNotificationsListProvider);
-    final serverRows = serverAsync.maybeWhen(
-      data: (rows) =>
-          rows.map((e) => notificationItemFromServerRow(e)).toList(),
-      orElse: () => const <NotificationItem>[],
-    );
-    final tradeAlerts = ref
-        .watch(purchaseDueAlertItemsProvider)
-        .where((n) => !dismissed.contains(n.id))
-        .toList();
-    final cloudItems = ref.watch(cloudCostNotificationItemsProvider);
-    final maintItems = ref.watch(maintenanceNotificationItemsProvider);
-    final items = [...serverRows, ...cloudItems, ...maintItems, ...tradeAlerts, ...manual];
+    final items = ref.watch(mergedNotificationFeedProvider);
+    final serverUnread =
+        ref.watch(appNotificationUnreadCountProvider).valueOrNull ?? 0;
+    final listEmptyButServerUnread =
+        items.isEmpty && serverUnread > 0 && !serverAsync.isLoading;
     final filtered = items.where(_matchesFilter).toList();
     final q = _textSearch.text.trim().toLowerCase();
     final visible = (q.isEmpty
@@ -161,19 +152,32 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
         children: [
           if (serverAsync.isLoading)
             const LinearProgressIndicator(minHeight: 2),
-          if (serverAsync.hasError)
+          if (serverAsync.hasError || listEmptyButServerUnread)
             Material(
               color: Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.35),
               child: ListTile(
                 dense: true,
                 leading: Icon(Icons.warning_amber_rounded,
                     color: Theme.of(context).colorScheme.error),
-                title: const Text('Could not refresh server notifications'),
+                title: Text(
+                  listEmptyButServerUnread
+                      ? '$serverUnread alerts on server could not be loaded'
+                      : 'Could not refresh server notifications',
+                ),
                 subtitle: Text(
-                  loadStateErrorSubtitle(serverAsync.error),
-                  maxLines: 2,
+                  listEmptyButServerUnread
+                      ? 'Pull down to refresh. Warehouse alerts below are still shown.'
+                      : loadStateErrorSubtitle(serverAsync.error),
+                  maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodySmall,
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.refresh_rounded),
+                  onPressed: () {
+                    ref.invalidate(appNotificationsListProvider);
+                    ref.invalidate(appNotificationUnreadCountProvider);
+                  },
                 ),
               ),
             ),

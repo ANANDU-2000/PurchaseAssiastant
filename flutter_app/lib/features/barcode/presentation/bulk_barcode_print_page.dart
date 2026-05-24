@@ -808,7 +808,9 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
             padding: const EdgeInsets.only(right: 12),
             child: Center(
               child: Text(
-                '${selected.length} selected',
+                selected.isEmpty
+                    ? 'None selected'
+                    : '${selected.length} selected',
                 style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
               ),
             ),
@@ -1013,8 +1015,14 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
         if (e is Map) Map<String, dynamic>.from(e),
     ];
     final visible = _applyClientFilters(items);
+    final visibleIds = <String>{
+      for (final e in visible)
+        if (e['id'] != null) e['id'].toString(),
+    };
+    final selectedOnScreen =
+        selected.where(visibleIds.contains).length;
+    final hiddenSelected = selected.length - selectedOnScreen;
     final total = data['total'];
-    final loaded = items.length;
     final downloaded = ref.watch(bulkBarcodeDownloadedIdsProvider);
     final remainingCount = visible.where((e) {
       final id = e['id']?.toString() ?? '';
@@ -1029,12 +1037,22 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
             children: [
               Expanded(
                 child: Text(
-                  '${visible.length} shown · $loaded loaded'
-                  '${total != null ? ' · $total total' : ''}'
-                  '${downloaded.isNotEmpty ? ' · $remainingCount left' : ''}',
+                  '${visible.length} shown · $selectedOnScreen selected here'
+                  '${hiddenSelected > 0 ? ' · $hiddenSelected hidden by filter' : ''}'
+                  '${total != null ? ' · $total total' : ''}',
                   style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
                 ),
               ),
+              if (hiddenSelected > 0)
+                TextButton(
+                  onPressed: () {
+                    _setSelected({
+                      for (final id in selected)
+                        if (visibleIds.contains(id)) id,
+                    });
+                  },
+                  child: const Text('Clear hidden'),
+                ),
               if (remainingCount > 0 &&
                   remainingCount < visible.length &&
                   downloaded.isNotEmpty)

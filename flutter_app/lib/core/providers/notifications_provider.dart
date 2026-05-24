@@ -6,8 +6,11 @@ import 'package:harisree_warehouse/core/maintenance/maintenance_month_record.dar
 import 'package:harisree_warehouse/core/maintenance/maintenance_ui_status.dart';
 import 'package:harisree_warehouse/core/providers/maintenance_payment_provider.dart';
 
+import '../auth/session_notifier.dart';
 import 'cloud_expense_provider.dart';
 import 'server_notifications_provider.dart';
+import 'staff_home_providers.dart';
+import 'stock_providers.dart';
 import 'trade_purchases_provider.dart';
 
 enum NotificationType {
@@ -112,13 +115,118 @@ final notificationsProvider =
   return NotificationsNotifier();
 });
 
+/// Single feed for bell badge + notifications page (avoids count/list mismatch).
+final mergedNotificationFeedProvider =
+    Provider.autoDispose<List<NotificationItem>>((ref) {
+  final manual = ref.watch(notificationsProvider);
+  final dismissed = ref.watch(dismissedPurchaseAlertIdsProvider);
+  final serverRows = ref.watch(appNotificationsListProvider).maybeWhen(
+        data: (rows) =>
+            rows.map((e) => notificationItemFromServerRow(e)).toList(),
+        orElse: () => const <NotificationItem>[],
+      );
+  final tradeAlerts = ref
+      .watch(purchaseDueAlertItemsProvider)
+      .where((n) => !dismissed.contains(n.id))
+      .toList();
+  final cloudItems = ref.watch(cloudCostNotificationItemsProvider);
+  final maintItems = ref.watch(maintenanceNotificationItemsProvider);
+  final warehouse = ref.watch(warehouseAlertNotificationItemsProvider);
+  final byId = <String, NotificationItem>{};
+  for (final n in [
+    ...serverRows,
+    ...warehouse,
+    ...cloudItems,
+    ...maintItems,
+    ...tradeAlerts,
+    ...manual,
+  ]) {
+    byId[n.id] = n;
+  }
+  final list = byId.values.toList()
+    ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  return list;
+});
+
 final notificationsUnreadCountProvider = Provider<int>((ref) {
-  final manual = ref.watch(notificationsProvider).where((e) => !e.isRead).length;
-  final tradeN = ref.watch(purchaseActionAlertCountProvider);
-  final cloudN = ref.watch(cloudCostAlertCountProvider);
-  final maintN = ref.watch(maintenanceAlertCountProvider);
-  final serverN = ref.watch(appNotificationUnreadCountProvider).valueOrNull ?? 0;
-  return manual + tradeN + cloudN + maintN + serverN;
+  return ref
+      .watch(mergedNotificationFeedProvider)
+      .where((e) => !e.isRead)
+      .length;
+});
+
+/// Stock / delivery rows shown in Alerts (matches staff home attention cards).
+final warehouseAlertNotificationItemsProvider =
+    Provider.autoDispose<List<NotificationItem>>((ref) {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return const [];
+  final isStaff =
+      session.primaryBusiness.role.toLowerCase() == 'staff';
+  final out = <NotificationItem>[];
+  final counts = ref.watch(stockStatusCountsProvider).valueOrNull;
+  if (counts != null) {
+    final low = (counts['low'] as num?)?.toInt() ?? 0;
+    final outN = (counts['out'] as num?)?.toInt() ?? 0;
+    final missingBc = (counts['missing_barcode'] as num?)?.toInt() ?? 0;
+    final missingCode = (counts['missing_item_code'] as num?)?.toInt() ?? 0;
+    if (low + outN > 0) {
+      out.add(NotificationItem(
+        id: 'wh_low_stock',
+        type: NotificationType.serverInApp,
+        title: 'Low / out of stock',
+        subtitle: '$low low · $outN out — open stock list to update',
+        createdAt: DateTime.now(),
+        isRead: false,
+        actionRoute: isStaff ? '/staff/stock' : '/stock',
+        serverKind: 'low_stock',
+      ));
+    }
+    if (missingBc > 0) {
+      out.add(NotificationItem(
+        id: 'wh_missing_barcode',
+        type: NotificationType.serverInApp,
+        title: 'Missing barcodes',
+        subtitle: '$missingBc items need labels before bulk print',
+        createdAt: DateTime.now(),
+        isRead: false,
+        actionRoute: '/stock/missing-barcodes',
+        serverKind: 'missing_barcode',
+      ));
+    }
+    if (missingCode > 0) {
+      out.add(NotificationItem(
+        id: 'wh_missing_code',
+        type: NotificationType.serverInApp,
+        title: 'Missing item codes',
+        subtitle: '$missingCode catalog rows without item code',
+        createdAt: DateTime.now(),
+        isRead: false,
+        actionRoute: isStaff ? '/staff/stock' : '/stock',
+        serverKind: 'missing_code',
+      ));
+    }
+  }
+  if (isStaff) {
+    final pending = ref.watch(staffPendingDeliveriesProvider).valueOrNull ?? [];
+    if (pending.isNotEmpty) {
+      final first = pending.first.supplierName?.trim();
+      final sub = first != null && first.isNotEmpty
+          ? (pending.length == 1
+              ? 'From $first — receive at warehouse'
+              : 'From $first + ${pending.length - 1} more')
+          : '${pending.length} trucks waiting';
+      out.add(NotificationItem(
+        id: 'wh_pending_delivery',
+        type: NotificationType.reminder,
+        title: 'Pending deliveries',
+        subtitle: sub,
+        createdAt: pending.first.purchaseDate,
+        isRead: false,
+        actionRoute: '/staff/receive',
+      ));
+    }
+  }
+  return out;
 });
 
 /// PUR bills that need attention (unpaid with due date approaching or past).

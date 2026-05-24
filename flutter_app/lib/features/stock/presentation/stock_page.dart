@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/services/stock_list_pdf.dart';
 import '../../../core/json_coerce.dart';
 import '../../../core/providers/home_dashboard_provider.dart';
 import '../../../core/providers/stock_providers.dart';
@@ -19,6 +20,7 @@ import 'widgets/stock_pagination_bar.dart';
 import 'widgets/stock_search_sliver.dart';
 import 'widgets/stock_compact_top_bar.dart';
 import 'widgets/stock_table_row.dart';
+import 'widgets/operational_stock_filter_sheet.dart' show stockActiveFilterSummary;
 import 'widgets/stock_warehouse_filter_sheet.dart';
 
 enum StockPageMode { auto, staff, owner }
@@ -182,6 +184,49 @@ class _StockPageState extends ConsumerState<StockPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Stock updated')),
     );
+  }
+
+  Future<void> _exportStockPdf() async {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    final data = _mergedData ?? ref.read(stockListProvider).valueOrNull;
+    if (data == null) return;
+    final raw = [
+      for (final e in (data['items'] as List? ?? []))
+        if (e is Map) Map<String, dynamic>.from(e),
+    ];
+    final items = _prepareItems(raw);
+    if (items.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No stock rows to export.')),
+      );
+      return;
+    }
+    final listQ = ref.read(stockListQueryProvider);
+    final op = ref.read(stockOperationalFiltersProvider);
+    final summary = stockActiveFilterSummary(listQ, op);
+    try {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Preparing stock PDF…')),
+        );
+      }
+      final bytes = await buildStockListPdf(
+        businessName: session.primaryBusiness.effectiveDisplayTitle,
+        rows: items.take(500).toList(),
+        filterSummary: summary.isEmpty ? null : summary,
+      );
+      await shareStockListPdf(bytes: bytes);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not create stock PDF. Try fewer filters.'),
+          ),
+        );
+      }
+    }
   }
 
   void _openFilters() {
@@ -355,6 +400,7 @@ class _StockPageState extends ConsumerState<StockPage> {
         isReloading: isReloading,
         onToggleSearch: () => setState(() => _searchExpanded = !_searchExpanded),
         onOpenFilters: _openFilters,
+        onExportPdf: _exportStockPdf,
       ),
       body: body,
     );

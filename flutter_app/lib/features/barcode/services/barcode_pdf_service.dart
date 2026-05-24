@@ -743,8 +743,8 @@ class BarcodePdfService {
       serialNumber: serialNumber,
       showSerialBadge: false,
     );
-    final minFitted = 14.0 * PdfPageFormat.mm;
-    if (compact && height < minFitted) {
+    // Dense A4 grids: never use FittedBox — it can scale to Infinity on web.
+    if (compact) {
       return pw.Align(
         alignment: pw.Alignment.topCenter,
         child: pw.Column(
@@ -1045,6 +1045,11 @@ class BarcodePdfService {
     return null;
   }
 
+  static double _finiteDim(double v, {double fallback = 20, double max = 120}) {
+    if (!v.isFinite || v <= 0) return fallback;
+    return v.clamp(6, max);
+  }
+
   static pw.Widget _safeBarcodeWidget({
     required bool qr,
     required String data,
@@ -1052,25 +1057,27 @@ class BarcodePdfService {
     required double width,
   }) {
     final payload = sanitizePrintPayload(data, forQr: qr);
+    final h = _finiteDim(height, fallback: 18, max: 80);
+    final w = _finiteDim(width, fallback: h, max: 80);
     try {
       if (qr) {
         return pw.BarcodeWidget(
           barcode: Barcode.qrCode(),
           data: payload,
-          width: width,
-          height: height,
+          width: w,
+          height: h,
         );
       }
       return pw.BarcodeWidget(
         barcode: Barcode.code128(),
         data: payload,
         drawText: false,
-        height: height,
+        height: h,
       );
     } catch (_) {
       return pw.Text(
         payload,
-        style: pw.TextStyle(fontSize: math.min(6, height)),
+        style: pw.TextStyle(fontSize: math.min(6, h)),
         maxLines: 2,
       );
     }

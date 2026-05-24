@@ -380,14 +380,44 @@ class HexaApi {
     required String businessId,
     int page = 1,
     int perPage = 50,
+    bool fetchAllPages = true,
   }) async {
-    final res = await _dio.get<dynamic>(
-      '/v1/businesses/$businessId/notifications',
-      queryParameters: {'page': page, 'per_page': perPage},
-    );
-    final data = res.data;
-    if (data is! List) return [];
-    return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    final out = <Map<String, dynamic>>[];
+    var p = page;
+    const maxPages = 20;
+    while (p <= maxPages) {
+      final res = await _dio.get<dynamic>(
+        '/v1/businesses/$businessId/notifications',
+        queryParameters: {'page': p, 'per_page': perPage},
+      );
+      final chunk = _parseNotificationListPayload(res.data);
+      if (chunk.isEmpty) break;
+      out.addAll(chunk);
+      if (!fetchAllPages || chunk.length < perPage) break;
+      p++;
+    }
+    return out;
+  }
+
+  static List<Map<String, dynamic>> _parseNotificationListPayload(dynamic data) {
+    if (data is List) {
+      return [
+        for (final e in data)
+          if (e is Map) Map<String, dynamic>.from(e),
+      ];
+    }
+    if (data is Map) {
+      for (final key in ['items', 'notifications', 'data', 'results']) {
+        final raw = data[key];
+        if (raw is List) {
+          return [
+            for (final e in raw)
+              if (e is Map) Map<String, dynamic>.from(e),
+          ];
+        }
+      }
+    }
+    return [];
   }
 
   Future<int> appNotificationUnreadCount({required String businessId}) async {
